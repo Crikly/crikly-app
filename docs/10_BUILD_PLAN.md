@@ -78,7 +78,7 @@ Everything needed before writing a single line of application code.
 | F-13 | Create docs/10_BUILD_PLAN.md — this file | Manual | 🟢 | ✅ |
 | F-14 | Create all 9 agent files in docs/agents/ | Manual | 🟢 | ✅ |
 | F-15 | Create Notion HQ workspace with all sections and subpages | Manual | 🟢 | ✅ |
-| F-16 | Commit all foundation files to GitHub main branch | Manual | 🟢 | ⚪ |
+| F-16 | Commit all foundation files to GitHub main branch | Manual | 🟢 | ✅ |
 
 **F-16 commit message:**
 ```
