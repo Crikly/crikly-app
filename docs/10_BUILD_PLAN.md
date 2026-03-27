@@ -109,7 +109,7 @@ chore(docs): add all foundation docs, agents, schema and build plan
 
 | ID | Task | Agent | Risk | Branch | Status |
 |---|---|---|---|---|---|
-| M-01 | Migration 001 — user_profiles, user_roles | @DatabaseArchitect | 🟡 | feature/migrations | ⚪ |
+| M-01 | Migration 001 — user_profiles, user_roles | @DatabaseArchitect | 🟡 | feature/migrations | ✅ |
 | M-02 | Migration 002 — parent_profiles, child_profiles, player_profiles, coach_profiles, coach_sports, coach_qualifications, coach_photos | @DatabaseArchitect | 🟡 | feature/migrations | ⚪ |
 | M-03 | Migration 003 — sports, qualification_types, countries, platform_config, feature_flags | @DatabaseArchitect | 🟡 | feature/migrations | ⚪ |
 | M-04 | Migration 004 — availability_templates, blocked_dates | @DatabaseArchitect | 🟡 | feature/migrations | ⚪ |
