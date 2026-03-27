@@ -1,0 +1,14 @@
+{
+  "buildCommand": "npm run build",
+  "devCommand": "npm run dev",
+  "installCommand": "npm install",
+  "framework": "nextjs",
+  "outputDirectory": ".next",
+  "env": {
+    "NEXT_PUBLIC_APP_URL": {
+      "production": "https://crikly.app",
+      "preview": "https://staging.crikly.app",
+      "development": "http://localhost:3000"
+    }
+  }
+}
