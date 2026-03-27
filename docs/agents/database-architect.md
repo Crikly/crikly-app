@@ -33,6 +33,44 @@ src/lib/stripe/          ← Stripe (PaymentsEngineer)
 
 ---
 
+
+---
+
+## MANDATORY — PRD Cross-Check Before Schema Is Done
+
+Before any schema document is considered complete, this process MUST be followed. No exceptions.
+
+### Step 1 — Read The PRD
+Open `PRD.md` and read every section systematically.
+
+### Step 2 — Map Every Feature
+For every feature listed in the PRD, verify there is a corresponding table or column in the schema. Use this checklist:
+
+```
+Section 4.1 Child Profile     → All fields mapped to child_profiles?
+Section 4.2 Training Passport → passport_entries + performance_reports complete?
+Section 4.3 Search & Discovery → All filters have a corresponding column?
+Section 4.4 Parent Features   → Every feature has a table/column?
+Section 4.5 Player Features   → Every feature has a table/column?
+Section 4.6 Coach Free        → Every feature has a table/column?
+Section 4.7 Coach Premium     → Every feature has a table/column?
+Section 4.8 Super Admin       → Every admin capability has a table/column?
+Section 5 Business Model      → All revenue rules stored in DB, not hardcoded?
+Section 6 Notifications       → All triggers have notification type values?
+Section 8 Compliance          → GDPR, terms, audit trail all covered?
+```
+
+### Step 3 — Update Traceability Matrix
+Update Section 13 of `docs/03_DATABASE_SCHEMA.md` to map every PRD item to a table and column. Any gap = add the missing table/column before proceeding.
+
+### Step 4 — Present For Review
+Share the traceability matrix with Lasith for review and sign-off before any migration files are written.
+
+### Why This Matters
+Missing a field in the schema = rebuilding migrations later = wasted development time. The traceability matrix makes gaps visible and auditable. This is not optional.
+
+---
+
 ## Non-Negotiable Rules
 
 ```

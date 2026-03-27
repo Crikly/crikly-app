@@ -46,7 +46,7 @@ Never ask Claude to write production code files.
 ### Starting Every Windsurf Session
 
 ```
-Step 1 → Open docs/09_BUILD_PLAN.md
+Step 1 → Open docs/10_BUILD_PLAN.md
          Find the first ⚪ or 🟡 task
          That is what you work on — no skipping
 
@@ -60,9 +60,12 @@ Step 5 → Review output before accepting
 
 Step 6 → Commit with correct message format
 
-Step 7 → Mark task ✅ in BUILD_PLAN.md
+Step 7 → Mark task ✅ in docs/10_BUILD_PLAN.md
 
-Step 8 → Move to next task
+Step 8 → Mark task ✅ in Notion Build Plan (same ID)
+         Add notes: what was done, any decisions made
+
+Step 9 → Move to next task
 ```
 
 ### Standard Windsurf Prompt Template
@@ -70,11 +73,13 @@ Step 8 → Move to next task
 ```
 @[AgentName]
 
+Task ID: [e.g. M-01, A-03, C-14] ← from docs/10_BUILD_PLAN.md
+
 Context files:
 - CLAUDE.md
 - docs/09_WORKING_ETHICS.md
-- docs/[relevant doc 1]
-- docs/[relevant doc 2]
+- docs/[relevant doc only]
+- docs/[relevant doc only]
 
 Task:
 [One clear paragraph describing exactly what to build]
@@ -91,6 +96,12 @@ Must NOT modify:
 
 Business rules to enforce:
 - [BR-XX from docs/05_BUSINESS_RULES.md]
+
+On completion:
+1. Mark task [ID] ✅ Complete in docs/10_BUILD_PLAN.md
+2. Update matching task in Notion Build Plan to ✅ Complete
+3. Add a note in Notion: what was done, any decisions made
+4. Commit docs/10_BUILD_PLAN.md in the same commit as the code
 
 Commit to: feature/[name] branch
 Risk: 🟢 Low | 🟡 Medium | 🔴 High
@@ -242,6 +253,9 @@ Fixing a bad architectural decision costs weeks.
 
 | Agent | Tag | Use For |
 |---|---|---|
+| Tech Lead | `@TechLead` | Complex feature analysis, risk assessment, orchestration |
+| UI/UX Designer | `@UIUXDesigner` | Screen design, user flows, copy — always first for new UI |
+| Frontend Architect | `@FrontendArchitect` | Component hierarchy, state plan — before any frontend build |
 | Frontend Developer | `@FrontendDeveloper` | React components, pages, hooks, Tailwind UI |
 | Backend Developer | `@BackendDeveloper` | API routes, business logic, server actions |
 | Database Architect | `@DatabaseArchitect` | Supabase tables, migrations, RLS policies |
@@ -373,6 +387,85 @@ Risk: 🔴 High — payment logic
 
 ---
 
+## Windsurf Optimisation — Getting The Best Results
+
+### Model Selection
+Always use Claude Sonnet for Windsurf coding tasks.
+Use Claude Opus only for complex architectural analysis that Sonnet struggles with.
+Never use Haiku for production code — output quality is insufficient.
+
+### Session Length Rules
+```
+Keep each Windsurf session to ONE task (one task ID).
+A session that tries to do M-01, M-02, M-03 in one go will degrade.
+Context quality drops after ~30 minutes of coding in one session.
+If a session goes long → commit what's done → start fresh session for next task.
+```
+
+### When Windsurf Goes Off Track
+Signs Windsurf is going off track:
+- It starts making architectural decisions
+- It modifies files not listed in the prompt
+- It asks questions instead of following the spec
+- Output doesn't match the agent role
+
+What to do:
+1. Stop the session immediately
+2. Do not accept the output
+3. Come to Claude with the problem
+4. Get a clearer prompt, then restart Windsurf
+
+### Prompt Repair — When Output Is Wrong
+If Windsurf produces wrong output, do NOT try to fix it in the same session.
+Instead:
+```
+1. Reject the output (Ctrl+Z or discard)
+2. Identify WHY the prompt was unclear
+3. Rewrite the prompt with the missing clarity
+4. Start a fresh Windsurf session
+```
+Trying to correct Windsurf mid-session produces worse results than starting clean.
+
+### Context Window Management
+Windsurf has no memory between sessions.
+Every session must re-establish context via the context files in the prompt.
+
+```
+NEVER assume Windsurf remembers:
+→ What was built last session
+→ Any decisions made in previous sessions
+→ Why something was done a certain way
+
+ALWAYS include in context files:
+→ CLAUDE.md (always)
+→ docs/09_WORKING_ETHICS.md (always)
+→ Only the docs relevant to THIS task
+```
+
+Loading too many docs is as bad as loading too few.
+A bloated context produces generic, unfocused output.
+
+### Signs A Prompt Needs Improving
+```
+Bad prompt symptoms:
+→ Windsurf asks "what do you want me to do?"
+→ Output is generic (not Crikly-specific)
+→ Wrong file paths used
+→ Windsurf modifies unrelated files
+→ Output doesn't match the agent's role
+
+Good prompt characteristics:
+→ One task ID from the build plan
+→ One agent
+→ One paragraph task description
+→ Exact file paths
+→ Explicit requirements
+→ Explicit "must NOT touch" files
+→ Risk level assigned
+```
+
+---
+
 ## Coding Standards
 
 ### TypeScript — Non-Negotiable
@@ -484,6 +577,111 @@ refactor(auth): simplify multi-role context switcher
 
 ---
 
+
+---
+
+## PRD Traceability — Non-Negotiable Rule
+
+Before any database schema, feature specification, or build plan is considered complete, it must be cross-checked against the PRD systematically.
+
+**The rule:**
+> Every feature in PRD.md must map to a table, column, or API route. No exceptions. No assumptions.
+
+**How:**
+1. Read PRD.md section by section — not from memory
+2. For each feature, verify the corresponding database entry exists
+3. Update `docs/03_DATABASE_SCHEMA.md` Section 13 (traceability matrix)
+4. Present matrix to Lasith for review before writing any migration
+
+**What happens if a gap is found later:**
+- Add the missing column/table via a new migration file
+- Never edit existing migration files — always create new ones
+- Update docs/03_DATABASE_SCHEMA.md and the traceability matrix
+- Update Notion build plan with the new task
+- This is normal — it happens in every product. The process handles it cleanly.
+
+**The gap finding process is not a failure. Skipping the cross-check is.**
+
+---
+
+## Notion Maintenance — Exact Workflow
+
+Notion is the living product brain. It must stay current as part of every session.
+The rule is simple: **docs/10_BUILD_PLAN.md and Notion must always match.**
+
+---
+
+### Notion Build Plan URL
+https://www.notion.so/b288473c2a4f47ebad99bf6bf3f7b041
+
+---
+
+### Every Windsurf Session — Exact Steps
+
+**START of session (before touching any code):**
+1. Open `docs/10_BUILD_PLAN.md`
+2. Find the first ⚪ Planned or 🟡 In Progress task
+3. Mark it 🟡 In Progress in the file
+4. Open Notion Build Plan → find the SAME task by its ID (e.g. M-01, A-03)
+5. Change Notion status to 🟡 In Progress
+6. Only then start coding
+
+**END of session (before closing Windsurf):**
+1. Mark completed tasks ✅ Complete in `docs/10_BUILD_PLAN.md`
+2. Open Notion Build Plan → find each completed task by ID
+3. Change Notion status to ✅ Complete
+4. Add notes field in Notion: what was done, any decisions made
+5. If blocked → mark 🔴 Blocked in BOTH places with reason
+6. Commit all code + doc changes together
+
+---
+
+### Task ID Mapping Rule
+
+Every task in `docs/10_BUILD_PLAN.md` has a unique ID (F-01, D-03, M-07, A-12, etc.)
+The same ID must appear in Notion as the Task name prefix.
+This is how the two stay in sync — IDs are the shared key.
+
+```
+docs/10_BUILD_PLAN.md: | M-01 | Migration 001 — user_profiles | ✅ |
+Notion:               | M-01 — Migration 001 — user_profiles | ✅ Complete |
+```
+
+---
+
+### What Triggers a Notion Update
+
+| Trigger | What to update in Notion | Urgency |
+|---|---|---|
+| Task started | Build Plan → 🟡 In Progress | Immediate |
+| Task completed | Build Plan → ✅ Complete + add notes | Same session |
+| Task blocked | Build Plan → 🔴 Blocked + reason | Immediate |
+| Decision made | Decision Log → add new row | Same session |
+| New feature idea | Feature Backlog → add row | Same session |
+| Milestone hit | Analytics & KPIs → Milestone Log | Same session |
+| Architecture change | Team & Development page | Same session |
+| New business rule added | Decision Log + note in build plan | Same session |
+
+---
+
+### What Lasith Uses Notion For
+
+Lasith tracks progress in Notion — not in Windsurf or GitHub.
+This means:
+- Notion is what Lasith opens to check what's been done
+- Notion is what Lasith opens to see what's in progress
+- Notion is what Lasith opens to raise blockers and questions
+
+If a task is done in code but not marked in Notion — **it doesn't exist to Lasith.**
+
+---
+
+### Rule
+> If it happened, it's in Notion.
+> If it's not in Notion, it didn't happen.
+
+---
+
 ## Document Maintenance
 
 When completing any task, update relevant docs in same commit:
@@ -494,7 +692,7 @@ When completing any task, update relevant docs in same commit:
 | New API route | `docs/04_API_REFERENCE.md` |
 | New/changed business rule | `docs/05_BUSINESS_RULES.md` |
 | New env variable | `docs/02_TECH_ARCHITECTURE.md` + `.env.example` |
-| Feature completed | `docs/09_BUILD_PLAN.md` → mark ✅ |
+| Feature completed | `docs/10_BUILD_PLAN.md` → mark ✅ + update Notion |
 | Architecture decision | `docs/02_TECH_ARCHITECTURE.md` |
 | Security change | `docs/06_SECURITY_COMPLIANCE.md` |
 | Future expansion impact | `docs/07_FUTURE_EXPANSION.md` |
