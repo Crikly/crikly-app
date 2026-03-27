@@ -93,10 +93,10 @@ chore(docs): add all foundation docs, agents, schema and build plan
 
 | ID | Task | Agent | Risk | Branch | Status |
 |---|---|---|---|---|---|
-| D-01 | Install Supabase CLI, verify connection to project | @DevOpsEngineer | 🟢 | chore/supabase-setup | ⚪ |
-| D-02 | Create develop branch from main | @DevOpsEngineer | 🟢 | — | ⚪ |
-| D-03 | Create staging branch from main | @DevOpsEngineer | 🟢 | — | ⚪ |
-| D-04 | Protect main branch — no direct commits | @DevOpsEngineer | 🟢 | — | ⚪ |
+| D-01 | Install Supabase CLI, verify connection to project | @DevOpsEngineer | 🟢 | chore/supabase-setup | ✅ |
+| D-02 | Create develop branch from main | @DevOpsEngineer | 🟢 | — | ✅ |
+| D-03 | Create staging branch from main | @DevOpsEngineer | 🟢 | — | ✅ |
+| D-04 | Protect main branch — no direct commits | @DevOpsEngineer | 🟢 | — | ✅ |
 | D-05 | Create .env.example with all required variables | @DevOpsEngineer | 🟢 | chore/env-setup | ⚪ |
 | D-06 | GitHub Actions CI pipeline — type-check, lint, test, build | @DevOpsEngineer | 🟢 | chore/ci-setup | ⚪ |
 | D-07 | Configure Vercel environments (development, staging, production) | @DevOpsEngineer | 🟢 | chore/vercel-config | ⚪ |
