@@ -125,6 +125,35 @@ chore(docs): add all foundation docs, agents, schema and build plan
 
 ---
 
+## Step 1C — Design Foundation
+
+**Must be fully complete before ANY UI task in Steps 2–6 is started.**
+This step defines the visual language, UX rules, and component library
+that every screen in the app is built from. One-time investment.
+All outputs live in docs/ and src/components/ui/.
+
+### 1C — Design System
+
+| ID | Task | Agent | Risk | Branch | Status |
+|---|---|---|---|---|---|
+| DS-01 | Define UX principles — gestures, rules, flows, empty/error/loading states | Manual | 🟢 | chore/design-system | ⚪ |
+| DS-02 | Define design system — colours, typography, spacing, shadows, radius | Manual | 🟢 | chore/design-system | ⚪ |
+| DS-03 | Build Tailwind design tokens — tailwind.config.ts + global CSS variables | @FrontendArchitect | 🟢 | chore/design-system | ⚪ |
+| DS-04 | Build base component library — Button, Input, Card, Badge, Avatar, Modal, Toast, Spinner | @FrontendDeveloper | 🟢 | chore/design-system | ⚪ |
+| DS-05 | Document all screen flows — parent, player, coach journeys | Manual | 🟢 | chore/design-system | ⚪ |
+
+**Outputs:**
+- docs/11_UX_PRINCIPLES.md
+- docs/12_DESIGN_SYSTEM.md
+- docs/13_SCREEN_FLOWS.md
+- tailwind.config.ts (updated with design tokens)
+- src/components/ui/ (base component library)
+
+**Rule:** Every UI prompt from A-06 onwards must reference docs/12_DESIGN_SYSTEM.md.
+**Rule:** No UI is built outside the component library. New components → add to docs/12_DESIGN_SYSTEM.md first.
+
+---
+
 ## Step 2 — Authentication & Roles & Roles
 
 First working screens. Register, log in, select roles, switch roles.
@@ -484,15 +513,14 @@ Three-sided marketplace — coaches, parents, and venues.
 
 ---
 
----
-
 ## Summary
 
 | Step | Product Phase | Task Count | Complete | Remaining |
 |---|---|---|---|---|
 | Step 0 — Foundation | All | 16 | 15 ✅ | 1 |
-| Step 1A — DevOps | Phase 1 | 8 | 0 | 8 |
-| Step 1B — Migrations | Phase 1 | 13 | 0 | 13 |
+| Step 1A — DevOps | Phase 1 | 8 | 8 | 0 |
+| Step 1B — Migrations | Phase 1 | 13 | 13 | 0 |
+| Step 1C — Design Foundation | Phase 1 | 5 | 0 | 5 |
 | Step 2 — Auth | Phase 1 | 15 | 0 | 15 |
 | Step 3 — Coach | Phase 1 | 24 | 0 | 24 |
 | Step 4 — Parent & Player | Phase 1 | 21 | 0 | 21 |
@@ -501,7 +529,7 @@ Three-sided marketplace — coaches, parents, and venues.
 | Step 7 — Pre-Launch | Phase 1 | 13 | 0 | 13 |
 | Step 8 — Mobile App | **Product Phase 2** | 20 | 0 | 20 |
 | Step 9 — Venues | **Product Phase 3** | 11 | 0 | 11 |
-| **Total** | | **207** | **15** | **192** |
+| **Total** | | **212** | **15** | **197** |
 
 ---
 
