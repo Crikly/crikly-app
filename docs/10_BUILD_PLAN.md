@@ -109,13 +109,13 @@ chore(docs): add all foundation docs, agents, schema and build plan
 
 | ID | Task | Agent | Risk | Branch | Status |
 |---|---|---|---|---|---|
-| M-01 | Migration 001 — user_profiles, user_roles | @DatabaseArchitect | 🟡 | feature/migrations | ✅ |
-| M-02 | Migration 002 — parent_profiles, child_profiles, player_profiles, coach_profiles, coach_sports, coach_qualifications, coach_photos | @DatabaseArchitect | 🟡 | feature/migrations | ✅ |
-| M-03 | Migration 003 — sports, qualification_types, countries, platform_config, feature_flags | @DatabaseArchitect | 🟡 | feature/migrations | ✅ |
-| M-04 | Migration 004 — availability_templates, blocked_dates | @DatabaseArchitect | 🟡 | feature/migrations | ✅ |
-| M-05 | Migration 005 — bookings, group_bookings | @DatabaseArchitect | 🔴 | feature/migrations | ✅ |
-| M-06 | Migration 006 — payment_intents, payouts, refunds | @DatabaseArchitect | 🔴 | feature/migrations | ✅ |
-| M-07 | Migration 007 — passport_entries, performance_reports, reviews | @DatabaseArchitect | 🟡 | feature/migrations | ⚪ |
+| M-01 | Migration 001 — user_profiles, user_roles | @DatabaseArchitect | 🟡 | feature/migrations | ⚪ |
+| M-02 | Migration 002 — parent_profiles, child_profiles, player_profiles, coach_profiles, coach_sports, coach_qualifications, coach_photos | @DatabaseArchitect | 🟡 | feature/migrations | ⚪ |
+| M-03 | Migration 003 — sports, qualification_types, countries, platform_config, feature_flags | @DatabaseArchitect | 🟡 | feature/migrations | ⚪ |
+| M-04 | Migration 004 — availability_templates, blocked_dates | @DatabaseArchitect | 🟡 | feature/migrations | ⚪ |
+| M-05 | Migration 005 — bookings, group_bookings | @DatabaseArchitect | 🔴 | feature/migrations | ⚪ |
+| M-06 | Migration 006 — payment_intents, payouts, refunds | @DatabaseArchitect | 🔴 | feature/migrations | ⚪ |
+| M-07 | Migration 007 — passport_entries, performance_reports, reviews | @DatabaseArchitect | 🟡 | feature/migrations | ✅ |
 | M-08 | Migration 008 — subscription_tiers, tier_features, coach_subscriptions, tier_usage | @DatabaseArchitect | 🟡 | feature/migrations | ⚪ |
 | M-09 | Migration 009 — notification_preferences, notifications | @DatabaseArchitect | 🟢 | feature/migrations | ⚪ |
 | M-10 | Migration 010 — admin_roles, content_pages, session_notes, dbs_verifications, disputes, promo_codes, audit_logs | @DatabaseArchitect | 🟡 | feature/migrations | ⚪ |
