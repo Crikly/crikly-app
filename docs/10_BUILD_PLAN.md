@@ -118,7 +118,7 @@ chore(docs): add all foundation docs, agents, schema and build plan
 | M-07 | Migration 007 — passport_entries, performance_reports, reviews | @DatabaseArchitect | 🟡 | feature/migrations | ✅ |
 | M-08 | Migration 008 — subscription_tiers, tier_features, coach_subscriptions, tier_usage | @DatabaseArchitect | 🟡 | feature/migrations | ✅ |
 | M-09 | Migration 009 — notification_preferences, notifications | @DatabaseArchitect | 🟢 | feature/migrations | ✅ |
-| M-10 | Migration 010 — admin_roles, content_pages, session_notes, dbs_verifications, disputes, promo_codes, audit_logs | @DatabaseArchitect | 🟡 | feature/migrations | ⚪ |
+| M-10 | Migration 010 — admin_roles, content_pages, session_notes, dbs_verifications, disputes, promo_codes, audit_logs | @DatabaseArchitect | 🟡 | feature/migrations | ✅ |
 | M-11 | Seed data — sports (cricket), countries (GB), platform_config, feature_flags, Free + Premium tiers | @DatabaseArchitect | 🟢 | feature/migrations | ⚪ |
 | M-12 | Generate TypeScript types from Supabase → src/types/database.ts | @DatabaseArchitect | 🟢 | feature/migrations | ⚪ |
 | M-13 | Run all migrations on Supabase and verify all tables exist | @DevOpsEngineer | 🟢 | feature/migrations | ⚪ |
