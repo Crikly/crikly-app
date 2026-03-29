@@ -106,21 +106,20 @@ export default function DesignSystemPage() {
         {/* Buttons */}
         <section>
           <h2 className="text-xl font-medium text-neutral-900 mb-4">Buttons</h2>
-          <Card>
+          <div className="bg-white rounded-lg p-6 border border-neutral-100">
+            <div className="flex flex-wrap gap-3 mb-4">
+              <button style={{background:'#0077CC',color:'#fff',height:'52px',padding:'0 24px',borderRadius:'10px',fontSize:'15px',fontWeight:500,border:'none',cursor:'pointer',fontFamily:'DM Sans, sans-serif'}}>Book session</button>
+              <button style={{background:'transparent',color:'#0077CC',height:'52px',padding:'0 24px',borderRadius:'10px',fontSize:'15px',fontWeight:500,border:'1.5px solid #0077CC',cursor:'pointer',fontFamily:'DM Sans, sans-serif'}}>View profile</button>
+              <button style={{background:'#B91C1C',color:'#fff',height:'52px',padding:'0 24px',borderRadius:'10px',fontSize:'15px',fontWeight:500,border:'none',cursor:'pointer',fontFamily:'DM Sans, sans-serif'}}>Cancel booking</button>
+              <button style={{background:'transparent',color:'#475569',height:'52px',padding:'0 24px',borderRadius:'10px',fontSize:'15px',fontWeight:500,border:'none',cursor:'pointer',fontFamily:'DM Sans, sans-serif'}}>Skip for now</button>
+              <button style={{background:'#0077CC',color:'#fff',height:'52px',padding:'0 24px',borderRadius:'10px',fontSize:'15px',fontWeight:500,border:'none',cursor:'not-allowed',opacity:0.4,fontFamily:'DM Sans, sans-serif'}}>Disabled</button>
+            </div>
             <div className="flex flex-wrap gap-3">
-              <Button variant="primary">Book session</Button>
-              <Button variant="secondary">View profile</Button>
-              <Button variant="destructive">Cancel booking</Button>
-              <Button variant="ghost">Skip for now</Button>
-              <Button variant="primary" loading>Loading...</Button>
-              <Button variant="primary" disabled>Disabled</Button>
+              <button style={{background:'#0077CC',color:'#fff',height:'36px',padding:'0 16px',borderRadius:'10px',fontSize:'13px',fontWeight:500,border:'none',cursor:'pointer',fontFamily:'DM Sans, sans-serif'}}>Small</button>
+              <button style={{background:'#0077CC',color:'#fff',height:'52px',padding:'0 24px',borderRadius:'10px',fontSize:'15px',fontWeight:500,border:'none',cursor:'pointer',fontFamily:'DM Sans, sans-serif'}}>Medium</button>
+              <button style={{background:'#0077CC',color:'#fff',height:'56px',padding:'0 32px',borderRadius:'10px',fontSize:'17px',fontWeight:500,border:'none',cursor:'pointer',fontFamily:'DM Sans, sans-serif'}}>Large</button>
             </div>
-            <div className="flex flex-wrap gap-3 mt-4">
-              <Button size="sm">Small</Button>
-              <Button size="md">Medium</Button>
-              <Button size="lg">Large</Button>
-            </div>
-          </Card>
+          </div>
         </section>
 
         {/* Inputs */}
@@ -164,58 +163,57 @@ export default function DesignSystemPage() {
         {/* Coach Card Example */}
         <section>
           <h2 className="text-xl font-medium text-neutral-900 mb-4">Coach card — real usage</h2>
-          <Card className="max-w-sm">
-            <div className="flex items-center gap-3">
-              <Avatar name="Ravi Kumar" size="md" />
-              <div className="flex-1 min-w-0">
-                <p className="text-lg font-medium text-neutral-900">Ravi Kumar</p>
-                <p className="text-sm text-neutral-600">Cricket · Oval, London</p>
+          <div style={{maxWidth:'360px',background:'#fff',border:'0.5px solid #E2E8F0',borderRadius:'14px',padding:'16px',fontFamily:'DM Sans, sans-serif'}}>
+            <div style={{display:'flex',alignItems:'center',gap:'12px',marginBottom:'16px'}}>
+              <div style={{width:'44px',height:'44px',borderRadius:'50%',background:'#E6F3FB',color:'#0C447C',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'12px',fontWeight:500,flexShrink:0}}>RK</div>
+              <div style={{flex:1}}>
+                <p style={{fontSize:'17px',fontWeight:500,color:'#0F172A',margin:0}}>Ravi Kumar</p>
+                <p style={{fontSize:'13px',color:'#475569',margin:'2px 0 0'}}>Cricket · Oval, London</p>
               </div>
-              <Badge variant="dbs">DBS verified</Badge>
+              <span style={{background:'#E0F6F8',color:'#006677',borderRadius:'6px',padding:'3px 8px',fontSize:'11px',fontWeight:500}}>DBS verified</span>
             </div>
-            <div className="mt-4 space-y-2 border-t border-neutral-100 pt-4">
-              <div className="flex justify-between">
-                <span className="text-sm text-neutral-600">Rate</span>
-                <span className="text-sm font-medium text-neutral-900">£55.00 / session</span>
+            <div style={{borderTop:'0.5px solid #E2E8F0',paddingTop:'12px',display:'flex',flexDirection:'column',gap:'8px'}}>
+              <div style={{display:'flex',justifyContent:'space-between'}}>
+                <span style={{fontSize:'13px',color:'#475569'}}>Rate</span>
+                <span style={{fontSize:'13px',fontWeight:500,color:'#0F172A'}}>£55.00 / session</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-sm text-neutral-600">Rating</span>
-                <span className="text-sm font-medium text-neutral-900">4.9 (48 reviews)</span>
+              <div style={{display:'flex',justifyContent:'space-between'}}>
+                <span style={{fontSize:'13px',color:'#475569'}}>Rating</span>
+                <span style={{fontSize:'13px',fontWeight:500,color:'#0F172A'}}>4.9 (48 reviews)</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-sm text-neutral-600">Next available</span>
-                <span className="text-sm font-medium text-neutral-900">Tomorrow, 10am</span>
+              <div style={{display:'flex',justifyContent:'space-between'}}>
+                <span style={{fontSize:'13px',color:'#475569'}}>Next available</span>
+                <span style={{fontSize:'13px',fontWeight:500,color:'#0F172A'}}>Tomorrow, 10am</span>
               </div>
             </div>
-            <Button variant="primary" className="w-full mt-4">Book session</Button>
-          </Card>
+            <button style={{width:'100%',marginTop:'16px',background:'#0077CC',color:'#fff',height:'52px',borderRadius:'10px',fontSize:'15px',fontWeight:500,border:'none',cursor:'pointer',fontFamily:'DM Sans, sans-serif'}}>Book session</button>
+          </div>
         </section>
 
         {/* Badges */}
         <section>
           <h2 className="text-xl font-medium text-neutral-900 mb-4">Badges</h2>
-          <Card>
+          <div className="bg-white rounded-lg p-6 border border-neutral-100">
             <div className="flex flex-wrap gap-3">
-              <Badge variant="dbs">DBS verified</Badge>
-              <Badge variant="premium">Premium</Badge>
-              <Badge variant="confirmed">Confirmed</Badge>
-              <Badge variant="cancelled">Cancelled</Badge>
-              <Badge variant="default">New</Badge>
+              <span style={{background:'#E0F6F8',color:'#006677',borderRadius:'6px',padding:'3px 8px',fontSize:'11px',fontWeight:500,fontFamily:'DM Sans, sans-serif'}}>DBS verified</span>
+              <span style={{background:'#E6F3FB',color:'#0C447C',borderRadius:'6px',padding:'3px 8px',fontSize:'11px',fontWeight:500,fontFamily:'DM Sans, sans-serif'}}>Premium</span>
+              <span style={{background:'#dcfce7',color:'#166534',borderRadius:'6px',padding:'3px 8px',fontSize:'11px',fontWeight:500,fontFamily:'DM Sans, sans-serif'}}>Confirmed</span>
+              <span style={{background:'#fee2e2',color:'#991b1b',borderRadius:'6px',padding:'3px 8px',fontSize:'11px',fontWeight:500,fontFamily:'DM Sans, sans-serif'}}>Cancelled</span>
+              <span style={{background:'#E2E8F0',color:'#475569',borderRadius:'6px',padding:'3px 8px',fontSize:'11px',fontWeight:500,fontFamily:'DM Sans, sans-serif'}}>New</span>
             </div>
-          </Card>
+          </div>
         </section>
 
         {/* Avatars */}
         <section>
           <h2 className="text-xl font-medium text-neutral-900 mb-4">Avatars</h2>
-          <Card>
+          <div className="bg-white rounded-lg p-6 border border-neutral-100">
             <div className="flex items-end gap-4">
-              <Avatar name="Ravi Kumar" size="sm" />
-              <Avatar name="Sarah Mitchell" size="md" />
-              <Avatar name="James Chen" size="lg" />
-              <Avatar name="Ravi Kumar" size="md" src="https://i.pravatar.cc/44" />
+              <div style={{width:'28px',height:'28px',borderRadius:'50%',background:'#E6F3FB',color:'#0C447C',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'10px',fontWeight:500,fontFamily:'DM Sans, sans-serif'}}>RK</div>
+              <div style={{width:'44px',height:'44px',borderRadius:'50%',background:'#E6F3FB',color:'#0C447C',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'12px',fontWeight:500,fontFamily:'DM Sans, sans-serif'}}>SM</div>
+              <div style={{width:'80px',height:'80px',borderRadius:'50%',background:'#E6F3FB',color:'#0C447C',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'20px',fontWeight:500,fontFamily:'DM Sans, sans-serif'}}>JC</div>
             </div>
-          </Card>
+          </div>
         </section>
 
         {/* Loading states */}
