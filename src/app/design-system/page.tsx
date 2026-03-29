@@ -29,61 +29,63 @@ export default function DesignSystemPage() {
         {/* Colours */}
         <section>
           <h2 className="text-xl font-medium text-neutral-900 mb-4">Colours</h2>
-          <div className="grid grid-cols-6 gap-2">
-            <div>
-              <div className="h-12 rounded-md border border-neutral-100 bg-brand-50" />
-              <p className="text-xs text-neutral-600 mt-1 text-center">brand-50</p>
-            </div>
-            <div>
-              <div className="h-12 rounded-md border border-neutral-100 bg-brand-100" />
-              <p className="text-xs text-neutral-600 mt-1 text-center">brand-100</p>
-            </div>
-            <div>
-              <div className="h-12 rounded-md border border-neutral-100 bg-brand-400" />
-              <p className="text-xs text-neutral-600 mt-1 text-center">brand-400</p>
-            </div>
-            <div>
-              <div className="h-12 rounded-md border border-neutral-100 bg-brand-600" />
-              <p className="text-xs text-neutral-600 mt-1 text-center">brand-600</p>
-            </div>
-            <div>
-              <div className="h-12 rounded-md border border-neutral-100 bg-brand-800" />
-              <p className="text-xs text-neutral-600 mt-1 text-center">brand-800</p>
-            </div>
-            <div>
-              <div className="h-12 rounded-md border border-neutral-100 bg-brand-900" />
-              <p className="text-xs text-neutral-600 mt-1 text-center">brand-900</p>
-            </div>
-          </div>
-          <div className="grid grid-cols-3 gap-2 mt-4">
+
+          <p className="text-sm text-neutral-600 mb-3">Primary — Sky Blue</p>
+          <div className="grid grid-cols-6 gap-2 mb-6">
             {[
-              { shade: '50',  cls: 'bg-teal-50'  },
-              { shade: '600', cls: 'bg-teal-600' },
-              { shade: '800', cls: 'bg-teal-800' },
-            ].map(({ shade, cls }) => (
-              <div key={shade}>
-                <div className={`h-12 rounded-md border border-neutral-100 ${cls}`} />
-                <p className="text-xs text-neutral-600 mt-1 text-center">teal-{shade}</p>
+              { name: 'brand-50',  hex: '#E6F3FB' },
+              { name: 'brand-100', hex: '#B5D4F4' },
+              { name: 'brand-400', hex: '#378ADD' },
+              { name: 'brand-600', hex: '#0077CC' },
+              { name: 'brand-800', hex: '#0C447C' },
+              { name: 'brand-900', hex: '#042C53' },
+            ].map(({ name, hex }) => (
+              <div key={name}>
+                <div
+                  className="h-12 rounded-md border border-neutral-100"
+                  style={{ backgroundColor: hex }}
+                />
+                <p className="text-xs text-neutral-600 mt-1 text-center">{name}</p>
+                <p className="text-xs text-neutral-400 text-center">{hex}</p>
               </div>
             ))}
           </div>
-          <div className="grid grid-cols-4 gap-2 mt-4">
-            <div>
-              <div className="h-12 rounded-md border border-neutral-100 bg-success" />
-              <p className="text-xs text-neutral-600 mt-1 text-center">success</p>
-            </div>
-            <div>
-              <div className="h-12 rounded-md border border-neutral-100 bg-warning" />
-              <p className="text-xs text-neutral-600 mt-1 text-center">warning</p>
-            </div>
-            <div>
-              <div className="h-12 rounded-md border border-neutral-100 bg-danger" />
-              <p className="text-xs text-neutral-600 mt-1 text-center">danger</p>
-            </div>
-            <div>
-              <div className="h-12 rounded-md border border-neutral-100 bg-info" />
-              <p className="text-xs text-neutral-600 mt-1 text-center">info</p>
-            </div>
+
+          <p className="text-sm text-neutral-600 mb-3">Secondary — Teal</p>
+          <div className="grid grid-cols-3 gap-2 mb-6">
+            {[
+              { name: 'teal-50',  hex: '#E0F6F8' },
+              { name: 'teal-600', hex: '#0099AA' },
+              { name: 'teal-800', hex: '#006677' },
+            ].map(({ name, hex }) => (
+              <div key={name}>
+                <div
+                  className="h-12 rounded-md border border-neutral-100"
+                  style={{ backgroundColor: hex }}
+                />
+                <p className="text-xs text-neutral-600 mt-1 text-center">{name}</p>
+                <p className="text-xs text-neutral-400 text-center">{hex}</p>
+              </div>
+            ))}
+          </div>
+
+          <p className="text-sm text-neutral-600 mb-3">Semantic</p>
+          <div className="grid grid-cols-4 gap-2">
+            {[
+              { name: 'success', hex: '#1A7A4A' },
+              { name: 'warning', hex: '#B45309' },
+              { name: 'danger',  hex: '#B91C1C' },
+              { name: 'info',    hex: '#0077CC' },
+            ].map(({ name, hex }) => (
+              <div key={name}>
+                <div
+                  className="h-12 rounded-md border border-neutral-100"
+                  style={{ backgroundColor: hex }}
+                />
+                <p className="text-xs text-neutral-600 mt-1 text-center">{name}</p>
+                <p className="text-xs text-neutral-400 text-center">{hex}</p>
+              </div>
+            ))}
           </div>
         </section>
 
