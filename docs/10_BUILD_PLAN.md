@@ -138,7 +138,7 @@ All outputs live in docs/ and src/components/ui/.
 |---|---|---|---|---|---|
 | DS-01 | Define UX principles — gestures, rules, flows, empty/error/loading states | Manual | 🟢 | chore/design-system | ✅ |
 | DS-02 | Define design system — colours, typography, spacing, shadows, radius | Manual | 🟢 | chore/design-system | ✅ |
-| DS-03 | Build Tailwind design tokens — tailwind.config.ts + global CSS variables | @FrontendArchitect | 🟢 | chore/design-system | ⚪ |
+| DS-03 | Build Tailwind design tokens — tailwind.config.ts + global CSS variables | @FrontendArchitect | 🟢 | chore/design-system | ✅ |
 | DS-04 | Build base component library — Button, Input, Card, Badge, Avatar, Modal, Toast, Spinner | @FrontendDeveloper | 🟢 | chore/design-system | ⚪ |
 | DS-05 | Document all screen flows — parent, player, coach journeys | Manual | 🟢 | chore/design-system | ✅ |
 
