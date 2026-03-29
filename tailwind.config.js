@@ -5,6 +5,12 @@ const config = {
     './src/components/**/*.{js,ts,jsx,tsx,mdx}',
     './src/app/**/*.{js,ts,jsx,tsx,mdx}',
   ],
+  safelist: [
+    'bg-brand-50', 'bg-brand-100', 'bg-brand-400',
+    'bg-brand-600', 'bg-brand-800', 'bg-brand-900',
+    'bg-teal-50', 'bg-teal-600', 'bg-teal-800',
+    'bg-success', 'bg-warning', 'bg-danger', 'bg-info',
+  ],
   darkMode: 'class',
   theme: {
     extend: {
