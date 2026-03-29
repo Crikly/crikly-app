@@ -30,25 +30,41 @@ export default function DesignSystemPage() {
         <section>
           <h2 className="text-xl font-medium text-neutral-900 mb-4">Colours</h2>
           <div className="grid grid-cols-6 gap-2">
-            {[50, 100, 400, 600, 800, 900].map((shade) => (
+            {[
+              { shade: '50',  cls: 'bg-brand-50'  },
+              { shade: '100', cls: 'bg-brand-100' },
+              { shade: '400', cls: 'bg-brand-400' },
+              { shade: '600', cls: 'bg-brand-600' },
+              { shade: '800', cls: 'bg-brand-800' },
+              { shade: '900', cls: 'bg-brand-900' },
+            ].map(({ shade, cls }) => (
               <div key={shade}>
-                <div className={`h-12 rounded-md bg-brand-${shade} border border-neutral-100`} />
+                <div className={`h-12 rounded-md border border-neutral-100 ${cls}`} />
                 <p className="text-xs text-neutral-600 mt-1 text-center">brand-{shade}</p>
               </div>
             ))}
           </div>
           <div className="grid grid-cols-3 gap-2 mt-4">
-            {['50', '600', '800'].map((shade) => (
+            {[
+              { shade: '50',  cls: 'bg-teal-50'  },
+              { shade: '600', cls: 'bg-teal-600' },
+              { shade: '800', cls: 'bg-teal-800' },
+            ].map(({ shade, cls }) => (
               <div key={shade}>
-                <div className={`h-12 rounded-md bg-teal-${shade} border border-neutral-100`} />
+                <div className={`h-12 rounded-md border border-neutral-100 ${cls}`} />
                 <p className="text-xs text-neutral-600 mt-1 text-center">teal-{shade}</p>
               </div>
             ))}
           </div>
           <div className="grid grid-cols-4 gap-2 mt-4">
-            {(['success', 'warning', 'danger', 'info'] as const).map((name) => (
+            {[
+              { name: 'success', cls: 'bg-success' },
+              { name: 'warning', cls: 'bg-warning' },
+              { name: 'danger',  cls: 'bg-danger'  },
+              { name: 'info',    cls: 'bg-info'    },
+            ].map(({ name, cls }) => (
               <div key={name}>
-                <div className={`h-12 rounded-md bg-${name} border border-neutral-100`} />
+                <div className={`h-12 rounded-md border border-neutral-100 ${cls}`} />
                 <p className="text-xs text-neutral-600 mt-1 text-center">{name}</p>
               </div>
             ))}
