@@ -1,7 +1,8 @@
 # Crikly — Working Ethics & Collaboration Standards
 
-**Version:** 1.0
+**Version:** 1.2
 **Last Updated:** March 2026
+**Changed:** Added design system rules and context loading for UI tasks (March 2026)
 **Maintainer:** Lasith Jayarathne
 **Review:** After each phase completion
 
@@ -162,13 +163,50 @@ Task type                    → Load these docs
 Any task (always)            → CLAUDE.md + 09_WORKING_ETHICS.md
 DB table or migration        → 03_DATABASE_SCHEMA.md
 API route or business logic  → 03_DATABASE_SCHEMA.md + 05_BUSINESS_RULES.md
-UI component or page         → 02_TECH_ARCHITECTURE.md (file structure section)
+UI component or page         → 02_TECH_ARCHITECTURE.md + docs/12_DESIGN_SYSTEM.md + docs/11_UX_PRINCIPLES.md
 Payment or Stripe work       → 05_BUSINESS_RULES.md + 06_SECURITY_COMPLIANCE.md
 Security-sensitive feature   → 06_SECURITY_COMPLIANCE.md
 New feature (any layer)      → PRD.md (relevant section only)
 Architecture decision        → 02_TECH_ARCHITECTURE.md
 Testing                      → relevant agent file + implementation file
 Multi-country expansion      → 07_FUTURE_EXPANSION.md
+```
+
+---
+
+## Design System — Non-Negotiable Rules
+
+All UI work must follow these rules. No exceptions.
+
+**Where the design decisions live:**
+```
+GitHub docs/11_UX_PRINCIPLES.md  → UX rules (gestures, states, navigation, onboarding)
+GitHub docs/12_DESIGN_SYSTEM.md  → Colours, typography, spacing, component specs
+GitHub docs/13_SCREEN_FLOWS.md   → All user journeys and screen inventory
+GitHub src/components/ui/        → Built components — use these, never rebuild from scratch
+Notion → Design System           → Human-readable mirror — same content as GitHub docs
+```
+
+**Rules for every UI task:**
+```
+→ Read docs/12_DESIGN_SYSTEM.md before writing any UI code
+→ Read docs/11_UX_PRINCIPLES.md before designing any screen
+→ Use components from src/components/ui/ — never create duplicate components
+→ Every new component must be added to docs/12_DESIGN_SYSTEM.md first
+→ No hardcoded hex colours — use Tailwind tokens from tailwind.config.js
+→ No hardcoded sizes — use tokens (radius-md, space-4, btn-mobile etc.)
+→ Font is DM Sans only — loaded via next/font in layout.tsx
+→ Primary colour: brand-600 (#0077CC)
+→ Trust signals (DBS badge, rating, sessions count) always visible on coach cards
+→ One primary action per screen — never two competing CTAs
+```
+
+**Sync rule:**
+```
+GitHub docs/ = single source of truth
+Notion       = human mirror (Claude keeps updated)
+Claude AI    = queries Notion for current state
+Windsurf     = reads GitHub docs before every UI task
 ```
 
 ---
