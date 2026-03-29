@@ -242,6 +242,8 @@ Stop Windsurf immediately and bring to Claude if:
 → Business rule changes (commission rates, payout timing)
 → Adding new external dependencies (npm packages)
 → Anything that feels architecturally significant
+→ Node.js version is not 20 LTS — check with: node --version
+→ reactCompiler: true is present in next.config.ts
 ```
 
 When in doubt — bring to Claude. It costs nothing.
@@ -550,6 +552,8 @@ refactor(auth): simplify multi-role context switcher
 ## Quality Gate — Before Any Commit
 
 ```
+□ Node version is 20 LTS (node --version shows v20.x.x)
+□ next.config.ts does NOT contain reactCompiler: true
 □ TypeScript: zero errors (npx tsc --noEmit)
 □ No `any` types introduced
 □ No console.log in production code
