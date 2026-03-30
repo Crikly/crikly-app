@@ -173,6 +173,7 @@ First working screens. Register, log in, select roles, switch roles.
 | ID | Task | Agent | Risk | Branch | Status |
 |---|---|---|---|---|---|
 | A-06 | Design auth screens — sign up, log in, role selection | @UIUXDesigner | 🟢 | — | ⚪ |
+| A-06a | Build placeholder homepage — src/app/page.tsx | @FrontendDeveloper | 🟢 | feature/auth | ✅ |
 | A-07 | Plan auth component architecture | @FrontendArchitect | 🟢 | — | ⚪ |
 | A-08 | Build sign up page — src/app/(auth)/register/page.tsx | @FrontendDeveloper | 🟢 | feature/auth | ⚪ |
 | A-09 | Build log in page — src/app/(auth)/login/page.tsx | @FrontendDeveloper | 🟢 | feature/auth | ⚪ |
