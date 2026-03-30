@@ -15,7 +15,7 @@ export async function POST(request: Request) {
 
     if (!email || !password) {
       return NextResponse.json(
-        { success: false, error: { code: 'VALIDATION_ERROR', message: 'Please enter your email and password.' } },
+        { success: false, error: { code: 'VALIDATION_ERROR', message: 'Please check your details and try again.' } },
         { status: 400 }
       )
     }
@@ -36,7 +36,10 @@ export async function POST(request: Request) {
       }
     )
 
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    })
 
     if (error) {
       if (error.message.toLowerCase().includes('email not confirmed')) {
@@ -46,20 +49,19 @@ export async function POST(request: Request) {
         )
       }
       return NextResponse.json(
-        { success: false, error: { code: 'INVALID_CREDENTIALS', message: 'Incorrect email or password.' } },
+        { success: false, error: { code: 'INVALID_CREDENTIALS', message: 'Invalid email or password.' } },
         { status: 401 }
       )
     }
 
-    if (!data.session) {
+    if (!data.user) {
       return NextResponse.json(
-        { success: false, error: { code: 'UNKNOWN_ERROR', message: 'Could not create session. Please try again.' } },
+        { success: false, error: { code: 'UNKNOWN_ERROR', message: 'Could not log in. Please try again.' } },
         { status: 500 }
       )
     }
 
     const redirectTo = data.user.user_metadata?.roles ? '/dashboard' : '/onboarding/role'
-
     return NextResponse.json({ success: true, redirectTo })
   } catch {
     return NextResponse.json(
