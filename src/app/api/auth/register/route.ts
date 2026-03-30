@@ -1,110 +1,84 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
+import { NextResponse } from 'next/server'
+import type { Database } from '@/types/database'
 
-interface RegisterRequest {
-  email: string
-  password: string
-  full_name: string
-}
-
-function validateInput(body: unknown): RegisterRequest {
-  if (!body || typeof body !== 'object') {
-    throw new Error('Invalid request body')
-  }
-  const { email, password, full_name } = body as Record<string, unknown>
-
-  if (!email || typeof email !== 'string' || !email.includes('@')) {
-    throw new Error('Valid email is required')
-  }
-  if (!password || typeof password !== 'string' || password.length < 8) {
-    throw new Error('Password must be at least 8 characters')
-  }
-  if (!full_name || typeof full_name !== 'string' || full_name.trim().length < 2) {
-    throw new Error('Full name is required')
-  }
-
-  return {
-    email: email.toLowerCase().trim(),
-    password,
-    full_name: full_name.trim(),
-  }
-}
-
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   try {
-    const body = await request.json()
-    const { email, password, full_name } = validateInput(body)
+    const body = await request.json() as {
+      fullName?: unknown
+      email?: unknown
+      password?: unknown
+    }
 
-    const supabase = await createClient()
+    const fullName = typeof body.fullName === 'string' ? body.fullName.trim() : ''
+    const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
+    const password = typeof body.password === 'string' ? body.password : ''
 
-    const { data: authData, error: authError } = await supabase.auth.signUp({
+    if (!fullName || !email || !password) {
+      return NextResponse.json(
+        { success: false, error: { code: 'VALIDATION_ERROR', message: 'Please check your details and try again.' } },
+        { status: 400 }
+      )
+    }
+
+    if (password.length < 8) {
+      return NextResponse.json(
+        { success: false, error: { code: 'WEAK_PASSWORD', message: 'Password must be at least 8 characters.' } },
+        { status: 400 }
+      )
+    }
+
+    const cookieStore = await cookies()
+    const supabase = createServerClient<Database>(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() { return cookieStore.getAll() },
+          setAll(cookiesToSet) {
+            cookiesToSet.forEach(({ name, value, options }) => {
+              cookieStore.set(name, value, options)
+            })
+          },
+        },
+      }
+    )
+
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        data: {
-          full_name,
-        },
+        data: { full_name: fullName },
+        emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`,
       },
     })
 
-    if (authError) {
-      if (authError.message.includes('already registered')) {
+    if (error) {
+      if (error.message.toLowerCase().includes('already registered') ||
+          error.message.toLowerCase().includes('already exists')) {
         return NextResponse.json(
-          { error: 'An account with this email already exists' },
+          { success: false, error: { code: 'EMAIL_TAKEN', message: 'An account with this email already exists.' } },
           { status: 409 }
         )
       }
-      console.error('[register] auth.signUp error:', authError.message)
       return NextResponse.json(
-        { error: 'Registration failed. Please try again.' },
+        { success: false, error: { code: 'UNKNOWN_ERROR', message: 'Something went wrong. Please try again.' } },
         { status: 500 }
       )
     }
 
-    if (!authData.user) {
+    if (!data.user) {
       return NextResponse.json(
-        { error: 'Registration failed. Please try again.' },
+        { success: false, error: { code: 'UNKNOWN_ERROR', message: 'Could not create account. Please try again.' } },
         { status: 500 }
       )
     }
 
-    const authProvider =
-      authData.user.app_metadata?.provider ?? 'email'
-
-    const { error: profileError } = await supabase
-      .from('user_profiles')
-      .insert({
-        auth_user_id: authData.user.id,
-        full_name,
-        country_code: 'GB',
-        active_role: 'parent',
-        auth_provider: authProvider,
-      })
-
-    if (profileError) {
-      console.error('[register] user_profiles insert error:', profileError.message)
-      return NextResponse.json(
-        { error: 'Account created but profile setup failed. Please contact support.' },
-        { status: 500 }
-      )
-    }
-
+    return NextResponse.json({ success: true, redirectTo: `/verify?email=${encodeURIComponent(email)}` })
+  } catch {
     return NextResponse.json(
-      {
-        user: {
-          id: authData.user.id,
-          email: authData.user.email,
-        },
-        session: authData.session,
-      },
-      { status: 201 }
-    )
-  } catch (error) {
-    if (error instanceof Error) {
-      return NextResponse.json({ error: error.message }, { status: 400 })
-    }
-    return NextResponse.json(
-      { error: 'An unexpected error occurred' },
+      { success: false, error: { code: 'UNKNOWN_ERROR', message: 'Unexpected error. Please try again.' } },
       { status: 500 }
     )
   }

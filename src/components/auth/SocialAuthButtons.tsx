@@ -5,18 +5,28 @@ interface SocialAuthButtonsProps {
 }
 
 export function SocialAuthButtons({ mode }: SocialAuthButtonsProps) {
-  const handleGoogle = async () => {
-    console.log('Google auth:', mode)
+  const handleOAuth = async (provider: 'google' | 'apple') => {
+    try {
+      const res = await fetch('/api/auth/oauth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider }),
+      })
+      const data = await res.json() as { success: boolean; url?: string }
+      if (data.success && data.url) {
+        window.location.href = data.url
+      }
+    } catch {
+      // Silent fail - user can try again
+    }
   }
 
-  const handleApple = async () => {
-    console.log('Apple auth:', mode)
-  }
+  const _ = mode
 
   return (
     <div style={{ display: 'flex', gap: '12px' }}>
       <button
-        onClick={handleGoogle}
+        onClick={() => handleOAuth('google')}
         style={{
           flex: 1,
           display: 'flex',
@@ -46,7 +56,7 @@ export function SocialAuthButtons({ mode }: SocialAuthButtonsProps) {
       </button>
 
       <button
-        onClick={handleApple}
+        onClick={() => handleOAuth('apple')}
         style={{
           flex: 1,
           display: 'flex',
