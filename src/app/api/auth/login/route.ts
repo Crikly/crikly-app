@@ -48,8 +48,15 @@ export async function POST(request: Request) {
           { status: 403 }
         )
       }
+      if (error.message.toLowerCase().includes('invalid login') ||
+          error.message.toLowerCase().includes('invalid credentials')) {
+        return NextResponse.json(
+          { success: false, error: { code: 'INVALID_CREDENTIALS', message: 'Incorrect email or password. If you signed up with Google or Apple, please use those buttons below.' } },
+          { status: 401 }
+        )
+      }
       return NextResponse.json(
-        { success: false, error: { code: 'INVALID_CREDENTIALS', message: 'Invalid email or password.' } },
+        { success: false, error: { code: 'INVALID_CREDENTIALS', message: 'Incorrect email or password. If you signed up with Google or Apple, please use those buttons below.' } },
         { status: 401 }
       )
     }
