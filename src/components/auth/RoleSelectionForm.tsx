@@ -26,7 +26,8 @@ export function RoleSelectionForm() {
         setApiError(data.error ?? { code: 'UNKNOWN_ERROR', message: 'Something went wrong. Please try again.' })
         return
       }
-      router.push('/dashboard')
+      const redirectTo = data.redirectTo as string | undefined
+      router.push(redirectTo ?? '/dashboard')
     } catch {
       setApiError({ code: 'NETWORK_ERROR', message: 'Connection error. Please try again.' })
     } finally {

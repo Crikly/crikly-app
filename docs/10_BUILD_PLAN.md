@@ -168,6 +168,7 @@ First working screens. Register, log in, select roles, switch roles.
 | A-04 | Create Supabase browser client — src/lib/supabase/client.ts | @BackendDeveloper | 🟢 | feature/auth | ✅ |
 | A-05 | Create Supabase server client — src/lib/supabase/server.ts | @BackendDeveloper | 🟢 | feature/auth | ✅ |
 | A-16 | Wire Supabase auth — register, login, OAuth | @BackendDeveloper | 🟡 | feature/auth | ✅ |
+| A-17 | Wire role selection to save role in Supabase | @BackendDeveloper | 🟡 | feature/auth | ✅ |
 
 ### 2B — Auth UI Design & Build
 

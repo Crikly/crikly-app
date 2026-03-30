@@ -61,7 +61,8 @@ export async function POST(request: Request) {
       )
     }
 
-    const redirectTo = data.user.user_metadata?.roles ? '/dashboard' : '/onboarding/role'
+    const hasRole = data.user.user_metadata?.primary_role
+    const redirectTo = hasRole ? '/dashboard' : '/onboarding/role'
     return NextResponse.json({ success: true, redirectTo })
   } catch {
     return NextResponse.json(

@@ -1,139 +1,135 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
+import { NextResponse } from 'next/server'
+import type { Database } from '@/types/database'
 
-type ValidRole = 'parent' | 'player' | 'coach'
+type Role = 'parent' | 'player' | 'coach'
 
-const VALID_ROLES: ValidRole[] = ['parent', 'player', 'coach']
+const VALID_ROLES: Role[] = ['parent', 'player', 'coach']
 
-function calculateAge(dateOfBirth: string): number {
-  const dob = new Date(dateOfBirth)
-  const today = new Date()
-  let age = today.getFullYear() - dob.getFullYear()
-  const monthDiff = today.getMonth() - dob.getMonth()
-  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dob.getDate())) {
-    age--
-  }
-  return age
-}
-
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   try {
-    const supabase = await createClient()
+    const body = await request.json() as { role?: unknown }
+    const role = body.role
 
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
+    if (!role || !VALID_ROLES.includes(role as Role)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'Please select a valid role to continue.',
+          },
+        },
+        { status: 400 }
+      )
+    }
+
+    const cookieStore = await cookies()
+    const supabase = createServerClient<Database>(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() { return cookieStore.getAll() },
+          setAll(cookiesToSet) {
+            cookiesToSet.forEach(({ name, value, options }) => {
+              cookieStore.set(name, value, options)
+            })
+          },
+        },
+      }
+    )
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
       return NextResponse.json(
-        { error: 'Authentication required' },
+        {
+          success: false,
+          error: {
+            code: 'UNAUTHORIZED',
+            message: 'You must be logged in to select a role.',
+          },
+        },
         { status: 401 }
       )
     }
 
-    const body = await request.json()
-    const { role, date_of_birth } = body as Record<string, unknown>
-
-    if (!role || typeof role !== 'string') {
-      return NextResponse.json(
-        { error: 'Role is required' },
-        { status: 400 }
-      )
-    }
-
-    if (!VALID_ROLES.includes(role as ValidRole)) {
-      return NextResponse.json(
-        { error: `Invalid role. Must be one of: ${VALID_ROLES.join(', ')}` },
-        { status: 400 }
-      )
-    }
-
     if (role === 'player') {
-      if (!date_of_birth || typeof date_of_birth !== 'string') {
-        return NextResponse.json(
-          { error: 'Date of birth is required for player registration' },
-          { status: 400 }
-        )
-      }
+      const dob = user.user_metadata?.date_of_birth as string | undefined
+      if (dob) {
+        const birthDate = new Date(dob)
+        const today = new Date()
+        const age = today.getFullYear() - birthDate.getFullYear()
+        const monthDiff = today.getMonth() - birthDate.getMonth()
+        const actualAge = monthDiff < 0 ||
+          (monthDiff === 0 && today.getDate() < birthDate.getDate())
+          ? age - 1
+          : age
 
-      const dobDate = new Date(date_of_birth)
-      if (isNaN(dobDate.getTime())) {
-        return NextResponse.json(
-          { error: 'Invalid date of birth format. Use YYYY-MM-DD' },
-          { status: 400 }
-        )
-      }
-
-      const age = calculateAge(date_of_birth)
-      if (age < 16) {
-        return NextResponse.json(
-          { error: 'You must be 16 or older to register as a player' },
-          { status: 403 }
-        )
+        if (actualAge < 16) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: {
+                code: 'AGE_GATE',
+                message: 'You must be 16 or older to register as a player.',
+              },
+            },
+            { status: 403 }
+          )
+        }
       }
     }
 
-    const { data: profile, error: profileError } = await supabase
+    const { error: profileError } = await supabase
       .from('user_profiles')
-      .select('id')
-      .eq('auth_user_id', user.id)
-      .single()
-
-    if (profileError || !profile) {
-      console.error('[roles] user_profiles lookup error:', profileError?.message)
-      return NextResponse.json(
-        { error: 'User profile not found' },
-        { status: 404 }
-      )
-    }
-
-    const { data: newRole, error: roleError } = await supabase
-      .from('user_roles')
-      .insert({
-        user_profile_id: profile.id,
-        role: role as ValidRole,
-        is_active: true,
+      .update({
+        active_role: role as Role,
+        updated_at: new Date().toISOString(),
       })
-      .select()
-      .single()
+      .eq('auth_user_id', user.id)
 
-    if (roleError) {
-      if (roleError.code === '23505') {
-        return NextResponse.json(
-          { error: 'You already have this role on your account' },
-          { status: 409 }
-        )
-      }
-      console.error('[roles] user_roles insert error:', roleError.message)
+    if (profileError) {
+      console.error('Profile upsert error:', profileError)
       return NextResponse.json(
-        { error: 'Failed to assign role. Please try again.' },
+        {
+          success: false,
+          error: {
+            code: 'UNKNOWN_ERROR',
+            message: 'Could not save your role. Please try again.',
+          },
+        },
         { status: 500 }
       )
     }
 
-    const { error: updateError } = await supabase
-      .from('user_profiles')
-      .update({ active_role: role })
-      .eq('id', profile.id)
+    const { error: metaError } = await supabase.auth.updateUser({
+      data: {
+        ...user.user_metadata,
+        primary_role: role,
+        roles: [role],
+      },
+    })
 
-    if (updateError) {
-      console.error('[roles] active_role update error:', updateError.message)
+    if (metaError) {
+      console.error('Metadata update error:', metaError)
     }
 
+    return NextResponse.json({
+      success: true,
+      redirectTo: '/onboarding/terms',
+    })
+  } catch {
     return NextResponse.json(
       {
-        role: newRole.role,
-        created_at: newRole.created_at,
+        success: false,
+        error: {
+          code: 'UNKNOWN_ERROR',
+          message: 'Unexpected error. Please try again.',
+        },
       },
-      { status: 201 }
-    )
-  } catch (error) {
-    if (error instanceof Error) {
-      return NextResponse.json({ error: error.message }, { status: 400 })
-    }
-    return NextResponse.json(
-      { error: 'An unexpected error occurred' },
       { status: 500 }
     )
   }
