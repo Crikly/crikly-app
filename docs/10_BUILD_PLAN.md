@@ -136,11 +136,11 @@ All outputs live in docs/ and src/components/ui/.
 
 | ID | Task | Agent | Risk | Branch | Status |
 |---|---|---|---|---|---|
-| DS-01 | Define UX principles — gestures, rules, flows, empty/error/loading states | Manual | 🟢 | chore/design-system | ⚪ |
-| DS-02 | Define design system — colours, typography, spacing, shadows, radius | Manual | 🟢 | chore/design-system | ⚪ |
-| DS-03 | Build Tailwind design tokens — tailwind.config.ts + global CSS variables | @FrontendArchitect | 🟢 | chore/design-system | ⚪ |
-| DS-04 | Build base component library — Button, Input, Card, Badge, Avatar, Modal, Toast, Spinner | @FrontendDeveloper | 🟢 | chore/design-system | ⚪ |
-| DS-05 | Document all screen flows — parent, player, coach journeys | Manual | 🟢 | chore/design-system | ⚪ |
+| DS-01 | Define UX principles — gestures, rules, flows, empty/error/loading states | Manual | 🟢 | chore/design-system | ✅ |
+| DS-02 | Define design system — colours, typography, spacing, shadows, radius | Manual | 🟢 | chore/design-system | ✅ |
+| DS-03 | Build Tailwind design tokens — tailwind.config.ts + global CSS variables | @FrontendArchitect | 🟢 | chore/design-system | ✅ |
+| DS-04 | Build base component library — Button, Input, Card, Badge, Avatar, Modal, Toast, Spinner | @FrontendDeveloper | 🟢 | chore/design-system | ✅ |
+| DS-05 | Document all screen flows — parent, player, coach journeys | Manual | 🟢 | chore/design-system | ✅ |
 
 **Outputs:**
 - docs/11_UX_PRINCIPLES.md
@@ -523,8 +523,8 @@ Three-sided marketplace — coaches, parents, and venues.
 | Step 0 — Foundation | All | 16 | 15 ✅ | 1 |
 | Step 1A — DevOps | Phase 1 | 8 | 8 | 0 |
 | Step 1B — Migrations | Phase 1 | 13 | 13 | 0 |
-| Step 1C — Design Foundation | Phase 1 | 5 | 0 | 5 |
-| Step 2 — Auth | Phase 1 | 15 | 0 | 15 |
+| Step 1C — Design Foundation | Phase 1 | 5 | 5 | 0 |
+| Step 2 — Auth | Phase 1 | 15 | 15 | 0 |
 | Step 3 — Coach | Phase 1 | 24 | 0 | 24 |
 | Step 4 — Parent & Player | Phase 1 | 21 | 0 | 21 |
 | Step 5 — Booking & Payments | Phase 1 | 42 | 0 | 42 |
@@ -532,7 +532,7 @@ Three-sided marketplace — coaches, parents, and venues.
 | Step 7 — Pre-Launch | Phase 1 | 13 | 0 | 13 |
 | Step 8 — Mobile App | **Product Phase 2** | 20 | 0 | 20 |
 | Step 9 — Venues | **Product Phase 3** | 11 | 0 | 11 |
-| **Total** | | **212** | **15** | **197** |
+| **Total** | | **212** | **35** | **177** |
 
 ---
 
