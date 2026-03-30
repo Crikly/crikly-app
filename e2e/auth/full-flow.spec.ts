@@ -21,7 +21,7 @@ test.describe('Auth navigation flow', () => {
 
   test('login page shows crikly branding', async ({ page }) => {
     await page.goto('/login')
-    await expect(page.locator('text=crikly')).toBeVisible()
+    await expect(page.getByRole('link', { name: /crikly/i })).toBeVisible()
   })
 
   test('forgot password page renders correctly', async ({ page }) => {
