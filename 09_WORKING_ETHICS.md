@@ -1,8 +1,8 @@
 # Crikly — Working Ethics & Collaboration Standards
 
-**Version:** 1.2
+**Version:** 1.3
 **Last Updated:** March 2026
-**Changed:** Added design system rules and context loading for UI tasks (March 2026)
+**Changed:** Added API stub rule — routes must be wired or explicitly labelled STUB (March 2026)
 **Maintainer:** Lasith Jayarathne
 **Review:** After each phase completion
 
@@ -280,6 +280,7 @@ Stop Windsurf immediately and bring to Claude if:
 → Adding new external dependencies (npm packages)
 → Anything that feels architecturally significant
 → Node.js version is not 20 LTS — check with: node --version
+→ API route created as a stub with no wiring task scheduled to follow it
 → reactCompiler: true is present in next.config.ts
 ```
 
@@ -590,6 +591,7 @@ refactor(auth): simplify multi-role context switcher
 
 ```
 □ Node version is 20 LTS (node --version shows v20.x.x)
+□ If this task creates an API route — is it wired to real data, or explicitly marked STUB with a follow-up task in the build plan?
 □ next.config.ts does NOT contain reactCompiler: true
 □ TypeScript: zero errors (npx tsc --noEmit)
 □ No `any` types introduced
