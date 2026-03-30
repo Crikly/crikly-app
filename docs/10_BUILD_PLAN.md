@@ -177,7 +177,7 @@ First working screens. Register, log in, select roles, switch roles.
 | A-07 | Plan auth component architecture | @FrontendArchitect | 🟢 | feature/auth | ✅ |
 | A-08 | Build sign up page — src/app/(auth)/register/page.tsx | @FrontendDeveloper | 🟢 | feature/auth | ✅ |
 | A-09 | Build log in page — src/app/(auth)/login/page.tsx | @FrontendDeveloper | 🟢 | feature/auth | ✅ |
-| A-10 | Build role selection screen — parent / player / coach picker | @FrontendDeveloper | 🟢 | feature/auth | ⚪ |
+| A-10 | Build role selection screen — parent / player / coach picker | @FrontendDeveloper | 🟢 | feature/auth | ✅ |
 | A-11 | Build Terms & Conditions acceptance flow | @FrontendDeveloper | 🟢 | feature/auth | ⚪ |
 | A-12 | Build multi-role context switcher | @FrontendDeveloper | 🟡 | feature/auth | ⚪ |
 
