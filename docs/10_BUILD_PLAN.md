@@ -189,7 +189,7 @@ First working screens. Register, log in, select roles, switch roles.
 |---|---|---|---|---|---|
 | A-13 | Unit tests — auth utility functions | @QAEngineer | 🟢 | feature/auth | ✅ |
 | A-14 | Integration tests — register, login, role assignment | @QAEngineer | 🟢 | feature/auth | ✅ |
-| A-15 | E2E test — sign up → role select → dashboard | @QAEngineer | 🟢 | feature/auth | ⚪ |
+| A-15 | E2E test — sign up → role select → dashboard | @QAEngineer | 🟢 | feature/auth | ✅ |
 
 ---
 
