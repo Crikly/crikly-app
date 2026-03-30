@@ -1,7 +1,8 @@
 # Crikly — Working Ethics & Collaboration Standards
 
-**Version:** 1.0
+**Version:** 1.2
 **Last Updated:** March 2026
+**Changed:** Added design system rules and context loading for UI tasks (March 2026)
 **Maintainer:** Lasith Jayarathne
 **Review:** After each phase completion
 
@@ -162,13 +163,49 @@ Task type                    → Load these docs
 Any task (always)            → CLAUDE.md + 09_WORKING_ETHICS.md
 DB table or migration        → 03_DATABASE_SCHEMA.md
 API route or business logic  → 03_DATABASE_SCHEMA.md + 05_BUSINESS_RULES.md
-UI component or page         → 02_TECH_ARCHITECTURE.md (file structure section)
+UI component or page         → 02_TECH_ARCHITECTURE.md + docs/12_DESIGN_SYSTEM.md + docs/11_UX_PRINCIPLES.md
 Payment or Stripe work       → 05_BUSINESS_RULES.md + 06_SECURITY_COMPLIANCE.md
 Security-sensitive feature   → 06_SECURITY_COMPLIANCE.md
 New feature (any layer)      → PRD.md (relevant section only)
 Architecture decision        → 02_TECH_ARCHITECTURE.md
 Testing                      → relevant agent file + implementation file
 Multi-country expansion      → 07_FUTURE_EXPANSION.md
+```
+
+---
+
+## Design System — Non-Negotiable Rules
+
+All UI work must follow these rules. No exceptions.
+
+**Where design decisions live:**
+```
+GitHub docs/11_UX_PRINCIPLES.md  → UX rules, gestures, states, navigation, onboarding
+GitHub docs/12_DESIGN_SYSTEM.md  → Colours, typography, spacing, component specs
+GitHub docs/13_SCREEN_FLOWS.md   → All user journeys and screen inventory
+src/components/ui/               → Built components — use these, never rebuild
+```
+
+**Rules for every UI task:**
+```
+→ Read docs/12_DESIGN_SYSTEM.md before writing any UI code
+→ Read docs/11_UX_PRINCIPLES.md before designing any screen
+→ Use components from src/components/ui/ — never create duplicates
+→ New component needed? Add spec to docs/12_DESIGN_SYSTEM.md first
+→ No hardcoded hex colours — use Tailwind tokens only (brand-600, teal-50 etc.)
+→ No hardcoded sizes — use tokens (radius-md, space-4, h-btn-mobile etc.)
+→ Font: DM Sans only — already loaded in layout.tsx, do not re-import
+→ Primary colour: brand-600 (#0077CC)
+→ Trust signals (DBS badge, rating, sessions count) always visible on coach cards
+→ One primary action per screen — never two competing CTAs at equal weight
+```
+
+**Sync rule:**
+```
+GitHub docs/ = single source of truth for all design decisions
+Notion       = human-readable mirror — Claude keeps updated
+Claude AI    = queries Notion for current state each session
+Windsurf     = reads GitHub docs/ before every UI task
 ```
 
 ---
@@ -242,6 +279,8 @@ Stop Windsurf immediately and bring to Claude if:
 → Business rule changes (commission rates, payout timing)
 → Adding new external dependencies (npm packages)
 → Anything that feels architecturally significant
+→ Node.js version is not 20 LTS — check with: node --version
+→ reactCompiler: true is present in next.config.ts
 ```
 
 When in doubt — bring to Claude. It costs nothing.
@@ -550,6 +589,8 @@ refactor(auth): simplify multi-role context switcher
 ## Quality Gate — Before Any Commit
 
 ```
+□ Node version is 20 LTS (node --version shows v20.x.x)
+□ next.config.ts does NOT contain reactCompiler: true
 □ TypeScript: zero errors (npx tsc --noEmit)
 □ No `any` types introduced
 □ No console.log in production code
