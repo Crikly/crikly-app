@@ -61,6 +61,23 @@ export default function DashboardPage() {
         }}>
           Auth is working. Full dashboard coming soon.
         </p>
+        <form action="/api/auth/logout" method="POST" style={{ marginTop: '24px' }}>
+          <button
+            type="submit"
+            style={{
+              background: 'transparent',
+              border: '1px solid #E2E8F0',
+              borderRadius: '8px',
+              padding: '8px 20px',
+              fontSize: '13px',
+              color: '#64748B',
+              cursor: 'pointer',
+              fontFamily: 'DM Sans, sans-serif',
+            }}
+          >
+            Log out
+          </button>
+        </form>
       </div>
 
     </main>
