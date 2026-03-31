@@ -79,6 +79,7 @@ Everything needed before writing a single line of application code.
 | F-14 | Create all 9 agent files in docs/agents/ | Manual | 🟢 | ✅ |
 | F-15 | Create Notion HQ workspace with all sections and subpages | Manual | 🟢 | ✅ |
 | F-16 | Commit all foundation files to GitHub main branch | Manual | 🟢 | ✅ |
+| F-17 | Commit docs/14_COACH_REQUIREMENTS.md to develop branch | Manual | 🟢 | ✅ |
 
 **F-16 commit message:**
 ```
@@ -520,7 +521,7 @@ Three-sided marketplace — coaches, parents, and venues.
 
 | Step | Product Phase | Task Count | Complete | Remaining |
 |---|---|---|---|---|
-| Step 0 — Foundation | All | 16 | 15 ✅ | 1 |
+| Step 0 — Foundation | All | 17 | 16 ✅ | 1 |
 | Step 1A — DevOps | Phase 1 | 8 | 8 | 0 |
 | Step 1B — Migrations | Phase 1 | 13 | 13 | 0 |
 | Step 1C — Design Foundation | Phase 1 | 5 | 0 | 5 |
@@ -532,7 +533,7 @@ Three-sided marketplace — coaches, parents, and venues.
 | Step 7 — Pre-Launch | Phase 1 | 13 | 0 | 13 |
 | Step 8 — Mobile App | **Product Phase 2** | 20 | 0 | 20 |
 | Step 9 — Venues | **Product Phase 3** | 11 | 0 | 11 |
-| **Total** | | **212** | **15** | **197** |
+| **Total** | | **213** | **16** | **197** |
 
 ---
 
