@@ -587,6 +587,34 @@ refactor(auth): simplify multi-role context switcher
 
 ---
 
+## Branch Lifecycle Rule
+
+Every feature branch must be merged into `develop` before
+the next feature branch is started.
+Rule: one feature branch active at a time.
+Rule: merge to develop before opening the next branch.
+Rule: develop is always the source of truth for docs/10_BUILD_PLAN.md.
+Rule: never let a feature branch live longer than one build step.
+
+**Why this rule exists:**
+In March 2026, feature/auth and chore/design-system were left
+unmerged while new work started on develop. This caused:
+- docs/10_BUILD_PLAN.md on develop to show stale ⚪ statuses
+  for completed tasks (DS-01 to DS-05, A-13 to A-15)
+- A merge conflict when the branches were eventually merged
+- Duplicate route files surviving because cleanup on feature/auth
+  was invisible to develop
+
+**The fix at end of every Windsurf session:**
+Before closing Windsurf, always run:
+git checkout develop
+git merge feature/[current-branch] --no-ff
+git push origin develop
+
+Only THEN start the next feature branch.
+
+---
+
 ## Quality Gate — Before Any Commit
 
 ```
