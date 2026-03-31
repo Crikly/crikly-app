@@ -84,6 +84,7 @@ Everything needed before writing a single line of application code.
 | F-19 | Add branch lifecycle rule to docs/09_WORKING_ETHICS.md | Manual | 🟢 | ✅ |
 | F-20 | Add BR-16 to BR-19 to docs/05_BUSINESS_RULES.md | Manual | 🟡 | ⚪ |
 | F-21 | Update docs/11_UX_PRINCIPLES.md — coach nav 6 tabs | Manual | 🟢 | ✅ |
+| F-22 | Update CLAUDE.md — fix stale refs, add coach requirements, branch rule | Manual | 🟢 | ✅ |
 
 **F-16 commit message:**
 ```
@@ -527,7 +528,7 @@ Three-sided marketplace — coaches, parents, and venues.
 
 | Step | Product Phase | Task Count | Complete | Remaining |
 |---|---|---|---|---|
-| Step 0 — Foundation | All | 21 | 20 ✅ | 1 |
+| Step 0 — Foundation | All | 22 | 21 ✅ | 1 |
 | Step 1A — DevOps | Phase 1 | 8 | 8 | 0 |
 | Step 1B — Migrations | Phase 1 | 14 | 13 | 1 |
 | Step 1C — Design Foundation | Phase 1 | 6 | 6 | 0 |
@@ -539,7 +540,7 @@ Three-sided marketplace — coaches, parents, and venues.
 | Step 7 — Pre-Launch | Phase 1 | 13 | 0 | 13 |
 | Step 8 — Mobile App | **Product Phase 2** | 20 | 0 | 20 |
 | Step 9 — Venues | **Product Phase 3** | 11 | 0 | 11 |
-| **Total** | | **219** | **62** | **157** |
+| **Total** | | **220** | **63** | **157** |
 
 ---
 

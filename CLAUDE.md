@@ -1,7 +1,8 @@
 # Crikly — AI Development Context
 
-**Version:** 1.0
+**Version:** 1.1
 **Last Updated:** March 2026
+**Changed:** Fixed file locations, added coach requirements ref, added branch lifecycle rule
 **Maintainer:** Lasith Jayarathne
 **Read this file before every prompt. It is your briefing.**
 
@@ -74,7 +75,12 @@ crikly-app/
 │   ├── 06_SECURITY_COMPLIANCE.md
 │   ├── 07_FUTURE_EXPANSION.md
 │   ├── 08_CODING_STANDARDS.md
-│   ├── 09_BUILD_PLAN.md
+│   ├── 09_WORKING_ETHICS.md   ← moved to docs/
+│   ├── 10_BUILD_PLAN.md
+│   ├── 11_UX_PRINCIPLES.md
+│   ├── 12_DESIGN_SYSTEM.md
+│   ├── 13_SCREEN_FLOWS.md
+│   ├── 14_COACH_REQUIREMENTS.md ← 78 coach requirements
 │   └── agents/
 │       ├── frontend-developer.md
 │       ├── backend-developer.md
@@ -463,6 +469,8 @@ tests/e2e/parent-books-coach.spec.ts
 ❌ Never expose SUPABASE_SERVICE_ROLE_KEY to browser code
 ❌ Never leave console.log in production code
 ❌ Never use sequential IDs — always UUIDs
+❌ Never start a new feature branch without merging the 
+   previous one to develop first
 ```
 
 ---
@@ -575,7 +583,7 @@ docs(schema): add coach_availability_blocks table v1.2
 
 ## Current Build Status
 
-See `docs/09_BUILD_PLAN.md` for the current task and phase.
+See `docs/10_BUILD_PLAN.md` for the current task and phase.
 Always check this file at the start of every session.
 
 ---
@@ -592,6 +600,7 @@ Stripe Dashboard: dashboard.stripe.com (Crikly sandbox)
 
 ---
 
-*Crikly CLAUDE.md v1.0 — March 2026*
+*Crikly CLAUDE.md v1.1 — March 2026*
+*Changed: Fixed file locations, added coach requirements ref, added branch lifecycle rule*
 *Update this file whenever architecture decisions change.*
 *Every AI prompt reads this. Keep it accurate.*
