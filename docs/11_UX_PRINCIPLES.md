@@ -188,7 +188,7 @@ Cancel is always available.
 |---|---|
 | Parent | Home · Search · Bookings · Children · Profile |
 | Player | Home · Search · Bookings · Passport · Profile |
-| Coach | Home · Schedule · Bookings · Earnings · Profile |
+| Coach | Home · Schedule · Programmes · Bookings · Earnings · Profile |
 | Admin | Dashboard · Users · Bookings · Finance · Settings |
 
 ### Desktop/Web — Left Sidebar
