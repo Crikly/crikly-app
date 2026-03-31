@@ -79,8 +79,11 @@ Everything needed before writing a single line of application code.
 | F-14 | Create all 9 agent files in docs/agents/ | Manual | 🟢 | ✅ |
 | F-15 | Create Notion HQ workspace with all sections and subpages | Manual | 🟢 | ✅ |
 | F-16 | Commit all foundation files to GitHub main branch | Manual | 🟢 | ✅ |
-| F-17 | Commit docs/14_COACH_REQUIREMENTS.md to develop branch | Manual | 🟢 | ✅ |
-| PE-01 | Add Branch Lifecycle Rule to 09_WORKING_ETHICS.md | Manual | 🟢 | ✅ |
+| F-17 | Create docs/14_COACH_REQUIREMENTS.md — 78 requirements, coach module | Manual | 🟢 | ✅ |
+| F-18 | Move 09_WORKING_ETHICS.md to docs/ folder | Manual | 🟢 | ✅ |
+| F-19 | Add branch lifecycle rule to docs/09_WORKING_ETHICS.md | Manual | 🟢 | ✅ |
+| F-20 | Add BR-16 to BR-19 to docs/05_BUSINESS_RULES.md | Manual | 🟡 | ⚪ |
+| F-21 | Update docs/11_UX_PRINCIPLES.md — coach nav 6 tabs | Manual | 🟢 | ✅ |
 
 **F-16 commit message:**
 ```
@@ -124,6 +127,7 @@ chore(docs): add all foundation docs, agents, schema and build plan
 | M-11 | Seed data — sports (cricket), countries (GB), platform_config, feature_flags, Free + Premium tiers | @DatabaseArchitect | 🟢 | feature/migrations | ✅ |
 | M-12 | Generate TypeScript types from Supabase → src/types/database.ts | @DatabaseArchitect | 🟢 | feature/migrations | ✅ |
 | M-13 | Run all migrations on Supabase and verify all tables exist | @DevOpsEngineer | 🟢 | feature/migrations | ✅ |
+| M-14 | Migration 014 — coach schema additions (19 gaps from docs/14_COACH_REQUIREMENTS.md) | @DatabaseArchitect | 🟡 | feature/coach | ⚪ |
 
 ---
 
@@ -205,7 +209,7 @@ A coach can fully onboard and appear live in search.
 
 | ID | Task | Agent | Risk | Branch | Status |
 |---|---|---|---|---|---|
-| C-01 | Design coach onboarding flow — all steps | @UIUXDesigner | 🟢 | — | ⚪ |
+| C-01 | Design coach onboarding flow — all steps (requirements locked in F-17) | @UIUXDesigner | 🟢 | — | ⚪ |
 | C-02 | Design coach dashboard screen | @UIUXDesigner | 🟢 | — | ⚪ |
 | C-03 | Design availability setup screen | @UIUXDesigner | 🟢 | — | ⚪ |
 | C-04 | Plan coach component architecture | @FrontendArchitect | 🟢 | — | ⚪ |
@@ -523,9 +527,9 @@ Three-sided marketplace — coaches, parents, and venues.
 
 | Step | Product Phase | Task Count | Complete | Remaining |
 |---|---|---|---|---|
-| Step 0 — Foundation | All | 18 | 17 ✅ | 1 |
+| Step 0 — Foundation | All | 21 | 20 ✅ | 1 |
 | Step 1A — DevOps | Phase 1 | 8 | 8 | 0 |
-| Step 1B — Migrations | Phase 1 | 13 | 13 | 0 |
+| Step 1B — Migrations | Phase 1 | 14 | 13 | 1 |
 | Step 1C — Design Foundation | Phase 1 | 6 | 6 | 0 |
 | Step 2 — Auth | Phase 1 | 15 | 15 | 0 |
 | Step 3 — Coach | Phase 1 | 24 | 0 | 24 |
@@ -535,7 +539,7 @@ Three-sided marketplace — coaches, parents, and venues.
 | Step 7 — Pre-Launch | Phase 1 | 13 | 0 | 13 |
 | Step 8 — Mobile App | **Product Phase 2** | 20 | 0 | 20 |
 | Step 9 — Venues | **Product Phase 3** | 11 | 0 | 11 |
-| **Total** | | **216** | **37** | **179** |
+| **Total** | | **219** | **62** | **157** |
 
 ---
 
