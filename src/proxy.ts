@@ -56,9 +56,17 @@ export default async function proxy(request: NextRequest) {
     }
   )
 
+  const { data: { session } } = await supabase.auth.getSession()
+  const { pathname } = request.nextUrl
+
+  const isAuthRoute = pathname.startsWith('/login') || pathname.startsWith('/register')
+
+  if (session && isAuthRoute) {
+    return NextResponse.redirect(new URL('/dashboard', request.url))
+  }
+
   // Always use getUser() — never getSession() in middleware
   const { data: { user } } = await supabase.auth.getUser()
-  const { pathname } = request.nextUrl
 
   if (isProtectedRoute(pathname) && !user) {
     const loginUrl = new URL('/login', request.url)
