@@ -129,8 +129,9 @@ chore(docs): add all foundation docs, agents, schema and build plan
 | M-11 | Seed data — sports (cricket), countries (GB), platform_config, feature_flags, Free + Premium tiers | @DatabaseArchitect | 🟢 | feature/migrations | ✅ |
 | M-12 | Generate TypeScript types from Supabase → src/types/database.ts | @DatabaseArchitect | 🟢 | feature/migrations | ✅ |
 | M-13 | Run all migrations on Supabase and verify all tables exist | @DevOpsEngineer | 🟢 | feature/migrations | ✅ |
-| M-14 | Migration 014 — coach schema additions (19 gaps from docs/14_COACH_REQUIREMENTS.md) | @DatabaseArchitect | 🟡 | feature/coach | 🟡 |
+| M-14 | Migration 014 — coach schema additions (19 gaps from docs/14_COACH_REQUIREMENTS.md) | @DatabaseArchitect | 🟡 | feature/coach | ✅ |
 | M-14a | Migration 014a — new coach tables (coach_session_types, coach_venues, group_programmes, group_programme_sessions, group_programme_enrolments) | @DatabaseArchitect | 🟡 | feature/coach | ✅ |
+| M-14b | Migration 014b — coach column additions (19 columns across 6 tables) | @DatabaseArchitect | 🟡 | develop | ✅ |
 
 ---
 

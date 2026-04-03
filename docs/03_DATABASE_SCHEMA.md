@@ -1,9 +1,8 @@
 # Crikly — Database Schema
 
-**Version:** 1.1
-**Version:** 1.1
-**Last Updated:** March 2026
-**Changed:** Added child photo, coach gender, is_featured, admin roles, content pages, session notes, terms acceptance, GDPR deletion flag, OneSignal ID, review tracking, auth provider
+**Version:** 1.2
+**Last Updated:** April 2026
+**Changed:** Migration 014a + 014b — 5 new coach tables + 19 column additions for coach module (display_name, travel_radius, languages, manual approval, age groups, no-show policy, venue support, recurring availability, booking status expansion, performance report deadlines)
 **Maintainer:** Lasith Jayarathne
 **Single source of truth for all database tables.**
 
