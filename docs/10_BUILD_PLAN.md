@@ -134,6 +134,7 @@ chore(docs): add all foundation docs, agents, schema and build plan
 | M-14 | Migration 014 — coach schema additions (19 gaps from docs/14_COACH_REQUIREMENTS.md) | @DatabaseArchitect | 🟡 | feature/coach | ✅ |
 | M-14a | Migration 014a — new coach tables (coach_session_types, coach_venues, group_programmes, group_programme_sessions, group_programme_enrolments) | @DatabaseArchitect | 🟡 | feature/coach | ✅ |
 | M-14b | Migration 014b — coach column additions (19 columns across 6 tables) | @DatabaseArchitect | 🟡 | develop | ✅ |
+| M-015 | Migration 015 — session types, venues, programmes, blocked date ranges | @DatabaseArchitect | 🟡 | feature/coach | ⚪ |
 
 ---
 
@@ -244,6 +245,9 @@ schedule (command centre + 4 event popovers), get paid standalone.
 | C-10 | Create CRUD /api/coaches/blocked-dates | @BackendDeveloper | 🟢 | feature/coach | ⚪ |
 | C-11 | Create POST /api/payments/connect/onboard — Stripe Connect URL | @PaymentsEngineer | 🔴 | feature/coach | ⚪ |
 | C-12 | Create DBS submission route + £29.99 payment | @BackendDeveloper | 🔴 | feature/coach | ⚪ |
+
+⚠️ C-09, C-10, C-11, C-12, C-13 are BLOCKED until M-015 is complete.
+C-05, C-06, C-07, C-08 are safe to proceed without M-015.
 
 ### 3C — Coach Frontend
 
