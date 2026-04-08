@@ -273,7 +273,7 @@ starting any task in this section.
 | ID | Task | Agent | Risk | Branch | Status |
 |---|---|---|---|---|---|
 | CF-01 | Build missing UI atoms — StatusChip, ProgressBar, Toggle, BottomSheet, Popover, EmptyState, SectionLabel | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
-| CF-02 | Build CoachSidebar, CoachBottomNav, RoleSwitcher | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
+| CF-02 | Build CoachSidebar, CoachBottomNav, RoleSwitcher | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
 | CF-03 | Build coach onboarding — Personal Info + Sports & Pricing | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
 | CF-04 | Build coach onboarding — Qualifications + Availability | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
 | CF-05 | Build coach onboarding — Booking Policy + Get Paid + Go Live | @FrontendDeveloper | 🟡 | feature/coach | ⚪ |
