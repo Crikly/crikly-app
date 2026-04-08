@@ -1,8 +1,8 @@
 # Crikly — Database Schema
 
-**Version:** 1.2
+**Version:** 1.3
 **Last Updated:** April 2026
-**Changed:** Migration 014a + 014b — 5 new coach tables + 19 column additions for coach module (display_name, travel_radius, languages, manual approval, age groups, no-show policy, venue support, recurring availability, booking status expansion, performance report deadlines)
+**Changed:** Migration 015 — 5 coach schema gaps (blocked_dates range+label, coach_session_types table, group_programmes table, group_programme_enrolments table, coach_venues table, availability_templates price override)
 **Maintainer:** Lasith Jayarathne
 **Single source of truth for all database tables.**
 
@@ -332,6 +332,70 @@ Multiple photos for a coach profile. Premium coaches can upload more.
 
 ---
 
+### 3.8 coach_session_types
+
+Pricing per sport, duration, and session type (individual/group).
+
+**Purpose:** Allows coaches to offer different prices for different durations (e.g. 30min, 60min, 90min).
+**Migration:** 015_coach_schema_gaps.sql
+
+| Column | Type | Nullable | Default | Notes |
+|---|---|---|---|---|
+| id | uuid | NO | gen_random_uuid() | Primary key |
+| coach_profile_id | uuid | NO | — | FK → coach_profiles(id) |
+| sport_id | uuid | NO | — | FK → sports(id) |
+| name | text | NO | — | e.g. "60min Individual Cricket" |
+| duration_minutes | integer | NO | — | Session length (30, 60, 90, etc.) |
+| session_type | text | NO | — | 'individual' or 'group' |
+| price_pence | integer | NO | — | Price in pence |
+| currency | text | NO | 'GBP' | ISO currency code |
+| is_active | boolean | NO | true | Coach can deactivate a session type |
+| created_at | timestamptz | NO | now() | |
+| updated_at | timestamptz | NO | now() | |
+
+**Constraints:**
+- UNIQUE(coach_profile_id, sport_id, duration_minutes, session_type)
+
+**RLS Policies:**
+- SELECT: Public (when coach profile is live)
+- SELECT: Own records (coach always sees their own)
+- INSERT/UPDATE/DELETE: Coach only
+
+**Indexes:**
+- (coach_profile_id, sport_id)
+
+---
+
+### 3.9 coach_venues
+
+Locations where coaches offer sessions.
+
+**Purpose:** Coaches can specify multiple venues (e.g. "Lords Cricket Ground", "Hyde Park").
+**Migration:** 015_coach_schema_gaps.sql
+
+| Column | Type | Nullable | Default | Notes |
+|---|---|---|---|---|
+| id | uuid | NO | gen_random_uuid() | Primary key |
+| coach_profile_id | uuid | NO | — | FK → coach_profiles(id) |
+| name | text | NO | — | Venue name |
+| address | text | YES | null | Full address |
+| postcode | text | YES | null | Postcode for distance search |
+| lat | numeric(10,7) | YES | null | Latitude for map display |
+| lng | numeric(10,7) | YES | null | Longitude for map display |
+| is_default | boolean | NO | false | Default venue shown in profile |
+| created_at | timestamptz | NO | now() | |
+| updated_at | timestamptz | NO | now() | |
+
+**RLS Policies:**
+- SELECT: Public (when coach profile is live)
+- SELECT: Own records (coach always sees their own)
+- INSERT/UPDATE/DELETE: Coach only
+
+**Indexes:**
+- coach_profile_id
+
+---
+
 ## 4. Module 3 — Platform Config
 
 ### 4.1 sports
@@ -482,7 +546,7 @@ Admin-controlled feature toggles. No deployment needed to enable/disable feature
 Weekly recurring availability pattern for a coach per sport.
 
 **Purpose:** Coach sets their schedule once — it repeats automatically.
-**Migration:** 004_create_availability.sql
+**Migration:** 004_create_availability.sql, 015_coach_schema_gaps.sql
 
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
@@ -493,6 +557,8 @@ Weekly recurring availability pattern for a coach per sport.
 | start_time | time | NO | — | e.g. '09:00:00' |
 | end_time | time | NO | — | e.g. '12:00:00' |
 | is_active | boolean | NO | true | Coach can pause availability |
+| price_override_pence | integer | YES | null | NULL = use sport default, non-null = override price for this block |
+| session_type_id | uuid | YES | null | FK → coach_session_types(id) — links to specific pricing/duration |
 | created_at | timestamptz | NO | now() | |
 | updated_at | timestamptz | NO | now() | |
 
@@ -516,19 +582,21 @@ Weekly recurring availability pattern for a coach per sport.
 Specific dates a coach is unavailable despite their weekly template.
 
 **Purpose:** Holidays, personal time, events — override the recurring template.
-**Migration:** 004_create_availability.sql
+**Migration:** 004_create_availability.sql, 015_coach_schema_gaps.sql
 
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
 | id | uuid | NO | gen_random_uuid() | Primary key |
 | coach_profile_id | uuid | NO | — | FK → coach_profiles(id) |
-| blocked_date | date | NO | — | The specific date blocked |
+| blocked_date | date | NO | — | The specific date blocked (or range start) |
+| blocked_date_end | date | YES | null | NULL = single date, non-null = range end (inclusive) |
+| label | text | YES | null | User-facing label (e.g. "Easter", "Christmas holiday") |
 | reason | text | YES | null | Optional — internal only, not shown to parents |
 | created_at | timestamptz | NO | now() | |
 | updated_at | timestamptz | NO | now() | |
 
 **Constraints:**
-- UNIQUE(coach_profile_id, blocked_date)
+- None (removed UNIQUE constraint in Migration 015 to allow ranges)
 
 **RLS Policies:**
 - SELECT: Coach only (blocked dates are private)
@@ -635,6 +703,81 @@ Container for group sessions. Multiple bookings link to one group booking.
 - SELECT: Public (parents can see open group sessions)
 - INSERT: Coach only
 - UPDATE: Coach who created it, or admin
+
+---
+
+### 6.3 group_programmes
+
+Recurring group training programmes offered by coaches.
+
+**Purpose:** Ongoing weekly/recurring group sessions (e.g. "Saturday Morning Cricket Club").
+**Migration:** 015_coach_schema_gaps.sql
+
+| Column | Type | Nullable | Default | Notes |
+|---|---|---|---|---|
+| id | uuid | NO | gen_random_uuid() | Primary key |
+| coach_profile_id | uuid | NO | — | FK → coach_profiles(id) |
+| sport_id | uuid | NO | — | FK → sports(id) |
+| title | text | NO | — | Programme name |
+| description | text | YES | null | What the programme covers |
+| schedule_type | text | NO | 'fixed' | 'fixed' = set start/end, 'rolling' = ongoing |
+| day_of_week | integer | NO | — | 0=Sunday, 1=Monday...6=Saturday |
+| start_time | time | NO | — | Session start time |
+| duration_minutes | integer | NO | — | Session length |
+| max_spots | integer | NO | — | Maximum participants |
+| current_spots | integer | NO | 0 | Current enrolled participants |
+| payment_type | text | NO | 'per_session' | 'per_session' or 'block_upfront' |
+| price_per_session_pence | integer | YES | null | Price per session in pence |
+| block_price_pence | integer | YES | null | Upfront block price in pence |
+| block_session_count | integer | YES | null | Number of sessions in block |
+| currency | text | NO | 'GBP' | ISO currency code |
+| status | text | NO | 'draft' | 'draft', 'active', 'full', 'completed', 'cancelled' |
+| deleted_at | timestamptz | YES | null | Soft delete |
+| created_at | timestamptz | NO | now() | |
+| updated_at | timestamptz | NO | now() | |
+
+**RLS Policies:**
+- SELECT: Public (when status is 'active' or 'full' and coach is live)
+- SELECT: Own programmes (coach always sees their own)
+- INSERT/UPDATE/DELETE: Coach only
+
+**Indexes:**
+- (coach_profile_id, status)
+- (sport_id, status)
+
+---
+
+### 6.4 group_programme_enrolments
+
+Tracks which children/players are enrolled in group programmes.
+
+**Purpose:** Links participants to recurring programmes, separate from one-off bookings.
+**Migration:** 015_coach_schema_gaps.sql
+
+| Column | Type | Nullable | Default | Notes |
+|---|---|---|---|---|
+| id | uuid | NO | gen_random_uuid() | Primary key |
+| programme_id | uuid | NO | — | FK → group_programmes(id) |
+| booked_by_user_id | uuid | NO | — | FK → user_profiles(id) — parent or player |
+| child_profile_id | uuid | YES | null | FK → child_profiles(id) — null if player |
+| player_profile_id | uuid | YES | null | FK → player_profiles(id) — null if child |
+| payment_type | text | NO | — | Snapshot of payment type at enrolment |
+| status | text | NO | 'active' | 'active' or 'cancelled' |
+| created_at | timestamptz | NO | now() | |
+| updated_at | timestamptz | NO | now() | |
+
+**Constraints:**
+- UNIQUE(programme_id, booked_by_user_id, child_profile_id)
+- CHECK: Must have either child_profile_id OR player_profile_id, not both
+
+**RLS Policies:**
+- SELECT: Own enrolments (parent/player who enrolled)
+- SELECT: Coach sees enrolments for their programmes
+- INSERT: Authenticated users only
+
+**Indexes:**
+- programme_id
+- booked_by_user_id
 
 ---
 
