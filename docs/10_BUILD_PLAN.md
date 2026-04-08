@@ -238,7 +238,7 @@ schedule (command centre + 4 event popovers), get paid standalone.
 | ID | Task | Agent | Risk | Branch | Status |
 |---|---|---|---|---|---|
 | C-05 | Create GET + POST /api/coaches/profile | @BackendDeveloper | 🟡 | feature/coach | ✅ |
-| C-06 | Create CRUD /api/coaches/sports | @BackendDeveloper | 🟡 | feature/coach | ⚪ |
+| C-06 | Create CRUD /api/coaches/sports | @BackendDeveloper | 🟡 | feature/coach | ✅ |
 | C-07 | Create CRUD /api/coaches/qualifications | @BackendDeveloper | 🟢 | feature/coach | ⚪ |
 | C-08 | Create CRUD /api/coaches/photos | @BackendDeveloper | 🟢 | feature/coach | ⚪ |
 | C-09 | Create CRUD /api/coaches/availability — template blocks | @BackendDeveloper | 🟡 | feature/coach | ⚪ |
