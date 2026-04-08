@@ -1,7 +1,8 @@
 # Crikly — Comprehensive Build Plan
 
-**Version:** 2.0
-**Last Updated:** March 2026
+**Version:** 2.1
+**Last Updated:** April 2026
+**Changed:** Step 3A marked complete (19 screens approved). Added CF-01 to CF-14 coach frontend build tasks.
 **This is the single source of truth for every task in the project.**
 
 ---
@@ -207,17 +208,29 @@ First working screens. Register, log in, select roles, switch roles.
 
 ## Step 3 — Coach Module
 
-A coach can fully onboard and appear live in search.
-**UI design starts here. Always begin with @UIUXDesigner.**
+A coach can fully onboard, manage their schedule,
+bookings, programmes, earnings, and appear live in search.
 
-### 3A — Coach UI Design
+### 3A — Coach UI Design ✅ COMPLETE
+
+All 19 screens approved April 2026.
+Figma Make project: https://fluid-flow-42224954.figma.site
+Component architecture: docs/C-04_COMPONENT_ARCHITECTURE.md
 
 | ID | Task | Agent | Risk | Branch | Status |
 |---|---|---|---|---|---|
-| C-01 | Design coach onboarding flow — all steps (requirements locked in F-17) | @UIUXDesigner | 🟢 | — | ⚪ |
-| C-02 | Design coach dashboard screen | @UIUXDesigner | 🟢 | — | ⚪ |
-| C-03 | Design availability setup screen | @UIUXDesigner | 🟢 | — | ⚪ |
-| C-04 | Plan coach component architecture | @FrontendArchitect | 🟢 | — | ⚪ |
+| C-01 | Design coach onboarding flow — 9 screens | @UIUXDesigner | 🟢 | — | ✅ |
+| C-02 | Design coach dashboard (web + mobile) | @UIUXDesigner | 🟢 | — | ✅ |
+| C-03 | Design coach ongoing screens — 8 screens + event popovers | @UIUXDesigner | 🟢 | — | ✅ |
+| C-04 | Plan coach component architecture | @FrontendArchitect | 🟢 | — | ✅ |
+
+Approved screens:
+Onboarding: dashboard web, dashboard mobile, profile,
+sports selection, availability setup, qualifications,
+booking policy, get paid, go live confirmation.
+Ongoing: availability management, bookings list,
+booking detail, programmes, earnings, profile edit,
+schedule (command centre + 4 event popovers), get paid standalone.
 
 ### 3B — Coach Backend
 
@@ -246,6 +259,35 @@ A coach can fully onboard and appear live in search.
 | C-20 | Build DBS verification submission screen | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
 | C-21 | Build coach dashboard home | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
 | C-22 | Build coach profile edit screen | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
+
+### 3C-2 — Coach Frontend Build (v0 → Windsurf)
+
+Build order is strict — never skip or reorder.
+Workflow per task: Claude writes v0 prompt → 
+run in v0.dev → Claude writes Windsurf prompt →
+Windsurf builds → review in browser → Claude marks done.
+
+Read docs/C-04_COMPONENT_ARCHITECTURE.md before 
+starting any task in this section.
+
+| ID | Task | Agent | Risk | Branch | Status |
+|---|---|---|---|---|---|
+| CF-01 | Build missing UI atoms — StatusChip, ProgressBar, Toggle, BottomSheet, Popover, EmptyState, SectionLabel | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
+| CF-02 | Build CoachSidebar, CoachBottomNav, RoleSwitcher | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
+| CF-03 | Build coach onboarding — Personal Info + Sports & Pricing | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
+| CF-04 | Build coach onboarding — Qualifications + Availability | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
+| CF-05 | Build coach onboarding — Booking Policy + Get Paid + Go Live | @FrontendDeveloper | 🟡 | feature/coach | ⚪ |
+| CF-06 | Build coach dashboard (web + mobile) | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
+| CF-07 | Build availability management screen | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
+| CF-08 | Build bookings list screen | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
+| CF-09 | Build booking detail screen | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
+| CF-10 | Build programmes screen | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
+| CF-11 | Build earnings screen | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
+| CF-12 | Build profile edit screen | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
+| CF-13 | Build get paid standalone screen | @FrontendDeveloper | 🟡 | feature/coach | ⚪ |
+| CF-14 | Build schedule screen — command centre | @FrontendDeveloper | 🟡 | feature/coach | ⚪ |
+
+Note: CF-14 (Schedule) is the most complex screen — build last.
 
 ### 3D — Coach Tests
 
@@ -537,7 +579,7 @@ Three-sided marketplace — coaches, parents, and venues.
 | Step 1B — Migrations | Phase 1 | 14 | 13 | 1 |
 | Step 1C — Design Foundation | Phase 1 | 6 | 6 | 0 |
 | Step 2 — Auth | Phase 1 | 15 | 15 | 0 |
-| Step 3 — Coach | Phase 1 | 24 | 0 | 24 |
+| Step 3 — Coach | Phase 1 | 42 | 4 | 38 |
 | Step 4 — Parent & Player | Phase 1 | 21 | 0 | 21 |
 | Step 5 — Booking & Payments | Phase 1 | 42 | 0 | 42 |
 | Step 6 — Admin | Phase 1 | 24 | 0 | 24 |
