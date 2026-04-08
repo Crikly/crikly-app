@@ -109,33 +109,48 @@ export type Database = {
       availability_templates: {
         Row: {
           coach_profile_id: string
+          coach_venue_id: string | null
           created_at: string
           day_of_week: number
           end_time: string
           id: string
           is_active: boolean
+          is_recurring: boolean
+          price_override_pence: number | null
+          session_type_id: string | null
+          specific_date: string | null
           sport_id: string | null
           start_time: string
           updated_at: string
         }
         Insert: {
           coach_profile_id: string
+          coach_venue_id?: string | null
           created_at?: string
           day_of_week: number
           end_time: string
           id?: string
           is_active?: boolean
+          is_recurring?: boolean
+          price_override_pence?: number | null
+          session_type_id?: string | null
+          specific_date?: string | null
           sport_id?: string | null
           start_time: string
           updated_at?: string
         }
         Update: {
           coach_profile_id?: string
+          coach_venue_id?: string | null
           created_at?: string
           day_of_week?: number
           end_time?: string
           id?: string
           is_active?: boolean
+          is_recurring?: boolean
+          price_override_pence?: number | null
+          session_type_id?: string | null
+          specific_date?: string | null
           sport_id?: string | null
           start_time?: string
           updated_at?: string
@@ -146,6 +161,20 @@ export type Database = {
             columns: ["coach_profile_id"]
             isOneToOne: false
             referencedRelation: "coach_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "availability_templates_coach_venue_id_fkey"
+            columns: ["coach_venue_id"]
+            isOneToOne: false
+            referencedRelation: "coach_venues"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "availability_templates_session_type_id_fkey"
+            columns: ["session_type_id"]
+            isOneToOne: false
+            referencedRelation: "coach_session_types"
             referencedColumns: ["id"]
           },
           {
@@ -160,25 +189,31 @@ export type Database = {
       blocked_dates: {
         Row: {
           blocked_date: string
+          blocked_date_end: string | null
           coach_profile_id: string
           created_at: string
           id: string
+          label: string | null
           reason: string | null
           updated_at: string
         }
         Insert: {
           blocked_date: string
+          blocked_date_end?: string | null
           coach_profile_id: string
           created_at?: string
           id?: string
+          label?: string | null
           reason?: string | null
           updated_at?: string
         }
         Update: {
           blocked_date?: string
+          blocked_date_end?: string | null
           coach_profile_id?: string
           created_at?: string
           id?: string
+          label?: string | null
           reason?: string | null
           updated_at?: string
         }
@@ -449,79 +484,97 @@ export type Database = {
       }
       coach_profiles: {
         Row: {
+          approval_window_hours: number
           bio: string | null
           cancellation_window_hours: number
+          club_affiliation: string | null
           created_at: string
           dbs_expires_at: string | null
           dbs_status: string
           dbs_verified_at: string | null
           deleted_at: string | null
+          display_name: string | null
           gender: string | null
           id: string
           is_featured: boolean
           is_flagged: boolean
           is_profile_live: boolean
           is_suspended: boolean
+          languages: string[] | null
           max_advance_days: number
           min_advance_hours: number
           rating_avg: number | null
           rating_count: number
+          requires_manual_approval: boolean
           sessions_completed: number
           stripe_account_id: string | null
           stripe_onboarding_complete: boolean
           subscription_tier_id: string | null
+          travel_radius_miles: number | null
           updated_at: string
           user_profile_id: string
           years_experience: number | null
         }
         Insert: {
+          approval_window_hours?: number
           bio?: string | null
           cancellation_window_hours?: number
+          club_affiliation?: string | null
           created_at?: string
           dbs_expires_at?: string | null
           dbs_status?: string
           dbs_verified_at?: string | null
           deleted_at?: string | null
+          display_name?: string | null
           gender?: string | null
           id?: string
           is_featured?: boolean
           is_flagged?: boolean
           is_profile_live?: boolean
           is_suspended?: boolean
+          languages?: string[] | null
           max_advance_days?: number
           min_advance_hours?: number
           rating_avg?: number | null
           rating_count?: number
+          requires_manual_approval?: boolean
           sessions_completed?: number
           stripe_account_id?: string | null
           stripe_onboarding_complete?: boolean
           subscription_tier_id?: string | null
+          travel_radius_miles?: number | null
           updated_at?: string
           user_profile_id: string
           years_experience?: number | null
         }
         Update: {
+          approval_window_hours?: number
           bio?: string | null
           cancellation_window_hours?: number
+          club_affiliation?: string | null
           created_at?: string
           dbs_expires_at?: string | null
           dbs_status?: string
           dbs_verified_at?: string | null
           deleted_at?: string | null
+          display_name?: string | null
           gender?: string | null
           id?: string
           is_featured?: boolean
           is_flagged?: boolean
           is_profile_live?: boolean
           is_suspended?: boolean
+          languages?: string[] | null
           max_advance_days?: number
           min_advance_hours?: number
           rating_avg?: number | null
           rating_count?: number
+          requires_manual_approval?: boolean
           sessions_completed?: number
           stripe_account_id?: string | null
           stripe_onboarding_complete?: boolean
           subscription_tier_id?: string | null
+          travel_radius_miles?: number | null
           updated_at?: string
           user_profile_id?: string
           years_experience?: number | null
@@ -583,14 +636,64 @@ export type Database = {
           },
         ]
       }
+      coach_session_types: {
+        Row: {
+          coach_sport_id: string
+          created_at: string
+          currency: string
+          duration_minutes: number
+          id: string
+          is_active: boolean
+          price_group_pence: number | null
+          price_individual_pence: number | null
+          updated_at: string
+        }
+        Insert: {
+          coach_sport_id: string
+          created_at?: string
+          currency?: string
+          duration_minutes: number
+          id?: string
+          is_active?: boolean
+          price_group_pence?: number | null
+          price_individual_pence?: number | null
+          updated_at?: string
+        }
+        Update: {
+          coach_sport_id?: string
+          created_at?: string
+          currency?: string
+          duration_minutes?: number
+          id?: string
+          is_active?: boolean
+          price_group_pence?: number | null
+          price_individual_pence?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coach_session_types_coach_sport_id_fkey"
+            columns: ["coach_sport_id"]
+            isOneToOne: false
+            referencedRelation: "coach_sports"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       coach_sports: {
         Row: {
+          age_groups: string[] | null
+          cancellation_window_hours: number | null
           coach_profile_id: string
           created_at: string
           currency: string
           id: string
           is_active: boolean
+          max_advance_days: number | null
           max_group_size: number | null
+          min_advance_hours: number | null
+          no_show_policy: string | null
+          no_show_refund_percentage: number
           price_group_pence: number | null
           price_individual_pence: number | null
           session_duration_minutes: number
@@ -600,12 +703,18 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          age_groups?: string[] | null
+          cancellation_window_hours?: number | null
           coach_profile_id: string
           created_at?: string
           currency?: string
           id?: string
           is_active?: boolean
+          max_advance_days?: number | null
           max_group_size?: number | null
+          min_advance_hours?: number | null
+          no_show_policy?: string | null
+          no_show_refund_percentage?: number
           price_group_pence?: number | null
           price_individual_pence?: number | null
           session_duration_minutes?: number
@@ -615,12 +724,18 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          age_groups?: string[] | null
+          cancellation_window_hours?: number | null
           coach_profile_id?: string
           created_at?: string
           currency?: string
           id?: string
           is_active?: boolean
+          max_advance_days?: number | null
           max_group_size?: number | null
+          min_advance_hours?: number | null
+          no_show_policy?: string | null
+          no_show_refund_percentage?: number
           price_group_pence?: number | null
           price_individual_pence?: number | null
           session_duration_minutes?: number
@@ -695,6 +810,53 @@ export type Database = {
             columns: ["tier_id"]
             isOneToOne: false
             referencedRelation: "subscription_tiers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      coach_venues: {
+        Row: {
+          address: string | null
+          coach_profile_id: string
+          created_at: string
+          id: string
+          is_default: boolean
+          lat: number | null
+          lng: number | null
+          name: string
+          postcode: string | null
+          updated_at: string
+        }
+        Insert: {
+          address?: string | null
+          coach_profile_id: string
+          created_at?: string
+          id?: string
+          is_default?: boolean
+          lat?: number | null
+          lng?: number | null
+          name: string
+          postcode?: string | null
+          updated_at?: string
+        }
+        Update: {
+          address?: string | null
+          coach_profile_id?: string
+          created_at?: string
+          id?: string
+          is_default?: boolean
+          lat?: number | null
+          lng?: number | null
+          name?: string
+          postcode?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coach_venues_coach_profile_id_fkey"
+            columns: ["coach_profile_id"]
+            isOneToOne: false
+            referencedRelation: "coach_profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -1042,6 +1204,273 @@ export type Database = {
           },
           {
             foreignKeyName: "group_bookings_sport_id_fkey"
+            columns: ["sport_id"]
+            isOneToOne: false
+            referencedRelation: "sports"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      group_programme_enrolments: {
+        Row: {
+          block_amount_pence: number | null
+          booked_by_user_id: string
+          cancellation_reason: string | null
+          cancelled_at: string | null
+          child_profile_id: string | null
+          created_at: string
+          id: string
+          joined_at_session_number: number
+          payment_model: string
+          payment_type: string
+          player_profile_id: string | null
+          programme_id: string
+          refund_amount_pence: number | null
+          sessions_paid_for: number | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          block_amount_pence?: number | null
+          booked_by_user_id: string
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
+          child_profile_id?: string | null
+          created_at?: string
+          id?: string
+          joined_at_session_number?: number
+          payment_model: string
+          payment_type: string
+          player_profile_id?: string | null
+          programme_id: string
+          refund_amount_pence?: number | null
+          sessions_paid_for?: number | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          block_amount_pence?: number | null
+          booked_by_user_id?: string
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
+          child_profile_id?: string | null
+          created_at?: string
+          id?: string
+          joined_at_session_number?: number
+          payment_model?: string
+          payment_type?: string
+          player_profile_id?: string | null
+          programme_id?: string
+          refund_amount_pence?: number | null
+          sessions_paid_for?: number | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_programme_enrolments_booked_by_user_id_fkey"
+            columns: ["booked_by_user_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_programme_enrolments_child_profile_id_fkey"
+            columns: ["child_profile_id"]
+            isOneToOne: false
+            referencedRelation: "child_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_programme_enrolments_group_programme_id_fkey"
+            columns: ["programme_id"]
+            isOneToOne: false
+            referencedRelation: "group_programmes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_programme_enrolments_player_profile_id_fkey"
+            columns: ["player_profile_id"]
+            isOneToOne: false
+            referencedRelation: "player_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      group_programme_sessions: {
+        Row: {
+          cancellation_reason: string | null
+          cancelled_at: string | null
+          coach_venue_id: string | null
+          completed_at: string | null
+          created_at: string
+          end_time: string
+          group_programme_id: string
+          id: string
+          session_date: string
+          start_time: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
+          coach_venue_id?: string | null
+          completed_at?: string | null
+          created_at?: string
+          end_time: string
+          group_programme_id: string
+          id?: string
+          session_date: string
+          start_time: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
+          coach_venue_id?: string | null
+          completed_at?: string | null
+          created_at?: string
+          end_time?: string
+          group_programme_id?: string
+          id?: string
+          session_date?: string
+          start_time?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_programme_sessions_coach_venue_id_fkey"
+            columns: ["coach_venue_id"]
+            isOneToOne: false
+            referencedRelation: "coach_venues"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_programme_sessions_group_programme_id_fkey"
+            columns: ["group_programme_id"]
+            isOneToOne: false
+            referencedRelation: "group_programmes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      group_programmes: {
+        Row: {
+          age_groups: string[]
+          block_price_pence: number | null
+          block_session_count: number | null
+          cancellation_window_hours: number
+          coach_profile_id: string
+          coach_venue_id: string | null
+          created_at: string
+          currency: string
+          current_spots: number
+          day_of_week: number | null
+          deleted_at: string | null
+          description: string | null
+          duration_minutes: number
+          ends_at: string | null
+          id: string
+          late_joining_allowed: boolean
+          max_spots: number
+          min_participants: number | null
+          model: string
+          payment_type: string
+          price_per_session_pence: number
+          schedule_type: string
+          session_count: number | null
+          skill_level: string
+          sport_id: string
+          start_time: string | null
+          starts_at: string | null
+          status: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          age_groups?: string[]
+          block_price_pence?: number | null
+          block_session_count?: number | null
+          cancellation_window_hours?: number
+          coach_profile_id: string
+          coach_venue_id?: string | null
+          created_at?: string
+          currency?: string
+          current_spots?: number
+          day_of_week?: number | null
+          deleted_at?: string | null
+          description?: string | null
+          duration_minutes: number
+          ends_at?: string | null
+          id?: string
+          late_joining_allowed?: boolean
+          max_spots: number
+          min_participants?: number | null
+          model: string
+          payment_type: string
+          price_per_session_pence: number
+          schedule_type: string
+          session_count?: number | null
+          skill_level: string
+          sport_id: string
+          start_time?: string | null
+          starts_at?: string | null
+          status?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          age_groups?: string[]
+          block_price_pence?: number | null
+          block_session_count?: number | null
+          cancellation_window_hours?: number
+          coach_profile_id?: string
+          coach_venue_id?: string | null
+          created_at?: string
+          currency?: string
+          current_spots?: number
+          day_of_week?: number | null
+          deleted_at?: string | null
+          description?: string | null
+          duration_minutes?: number
+          ends_at?: string | null
+          id?: string
+          late_joining_allowed?: boolean
+          max_spots?: number
+          min_participants?: number | null
+          model?: string
+          payment_type?: string
+          price_per_session_pence?: number
+          schedule_type?: string
+          session_count?: number | null
+          skill_level?: string
+          sport_id?: string
+          start_time?: string | null
+          starts_at?: string | null
+          status?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_programmes_coach_profile_id_fkey"
+            columns: ["coach_profile_id"]
+            isOneToOne: false
+            referencedRelation: "coach_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_programmes_coach_venue_id_fkey"
+            columns: ["coach_venue_id"]
+            isOneToOne: false
+            referencedRelation: "coach_venues"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_programmes_sport_id_fkey"
             columns: ["sport_id"]
             isOneToOne: false
             referencedRelation: "sports"
@@ -1410,6 +1839,7 @@ export type Database = {
           is_shared_with_parent: boolean
           overall_rating: number | null
           passport_entry_id: string
+          report_deadline_at: string | null
           strengths: string | null
           updated_at: string
         }
@@ -1423,6 +1853,7 @@ export type Database = {
           is_shared_with_parent?: boolean
           overall_rating?: number | null
           passport_entry_id: string
+          report_deadline_at?: string | null
           strengths?: string | null
           updated_at?: string
         }
@@ -1436,6 +1867,7 @@ export type Database = {
           is_shared_with_parent?: boolean
           overall_rating?: number | null
           passport_entry_id?: string
+          report_deadline_at?: string | null
           strengths?: string | null
           updated_at?: string
         }
@@ -1469,6 +1901,7 @@ export type Database = {
           default_payout_delay_hours: number
           id: string
           max_featured_coaches_per_page: number
+          performance_report_window_hours: number
           updated_at: string
         }
         Insert: {
@@ -1483,6 +1916,7 @@ export type Database = {
           default_payout_delay_hours?: number
           id?: string
           max_featured_coaches_per_page?: number
+          performance_report_window_hours?: number
           updated_at?: string
         }
         Update: {
@@ -1497,6 +1931,7 @@ export type Database = {
           default_payout_delay_hours?: number
           id?: string
           max_featured_coaches_per_page?: number
+          performance_report_window_hours?: number
           updated_at?: string
         }
         Relationships: []

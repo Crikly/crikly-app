@@ -134,6 +134,7 @@ chore(docs): add all foundation docs, agents, schema and build plan
 | M-14 | Migration 014 — coach schema additions (19 gaps from docs/14_COACH_REQUIREMENTS.md) | @DatabaseArchitect | 🟡 | feature/coach | ✅ |
 | M-14a | Migration 014a — new coach tables (coach_session_types, coach_venues, group_programmes, group_programme_sessions, group_programme_enrolments) | @DatabaseArchitect | 🟡 | feature/coach | ✅ |
 | M-14b | Migration 014b — coach column additions (19 columns across 6 tables) | @DatabaseArchitect | 🟡 | develop | ✅ |
+| M-015 | Migration 015 — session types, venues, programmes, blocked date ranges | @DatabaseArchitect | 🟡 | feature/coach | ✅ |
 
 ---
 
@@ -236,14 +237,20 @@ schedule (command centre + 4 event popovers), get paid standalone.
 
 | ID | Task | Agent | Risk | Branch | Status |
 |---|---|---|---|---|---|
-| C-05 | Create GET + POST /api/coaches/profile | @BackendDeveloper | 🟡 | feature/coach | ⚪ |
-| C-06 | Create CRUD /api/coaches/sports | @BackendDeveloper | 🟡 | feature/coach | ⚪ |
-| C-07 | Create CRUD /api/coaches/qualifications | @BackendDeveloper | 🟢 | feature/coach | ⚪ |
-| C-08 | Create CRUD /api/coaches/photos | @BackendDeveloper | 🟢 | feature/coach | ⚪ |
-| C-09 | Create CRUD /api/coaches/availability — template blocks | @BackendDeveloper | 🟡 | feature/coach | ⚪ |
-| C-10 | Create CRUD /api/coaches/blocked-dates | @BackendDeveloper | 🟢 | feature/coach | ⚪ |
+| C-05 | Create GET + POST /api/coaches/profile | @BackendDeveloper | 🟡 | feature/coach | ✅ |
+| C-06 | Create CRUD /api/coaches/sports | @BackendDeveloper | 🟡 | feature/coach | ✅ |
+| C-06b | CRUD /api/coaches/session-types — standalone routes | @BackendDeveloper | 🟢 | feature/coach | ✅ |
+| C-06c | CRUD /api/coaches/venues | @BackendDeveloper | 🟢 | feature/coach | ✅ |
+| C-06d | CRUD /api/coaches/programmes | @BackendDeveloper | 🟡 | feature/coach | ⚪ |
+| C-07 | Create CRUD /api/coaches/qualifications | @BackendDeveloper | 🟢 | feature/coach | ✅ |
+| C-08 | Create CRUD /api/coaches/photos | @BackendDeveloper | 🟢 | feature/coach | ✅ |
+| C-09 | Create CRUD /api/coaches/availability — template blocks | @BackendDeveloper | 🟡 | feature/coach | ✅ |
+| C-10 | Create CRUD /api/coaches/blocked-dates | @BackendDeveloper | 🟢 | feature/coach | ✅ |
 | C-11 | Create POST /api/payments/connect/onboard — Stripe Connect URL | @PaymentsEngineer | 🔴 | feature/coach | ⚪ |
 | C-12 | Create DBS submission route + £29.99 payment | @BackendDeveloper | 🔴 | feature/coach | ⚪ |
+
+⚠️ C-09, C-10, C-11, C-12, C-13 are BLOCKED until M-015 is complete.
+C-05, C-06, C-07, C-08 are safe to proceed without M-015.
 
 ### 3C — Coach Frontend
 
@@ -272,8 +279,8 @@ starting any task in this section.
 
 | ID | Task | Agent | Risk | Branch | Status |
 |---|---|---|---|---|---|
-| CF-01 | Build missing UI atoms — StatusChip, ProgressBar, Toggle, BottomSheet, Popover, EmptyState, SectionLabel | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
-| CF-02 | Build CoachSidebar, CoachBottomNav, RoleSwitcher | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
+| CF-01 | Build missing UI atoms — StatusChip, ProgressBar, Toggle, BottomSheet, Popover, EmptyState, SectionLabel | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
+| CF-02 | Build CoachSidebar, CoachBottomNav, RoleSwitcher | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
 | CF-03 | Build coach onboarding — Personal Info + Sports & Pricing | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
 | CF-04 | Build coach onboarding — Qualifications + Availability | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
 | CF-05 | Build coach onboarding — Booking Policy + Get Paid + Go Live | @FrontendDeveloper | 🟡 | feature/coach | ⚪ |
