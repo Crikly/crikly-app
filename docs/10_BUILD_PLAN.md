@@ -298,7 +298,7 @@ starting any task in this section.
 | CF-11 | Build earnings screen | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
 | CF-12 | Build profile edit screen | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
 | CF-13 | Build get paid standalone screen | @FrontendDeveloper | 🟡 | feature/coach | ✅ |
-| CF-14 | Build schedule screen — command centre | @FrontendDeveloper | 🟡 | feature/coach | ⚪ |
+| CF-14 | Build schedule screen — command centre | @FrontendDeveloper | 🟡 | feature/coach | ✅ |
 
 Note: CF-14 (Schedule) is the most complex screen — build last.
 
