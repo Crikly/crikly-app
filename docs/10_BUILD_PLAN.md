@@ -254,6 +254,11 @@ C-05, C-06, C-07, C-08 are safe to proceed without M-015.
 
 ### 3C — Coach Frontend
 
+> ⚠️ SUPERSEDED — Tasks C-13 to C-22 below are 
+> replaced by CF-01 to CF-14 in section 3C-2.
+> Do NOT work on C-13 to C-22.
+> All coach frontend work uses CF task IDs.
+
 | ID | Task | Agent | Risk | Branch | Status |
 |---|---|---|---|---|---|
 | C-13 | Build onboarding step 1 — name, photo, bio, location | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
@@ -270,8 +275,9 @@ C-05, C-06, C-07, C-08 are safe to proceed without M-015.
 ### 3C-2 — Coach Frontend Build (v0 → Windsurf)
 
 Build order is strict — never skip or reorder.
-Workflow per task: Claude writes v0 prompt → 
-run in v0.dev → Claude writes Windsurf prompt →
+Workflow per task: Lasith shares Figma screenshot →
+Claude writes Windsurf prompt → Lasith attaches 
+screenshot + pastes prompt into Windsurf →
 Windsurf builds → review in browser → Claude marks done.
 
 Read docs/C-04_COMPONENT_ARCHITECTURE.md before 
@@ -281,7 +287,7 @@ starting any task in this section.
 |---|---|---|---|---|---|
 | CF-01 | Build missing UI atoms — StatusChip, ProgressBar, Toggle, BottomSheet, Popover, EmptyState, SectionLabel | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
 | CF-02 | Build CoachSidebar, CoachBottomNav, RoleSwitcher | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
-| CF-03 | Build coach onboarding — Personal Info + Sports & Pricing | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
+| CF-03 | Build coach onboarding — Personal Info + Sports & Pricing | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
 | CF-04 | Build coach onboarding — Qualifications + Availability | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
 | CF-05 | Build coach onboarding — Booking Policy + Get Paid + Go Live | @FrontendDeveloper | 🟡 | feature/coach | ⚪ |
 | CF-06 | Build coach dashboard (web + mobile) | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
