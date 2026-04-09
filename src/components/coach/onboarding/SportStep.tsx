@@ -1,113 +1,116 @@
 'use client'
 
 import React, { useState } from 'react'
-import { Trophy, Circle, Waves, Zap, Wind, Flag, Shield, Plus } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { ArrowLeft, Target, Trophy, Circle, Waves, Medal, Feather, Activity, Flag, Dumbbell, Plus } from 'lucide-react'
 
-const SPORTS = [
-  { id: 'cricket', name: 'Cricket', icon: Trophy },
-  { id: 'football', name: 'Football', icon: Circle },
-  { id: 'tennis', name: 'Tennis', icon: Circle },
-  { id: 'swimming', name: 'Swimming', icon: Waves },
-  { id: 'basketball', name: 'Basketball', icon: Circle },
-  { id: 'rugby', name: 'Rugby', icon: Circle },
-  { id: 'athletics', name: 'Athletics', icon: Zap },
-  { id: 'badminton', name: 'Badminton', icon: Wind },
-  { id: 'hockey', name: 'Hockey', icon: Trophy },
-  { id: 'netball', name: 'Netball', icon: Circle },
-  { id: 'golf', name: 'Golf', icon: Flag },
-  { id: 'boxing', name: 'Boxing', icon: Shield },
-]
-
-interface SportStepProps {
-  onContinue: (sportIds: string[]) => void
-  onSaveDraft: () => void
-}
-
-export function SportStep({ onContinue, onSaveDraft }: SportStepProps): React.ReactElement {
+export function SportStep() {
+  const router = useRouter()
   const [selectedSports, setSelectedSports] = useState<string[]>([])
+  const [saving, setSaving] = useState(false)
 
-  const toggleSport = (sportId: string): void => {
-    setSelectedSports(prev =>
-      prev.includes(sportId)
-        ? prev.filter(id => id !== sportId)
-        : [...prev, sportId]
-    )
-  }
+  const sports = [
+    { name: 'Cricket', Icon: Target },
+    { name: 'Football', Icon: Trophy },
+    { name: 'Tennis', Icon: Circle },
+    { name: 'Swimming', Icon: Waves },
+    { name: 'Basketball', Icon: Circle },
+    { name: 'Rugby', Icon: Target },
+    { name: 'Athletics', Icon: Medal },
+    { name: 'Badminton', Icon: Feather },
+    { name: 'Hockey', Icon: Activity },
+    { name: 'Netball', Icon: Circle },
+    { name: 'Golf', Icon: Flag },
+    { name: 'Boxing', Icon: Dumbbell },
+  ]
 
-  const handleContinue = (): void => {
-    if (selectedSports.length > 0) {
-      onContinue(selectedSports)
+  const toggleSport = (sport: string) => {
+    if (selectedSports.includes(sport)) {
+      setSelectedSports(selectedSports.filter(s => s !== sport))
+    } else {
+      setSelectedSports([...selectedSports, sport])
     }
   }
 
+  const handleSave = async () => {
+    setSaving(true)
+    // Store selected sports in sessionStorage for pricing step
+    sessionStorage.setItem('selectedSports', JSON.stringify(selectedSports))
+    router.push('/coach/onboarding/pricing')
+    setSaving(false)
+  }
+
   return (
-    <div className="min-h-screen bg-white pb-[120px]">
-      <div className="max-w-[480px] mx-auto px-4 py-8">
-        {/* Header */}
-        <button
-          onClick={onSaveDraft}
-          className="text-brand-600 text-sm font-medium mb-6 flex items-center gap-1"
-        >
-          ← Dashboard
-        </button>
+    <div className="min-h-full bg-white font-sans text-gray-900 flex flex-col items-center pb-32">
+      <div className="w-full max-w-[640px] px-6 pt-10">
 
-        <h1 className="text-3xl font-semibold text-neutral-900 mb-1">
-          Sports you coach
-        </h1>
-        <p className="text-base text-neutral-600 mb-6">
-          Select all the sports you coach — you can add more later
-        </p>
-
-        {/* Sports grid */}
-        <div className="grid grid-cols-3 gap-3 mb-4">
-          {SPORTS.map(sport => {
-            const Icon = sport.icon
-            const isSelected = selectedSports.includes(sport.id)
-            
-            return (
-              <button
-                key={sport.id}
-                onClick={() => toggleSport(sport.id)}
-                className={`p-4 rounded-xl flex flex-col items-center justify-center gap-2 transition-colors ${
-                  isSelected
-                    ? 'bg-brand-600 border border-brand-600 text-white'
-                    : 'bg-white border border-neutral-100 text-neutral-900 hover:border-brand-600'
-                }`}
-              >
-                <Icon className={`w-6 h-6 ${isSelected ? 'text-white' : 'text-neutral-600'}`} />
-                <span className="text-sm font-medium">{sport.name}</span>
-              </button>
-            )
-          })}
-
-          {/* More button */}
+        {/* TOP */}
+        <div className="mb-10">
           <button
-            className="p-4 rounded-xl bg-white border border-neutral-100 text-neutral-900 flex flex-col items-center justify-center gap-2 hover:border-brand-600"
+            onClick={() => router.push('/coach/dashboard')}
+            className="flex items-center gap-2 text-[#0077CC] hover:text-blue-800 font-bold text-[15px] mb-8 transition-colors"
           >
-            <Plus className="w-6 h-6 text-neutral-600" />
-            <span className="text-sm font-medium">More</span>
+            <ArrowLeft size={18} />
+            <span>Dashboard</span>
           </button>
+          <h1 className="text-[32px] font-bold text-gray-900 leading-tight mb-2">Sports you coach</h1>
+          <p className="text-[16px] text-gray-500 font-medium">Select all the sports you coach — you can add more later</p>
         </div>
 
-        <p className="text-sm text-neutral-400">
-          You'll set your availability and pricing for each sport in the next step
-        </p>
+        {/* CONTENT */}
+        <div className="flex flex-col gap-6">
+          <div className="bg-white border border-gray-100 shadow-sm rounded-[24px] p-8">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {sports.map((sport) => {
+                const isSelected = selectedSports.includes(sport.name)
+                const Icon = sport.Icon
+                return (
+                  <button
+                    key={sport.name}
+                    onClick={() => toggleSport(sport.name)}
+                    className={`flex items-center gap-2.5 px-4 py-3.5 rounded-xl text-[15px] font-bold transition-all border ${
+                      isSelected
+                        ? 'bg-[#0077CC] border-[#0077CC] text-white shadow-sm'
+                        : 'bg-white border-gray-200 text-gray-700 hover:border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    <Icon size={18} className={isSelected ? 'text-white' : 'text-gray-400'} strokeWidth={2.5} />
+                    {sport.name}
+                  </button>
+                )
+              })}
+              <button className="flex items-center justify-center sm:justify-start gap-2.5 px-4 py-3.5 rounded-xl text-[15px] font-bold transition-all border bg-gray-50/50 border-dashed border-gray-300 text-gray-600 hover:border-gray-400 hover:bg-gray-100">
+                <Plus size={18} className="text-gray-500" strokeWidth={2.5} />
+                More
+              </button>
+            </div>
+            <div className="mt-8 pt-6 border-t border-gray-100">
+              <p className="text-[14px] text-gray-500 font-medium">
+                You'll set your availability and pricing for each sport in the next step
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* Sticky bottom */}
-      <button
-        onClick={onSaveDraft}
-        className="fixed bottom-[60px] left-0 right-0 text-center text-sm text-neutral-400 hover:text-neutral-600 z-50"
-      >
-        Save & go back to dashboard
-      </button>
-      <button
-        onClick={handleContinue}
-        disabled={selectedSports.length === 0}
-        className="fixed bottom-0 left-0 right-0 h-[52px] bg-brand-600 text-white text-base font-medium z-50 hover:bg-brand-800 disabled:opacity-40 disabled:cursor-not-allowed"
-      >
-        Save & continue →
-      </button>
+      {/* STICKY BOTTOM */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-md border-t border-gray-100 p-6 flex justify-center z-50">
+        <div className="w-full max-w-[640px] flex flex-col gap-3">
+          <button
+            onClick={handleSave}
+            disabled={selectedSports.length === 0 || saving}
+            className="w-full py-4 bg-[#0077CC] hover:bg-[#0066AA] disabled:opacity-50 text-white rounded-xl font-bold text-[16px] transition-colors shadow-sm flex items-center justify-center gap-2"
+          >
+            Save & continue →
+          </button>
+          <button
+            onClick={() => router.push('/coach/dashboard')}
+            className="w-full py-3 text-gray-500 hover:text-gray-900 font-bold text-[14px] transition-colors"
+          >
+            Save & go back to dashboard
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
