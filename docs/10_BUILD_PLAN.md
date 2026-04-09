@@ -288,17 +288,17 @@ starting any task in this section.
 | CF-01 | Build missing UI atoms — StatusChip, ProgressBar, Toggle, BottomSheet, Popover, EmptyState, SectionLabel | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
 | CF-02 | Build CoachSidebar, CoachBottomNav, RoleSwitcher | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
 | CF-03 | Build coach onboarding — Personal Info + Sports & Pricing | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
-| CF-04 | Build coach onboarding — Qualifications + Availability | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
-| CF-05 | Build coach onboarding — Booking Policy + Get Paid + Go Live | @FrontendDeveloper | 🟡 | feature/coach | ⚪ |
-| CF-06 | Build coach dashboard (web + mobile) | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
-| CF-07 | Build availability management screen | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
-| CF-08 | Build bookings list screen | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
-| CF-09 | Build booking detail screen | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
-| CF-10 | Build programmes screen | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
-| CF-11 | Build earnings screen | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
-| CF-12 | Build profile edit screen | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
-| CF-13 | Build get paid standalone screen | @FrontendDeveloper | 🟡 | feature/coach | ⚪ |
-| CF-14 | Build schedule screen — command centre | @FrontendDeveloper | 🟡 | feature/coach | ⚪ |
+| CF-04 | Build coach onboarding — Qualifications + Availability | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
+| CF-05 | Build coach onboarding — Booking Policy + Get Paid + Go Live | @FrontendDeveloper | 🟡 | feature/coach | ✅ |
+| CF-06 | Build coach dashboard (web + mobile) | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
+| CF-07 | Build availability management screen | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
+| CF-08 | Build bookings list screen | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
+| CF-09 | Build booking detail screen | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
+| CF-10 | Build programmes screen | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
+| CF-11 | Build earnings screen | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
+| CF-12 | Build profile edit screen | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
+| CF-13 | Build get paid standalone screen | @FrontendDeveloper | 🟡 | feature/coach | ✅ |
+| CF-14 | Build schedule screen — command centre | @FrontendDeveloper | 🟡 | feature/coach | ✅ |
 
 Note: CF-14 (Schedule) is the most complex screen — build last.
 
