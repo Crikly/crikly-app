@@ -56,6 +56,14 @@ export function GoLiveStep() {
           <button onClick={() => router.push('/coach/dashboard')} className="w-full py-4 bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-xl font-bold text-[16px] transition-colors shadow-sm flex items-center justify-center gap-2">
             Go to my dashboard <ArrowRight size={18} />
           </button>
+          <div className="text-center px-4">
+            <p className="text-[14px] text-gray-500 font-medium mb-1">
+              Want to upgrade to Premium? Get more bookings with priority search placement.
+            </p>
+            <button className="text-[14px] font-bold text-[#0077CC] hover:text-blue-800 transition-colors inline-flex items-center gap-1">
+              See Premium <ArrowRight size={14} />
+            </button>
+          </div>
         </div>
       </div>
     </div>
