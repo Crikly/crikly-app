@@ -26,8 +26,8 @@ export function BookingsManagement() {
   const currentBookings = activeTab === 'Upcoming' ? upcomingBookings : activeTab === 'Pending approval' ? pendingBookings : pastBookings
 
   return (
-    <div className="min-h-screen bg-gray-50 flex justify-center" style={{ fontFamily: "'DM Sans', sans-serif" }}>
-      <div className="w-full max-w-md bg-white min-h-screen relative flex flex-col">
+    <div className="min-h-screen bg-gray-50" style={{ fontFamily: "'DM Sans', sans-serif" }}>
+      <div className="w-full max-w-2xl mx-auto bg-white min-h-screen relative flex flex-col">
         <div className="px-5 pt-8 pb-2 bg-white sticky top-0 z-10">
           <h1 className="text-[28px] font-bold text-gray-900 mb-6 tracking-tight">Bookings</h1>
           <div className="flex items-center gap-6 border-b border-gray-100">

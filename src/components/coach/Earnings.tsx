@@ -15,8 +15,8 @@ export function Earnings() {
   const periods: Period[] = ['This week', 'This month', 'All time']
 
   return (
-    <div className="min-h-screen bg-gray-50 flex justify-center font-sans" style={{ fontFamily: "'DM Sans', sans-serif" }}>
-      <div className="w-full max-w-md bg-gray-50 min-h-screen relative flex flex-col pb-12">
+    <div className="min-h-screen bg-gray-50 font-sans" style={{ fontFamily: "'DM Sans', sans-serif" }}>
+      <div className="w-full max-w-2xl mx-auto bg-gray-50 min-h-screen relative flex flex-col pb-12">
         <div className="px-5 pt-8 pb-4 bg-gray-50 sticky top-0 z-10">
           <h1 className="text-[28px] font-bold text-gray-900 tracking-tight">Earnings</h1>
         </div>

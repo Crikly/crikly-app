@@ -8,8 +8,8 @@ export function BookingDetail() {
   const [status, setStatus] = useState<'Confirmed' | 'Pending'>('Confirmed')
 
   return (
-    <div className="min-h-screen bg-gray-50 flex justify-center font-sans" style={{ fontFamily: "'DM Sans', sans-serif" }}>
-      <div className="w-full max-w-md bg-gray-50 min-h-screen relative flex flex-col pb-12">
+    <div className="min-h-screen bg-gray-50 font-sans" style={{ fontFamily: "'DM Sans', sans-serif" }}>
+      <div className="w-full max-w-2xl mx-auto bg-gray-50 min-h-screen relative flex flex-col pb-12">
         <div className="px-5 py-4 bg-white sticky top-0 z-10 border-b border-gray-100 flex items-center justify-between">
           <button onClick={() => router.back()} className="p-2 -ml-2 text-gray-900 hover:bg-gray-50 rounded-full transition-colors"><ArrowLeft size={24} /></button>
           <h1 className="text-[17px] font-bold text-gray-900 absolute left-1/2 -translate-x-1/2">Booking Detail</h1>
