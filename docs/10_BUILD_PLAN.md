@@ -292,11 +292,11 @@ starting any task in this section.
 | CF-05 | Build coach onboarding — Booking Policy + Get Paid + Go Live | @FrontendDeveloper | 🟡 | feature/coach | ✅ |
 | CF-06 | Build coach dashboard (web + mobile) | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
 | CF-07 | Build availability management screen | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
-| CF-08 | Build bookings list screen | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
-| CF-09 | Build booking detail screen | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
-| CF-10 | Build programmes screen | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
-| CF-11 | Build earnings screen | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
-| CF-12 | Build profile edit screen | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
+| CF-08 | Build bookings list screen | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
+| CF-09 | Build booking detail screen | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
+| CF-10 | Build programmes screen | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
+| CF-11 | Build earnings screen | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
+| CF-12 | Build profile edit screen | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
 | CF-13 | Build get paid standalone screen | @FrontendDeveloper | 🟡 | feature/coach | ⚪ |
 | CF-14 | Build schedule screen — command centre | @FrontendDeveloper | 🟡 | feature/coach | ⚪ |
 
