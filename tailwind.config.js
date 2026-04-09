@@ -69,7 +69,7 @@ const config = {
 
       // ─── Typography ─────────────────────────────────────────
       fontFamily: {
-        sans: ['DM Sans', 'sans-serif'],
+        sans: ['var(--font-dm-sans)', 'DM Sans', 'sans-serif'],
       },
       fontSize: {
         xs:   ['11px', { lineHeight: '1.4' }],

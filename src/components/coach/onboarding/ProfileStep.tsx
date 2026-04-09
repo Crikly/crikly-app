@@ -177,7 +177,7 @@ export function ProfileStep({ onSave, onSaveDraft }: ProfileStepProps): React.Re
           </h2>
           <div className="space-y-4">
             <div>
-              <label className="block text-xs font-medium text-neutral-600 uppercase tracking-label mb-2">
+              <label className="block text-sm font-medium text-neutral-600 mb-2">
                 Display name
               </label>
               <Input
@@ -187,7 +187,7 @@ export function ProfileStep({ onSave, onSaveDraft }: ProfileStepProps): React.Re
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-neutral-600 uppercase tracking-label mb-2">
+              <label className="block text-sm font-medium text-neutral-600 mb-2">
                 Bio
               </label>
               <textarea
@@ -212,7 +212,7 @@ export function ProfileStep({ onSave, onSaveDraft }: ProfileStepProps): React.Re
           </h2>
           <div className="space-y-4">
             <div>
-              <label className="block text-xs font-medium text-neutral-600 uppercase tracking-label mb-2">
+              <label className="block text-sm font-medium text-neutral-600 mb-2">
                 Base location
               </label>
               <div className="relative">
@@ -229,7 +229,7 @@ export function ProfileStep({ onSave, onSaveDraft }: ProfileStepProps): React.Re
               </p>
             </div>
             <div>
-              <label className="block text-xs font-medium text-neutral-600 uppercase tracking-label mb-2">
+              <label className="block text-sm font-medium text-neutral-600 mb-2">
                 Travel radius
               </label>
               <select
@@ -252,7 +252,7 @@ export function ProfileStep({ onSave, onSaveDraft }: ProfileStepProps): React.Re
           </h2>
           <div className="space-y-4">
             <div>
-              <label className="block text-xs font-medium text-neutral-600 uppercase tracking-label mb-2">
+              <label className="block text-sm font-medium text-neutral-600 mb-2">
                 Years of experience
               </label>
               <div className="grid grid-cols-4 gap-2">
@@ -273,8 +273,8 @@ export function ProfileStep({ onSave, onSaveDraft }: ProfileStepProps): React.Re
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-neutral-600 uppercase tracking-label mb-2">
-                Gender <span className="text-neutral-400 normal-case">(optional)</span>
+              <label className="block text-sm font-medium text-neutral-600 mb-2">
+                Gender <span className="text-neutral-400">(optional)</span>
               </label>
               <select
                 value={gender}
@@ -290,7 +290,7 @@ export function ProfileStep({ onSave, onSaveDraft }: ProfileStepProps): React.Re
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-neutral-600 uppercase tracking-label mb-2">
+              <label className="block text-sm font-medium text-neutral-600 mb-2">
                 Languages spoken
               </label>
               <div className="flex flex-wrap gap-2">
