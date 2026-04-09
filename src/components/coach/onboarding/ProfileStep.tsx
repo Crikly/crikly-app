@@ -2,9 +2,6 @@
 
 import React, { useState, useRef } from 'react'
 import { Camera, MapPin, Check } from 'lucide-react'
-import { Button } from '@/components/ui/Button'
-import { Input } from '@/components/ui/Input'
-import { Card } from '@/components/ui/Card'
 
 const LANGUAGES = [
   'English', 'Sinhala', 'Tamil', 'Urdu', 'Hindi',
@@ -111,17 +108,17 @@ export function ProfileStep({ onSave, onSaveDraft }: ProfileStepProps): React.Re
   }
 
   return (
-    <div className="min-h-screen bg-neutral-0 pb-32">
+    <div className="min-h-screen bg-white pb-[120px]">
       <div className="max-w-[480px] mx-auto px-4 py-8">
         {/* Header */}
         <button
           onClick={onSaveDraft}
-          className="text-brand-600 text-base font-medium mb-6 flex items-center gap-2"
+          className="text-brand-600 text-sm font-medium mb-6 flex items-center gap-1"
         >
           ← Dashboard
         </button>
 
-        <h1 className="text-2xl font-semibold text-neutral-900 mb-2">
+        <h1 className="text-3xl font-semibold text-neutral-900 mb-1">
           Your profile
         </h1>
         <p className="text-base text-neutral-600 mb-6">
@@ -136,8 +133,8 @@ export function ProfileStep({ onSave, onSaveDraft }: ProfileStepProps): React.Re
         )}
 
         {/* Profile photo card */}
-        <Card className="mb-4">
-          <h2 className="text-base font-semibold text-neutral-900 mb-4">
+        <div className="bg-white border border-neutral-100 rounded-xl p-5 mb-4">
+          <h2 className="text-lg font-semibold text-neutral-900 mb-4">
             Profile photo
           </h2>
           <div className="flex items-center gap-4">
@@ -156,23 +153,22 @@ export function ProfileStep({ onSave, onSaveDraft }: ProfileStepProps): React.Re
                 onChange={handlePhotoSelect}
                 className="hidden"
               />
-              <Button
-                variant="secondary"
+              <button
                 onClick={() => fileInputRef.current?.click()}
-                className="mb-2"
+                className="mb-2 px-4 py-2 bg-white border-[1.5px] border-brand-600 text-brand-600 rounded-md text-base font-medium hover:bg-brand-50 cursor-pointer"
               >
                 Upload photo
-              </Button>
+              </button>
               <p className="text-sm text-neutral-400">
                 Required to go live · JPG or PNG · max 5MB
               </p>
             </div>
           </div>
-        </Card>
+        </div>
 
         {/* Basic info card */}
-        <Card className="mb-4">
-          <h2 className="text-base font-semibold text-neutral-900 mb-4">
+        <div className="bg-white border border-neutral-100 rounded-xl p-5 mb-4">
+          <h2 className="text-lg font-semibold text-neutral-900 mb-4">
             Basic info
           </h2>
           <div className="space-y-4">
@@ -180,10 +176,11 @@ export function ProfileStep({ onSave, onSaveDraft }: ProfileStepProps): React.Re
               <label className="block text-sm font-medium text-neutral-600 mb-2">
                 Display name
               </label>
-              <Input
+              <input
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
                 placeholder="How you'll appear to parents"
+                className="w-full h-[52px] px-4 bg-neutral-50 border border-neutral-100 rounded-md text-base text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/25"
               />
             </div>
             <div>
@@ -203,11 +200,11 @@ export function ProfileStep({ onSave, onSaveDraft }: ProfileStepProps): React.Re
               </div>
             </div>
           </div>
-        </Card>
+        </div>
 
         {/* Location card */}
-        <Card className="mb-4">
-          <h2 className="text-base font-semibold text-neutral-900 mb-4">
+        <div className="bg-white border border-neutral-100 rounded-xl p-5 mb-4">
+          <h2 className="text-lg font-semibold text-neutral-900 mb-4">
             Location
           </h2>
           <div className="space-y-4">
@@ -217,11 +214,11 @@ export function ProfileStep({ onSave, onSaveDraft }: ProfileStepProps): React.Re
               </label>
               <div className="relative">
                 <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" />
-                <Input
+                <input
                   value={baseLocation}
                   onChange={(e) => setBaseLocation(e.target.value)}
                   placeholder="Town, city or postcode"
-                  className="pl-10"
+                  className="w-full h-[52px] pl-10 pr-4 bg-neutral-50 border border-neutral-100 rounded-md text-base text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/25"
                 />
               </div>
               <p className="text-sm text-neutral-400 mt-2">
@@ -235,7 +232,7 @@ export function ProfileStep({ onSave, onSaveDraft }: ProfileStepProps): React.Re
               <select
                 value={travelRadius}
                 onChange={(e) => setTravelRadius(e.target.value)}
-                className="w-full h-input-mobile px-4 bg-neutral-50 border border-neutral-100 rounded-md text-base text-neutral-900 focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/25"
+                className="w-full h-[52px] px-4 bg-neutral-50 border border-neutral-100 rounded-md text-base text-neutral-900 focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/25"
               >
                 {TRAVEL_RADIUS_OPTIONS.map(option => (
                   <option key={option} value={option}>{option}</option>
@@ -243,11 +240,11 @@ export function ProfileStep({ onSave, onSaveDraft }: ProfileStepProps): React.Re
               </select>
             </div>
           </div>
-        </Card>
+        </div>
 
         {/* About you card */}
-        <Card className="mb-4">
-          <h2 className="text-base font-semibold text-neutral-900 mb-4">
+        <div className="bg-white border border-neutral-100 rounded-xl p-5 mb-4">
+          <h2 className="text-lg font-semibold text-neutral-900 mb-4">
             About you
           </h2>
           <div className="space-y-4">
@@ -260,9 +257,9 @@ export function ProfileStep({ onSave, onSaveDraft }: ProfileStepProps): React.Re
                   <button
                     key={option}
                     onClick={() => setYearsExperience(option)}
-                    className={`h-10 px-3 rounded-md text-sm font-medium transition-colors ${
+                    className={`h-10 px-4 rounded-full text-sm font-medium transition-colors ${
                       yearsExperience === option
-                        ? 'bg-brand-600 text-white'
+                        ? 'bg-brand-600 text-white border border-brand-600'
                         : 'bg-white border border-neutral-100 text-neutral-900 hover:border-brand-600'
                     }`}
                   >
@@ -279,7 +276,7 @@ export function ProfileStep({ onSave, onSaveDraft }: ProfileStepProps): React.Re
               <select
                 value={gender}
                 onChange={(e) => setGender(e.target.value)}
-                className="w-full h-input-mobile px-4 bg-neutral-50 border border-neutral-100 rounded-md text-base text-neutral-900 focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/25"
+                className="w-full h-[52px] px-4 bg-neutral-50 border border-neutral-100 rounded-md text-base text-neutral-900 focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/25"
               >
                 <option value="">Select gender</option>
                 <option value="prefer_not_to_say">Prefer not to say</option>
@@ -298,9 +295,9 @@ export function ProfileStep({ onSave, onSaveDraft }: ProfileStepProps): React.Re
                   <button
                     key={language}
                     onClick={() => toggleLanguage(language)}
-                    className={`h-10 px-4 rounded-md text-sm font-medium transition-colors flex items-center gap-2 ${
+                    className={`h-9 px-3 rounded-full text-sm font-medium transition-colors flex items-center gap-1.5 ${
                       selectedLanguages.includes(language)
-                        ? 'border-2 border-brand-600 text-brand-600 bg-white'
+                        ? 'border-[1.5px] border-brand-600 text-brand-600 bg-white'
                         : 'border border-neutral-100 text-neutral-900 bg-white hover:border-brand-600'
                     }`}
                   >
@@ -313,27 +310,23 @@ export function ProfileStep({ onSave, onSaveDraft }: ProfileStepProps): React.Re
               </div>
             </div>
           </div>
-        </Card>
+        </div>
       </div>
 
       {/* Sticky bottom */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-neutral-100 p-4">
-        <div className="max-w-[480px] mx-auto">
-          <Button
-            onClick={handleSubmit}
-            disabled={isLoading || !displayName || !bio}
-            className="w-full mb-3"
-          >
-            {isLoading ? 'Saving...' : 'Save & continue →'}
-          </Button>
-          <button
-            onClick={onSaveDraft}
-            className="w-full text-center text-base text-neutral-400 hover:text-neutral-600"
-          >
-            Save & go back to dashboard
-          </button>
-        </div>
-      </div>
+      <button
+        onClick={onSaveDraft}
+        className="fixed bottom-[60px] left-0 right-0 text-center text-sm text-neutral-400 hover:text-neutral-600 z-50"
+      >
+        Save & go back to dashboard
+      </button>
+      <button
+        onClick={handleSubmit}
+        disabled={isLoading || !displayName || !bio}
+        className="fixed bottom-0 left-0 right-0 h-[52px] bg-brand-600 text-white text-base font-medium z-50 hover:bg-brand-800 disabled:opacity-40 disabled:cursor-not-allowed"
+      >
+        {isLoading ? 'Saving...' : 'Save & continue →'}
+      </button>
     </div>
   )
 }

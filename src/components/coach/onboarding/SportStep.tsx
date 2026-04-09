@@ -2,8 +2,6 @@
 
 import React, { useState } from 'react'
 import { Trophy, Circle, Waves, Zap, Wind, Flag, Shield, Plus } from 'lucide-react'
-import { Button } from '@/components/ui/Button'
-import { Card } from '@/components/ui/Card'
 
 const SPORTS = [
   { id: 'cricket', name: 'Cricket', icon: Trophy },
@@ -43,17 +41,17 @@ export function SportStep({ onContinue, onSaveDraft }: SportStepProps): React.Re
   }
 
   return (
-    <div className="min-h-screen bg-neutral-0 pb-32">
+    <div className="min-h-screen bg-white pb-[120px]">
       <div className="max-w-[480px] mx-auto px-4 py-8">
         {/* Header */}
         <button
           onClick={onSaveDraft}
-          className="text-brand-600 text-base font-medium mb-6 flex items-center gap-2"
+          className="text-brand-600 text-sm font-medium mb-6 flex items-center gap-1"
         >
           ← Dashboard
         </button>
 
-        <h1 className="text-2xl font-semibold text-neutral-900 mb-2">
+        <h1 className="text-3xl font-semibold text-neutral-900 mb-1">
           Sports you coach
         </h1>
         <p className="text-base text-neutral-600 mb-6">
@@ -70,13 +68,13 @@ export function SportStep({ onContinue, onSaveDraft }: SportStepProps): React.Re
               <button
                 key={sport.id}
                 onClick={() => toggleSport(sport.id)}
-                className={`h-24 rounded-lg flex flex-col items-center justify-center gap-2 transition-colors ${
+                className={`p-4 rounded-xl flex flex-col items-center justify-center gap-2 transition-colors ${
                   isSelected
-                    ? 'bg-brand-600 text-white'
+                    ? 'bg-brand-600 border border-brand-600 text-white'
                     : 'bg-white border border-neutral-100 text-neutral-900 hover:border-brand-600'
                 }`}
               >
-                <Icon className="w-6 h-6" />
+                <Icon className={`w-6 h-6 ${isSelected ? 'text-white' : 'text-neutral-600'}`} />
                 <span className="text-sm font-medium">{sport.name}</span>
               </button>
             )
@@ -84,9 +82,9 @@ export function SportStep({ onContinue, onSaveDraft }: SportStepProps): React.Re
 
           {/* More button */}
           <button
-            className="h-24 rounded-lg bg-white border border-neutral-100 text-neutral-900 flex flex-col items-center justify-center gap-2 hover:border-brand-600"
+            className="p-4 rounded-xl bg-white border border-neutral-100 text-neutral-900 flex flex-col items-center justify-center gap-2 hover:border-brand-600"
           >
-            <Plus className="w-6 h-6" />
+            <Plus className="w-6 h-6 text-neutral-600" />
             <span className="text-sm font-medium">More</span>
           </button>
         </div>
@@ -97,23 +95,19 @@ export function SportStep({ onContinue, onSaveDraft }: SportStepProps): React.Re
       </div>
 
       {/* Sticky bottom */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-neutral-100 p-4">
-        <div className="max-w-[480px] mx-auto">
-          <Button
-            onClick={handleContinue}
-            disabled={selectedSports.length === 0}
-            className="w-full mb-3"
-          >
-            Save & continue →
-          </Button>
-          <button
-            onClick={onSaveDraft}
-            className="w-full text-center text-base text-neutral-400 hover:text-neutral-600"
-          >
-            Save & go back to dashboard
-          </button>
-        </div>
-      </div>
+      <button
+        onClick={onSaveDraft}
+        className="fixed bottom-[60px] left-0 right-0 text-center text-sm text-neutral-400 hover:text-neutral-600 z-50"
+      >
+        Save & go back to dashboard
+      </button>
+      <button
+        onClick={handleContinue}
+        disabled={selectedSports.length === 0}
+        className="fixed bottom-0 left-0 right-0 h-[52px] bg-brand-600 text-white text-base font-medium z-50 hover:bg-brand-800 disabled:opacity-40 disabled:cursor-not-allowed"
+      >
+        Save & continue →
+      </button>
     </div>
   )
 }
