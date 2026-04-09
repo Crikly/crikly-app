@@ -291,7 +291,7 @@ starting any task in this section.
 | CF-04 | Build coach onboarding — Qualifications + Availability | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
 | CF-05 | Build coach onboarding — Booking Policy + Get Paid + Go Live | @FrontendDeveloper | 🟡 | feature/coach | ✅ |
 | CF-06 | Build coach dashboard (web + mobile) | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
-| CF-07 | Build availability management screen | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
+| CF-07 | Build availability management screen | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
 | CF-08 | Build bookings list screen | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
 | CF-09 | Build booking detail screen | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
 | CF-10 | Build programmes screen | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
