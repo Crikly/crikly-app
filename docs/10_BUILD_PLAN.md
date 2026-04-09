@@ -254,6 +254,11 @@ C-05, C-06, C-07, C-08 are safe to proceed without M-015.
 
 ### 3C — Coach Frontend
 
+> ⚠️ SUPERSEDED — Tasks C-13 to C-22 below are 
+> replaced by CF-01 to CF-14 in section 3C-2.
+> Do NOT work on C-13 to C-22.
+> All coach frontend work uses CF task IDs.
+
 | ID | Task | Agent | Risk | Branch | Status |
 |---|---|---|---|---|---|
 | C-13 | Build onboarding step 1 — name, photo, bio, location | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
@@ -270,8 +275,9 @@ C-05, C-06, C-07, C-08 are safe to proceed without M-015.
 ### 3C-2 — Coach Frontend Build (v0 → Windsurf)
 
 Build order is strict — never skip or reorder.
-Workflow per task: Claude writes v0 prompt → 
-run in v0.dev → Claude writes Windsurf prompt →
+Workflow per task: Lasith shares Figma screenshot →
+Claude writes Windsurf prompt → Lasith attaches 
+screenshot + pastes prompt into Windsurf →
 Windsurf builds → review in browser → Claude marks done.
 
 Read docs/C-04_COMPONENT_ARCHITECTURE.md before 
