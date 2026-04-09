@@ -256,6 +256,114 @@ Current usage tracked in `tier_usage` table.
 
 ---
 
+## BR-16 — Manual Approval Booking Flow
+
+When `requires_manual_approval = true` on a coach profile:
+
+```
+Payment captured → booking.status = 'pending_approval'
+Coach has approval_window_hours to approve or decline
+Coach approves → status = 'confirmed' → parent notified
+Coach declines → status = 'declined' → full refund → parent notified
+No response within window → auto-approved → status = 'confirmed'
+```
+
+Default approval window: 24 hours (coach configurable via `coach_profiles.approval_window_hours`).
+
+**Implementation rules:**
+- Manual approval is OFF by default (`requires_manual_approval = false`)
+- Coach opts in via booking settings
+- Payment is captured immediately but booking remains pending
+- Auto-approval triggers if coach doesn't respond within window
+- Full refund processed automatically on decline via Stripe
+
+**Source:** REQ-C-045 in docs/14_COACH_REQUIREMENTS.md
+
+---
+
+## BR-17 — Group Programme Cancellation Refund
+
+When coach cancels entire programme mid-run:
+
+**Per-session model:**
+```
+refund = sum of price_per_session_pence for all future sessions not yet delivered
+```
+
+**Block payment model:**
+```
+refund = block_amount_pence × (sessions_remaining / sessions_total)
+```
+
+**Implementation rules:**
+- All refunds automatic via Stripe
+- `booking.status = 'cancelled_coach'` for all participants
+- All participants notified immediately via push + email
+- Repeated programme cancellations → `is_flagged = true`
+  (same threshold as BR-13: 3 cancellations in 30 days)
+
+**Source:** REQ-C-056 in docs/14_COACH_REQUIREMENTS.md
+
+---
+
+## BR-18 — Block Payment Late Joiner Pro-Rata
+
+When a participant joins a fixed programme mid-run (`late_joining_allowed = true` on `group_programmes`):
+
+**Block payment model:**
+```
+amount_due = price_per_session_pence × sessions_remaining
+```
+
+**Per-session model:**
+```
+parent pays forward only — no catch-up for missed sessions
+```
+
+**Implementation rules:**
+- `joined_at_session_number` recorded on `group_programme_enrolments`
+- This enables accurate refund calculation if they later cancel
+- Late joiner only pays for sessions they can attend
+- No retroactive charges for sessions already completed
+
+**Source:** REQ-C-051 in docs/14_COACH_REQUIREMENTS.md
+
+---
+
+## BR-19 — No-Show Refund Calculation
+
+Coach sets `no_show_policy` per sport on `coach_sports` table.
+
+Refund logic when coach marks a booking as no-show:
+
+**no_show_policy = 'full_refund':**
+```
+refund = parent_total_pence
+coach earns 0
+```
+
+**no_show_policy = 'partial_refund':**
+```
+refund = parent_total_pence × (no_show_refund_percentage / 100)
+coach earns parent_total_pence − refund − commission_pence
+```
+
+**no_show_policy = 'no_refund':**
+```
+refund = 0
+coach earns coach_price_pence (normal payout)
+```
+
+**Implementation rules:**
+- Refund processed automatically via Stripe on coach marking no-show
+- `booking.status = 'no_show'`
+- `payout_eligible_at` set normally for coach earned portion
+- Coach configures policy when setting up each sport's booking settings
+
+**Source:** REQ-C-070 in docs/14_COACH_REQUIREMENTS.md
+
+---
+
 ## Adding New Business Rules
 
 When a new business rule is agreed:
