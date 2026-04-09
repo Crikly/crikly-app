@@ -1,5 +1,13 @@
 @import "tailwindcss";
 
+html {
+  color-scheme: light only;
+}
+
+body {
+  background-color: #ffffff;
+}
+
 *, *::before, *::after {
   color-scheme: light !important;
 }
@@ -13,10 +21,6 @@ html, body {
 .dark * {
   color-scheme: light !important;
   background-color: unset;
-}
-
-html {
-  color-scheme: light;
 }
 
 :root {
