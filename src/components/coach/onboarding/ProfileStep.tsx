@@ -1,0 +1,277 @@
+'use client'
+
+import React, { useState, useRef } from 'react'
+import { useRouter } from 'next/navigation'
+import { ArrowLeft, Camera, MapPin, ChevronDown, Check } from 'lucide-react'
+
+export function ProfileStep() {
+  const router = useRouter()
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null)
+  const [displayName, setDisplayName] = useState('')
+  const [bio, setBio] = useState('')
+  const [baseLocation, setBaseLocation] = useState('')
+  const [travelRadius, setTravelRadius] = useState('No travel (I coach at fixed venues)')
+  const [selectedExperience, setSelectedExperience] = useState('3–5 yrs')
+  const [gender, setGender] = useState('')
+  const [selectedLanguages, setSelectedLanguages] = useState<string[]>(['English'])
+  const [saving, setSaving] = useState(false)
+
+  const languages = [
+    'English', 'Sinhala', 'Tamil', 'Urdu', 'Hindi',
+    'Punjabi', 'Bengali', 'Arabic', 'French', 'Spanish'
+  ]
+
+  const toggleLanguage = (lang: string) => {
+    if (selectedLanguages.includes(lang)) {
+      if (selectedLanguages.length > 1) {
+        setSelectedLanguages(selectedLanguages.filter(l => l !== lang))
+      }
+    } else {
+      setSelectedLanguages([...selectedLanguages, lang])
+    }
+  }
+
+  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Photo must be under 5MB')
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => setPhotoPreview(reader.result as string)
+    reader.readAsDataURL(file)
+  }
+
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      await fetch('/api/coaches/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          display_name: displayName,
+          bio,
+          base_location: baseLocation,
+          travel_radius: travelRadius,
+          years_experience: selectedExperience,
+          gender,
+          languages: selectedLanguages,
+        })
+      })
+      router.push('/coach/onboarding/sport')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="min-h-full bg-white font-sans text-gray-900 flex flex-col items-center pb-32">
+      <div className="w-full max-w-[640px] px-6 pt-10">
+
+        {/* TOP */}
+        <div className="mb-10">
+          <button
+            onClick={() => router.push('/coach/dashboard')}
+            className="flex items-center gap-2 text-[#0077CC] hover:text-blue-800 font-bold text-[15px] mb-8 transition-colors"
+          >
+            <ArrowLeft size={18} />
+            <span>Dashboard</span>
+          </button>
+          <h1 className="text-[32px] font-bold text-gray-900 leading-tight mb-2">Your profile</h1>
+          <p className="text-[16px] text-gray-500 font-medium">This is how parents will see you</p>
+        </div>
+
+        {/* CONTENT */}
+        <div className="flex flex-col gap-6">
+
+          {/* Profile photo */}
+          <div className="bg-white border border-gray-100 shadow-sm rounded-[24px] p-8">
+            <h2 className="text-[18px] font-bold text-gray-900 mb-6">Profile photo</h2>
+            <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6">
+              <div className="w-[120px] h-[120px] rounded-full bg-gray-50 border-2 border-dashed border-gray-200 flex items-center justify-center shrink-0 overflow-hidden">
+                {photoPreview
+                  ? <img src={photoPreview} alt="Profile" className="w-full h-full object-cover" />
+                  : <Camera size={32} className="text-gray-300" />
+                }
+              </div>
+              <div className="flex flex-col items-center sm:items-start pt-2">
+                <input ref={fileInputRef} type="file" accept="image/jpeg,image/png" onChange={handlePhotoSelect} className="hidden" />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="px-5 py-2.5 rounded-xl border-2 border-[#0077CC] text-[#0077CC] font-bold text-[15px] hover:bg-blue-50 transition-colors mb-3"
+                >
+                  Upload photo
+                </button>
+                <p className="text-[13px] text-gray-500 font-medium text-center sm:text-left">
+                  Required to go live · JPG or PNG · max 5MB
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Basic info */}
+          <div className="bg-white border border-gray-100 shadow-sm rounded-[24px] p-8">
+            <h2 className="text-[18px] font-bold text-gray-900 mb-6">Basic info</h2>
+            <div className="flex flex-col gap-5">
+              <div className="flex flex-col gap-2">
+                <label className="text-[14px] font-bold text-gray-900">Display name</label>
+                <input
+                  type="text"
+                  value={displayName}
+                  onChange={e => setDisplayName(e.target.value)}
+                  placeholder="How you'll appear to parents"
+                  className="w-full px-4 py-3.5 rounded-xl border border-gray-200 text-[15px] text-gray-900 placeholder:text-gray-400 focus:border-[#0077CC] focus:ring-1 focus:ring-[#0077CC] outline-none transition-all"
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <label className="text-[14px] font-bold text-gray-900">Bio</label>
+                <textarea
+                  rows={4}
+                  value={bio}
+                  onChange={e => setBio(e.target.value.slice(0, 500))}
+                  placeholder="Tell parents about your coaching style and what to expect from a session with you"
+                  className="w-full px-4 py-3.5 rounded-xl border border-gray-200 text-[15px] text-gray-900 placeholder:text-gray-400 focus:border-[#0077CC] focus:ring-1 focus:ring-[#0077CC] outline-none transition-all resize-none"
+                />
+                <div className="text-right text-[12px] font-bold text-gray-400 mt-1">
+                  {bio.length} / 500
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Location */}
+          <div className="bg-white border border-gray-100 shadow-sm rounded-[24px] p-8">
+            <h2 className="text-[18px] font-bold text-gray-900 mb-6">Location</h2>
+            <div className="flex flex-col gap-6">
+              <div className="flex flex-col gap-2">
+                <label className="text-[14px] font-bold text-gray-900">Base location</label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                    <MapPin size={18} className="text-gray-400" />
+                  </div>
+                  <input
+                    type="text"
+                    value={baseLocation}
+                    onChange={e => setBaseLocation(e.target.value)}
+                    placeholder="Town, city or postcode"
+                    className="w-full pl-11 pr-4 py-3.5 rounded-xl border border-gray-200 text-[15px] text-gray-900 placeholder:text-gray-400 focus:border-[#0077CC] focus:ring-1 focus:ring-[#0077CC] outline-none transition-all"
+                  />
+                </div>
+                <p className="text-[13px] text-gray-500 font-medium mt-0.5">Used so parents nearby can find you</p>
+              </div>
+              <div className="flex flex-col gap-2">
+                <label className="text-[14px] font-bold text-gray-900">Travel radius</label>
+                <div className="relative">
+                  <select
+                    value={travelRadius}
+                    onChange={e => setTravelRadius(e.target.value)}
+                    className="w-full px-4 py-3.5 rounded-xl border border-gray-200 text-[15px] text-gray-900 bg-white appearance-none focus:border-[#0077CC] focus:ring-1 focus:ring-[#0077CC] outline-none transition-all cursor-pointer"
+                  >
+                    <option>No travel (I coach at fixed venues)</option>
+                    <option>Up to 5 miles</option>
+                    <option>Up to 10 miles</option>
+                    <option>Up to 20 miles</option>
+                    <option>30 miles+</option>
+                  </select>
+                  <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
+                    <ChevronDown size={18} className="text-gray-400" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* About you */}
+          <div className="bg-white border border-gray-100 shadow-sm rounded-[24px] p-8">
+            <h2 className="text-[18px] font-bold text-gray-900 mb-6">About you</h2>
+            <div className="flex flex-col gap-8">
+              <div className="flex flex-col gap-3">
+                <label className="text-[14px] font-bold text-gray-900">Years of experience</label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {['0–2 yrs', '3–5 yrs', '6–10 yrs', '10+ yrs'].map((exp) => (
+                    <button
+                      key={exp}
+                      onClick={() => setSelectedExperience(exp)}
+                      className={`py-3 px-2 rounded-xl text-[14px] font-bold transition-all border ${
+                        selectedExperience === exp
+                          ? 'bg-[#0077CC] border-[#0077CC] text-white shadow-sm'
+                          : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      {exp}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex flex-col gap-2">
+                <label className="text-[14px] font-bold text-gray-900">
+                  Gender <span className="text-gray-400 font-normal ml-1">(optional)</span>
+                </label>
+                <div className="relative">
+                  <select
+                    value={gender}
+                    onChange={e => setGender(e.target.value)}
+                    className="w-full px-4 py-3.5 rounded-xl border border-gray-200 text-[15px] text-gray-900 bg-white appearance-none focus:border-[#0077CC] focus:ring-1 focus:ring-[#0077CC] outline-none transition-all cursor-pointer"
+                  >
+                    <option value="" disabled>Select gender</option>
+                    <option>Male</option>
+                    <option>Female</option>
+                    <option>Other</option>
+                    <option>Prefer not to say</option>
+                  </select>
+                  <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
+                    <ChevronDown size={18} className="text-gray-400" />
+                  </div>
+                </div>
+              </div>
+              <div className="flex flex-col gap-3">
+                <label className="text-[14px] font-bold text-gray-900">Languages spoken</label>
+                <div className="flex flex-wrap gap-2.5">
+                  {languages.map((lang) => {
+                    const isSelected = selectedLanguages.includes(lang)
+                    return (
+                      <button
+                        key={lang}
+                        onClick={() => toggleLanguage(lang)}
+                        className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-[14px] font-bold transition-all border ${
+                          isSelected
+                            ? 'bg-blue-50 border-blue-200 text-[#0077CC]'
+                            : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'
+                        }`}
+                      >
+                        {isSelected && <Check size={14} className="text-[#0077CC]" />}
+                        {lang}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      {/* STICKY BOTTOM */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-md border-t border-gray-100 p-6 flex justify-center z-50">
+        <div className="w-full max-w-[640px] flex flex-col gap-3">
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="w-full py-4 bg-[#0077CC] hover:bg-[#0066AA] disabled:opacity-60 text-white rounded-xl font-bold text-[16px] transition-colors shadow-sm flex items-center justify-center gap-2"
+          >
+            {saving ? 'Saving...' : 'Save & continue →'}
+          </button>
+          <button
+            onClick={() => router.push('/coach/dashboard')}
+            className="w-full py-3 text-gray-500 hover:text-gray-900 font-bold text-[14px] transition-colors"
+          >
+            Save & go back to dashboard
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}

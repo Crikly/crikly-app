@@ -1,7 +1,8 @@
 # Crikly — Comprehensive Build Plan
 
-**Version:** 2.0
-**Last Updated:** March 2026
+**Version:** 2.1
+**Last Updated:** April 2026
+**Changed:** Step 3A marked complete (19 screens approved). Added CF-01 to CF-14 coach frontend build tasks.
 **This is the single source of truth for every task in the project.**
 
 ---
@@ -79,6 +80,14 @@ Everything needed before writing a single line of application code.
 | F-14 | Create all 9 agent files in docs/agents/ | Manual | 🟢 | ✅ |
 | F-15 | Create Notion HQ workspace with all sections and subpages | Manual | 🟢 | ✅ |
 | F-16 | Commit all foundation files to GitHub main branch | Manual | 🟢 | ✅ |
+| F-17 | Create docs/14_COACH_REQUIREMENTS.md — 78 requirements, coach module | Manual | 🟢 | ✅ |
+| F-18 | Move 09_WORKING_ETHICS.md to docs/ folder | Manual | 🟢 | ✅ |
+| F-19 | Add branch lifecycle rule to docs/09_WORKING_ETHICS.md | Manual | 🟢 | ✅ |
+| F-20 | Add BR-16 to BR-19 to docs/05_BUSINESS_RULES.md | Manual | 🟡 | ✅ |
+| F-21 | Update docs/11_UX_PRINCIPLES.md — coach nav 6 tabs | Manual | 🟢 | ✅ |
+| F-22 | Update CLAUDE.md — fix stale refs, add coach requirements, branch rule | Manual | 🟢 | ✅ |
+| F-24 | Proper merge of feature/migrations into develop | Manual | 🟢 | ✅ |
+| F-25 | Create docs/16_DESIGN_WORKFLOW.md — Figma/v0/Windsurf workflow + colour tokens | Manual | 🟢 | ✅ |
 
 **F-16 commit message:**
 ```
@@ -93,14 +102,14 @@ chore(docs): add all foundation docs, agents, schema and build plan
 
 | ID | Task | Agent | Risk | Branch | Status |
 |---|---|---|---|---|---|
-| D-01 | Install Supabase CLI, verify connection to project | @DevOpsEngineer | 🟢 | chore/supabase-setup | ⚪ |
-| D-02 | Create develop branch from main | @DevOpsEngineer | 🟢 | — | ⚪ |
-| D-03 | Create staging branch from main | @DevOpsEngineer | 🟢 | — | ⚪ |
-| D-04 | Protect main branch — no direct commits | @DevOpsEngineer | 🟢 | — | ⚪ |
-| D-05 | Create .env.example with all required variables | @DevOpsEngineer | 🟢 | chore/env-setup | ⚪ |
-| D-06 | GitHub Actions CI pipeline — type-check, lint, test, build | @DevOpsEngineer | 🟢 | chore/ci-setup | ⚪ |
-| D-07 | Configure Vercel environments (development, staging, production) | @DevOpsEngineer | 🟢 | chore/vercel-config | ⚪ |
-| D-08 | Verify crikly.app domain working end-to-end | @DevOpsEngineer | 🟢 | — | ⚪ |
+| D-01 | Install Supabase CLI, verify connection to project | @DevOpsEngineer | 🟢 | chore/supabase-setup | ✅ |
+| D-02 | Create develop branch from main | @DevOpsEngineer | 🟢 | — | ✅ |
+| D-03 | Create staging branch from main | @DevOpsEngineer | 🟢 | — | ✅ |
+| D-04 | Protect main branch — no direct commits | @DevOpsEngineer | 🟢 | — | ✅ |
+| D-05 | Create .env.example with all required variables | @DevOpsEngineer | 🟢 | chore/env-setup | ✅ |
+| D-06 | GitHub Actions CI pipeline — type-check, lint, test, build | @DevOpsEngineer | 🟢 | chore/ci-setup | ✅ |
+| D-07 | Configure Vercel environments (development, staging, production) | @DevOpsEngineer | 🟢 | chore/vercel-config | ✅ |
+| D-08 | Verify crikly.app domain working end-to-end | @DevOpsEngineer | 🟢 | — | ✅ |
 
 ### 1B — Database Migrations
 
@@ -109,19 +118,53 @@ chore(docs): add all foundation docs, agents, schema and build plan
 
 | ID | Task | Agent | Risk | Branch | Status |
 |---|---|---|---|---|---|
-| M-01 | Migration 001 — user_profiles, user_roles | @DatabaseArchitect | 🟡 | feature/migrations | ⚪ |
-| M-02 | Migration 002 — parent_profiles, child_profiles, player_profiles, coach_profiles, coach_sports, coach_qualifications, coach_photos | @DatabaseArchitect | 🟡 | feature/migrations | ⚪ |
-| M-03 | Migration 003 — sports, qualification_types, countries, platform_config, feature_flags | @DatabaseArchitect | 🟡 | feature/migrations | ⚪ |
-| M-04 | Migration 004 — availability_templates, blocked_dates | @DatabaseArchitect | 🟡 | feature/migrations | ⚪ |
-| M-05 | Migration 005 — bookings, group_bookings | @DatabaseArchitect | 🔴 | feature/migrations | ⚪ |
-| M-06 | Migration 006 — payment_intents, payouts, refunds | @DatabaseArchitect | 🔴 | feature/migrations | ⚪ |
-| M-07 | Migration 007 — passport_entries, performance_reports, reviews | @DatabaseArchitect | 🟡 | feature/migrations | ⚪ |
-| M-08 | Migration 008 — subscription_tiers, tier_features, coach_subscriptions, tier_usage | @DatabaseArchitect | 🟡 | feature/migrations | ⚪ |
-| M-09 | Migration 009 — notification_preferences, notifications | @DatabaseArchitect | 🟢 | feature/migrations | ⚪ |
-| M-10 | Migration 010 — admin_roles, content_pages, session_notes, dbs_verifications, disputes, promo_codes, audit_logs | @DatabaseArchitect | 🟡 | feature/migrations | ⚪ |
-| M-11 | Seed data — sports (cricket), countries (GB), platform_config, feature_flags, Free + Premium tiers | @DatabaseArchitect | 🟢 | feature/migrations | ⚪ |
-| M-12 | Generate TypeScript types from Supabase → src/types/database.ts | @DatabaseArchitect | 🟢 | feature/migrations | ⚪ |
-| M-13 | Run all migrations on Supabase and verify all tables exist | @DevOpsEngineer | 🟢 | feature/migrations | ⚪ |
+| M-01 | Migration 001 — user_profiles, user_roles | @DatabaseArchitect | 🟡 | feature/migrations | ✅ |
+| M-02 | Migration 002 — parent_profiles, child_profiles, player_profiles, coach_profiles, coach_sports, coach_qualifications, coach_photos | @DatabaseArchitect | 🟡 | feature/migrations | ✅ |
+| M-03 | Migration 003 — sports, qualification_types, countries, platform_config, feature_flags | @DatabaseArchitect | 🟡 | feature/migrations | ✅ |
+| M-04 | Migration 004 — availability_templates, blocked_dates | @DatabaseArchitect | 🟡 | feature/migrations | ✅ |
+| M-05 | Migration 005 — bookings, group_bookings | @DatabaseArchitect | 🔴 | feature/migrations | ✅ |
+| M-06 | Migration 006 — payment_intents, payouts, refunds | @DatabaseArchitect | 🔴 | feature/migrations | ✅ |
+| M-07 | Migration 007 — passport_entries, performance_reports, reviews | @DatabaseArchitect | 🟡 | feature/migrations | ✅ |
+| M-08 | Migration 008 — subscription_tiers, tier_features, coach_subscriptions, tier_usage | @DatabaseArchitect | 🟡 | feature/migrations | ✅ |
+| M-09 | Migration 009 — notification_preferences, notifications | @DatabaseArchitect | 🟢 | feature/migrations | ✅ |
+| M-10 | Migration 010 — admin_roles, content_pages, session_notes, dbs_verifications, disputes, promo_codes, audit_logs | @DatabaseArchitect | 🟡 | feature/migrations | ✅ |
+| M-11 | Seed data — sports (cricket), countries (GB), platform_config, feature_flags, Free + Premium tiers | @DatabaseArchitect | 🟢 | feature/migrations | ✅ |
+| M-12 | Generate TypeScript types from Supabase → src/types/database.ts | @DatabaseArchitect | 🟢 | feature/migrations | ✅ |
+| M-13 | Run all migrations on Supabase and verify all tables exist | @DevOpsEngineer | 🟢 | feature/migrations | ✅ |
+| M-14 | Migration 014 — coach schema additions (19 gaps from docs/14_COACH_REQUIREMENTS.md) | @DatabaseArchitect | 🟡 | feature/coach | ✅ |
+| M-14a | Migration 014a — new coach tables (coach_session_types, coach_venues, group_programmes, group_programme_sessions, group_programme_enrolments) | @DatabaseArchitect | 🟡 | feature/coach | ✅ |
+| M-14b | Migration 014b — coach column additions (19 columns across 6 tables) | @DatabaseArchitect | 🟡 | develop | ✅ |
+| M-015 | Migration 015 — session types, venues, programmes, blocked date ranges | @DatabaseArchitect | 🟡 | feature/coach | ✅ |
+
+---
+
+## Step 1C — Design Foundation
+
+**Must be fully complete before ANY UI task in Steps 2–6 is started.**
+This step defines the visual language, UX rules, and component library
+that every screen in the app is built from. One-time investment.
+All outputs live in docs/ and src/components/ui/.
+
+### 1C — Design System
+
+| ID | Task | Agent | Risk | Branch | Status |
+|---|---|---|---|---|---|
+| DS-01 | Define UX principles — gestures, rules, flows, empty/error/loading states | Manual | 🟢 | chore/design-system | ✅ |
+| DS-02 | Define design system — colours, typography, spacing, shadows, radius | Manual | 🟢 | chore/design-system | ✅ |
+| DS-03 | Build Tailwind design tokens — tailwind.config.ts + global CSS variables | @FrontendArchitect | 🟢 | chore/design-system | ✅ |
+| DS-04 | Build base component library — Button, Input, Card, Badge, Avatar, Modal, Toast, Spinner | @FrontendDeveloper | 🟢 | chore/design-system | ✅ |
+| DS-05 | Document all screen flows — parent, player, coach journeys | Manual | 🟢 | chore/design-system | ✅ |
+| UX-01 | Add Programmes to coach navigation structure (REQ-C-062) | Manual | 🟢 | develop | ✅ |
+
+**Outputs:**
+- docs/11_UX_PRINCIPLES.md
+- docs/12_DESIGN_SYSTEM.md
+- docs/13_SCREEN_FLOWS.md
+- tailwind.config.ts (updated with design tokens)
+- src/components/ui/ (base component library)
+
+**Rule:** Every UI prompt from A-06 onwards must reference docs/12_DESIGN_SYSTEM.md.
+**Rule:** No UI is built outside the component library. New components → add to docs/12_DESIGN_SYSTEM.md first.
 
 ---
 
@@ -133,62 +176,88 @@ First working screens. Register, log in, select roles, switch roles.
 
 | ID | Task | Agent | Risk | Branch | Status |
 |---|---|---|---|---|---|
-| A-01 | Set up Supabase Auth — email + Google + Apple | @BackendDeveloper | 🟡 | feature/auth | ⚪ |
-| A-02 | Create POST /api/auth/register route | @BackendDeveloper | 🟡 | feature/auth | ⚪ |
-| A-03 | Create POST /api/auth/roles — add role to account | @BackendDeveloper | 🟡 | feature/auth | ⚪ |
-| A-04 | Create Supabase browser client — src/lib/supabase/client.ts | @BackendDeveloper | 🟢 | feature/auth | ⚪ |
-| A-05 | Create Supabase server client — src/lib/supabase/server.ts | @BackendDeveloper | 🟢 | feature/auth | ⚪ |
+| A-01 | Set up Supabase Auth — email + Google + Apple | @BackendDeveloper | 🟡 | feature/auth | ✅ |
+| A-02 | Create POST /api/auth/register route | @BackendDeveloper | 🟡 | feature/auth | ✅ |
+| A-03 | Create POST /api/auth/roles — add role to account | @BackendDeveloper | 🟡 | feature/auth | ✅ |
+| A-04 | Create Supabase browser client — src/lib/supabase/client.ts | @BackendDeveloper | 🟢 | feature/auth | ✅ |
+| A-05 | Create Supabase server client — src/lib/supabase/server.ts | @BackendDeveloper | 🟢 | feature/auth | ✅ |
+| A-16 | Wire Supabase auth — register, login, OAuth | @BackendDeveloper | 🟡 | feature/auth | ✅ |
+| A-17 | Wire role selection to save role in Supabase | @BackendDeveloper | 🟡 | feature/auth | ✅ |
 
 ### 2B — Auth UI Design & Build
 
 | ID | Task | Agent | Risk | Branch | Status |
 |---|---|---|---|---|---|
-| A-06 | Design auth screens — sign up, log in, role selection | @UIUXDesigner | 🟢 | — | ⚪ |
-| A-07 | Plan auth component architecture | @FrontendArchitect | 🟢 | — | ⚪ |
-| A-08 | Build sign up page — src/app/(auth)/register/page.tsx | @FrontendDeveloper | 🟢 | feature/auth | ⚪ |
-| A-09 | Build log in page — src/app/(auth)/login/page.tsx | @FrontendDeveloper | 🟢 | feature/auth | ⚪ |
-| A-10 | Build role selection screen — parent / player / coach picker | @FrontendDeveloper | 🟢 | feature/auth | ⚪ |
-| A-11 | Build Terms & Conditions acceptance flow | @FrontendDeveloper | 🟢 | feature/auth | ⚪ |
-| A-12 | Build multi-role context switcher | @FrontendDeveloper | 🟡 | feature/auth | ⚪ |
+| A-06 | Design auth screens — sign up, log in, role selection | @UIUXDesigner | 🟢 | feature/auth | ✅ |
+| A-06a | Build placeholder homepage — src/app/page.tsx | @FrontendDeveloper | 🟢 | feature/auth | ✅ |
+| A-07 | Plan auth component architecture | @FrontendArchitect | 🟢 | feature/auth | ✅ |
+| A-08 | Build sign up page — src/app/(auth)/register/page.tsx | @FrontendDeveloper | 🟢 | feature/auth | ✅ |
+| A-09 | Build log in page — src/app/(auth)/login/page.tsx | @FrontendDeveloper | 🟢 | feature/auth | ✅ |
+| A-10 | Build role selection screen — parent / player / coach picker | @FrontendDeveloper | 🟢 | feature/auth | ✅ |
+| A-11 | Build Terms & Conditions acceptance flow | @FrontendDeveloper | 🟢 | feature/auth | ✅ |
+| A-12 | Build multi-role context switcher | @FrontendDeveloper | 🟡 | feature/auth | ✅ |
 
 ### 2C — Auth Tests
 
 | ID | Task | Agent | Risk | Branch | Status |
 |---|---|---|---|---|---|
-| A-13 | Unit tests — auth utility functions | @QAEngineer | 🟢 | feature/auth | ⚪ |
-| A-14 | Integration tests — register, login, role assignment | @QAEngineer | 🟢 | feature/auth | ⚪ |
-| A-15 | E2E test — sign up → role select → dashboard | @QAEngineer | 🟢 | feature/auth | ⚪ |
+| A-13 | Unit tests — auth utility functions | @QAEngineer | 🟢 | feature/auth | ✅ |
+| A-14 | Integration tests — register, login, role assignment | @QAEngineer | 🟢 | feature/auth | ✅ |
+| A-15 | E2E test — sign up → role select → dashboard | @QAEngineer | 🟢 | feature/auth | ✅ |
 
 ---
 
 ## Step 3 — Coach Module
 
-A coach can fully onboard and appear live in search.
-**UI design starts here. Always begin with @UIUXDesigner.**
+A coach can fully onboard, manage their schedule,
+bookings, programmes, earnings, and appear live in search.
 
-### 3A — Coach UI Design
+### 3A — Coach UI Design ✅ COMPLETE
+
+All 19 screens approved April 2026.
+Figma Make project: https://fluid-flow-42224954.figma.site
+Component architecture: docs/C-04_COMPONENT_ARCHITECTURE.md
 
 | ID | Task | Agent | Risk | Branch | Status |
 |---|---|---|---|---|---|
-| C-01 | Design coach onboarding flow — all steps | @UIUXDesigner | 🟢 | — | ⚪ |
-| C-02 | Design coach dashboard screen | @UIUXDesigner | 🟢 | — | ⚪ |
-| C-03 | Design availability setup screen | @UIUXDesigner | 🟢 | — | ⚪ |
-| C-04 | Plan coach component architecture | @FrontendArchitect | 🟢 | — | ⚪ |
+| C-01 | Design coach onboarding flow — 9 screens | @UIUXDesigner | 🟢 | — | ✅ |
+| C-02 | Design coach dashboard (web + mobile) | @UIUXDesigner | 🟢 | — | ✅ |
+| C-03 | Design coach ongoing screens — 8 screens + event popovers | @UIUXDesigner | 🟢 | — | ✅ |
+| C-04 | Plan coach component architecture | @FrontendArchitect | 🟢 | — | ✅ |
+
+Approved screens:
+Onboarding: dashboard web, dashboard mobile, profile,
+sports selection, availability setup, qualifications,
+booking policy, get paid, go live confirmation.
+Ongoing: availability management, bookings list,
+booking detail, programmes, earnings, profile edit,
+schedule (command centre + 4 event popovers), get paid standalone.
 
 ### 3B — Coach Backend
 
 | ID | Task | Agent | Risk | Branch | Status |
 |---|---|---|---|---|---|
-| C-05 | Create GET + POST /api/coaches/profile | @BackendDeveloper | 🟡 | feature/coach | ⚪ |
-| C-06 | Create CRUD /api/coaches/sports | @BackendDeveloper | 🟡 | feature/coach | ⚪ |
-| C-07 | Create CRUD /api/coaches/qualifications | @BackendDeveloper | 🟢 | feature/coach | ⚪ |
-| C-08 | Create CRUD /api/coaches/photos | @BackendDeveloper | 🟢 | feature/coach | ⚪ |
-| C-09 | Create CRUD /api/coaches/availability — template blocks | @BackendDeveloper | 🟡 | feature/coach | ⚪ |
-| C-10 | Create CRUD /api/coaches/blocked-dates | @BackendDeveloper | 🟢 | feature/coach | ⚪ |
+| C-05 | Create GET + POST /api/coaches/profile | @BackendDeveloper | 🟡 | feature/coach | ✅ |
+| C-06 | Create CRUD /api/coaches/sports | @BackendDeveloper | 🟡 | feature/coach | ✅ |
+| C-06b | CRUD /api/coaches/session-types — standalone routes | @BackendDeveloper | 🟢 | feature/coach | ✅ |
+| C-06c | CRUD /api/coaches/venues | @BackendDeveloper | 🟢 | feature/coach | ✅ |
+| C-06d | CRUD /api/coaches/programmes | @BackendDeveloper | 🟡 | feature/coach | ⚪ |
+| C-07 | Create CRUD /api/coaches/qualifications | @BackendDeveloper | 🟢 | feature/coach | ✅ |
+| C-08 | Create CRUD /api/coaches/photos | @BackendDeveloper | 🟢 | feature/coach | ✅ |
+| C-09 | Create CRUD /api/coaches/availability — template blocks | @BackendDeveloper | 🟡 | feature/coach | ✅ |
+| C-10 | Create CRUD /api/coaches/blocked-dates | @BackendDeveloper | 🟢 | feature/coach | ✅ |
 | C-11 | Create POST /api/payments/connect/onboard — Stripe Connect URL | @PaymentsEngineer | 🔴 | feature/coach | ⚪ |
 | C-12 | Create DBS submission route + £29.99 payment | @BackendDeveloper | 🔴 | feature/coach | ⚪ |
 
+⚠️ C-09, C-10, C-11, C-12, C-13 are BLOCKED until M-015 is complete.
+C-05, C-06, C-07, C-08 are safe to proceed without M-015.
+
 ### 3C — Coach Frontend
+
+> ⚠️ SUPERSEDED — Tasks C-13 to C-22 below are 
+> replaced by CF-01 to CF-14 in section 3C-2.
+> Do NOT work on C-13 to C-22.
+> All coach frontend work uses CF task IDs.
 
 | ID | Task | Agent | Risk | Branch | Status |
 |---|---|---|---|---|---|
@@ -202,6 +271,36 @@ A coach can fully onboard and appear live in search.
 | C-20 | Build DBS verification submission screen | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
 | C-21 | Build coach dashboard home | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
 | C-22 | Build coach profile edit screen | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
+
+### 3C-2 — Coach Frontend Build (v0 → Windsurf)
+
+Build order is strict — never skip or reorder.
+Workflow per task: Lasith shares Figma screenshot →
+Claude writes Windsurf prompt → Lasith attaches 
+screenshot + pastes prompt into Windsurf →
+Windsurf builds → review in browser → Claude marks done.
+
+Read docs/C-04_COMPONENT_ARCHITECTURE.md before 
+starting any task in this section.
+
+| ID | Task | Agent | Risk | Branch | Status |
+|---|---|---|---|---|---|
+| CF-01 | Build missing UI atoms — StatusChip, ProgressBar, Toggle, BottomSheet, Popover, EmptyState, SectionLabel | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
+| CF-02 | Build CoachSidebar, CoachBottomNav, RoleSwitcher | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
+| CF-03 | Build coach onboarding — Personal Info + Sports & Pricing | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
+| CF-04 | Build coach onboarding — Qualifications + Availability | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
+| CF-05 | Build coach onboarding — Booking Policy + Get Paid + Go Live | @FrontendDeveloper | 🟡 | feature/coach | ✅ |
+| CF-06 | Build coach dashboard (web + mobile) | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
+| CF-07 | Build availability management screen | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
+| CF-08 | Build bookings list screen | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
+| CF-09 | Build booking detail screen | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
+| CF-10 | Build programmes screen | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
+| CF-11 | Build earnings screen | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
+| CF-12 | Build profile edit screen | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
+| CF-13 | Build get paid standalone screen | @FrontendDeveloper | 🟡 | feature/coach | ✅ |
+| CF-14 | Build schedule screen — command centre | @FrontendDeveloper | 🟡 | feature/coach | ✅ |
+
+Note: CF-14 (Schedule) is the most complex screen — build last.
 
 ### 3D — Coach Tests
 
@@ -484,24 +583,23 @@ Three-sided marketplace — coaches, parents, and venues.
 
 ---
 
----
-
 ## Summary
 
 | Step | Product Phase | Task Count | Complete | Remaining |
 |---|---|---|---|---|
-| Step 0 — Foundation | All | 16 | 15 ✅ | 1 |
-| Step 1A — DevOps | Phase 1 | 8 | 0 | 8 |
-| Step 1B — Migrations | Phase 1 | 13 | 0 | 13 |
-| Step 2 — Auth | Phase 1 | 15 | 0 | 15 |
-| Step 3 — Coach | Phase 1 | 24 | 0 | 24 |
+| Step 0 — Foundation | All | 22 | 22 ✅ | 0 |
+| Step 1A — DevOps | Phase 1 | 8 | 8 | 0 |
+| Step 1B — Migrations | Phase 1 | 14 | 13 | 1 |
+| Step 1C — Design Foundation | Phase 1 | 6 | 6 | 0 |
+| Step 2 — Auth | Phase 1 | 15 | 15 | 0 |
+| Step 3 — Coach | Phase 1 | 42 | 4 | 38 |
 | Step 4 — Parent & Player | Phase 1 | 21 | 0 | 21 |
 | Step 5 — Booking & Payments | Phase 1 | 42 | 0 | 42 |
 | Step 6 — Admin | Phase 1 | 24 | 0 | 24 |
 | Step 7 — Pre-Launch | Phase 1 | 13 | 0 | 13 |
 | Step 8 — Mobile App | **Product Phase 2** | 20 | 0 | 20 |
 | Step 9 — Venues | **Product Phase 3** | 11 | 0 | 11 |
-| **Total** | | **207** | **15** | **192** |
+| **Total** | | **220** | **64** | **156** |
 
 ---
 

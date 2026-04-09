@@ -1,7 +1,8 @@
 # Crikly — Working Ethics & Collaboration Standards
 
-**Version:** 1.0
+**Version:** 1.3
 **Last Updated:** March 2026
+**Changed:** Added API stub rule — routes must be wired or explicitly labelled STUB (March 2026)
 **Maintainer:** Lasith Jayarathne
 **Review:** After each phase completion
 
@@ -162,13 +163,75 @@ Task type                    → Load these docs
 Any task (always)            → CLAUDE.md + 09_WORKING_ETHICS.md
 DB table or migration        → 03_DATABASE_SCHEMA.md
 API route or business logic  → 03_DATABASE_SCHEMA.md + 05_BUSINESS_RULES.md
-UI component or page         → 02_TECH_ARCHITECTURE.md (file structure section)
+UI component or page         → 02_TECH_ARCHITECTURE.md + docs/12_DESIGN_SYSTEM.md + docs/11_UX_PRINCIPLES.md
 Payment or Stripe work       → 05_BUSINESS_RULES.md + 06_SECURITY_COMPLIANCE.md
 Security-sensitive feature   → 06_SECURITY_COMPLIANCE.md
 New feature (any layer)      → PRD.md (relevant section only)
 Architecture decision        → 02_TECH_ARCHITECTURE.md
 Testing                      → relevant agent file + implementation file
 Multi-country expansion      → 07_FUTURE_EXPANSION.md
+```
+
+---
+
+## Design System — Non-Negotiable Rules
+
+All UI work must follow these rules. No exceptions.
+
+**Where design decisions live:**
+```
+GitHub docs/11_UX_PRINCIPLES.md  → UX rules, gestures, states, navigation, onboarding
+GitHub docs/12_DESIGN_SYSTEM.md  → Colours, typography, spacing, component specs
+GitHub docs/13_SCREEN_FLOWS.md   → All user journeys and screen inventory
+src/components/ui/               → Built components — use these, never rebuild
+```
+
+**Rules for every UI task:**
+```
+→ Read docs/12_DESIGN_SYSTEM.md before writing any UI code
+→ Read docs/11_UX_PRINCIPLES.md before designing any screen
+→ Use components from src/components/ui/ — never create duplicates
+→ New component needed? Add spec to docs/12_DESIGN_SYSTEM.md first
+→ No hardcoded hex colours — use Tailwind tokens only (brand-600, teal-50 etc.)
+→ No hardcoded sizes — use tokens (radius-md, space-4, h-btn-mobile etc.)
+→ Font: DM Sans only — already loaded in layout.tsx, do not re-import
+→ Primary colour: brand-600 (#0077CC)
+→ Trust signals (DBS badge, rating, sessions count) always visible on coach cards
+→ One primary action per screen — never two competing CTAs at equal weight
+```
+
+**Figma screenshot rule — mandatory for every v0 prompt:**
+```
+VIOLATION LOGGED: April 9 2026 — Claude wrote a v0
+prompt from memory without referencing approved
+Figma screens. This rule was added to prevent recurrence.
+
+Rule: No v0 prompt for any CF task is valid without
+the approved Figma Make screenshot attached.
+
+Process — no exceptions:
+1. Lasith takes screenshot of approved screen from
+   https://fluid-flow-42224954.figma.site
+2. Shares screenshot with Claude
+3. Claude studies every detail before writing prompt
+4. Claude prompt includes "match this design exactly"
+5. Screenshot attached in v0.dev alongside prompt
+6. v0 output verified against approved design
+   before moving to Windsurf
+
+Claude checklist — if any unchecked, STOP:
+□ Screenshot received for this specific screen?
+□ Every layout detail studied carefully?
+□ Prompt references specific visual details?
+□ "Match this design exactly" in the prompt?
+```
+
+**Sync rule:**
+```
+GitHub docs/ = single source of truth for all design decisions
+Notion       = human-readable mirror — Claude keeps updated
+Claude AI    = queries Notion for current state each session
+Windsurf     = reads GitHub docs/ before every UI task
 ```
 
 ---
@@ -242,6 +305,9 @@ Stop Windsurf immediately and bring to Claude if:
 → Business rule changes (commission rates, payout timing)
 → Adding new external dependencies (npm packages)
 → Anything that feels architecturally significant
+→ Node.js version is not 20 LTS — check with: node --version
+→ API route created as a stub with no wiring task scheduled to follow it
+→ reactCompiler: true is present in next.config.ts
 ```
 
 When in doubt — bring to Claude. It costs nothing.
@@ -547,9 +613,40 @@ refactor(auth): simplify multi-role context switcher
 
 ---
 
+## Branch Lifecycle Rule
+
+Every feature branch must be merged into `develop` before
+the next feature branch is started.
+Rule: one feature branch active at a time.
+Rule: merge to develop before opening the next branch.
+Rule: develop is always the source of truth for docs/10_BUILD_PLAN.md.
+Rule: never let a feature branch live longer than one build step.
+
+**Why this rule exists:**
+In March 2026, feature/auth and chore/design-system were left
+unmerged while new work started on develop. This caused:
+- docs/10_BUILD_PLAN.md on develop to show stale ⚪ statuses
+  for completed tasks (DS-01 to DS-05, A-13 to A-15)
+- A merge conflict when the branches were eventually merged
+- Duplicate route files surviving because cleanup on feature/auth
+  was invisible to develop
+
+**The fix at end of every Windsurf session:**
+Before closing Windsurf, always run:
+git checkout develop
+git merge feature/[current-branch] --no-ff
+git push origin develop
+
+Only THEN start the next feature branch.
+
+---
+
 ## Quality Gate — Before Any Commit
 
 ```
+□ Node version is 20 LTS (node --version shows v20.x.x)
+□ If this task creates an API route — is it wired to real data, or explicitly marked STUB with a follow-up task in the build plan?
+□ next.config.ts does NOT contain reactCompiler: true
 □ TypeScript: zero errors (npx tsc --noEmit)
 □ No `any` types introduced
 □ No console.log in production code
