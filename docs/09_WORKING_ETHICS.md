@@ -200,6 +200,32 @@ src/components/ui/               → Built components — use these, never rebui
 → One primary action per screen — never two competing CTAs at equal weight
 ```
 
+**Figma screenshot rule — mandatory for every v0 prompt:**
+```
+VIOLATION LOGGED: April 9 2026 — Claude wrote a v0
+prompt from memory without referencing approved
+Figma screens. This rule was added to prevent recurrence.
+
+Rule: No v0 prompt for any CF task is valid without
+the approved Figma Make screenshot attached.
+
+Process — no exceptions:
+1. Lasith takes screenshot of approved screen from
+   https://fluid-flow-42224954.figma.site
+2. Shares screenshot with Claude
+3. Claude studies every detail before writing prompt
+4. Claude prompt includes "match this design exactly"
+5. Screenshot attached in v0.dev alongside prompt
+6. v0 output verified against approved design
+   before moving to Windsurf
+
+Claude checklist — if any unchecked, STOP:
+□ Screenshot received for this specific screen?
+□ Every layout detail studied carefully?
+□ Prompt references specific visual details?
+□ "Match this design exactly" in the prompt?
+```
+
 **Sync rule:**
 ```
 GitHub docs/ = single source of truth for all design decisions
