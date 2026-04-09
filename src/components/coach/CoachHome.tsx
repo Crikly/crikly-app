@@ -21,7 +21,7 @@ export function CoachHome() {
     <div className="flex flex-1 min-h-screen">
       {/* Main content — left/center */}
       <div className="flex-1 flex justify-center">
-        <div className="w-full max-w-[800px] flex flex-col gap-6 md:gap-8 p-5 md:p-10 pb-28 md:pb-10 bg-white rounded-t-3xl md:rounded-none mt-2 md:mt-0">
+        <div className="w-full flex flex-col gap-6 md:gap-8 p-5 md:p-10 pb-28 md:pb-10 bg-white">
         
         {/* Mobile Top Bar */}
         <div className="flex justify-between items-center md:hidden mb-2">
