@@ -1,5 +1,12 @@
-import { CoachDashboard } from '@/components/coach/dashboard/CoachDashboard'
+'use client'
+
+import { CoachShell } from '@/components/coach/CoachShell'
+import { CoachHome } from '@/components/coach/CoachHome'
 
 export default function CoachDashboardPage() {
-  return <CoachDashboard />
+  return (
+    <CoachShell activeItem="home">
+      <CoachHome />
+    </CoachShell>
+  )
 }
