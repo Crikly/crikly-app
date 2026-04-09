@@ -135,7 +135,7 @@ export function CoachDashboard() {
               {profileExpanded && (
                 <div className="px-4 pb-4 pt-1 border-t border-amber-200/40 bg-amber-50/50">
                   <ul className="flex flex-col gap-3 mt-2">
-                    <ProfileChecklistItem title="Basic profile" completed={true} />
+                    <ProfileChecklistItem title="Basic profile" completed={true} onNavigate={() => router.push('/coach/onboarding/profile')} />
                     <ProfileChecklistItem title="Sport & pricing" completed={false} onNavigate={() => router.push('/coach/onboarding/pricing')} />
                     <ProfileChecklistItem title="Qualifications" completed={false} onNavigate={() => router.push('/coach/onboarding/qualifications')} />
                     <ProfileChecklistItem title="Availability" completed={false} onNavigate={() => router.push('/coach/onboarding/availability')} />
