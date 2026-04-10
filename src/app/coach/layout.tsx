@@ -7,6 +7,7 @@ import {
   TrendingUp, CreditCard, Settings, Share2,
   MoreHorizontal, X, Copy, QrCode, Mail
 } from 'lucide-react'
+import { CoachRightPanel } from '@/components/coach/CoachRightPanel'
 
 const avatarUrl = "https://images.unsplash.com/photo-1741363863033-2d68f0bd9fde?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxpbmRpYW4lMjBtYW4lMjBzbWlsaW5nJTIwcG9ydHJhaXR8ZW58MXx8fHwxNzc1NDg3OTc5fDA&ixlib=rb-4.1.0&q=80&w=1080"
 
@@ -23,6 +24,8 @@ export default function CoachLayout({
     (path !== '/coach/dashboard' && pathname.startsWith(path))
 
   const nav = (path: string) => router.push(path)
+
+  const showRightPanel = !pathname.startsWith('/coach/schedule')
 
   return (
     <div
@@ -90,6 +93,9 @@ export default function CoachLayout({
       <main className="flex-1 min-h-screen overflow-y-auto relative">
         {children}
       </main>
+
+      {/* Right Panel — hidden on schedule page */}
+      {showRightPanel && <CoachRightPanel />}
 
       {/* Mobile Bottom Nav — stays mounted always */}
       <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 pb-6 pt-3 px-6 flex justify-between items-center z-50 shadow-[0_-10px_40px_rgba(0,0,0,0.04)]">

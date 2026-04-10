@@ -300,7 +300,7 @@ export function AvailabilityManagement() {
       </div>
 
       {activeTab === 'schedule' && (
-        <div className="fixed bottom-0 right-0 lg:left-[288px] left-0 bg-white/90 backdrop-blur-md border-t border-gray-100 p-5 flex justify-center z-50 shadow-[0_-10px_40px_rgba(0,0,0,0.04)]">
+        <div className="fixed bottom-0 left-0 lg:left-[288px] right-0 bg-white/90 backdrop-blur-md border-t border-gray-100 p-5 flex justify-center z-40 shadow-[0_-10px_40px_rgba(0,0,0,0.04)]">
           <div className="w-full max-w-[640px]">
             <button className="w-full py-4 bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-xl font-bold text-[16px] transition-colors shadow-sm">Save changes</button>
           </div>
