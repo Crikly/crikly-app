@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { ChevronRight, MapPin, Star, PoundSterling } from 'lucide-react'
 
 export function CoachRightPanel() {
@@ -88,7 +89,7 @@ function TodayLineup({ isDesktop }: { isDesktop?: boolean }) {
 
 function YourRatingCard() {
   return (
-    <div className="bg-gray-50 rounded-[10px] p-[14px] flex flex-col gap-3">
+    <Link href="/coach/profile#reviews" className="bg-gray-50 rounded-[10px] p-[14px] flex flex-col gap-3 cursor-pointer hover:border hover:border-gray-300 hover:scale-[1.01] transition-all duration-150">
       <div className="flex items-center gap-2">
         <Star size={16} className="text-amber-400" fill="currentColor" />
         <span className="text-sm font-semibold text-gray-900">Your Rating</span>
@@ -107,13 +108,13 @@ function YourRatingCard() {
           "Ravi is an excellent coach! My son has improved..." — Sarah M.
         </p>
       </div>
-    </div>
+    </Link>
   )
 }
 
 function TotalEarningsCard() {
   return (
-    <div className="bg-gray-50 rounded-[10px] p-[14px] flex flex-col gap-3">
+    <Link href="/coach/earnings" className="bg-gray-50 rounded-[10px] p-[14px] flex flex-col gap-3 cursor-pointer hover:border hover:border-gray-300 hover:scale-[1.01] transition-all duration-150">
       <div className="flex items-center gap-2">
         <PoundSterling size={16} className="text-[#0077CC]" />
         <span className="text-sm font-semibold text-gray-900">Total Earnings</span>
@@ -139,6 +140,6 @@ function TotalEarningsCard() {
         <div className="flex-1 bg-gray-200 rounded-sm" style={{ height: '45%' }}></div>
       </div>
       <p className="text-[10px] text-gray-400 mt-1">7 days</p>
-    </div>
+    </Link>
   )
 }

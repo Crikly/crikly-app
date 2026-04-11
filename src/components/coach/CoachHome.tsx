@@ -2,6 +2,7 @@
 
 import React from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { 
   Clock, MapPin, Star, TrendingUp, AlertCircle, 
   ChevronRight, PoundSterling, Check, Calendar, Plus
@@ -87,7 +88,7 @@ export function CoachHome() {
               </div>
             </div>
             {profileExpanded && (
-              <div className="px-4 pb-4 pt-1 border-t border-blue-200/40 bg-blue-50/50">
+              <div className="px-4 pb-4 pt-1 border-t border-gray-200/40 bg-gray-50">
                 <ul className="flex flex-col gap-3 mt-2">
                   <ProfileChecklistItem title="Basic profile" completed={true} onNavigate={() => router.push('/coach/onboarding/profile')} />
                   <ProfileChecklistItem title="Sport & pricing" completed={false} onNavigate={() => router.push('/coach/onboarding/pricing')} />
@@ -168,35 +169,36 @@ export function CoachHome() {
 
         {/* CHANGE 7: Removed Earnings and Rating cards - now in right panel */}
         {/* CHANGE 8: Weekly Overview 4-stat row */}
+        {/* FIX 1: Clickable cards with Link */}
         <section className="flex flex-col gap-3 mt-2 md:mt-0">
           <h2 className="text-base font-semibold text-gray-900">Weekly Overview</h2>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <div className="bg-white border border-gray-100 rounded-[10px] p-4 flex flex-col gap-1">
+            <Link href="/coach/schedule" className="bg-white border border-gray-100 rounded-[10px] p-4 flex flex-col gap-1 cursor-pointer hover:border-gray-300 hover:scale-[1.01] transition-all duration-150">
               <Calendar size={16} className="text-[#0077CC] mb-1" />
               <p className="text-xs text-gray-500">Sessions this week</p>
               <p className="text-2xl font-medium text-gray-900">12</p>
-            </div>
-            <div className="bg-white border border-gray-100 rounded-[10px] p-4 flex flex-col gap-1">
+            </Link>
+            <Link href="/coach/bookings?tab=pending" className="bg-white border border-gray-100 rounded-[10px] p-4 flex flex-col gap-1 cursor-pointer hover:border-gray-300 hover:scale-[1.01] transition-all duration-150">
               <Clock size={16} className="text-amber-600 mb-1" />
               <p className="text-xs text-gray-500">Bookings pending</p>
               <div className="flex items-baseline gap-2">
                 <p className="text-2xl font-medium text-gray-900">3</p>
                 <span className="text-[11px] font-medium text-amber-600">+2 new</span>
               </div>
-            </div>
-            <div className="bg-white border border-gray-100 rounded-[10px] p-4 flex flex-col gap-1">
+            </Link>
+            <Link href="/coach/earnings" className="bg-white border border-gray-100 rounded-[10px] p-4 flex flex-col gap-1 cursor-pointer hover:border-gray-300 hover:scale-[1.01] transition-all duration-150">
               <PoundSterling size={16} className="text-green-600 mb-1" />
               <p className="text-xs text-gray-500">Revenue this week</p>
               <div className="flex items-baseline gap-2">
                 <p className="text-2xl font-medium text-gray-900">£520</p>
                 <span className="text-[11px] font-medium text-green-600">+15%</span>
               </div>
-            </div>
-            <div className="bg-white border border-gray-100 rounded-[10px] p-4 flex flex-col gap-1">
+            </Link>
+            <Link href="/coach/bookings?tab=past" className="bg-white border border-gray-100 rounded-[10px] p-4 flex flex-col gap-1 cursor-pointer hover:border-gray-300 hover:scale-[1.01] transition-all duration-150">
               <Check size={16} className="text-[#0077CC] mb-1" />
               <p className="text-xs text-gray-500">Completion rate</p>
               <p className="text-2xl font-medium text-gray-900">98%</p>
-            </div>
+            </Link>
           </div>
         </section>
 
@@ -300,11 +302,11 @@ function ProfileChecklistItem({ title, completed, onNavigate }: { title: string;
     <li onClick={onNavigate} className="flex items-center justify-between group cursor-pointer hover:opacity-80 transition-opacity">
       <div className="flex items-center gap-3 text-[14px]">
         {completed ? (
-          <div className="w-[18px] h-[18px] rounded-full bg-[#0077CC] text-white flex items-center justify-center shrink-0"><Check size={12} strokeWidth={3} /></div>
+          <div className="w-[18px] h-[18px] rounded-full bg-green-600 text-white flex items-center justify-center shrink-0"><Check size={12} strokeWidth={3} /></div>
         ) : (
-          <div className="w-[18px] h-[18px] rounded-full border-[2px] border-amber-300 group-hover:border-amber-500 transition-colors shrink-0"></div>
+          <div className="w-[18px] h-[18px] rounded-full border-[2px] border-amber-400 group-hover:border-amber-500 transition-colors shrink-0"></div>
         )}
-        <span className={`font-medium transition-colors ${completed ? 'text-gray-600' : 'text-amber-900'}`}>{title}</span>
+        <span className={`font-medium transition-colors ${completed ? 'text-gray-900' : 'text-gray-700'}`}>{title}</span>
       </div>
       {!completed && <ChevronRight size={14} className="text-amber-600/60 opacity-0 group-hover:opacity-100 transition-opacity" />}
     </li>
