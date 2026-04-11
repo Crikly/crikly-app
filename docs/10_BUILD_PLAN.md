@@ -1,8 +1,8 @@
 # Crikly — Comprehensive Build Plan
 
-**Version:** 2.1
+**Version:** 2.2
 **Last Updated:** April 2026
-**Changed:** Step 3A marked complete (19 screens approved). Added CF-01 to CF-14 coach frontend build tasks.
+**Changed:** Step 3C coach frontend complete (CF-SHELL through CF-14 + Fix-08, Fix-09, Fix-10a). Added 3D screen review phase (CF-D01 to CF-D10).
 **This is the single source of truth for every task in the project.**
 
 ---
@@ -252,57 +252,52 @@ schedule (command centre + 4 event popovers), get paid standalone.
 ⚠️ C-09, C-10, C-11, C-12, C-13 are BLOCKED until M-015 is complete.
 C-05, C-06, C-07, C-08 are safe to proceed without M-015.
 
-### 3C — Coach Frontend
-
-> ⚠️ SUPERSEDED — Tasks C-13 to C-22 below are 
-> replaced by CF-01 to CF-14 in section 3C-2.
-> Do NOT work on C-13 to C-22.
-> All coach frontend work uses CF task IDs.
+### 3C — Coach Frontend (CF tasks — all complete)
 
 | ID | Task | Agent | Risk | Branch | Status |
 |---|---|---|---|---|---|
-| C-13 | Build onboarding step 1 — name, photo, bio, location | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
-| C-14 | Build onboarding step 2 — sports, pricing, session types, skill levels | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
-| C-15 | Build onboarding step 3 — qualifications (structured + free text) | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
-| C-16 | Build onboarding step 4 — availability (multiple blocks per day, week preview) | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
-| C-17 | Build onboarding step 5 — blocked dates | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
-| C-18 | Build onboarding step 6 — cancellation policy + booking window (min/max) | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
-| C-19 | Build Stripe Connect onboarding redirect | @FrontendDeveloper | 🔴 | feature/coach | ⚪ |
-| C-20 | Build DBS verification submission screen | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
-| C-21 | Build coach dashboard home | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
-| C-22 | Build coach profile edit screen | @FrontendDeveloper | 🟢 | feature/coach | ⚪ |
+| CF-SHELL | Coach layout shell — sidebar, right panel, routing | @FrontendDeveloper | 🟢 | feature/coach-frontend | ✅ |
+| CF-01 | Dashboard home screen | @FrontendDeveloper | 🟢 | feature/coach-frontend | ✅ |
+| CF-02 | Schedule screen | @FrontendDeveloper | 🟢 | feature/coach-frontend | ✅ |
+| CF-03 | Bookings list screen | @FrontendDeveloper | 🟢 | feature/coach-frontend | ✅ |
+| CF-04 | Booking Detail screen | @FrontendDeveloper | 🟢 | feature/coach-frontend | ✅ |
+| CF-05 | Programmes screen | @FrontendDeveloper | 🟢 | feature/coach-frontend | ✅ |
+| CF-06 | Availability screen | @FrontendDeveloper | 🟢 | feature/coach-frontend | ✅ |
+| CF-07 | Profile Hub screen | @FrontendDeveloper | 🟢 | feature/coach-frontend | ✅ |
+| CF-08 | Earnings screen | @FrontendDeveloper | 🟢 | feature/coach-frontend | ✅ |
+| CF-09 | Get Paid screen | @FrontendDeveloper | 🟢 | feature/coach-frontend | ✅ |
+| CF-10 | Onboarding — Your Profile step | @FrontendDeveloper | 🟢 | feature/coach-frontend | ✅ |
+| CF-11 | Onboarding — Sports You Coach step | @FrontendDeveloper | 🟢 | feature/coach-frontend | ✅ |
+| CF-12 | Onboarding — Sport & Pricing step | @FrontendDeveloper | � | feature/coach-frontend | ✅ |
+| CF-13 | Onboarding — Qualifications step | @FrontendDeveloper | 🟢 | feature/coach-frontend | ✅ |
+| CF-14 | Onboarding — Booking Policy step | @FrontendDeveloper | 🟢 | feature/coach-frontend | ✅ |
+| Fix-08 | Remove dashboard max-width cap | @FrontendDeveloper | 🟢 | feature/coach-frontend | ✅ |
+| Fix-09 | Wider columns, 5-option share modal, removed back buttons, right panel on all screens | @FrontendDeveloper | 🟢 | feature/coach-frontend | ✅ |
+| Fix-10a | Right panel visibility rules (hidden on Schedule) + sticky save bar full-bleed right | @FrontendDeveloper | 🟢 | develop | ✅ |
 
-### 3C-2 — Coach Frontend Build (v0 → Windsurf)
+### 3D — Screen Review & Polish (CF-D tasks)
 
-Build order is strict — never skip or reorder.
-Workflow per task: Lasith shares Figma screenshot →
-Claude writes Windsurf prompt → Lasith attaches 
-screenshot + pastes prompt into Windsurf →
-Windsurf builds → review in browser → Claude marks done.
-
-Read docs/C-04_COMPONENT_ARCHITECTURE.md before 
-starting any task in this section.
+These tasks adjust existing built screens based on Lasith's screen-by-screen review.
+All tasks commit directly to develop branch. One task per screen. No code changes to
+other screens within the same task.
 
 | ID | Task | Agent | Risk | Branch | Status |
 |---|---|---|---|---|---|
-| CF-01 | Build missing UI atoms — StatusChip, ProgressBar, Toggle, BottomSheet, Popover, EmptyState, SectionLabel | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
-| CF-02 | Build CoachSidebar, CoachBottomNav, RoleSwitcher | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
-| CF-03 | Build coach onboarding — Personal Info + Sports & Pricing | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
-| CF-04 | Build coach onboarding — Qualifications + Availability | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
-| CF-05 | Build coach onboarding — Booking Policy + Get Paid + Go Live | @FrontendDeveloper | 🟡 | feature/coach | ✅ |
-| CF-06 | Build coach dashboard (web + mobile) | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
-| CF-07 | Build availability management screen | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
-| CF-08 | Build bookings list screen | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
-| CF-09 | Build booking detail screen | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
-| CF-10 | Build programmes screen | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
-| CF-11 | Build earnings screen | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
-| CF-12 | Build profile edit screen | @FrontendDeveloper | 🟢 | feature/coach | ✅ |
-| CF-13 | Build get paid standalone screen | @FrontendDeveloper | 🟡 | feature/coach | ✅ |
-| CF-14 | Build schedule screen — command centre | @FrontendDeveloper | 🟡 | feature/coach | ✅ |
+| CF-R01 | Redesign Dashboard — Track 1 priority (deferred — keeping existing design) | Manual | 🟢 | — | ⚪ |
+| CF-R02 | Redesign Bookings list — Track 1 priority (deferred) | Manual | 🟢 | — | ⚪ |
+| CF-R03 | Redesign You're Live! — Track 1 priority (deferred) | Manual | 🟢 | — | ⚪ |
+| CF-D01 | Dashboard screen adjustments — 10 changes (see Notion CF-D01 for full list) | @FrontendDeveloper | � | develop | ⚪ |
+| CF-D02 | Schedule screen adjustments | @FrontendDeveloper | 🟢 | develop | ⚪ |
+| CF-D03 | Bookings list screen adjustments | @FrontendDeveloper | 🟢 | develop | ⚪ |
+| CF-D04 | Booking Detail screen adjustments | @FrontendDeveloper | 🟢 | develop | ⚪ |
+| CF-D05 | Programmes screen adjustments | @FrontendDeveloper | 🟢 | develop | ⚪ |
+| CF-D06 | Availability screen adjustments | @FrontendDeveloper | 🟢 | develop | ⚪ |
+| CF-D07 | Profile Hub screen adjustments | @FrontendDeveloper | 🟢 | develop | ⚪ |
+| CF-D08 | Earnings screen adjustments | @FrontendDeveloper | 🟢 | develop | ⚪ |
+| CF-D09 | Get Paid screen adjustments | @FrontendDeveloper | � | develop | ⚪ |
+| CF-D10 | Onboarding screens adjustments — all 6 steps + You're Live | @FrontendDeveloper | � | develop | ⚪ |
 
-Note: CF-14 (Schedule) is the most complex screen — build last.
-
-### 3D — Coach Tests
+### 3E — Coach Tests
 
 | ID | Task | Agent | Risk | Branch | Status |
 |---|---|---|---|---|---|
@@ -624,5 +619,5 @@ Notion: https://www.notion.so/b288473c2a4f47ebad99bf6bf3f7b041
 
 ---
 
-*Crikly Build Plan v2.0 — March 2026*
+*Crikly Build Plan v2.2 — April 2026*
 *207 tasks across all 3 phases. Follow in order. No skipping. No guessing.*
