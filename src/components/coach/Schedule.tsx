@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { ChevronLeft, ChevronRight, Plus, Check, User, RefreshCw, Users, Ban } from 'lucide-react'
 
 interface EventBlockProps {
@@ -13,39 +14,69 @@ interface EventBlockProps {
 }
 
 function EventBlock({ top, height, type, title, subtitle }: EventBlockProps) {
+  const router = useRouter()
   let bgClass = ''
   let textClass = 'text-white'
   let borderClass = ''
+  let leftBorderClass = ''
   let extraStyles: React.CSSProperties = {}
 
+  // CHANGE 3: Left border accent by status
   switch (type) {
     case 'confirmed':
-      bgClass = 'bg-[#0077CC]'
+      bgClass = 'bg-blue-100'
+      textClass = 'text-blue-900'
+      leftBorderClass = 'border-l-[3px] border-l-blue-500'
       break
     case 'programme':
-      bgClass = 'bg-[#7C3AED]'
+      bgClass = 'bg-purple-100'
+      textClass = 'text-purple-900'
+      leftBorderClass = 'border-l-[3px] border-l-purple-600'
       break
     case 'pending':
-      bgClass = 'bg-[#F59E0B]'
+      bgClass = 'bg-amber-100'
+      textClass = 'text-amber-900'
+      leftBorderClass = 'border-l-[3px] border-l-amber-400'
       break
     case 'blocked':
-      bgClass = 'bg-[#9CA3AF]'
-      extraStyles = { backgroundImage: 'repeating-linear-gradient(45deg, rgba(255,255,255,0.2), rgba(255,255,255,0.2) 8px, transparent 8px, transparent 16px)' }
+      // CHANGE 5: Lighter blocked state
+      bgClass = ''
+      textClass = 'text-gray-400'
+      extraStyles = { backgroundImage: 'repeating-linear-gradient(45deg, #F4F3F0, #F4F3F0 4px, #ECEAE6 4px, #ECEAE6 8px)' }
       break
     case 'available':
-      bgClass = 'bg-gray-50'
-      textClass = 'text-gray-500'
-      borderClass = 'border-2 border-dashed border-gray-200'
+      // CHANGE 4: Opportunity treatment for available slots
+      bgClass = 'bg-[#E8F5F0]'
+      textClass = 'text-[#0F6E56]'
+      borderClass = 'border border-dashed border-[#1D9E75] hover:border-solid hover:bg-[#F0FAF6] cursor-pointer'
       break
+  }
+
+  // CHANGE 4: Available slot click handler
+  const handleAvailableClick = () => {
+    if (type === 'available') {
+      // TODO CF-D02: wire Add session slot to availability or session creation flow
+      router.push('/coach/availability')
+    }
   }
 
   return (
     <div
-      className={`absolute left-1 right-1 rounded-md p-2 overflow-hidden shadow-sm flex flex-col justify-start ${bgClass} ${textClass} ${borderClass}`}
+      className={`session-card absolute left-1 right-1 rounded-lg p-2 overflow-visible flex flex-col justify-start group ${bgClass} ${textClass} ${borderClass} ${leftBorderClass}`}
       style={{ top: `${top}px`, height: `${height}px`, ...extraStyles }}
+      onClick={handleAvailableClick}
     >
-      <div className="text-[12px] font-bold leading-tight truncate">{title}</div>
-      {subtitle && <div className="text-[11px] leading-tight opacity-90 truncate mt-0.5">{subtitle}</div>}
+      {/* CHANGE 3: Hover quick actions */}
+      {type !== 'available' && type !== 'blocked' && (
+        <div className="quick-actions absolute top-1 right-1 flex gap-1 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity duration-150">
+          <button onClick={() => {/* TODO CF-D02: wire View quick action */}} className="text-[8px] px-1 py-0.5 rounded-sm bg-white/75" style={{ color: 'inherit' }}>View</button>
+          <button onClick={() => {/* TODO CF-D02: wire Message quick action */}} className="text-[8px] px-1 py-0.5 rounded-sm bg-white/75" style={{ color: 'inherit' }}>Msg</button>
+        </div>
+      )}
+      {/* CHANGE 3: Typography refinement */}
+      <div className="text-[10px] font-medium leading-tight truncate">{type === 'available' ? '+ Add session' : title}</div>
+      {subtitle && type !== 'available' && <div className="text-[9px] leading-tight truncate mt-0.5" style={{ opacity: 0.75 }}>{subtitle}</div>}
+      {type === 'blocked' && <div className="text-[9px] text-center mt-1">{title}</div>}
     </div>
   )
 }
@@ -79,60 +110,61 @@ export function Schedule() {
 
         {/* LEFT COLUMN */}
         <div className="flex-1 lg:w-[65%] flex flex-col">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-4">
-            <h1 className="text-[28px] font-bold text-gray-900 tracking-tight">Schedule</h1>
-            <div className="flex items-center gap-4">
-              <div className="flex bg-white border border-gray-200 rounded-full p-1 shadow-sm">
-                <button className="px-4 py-1.5 rounded-full text-[14px] font-medium text-gray-600 hover:bg-gray-50">Day</button>
-                <button className="px-4 py-1.5 rounded-full text-[14px] font-bold bg-[#0077CC] text-white shadow-sm">Week</button>
-                <button className="px-4 py-1.5 rounded-full text-[14px] font-medium text-gray-600 hover:bg-gray-50">Month</button>
+          {/* CHANGE 1: Unified header control row */}
+          <div className="bg-white border-b border-gray-100 pb-3 mb-4">
+            {/* ROW 1 */}
+            <div className="flex items-start justify-between mb-2 px-5 pt-4">
+              <div>
+                <h1 className="text-[20px] font-medium text-gray-900">Schedule</h1>
+                <p className="text-[14px] text-gray-500 mt-0.5">8 – 14 April 2026 · <span className="text-[#0077CC] font-medium">6 sessions this week</span></p>
               </div>
               <div className="flex items-center gap-2">
-                <button className="px-4 py-1.5 border border-gray-200 rounded-md text-[14px] font-bold text-gray-700 hover:bg-gray-50 shadow-sm">Today</button>
-                <div className="flex border border-gray-200 rounded-md shadow-sm">
-                  <button className="p-1.5 border-r border-gray-200 hover:bg-gray-50 text-gray-600"><ChevronLeft size={20} /></button>
-                  <button className="p-1.5 hover:bg-gray-50 text-gray-600"><ChevronRight size={20} /></button>
+                <div className="flex bg-white border border-gray-200 rounded-full p-1">
+                  <button className="px-3 py-1 rounded-full text-[12px] font-medium text-gray-600 hover:bg-gray-50">Day</button>
+                  <button className="px-3 py-1 rounded-full text-[12px] font-medium bg-[#0077CC] text-white">Week</button>
+                  <button className="px-3 py-1 rounded-full text-[12px] font-medium text-gray-600 hover:bg-gray-50">Month</button>
+                </div>
+                <button className="px-3 py-1 border border-gray-200 rounded-md text-[12px] font-medium text-gray-700 hover:bg-gray-50 h-[30px]">Today</button>
+                <div className="flex border border-gray-200 rounded-md">
+                  <button className="w-7 h-7 flex items-center justify-center border-r border-gray-200 hover:bg-gray-50 text-gray-600"><ChevronLeft size={16} /></button>
+                  <button className="w-7 h-7 flex items-center justify-center hover:bg-gray-50 text-gray-600"><ChevronRight size={16} /></button>
                 </div>
               </div>
             </div>
-          </div>
-
-          <div className="mb-4">
-            <h2 className="text-[18px] font-medium text-gray-500">8 – 14 April 2026</h2>
-            <p className="text-[14px] text-gray-400 mt-0.5">6 sessions this week</p>
-          </div>
-
-          <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 mb-6">
-            <div className="flex items-center gap-3">
-              <span className="text-[13px] font-medium text-gray-500">Showing:</span>
-              <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#EFF6FF] border border-[#0077CC] text-[#0077CC] text-[13px] font-bold hover:bg-[#E0F0FE] transition-colors">
-                🏏 Cricket <Check size={14} strokeWidth={3} />
-              </button>
-              <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#EFF6FF] border border-[#0077CC] text-[#0077CC] text-[13px] font-bold hover:bg-[#E0F0FE] transition-colors">
-                ⚽ Football <Check size={14} strokeWidth={3} />
-              </button>
-            </div>
-            <div className="flex flex-wrap items-center gap-4 sm:gap-6">
-              <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-sm bg-[#0077CC]" /><span className="text-[13px] text-gray-600 font-medium">Confirmed</span></div>
-              <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-sm bg-[#7C3AED]" /><span className="text-[13px] text-gray-600 font-medium">Programme</span></div>
-              <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-sm bg-[#F59E0B]" /><span className="text-[13px] text-gray-600 font-medium">Pending</span></div>
+            {/* ROW 2 */}
+            <div className="flex items-center justify-between px-5 pt-2">
               <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-sm bg-[#9CA3AF] relative overflow-hidden">
-                  <div className="absolute inset-0" style={{ backgroundImage: 'repeating-linear-gradient(45deg, rgba(255,255,255,0.4), rgba(255,255,255,0.4) 4px, transparent 4px, transparent 8px)' }} />
-                </div>
-                <span className="text-[13px] text-gray-600 font-medium">Blocked</span>
+                <button className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-800 text-[11px] font-medium hover:bg-blue-100 transition-colors">
+                  🏏 Cricket <Check size={12} strokeWidth={3} />
+                </button>
+                <button className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-green-50 border border-green-200 text-green-800 text-[11px] font-medium hover:bg-green-100 transition-colors">
+                  ⚽ Football <Check size={12} strokeWidth={3} />
+                </button>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-sm bg-blue-500" /><span className="text-[10px] text-gray-500">Confirmed</span></div>
+                <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-sm bg-purple-600" /><span className="text-[10px] text-gray-500">Programme</span></div>
+                <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-sm bg-amber-400" /><span className="text-[10px] text-gray-500">Pending</span></div>
+                <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-sm bg-gray-300" /><span className="text-[10px] text-gray-500">Blocked</span></div>
               </div>
             </div>
           </div>
 
           {/* Week Grid */}
           <div className="border border-gray-200 rounded-xl overflow-hidden flex flex-col bg-white shadow-sm relative h-[700px] shrink-0">
+            {/* CHANGE 2: Today column treatment */}
             <div className="flex border-b border-gray-200 bg-gray-50/50 relative z-20">
               <div className="w-16 shrink-0 border-r border-gray-200" />
               {days.map((day, idx) => (
-                <div key={idx} className={`flex-1 py-3 text-center border-r last:border-r-0 border-gray-200 ${day.isToday ? 'bg-[#EFF6FF]' : ''}`}>
-                  <div className={`text-[13px] font-bold uppercase tracking-wider ${day.isToday ? 'text-[#0077CC]' : 'text-gray-500'}`}>{day.name}</div>
-                  <div className={`text-[24px] font-light leading-tight mt-1 ${day.isToday ? 'text-[#0077CC] font-medium' : 'text-gray-900'}`}>{day.date}</div>
+                <div key={idx} className={`flex-1 py-3 text-center border-r last:border-r-0 border-gray-200 ${day.isToday ? 'bg-[#EFF7FF]' : ''}`}>
+                  <div className={`text-[11px] font-bold uppercase tracking-wider ${day.isToday ? 'text-[#0077CC]' : 'text-gray-500'}`}>{day.name}</div>
+                  {day.isToday ? (
+                    <div className="flex justify-center mt-1">
+                      <div className="w-7 h-7 rounded-full bg-[#0077CC] text-white flex items-center justify-center text-[14px] font-medium">{day.date}</div>
+                    </div>
+                  ) : (
+                    <div className="text-[20px] font-light leading-tight mt-1 text-gray-900">{day.date}</div>
+                  )}
                 </div>
               ))}
             </div>
@@ -146,7 +178,7 @@ export function Schedule() {
                         <span className="text-[12px] text-gray-400 font-medium bg-white">{hour.toString().padStart(2, '0')}:00</span>
                       </div>
                       {days.map((day, idx) => (
-                        <div key={idx} className={`flex-1 border-r last:border-r-0 border-gray-100 ${day.isToday ? 'bg-[#EFF6FF]/30' : ''}`} />
+                        <div key={idx} className={`flex-1 border-r last:border-r-0 border-gray-100 ${day.isToday ? 'bg-[#EFF7FF]' : ''}`} />
                       ))}
                     </div>
                   ))}
@@ -262,13 +294,14 @@ export function Schedule() {
           </div>
         </div>
 
-        {/* FAB */}
+        {/* CHANGE 7: FAB refined proportions */}
         <button
           onClick={() => setIsAddModalOpen(true)}
-          className="fixed bottom-8 right-8 bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-full pl-3 pr-5 py-3 shadow-lg flex items-center gap-2 transition-transform hover:scale-105 group z-40"
+          className="fixed bottom-8 right-8 bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-full px-5 py-2.5 flex items-center gap-2 transition-colors z-40"
+          style={{ boxShadow: '0 2px 8px rgba(0,119,204,0.25)' }}
         >
-          <div className="bg-white/20 rounded-full p-1"><Plus size={20} className="text-white" strokeWidth={3} /></div>
-          <span className="text-[15px] font-bold tracking-wide">Add to schedule</span>
+          <Plus size={16} className="text-white" strokeWidth={2.5} />
+          <span className="text-[13px] font-medium">Add to schedule</span>
         </button>
       </div>
 
