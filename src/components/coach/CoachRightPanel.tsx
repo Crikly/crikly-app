@@ -1,12 +1,14 @@
 'use client'
 
-import { ChevronRight, MapPin, Check } from 'lucide-react'
+import { ChevronRight, MapPin, Star, PoundSterling } from 'lucide-react'
 
 export function CoachRightPanel() {
   return (
     <aside className="hidden xl:flex w-96 shrink-0 flex-col gap-10 bg-white p-8 sticky top-0 h-screen overflow-y-auto border-l border-gray-100">
       <ThisWeekStrip isDesktop />
       <TodayLineup isDesktop />
+      <YourRatingCard />
+      <TotalEarningsCard />
     </aside>
   )
 }
@@ -80,6 +82,63 @@ function TodayLineup({ isDesktop }: { isDesktop?: boolean }) {
           </div>
         ))}
       </div>
+    </div>
+  )
+}
+
+function YourRatingCard() {
+  return (
+    <div className="bg-gray-50 rounded-[10px] p-[14px] flex flex-col gap-3">
+      <div className="flex items-center gap-2">
+        <Star size={16} className="text-amber-400" fill="currentColor" />
+        <span className="text-sm font-semibold text-gray-900">Your Rating</span>
+      </div>
+      <div className="flex flex-col gap-1">
+        <p className="text-[28px] font-bold text-gray-900">4.8</p>
+        <p className="text-[13px] text-gray-500">Based on 42 reviews</p>
+      </div>
+      <div className="flex gap-1">
+        {[1,2,3,4,5].map(i => (
+          <Star key={i} size={14} className="text-amber-400" fill="currentColor" />
+        ))}
+      </div>
+      <div className="border-l-2 border-gray-200 pl-3 mt-2">
+        <p className="text-xs italic text-gray-500 leading-relaxed">
+          "Ravi is an excellent coach! My son has improved..." — Sarah M.
+        </p>
+      </div>
+    </div>
+  )
+}
+
+function TotalEarningsCard() {
+  return (
+    <div className="bg-gray-50 rounded-[10px] p-[14px] flex flex-col gap-3">
+      <div className="flex items-center gap-2">
+        <PoundSterling size={16} className="text-[#0077CC]" />
+        <span className="text-sm font-semibold text-gray-900">Total Earnings</span>
+      </div>
+      <div className="flex flex-col gap-1">
+        <p className="text-[28px] font-bold text-gray-900">£1,240</p>
+        <div className="flex items-center justify-between text-xs">
+          <span className="text-gray-500">vs last month</span>
+          <span className="text-green-600 font-medium">+12%</span>
+        </div>
+        <div className="flex items-center justify-between text-xs mt-1">
+          <span className="text-gray-500">Upcoming this week</span>
+          <span className="text-gray-500 font-medium">£320</span>
+        </div>
+      </div>
+      <div className="flex items-end gap-1 h-9">
+        <div className="flex-1 bg-gray-200 rounded-sm" style={{ height: '40%' }}></div>
+        <div className="flex-1 bg-gray-200 rounded-sm" style={{ height: '55%' }}></div>
+        <div className="flex-1 bg-gray-200 rounded-sm" style={{ height: '70%' }}></div>
+        <div className="flex-1 bg-[#0077CC] rounded-sm" style={{ height: '90%' }}></div>
+        <div className="flex-1 bg-gray-200 rounded-sm" style={{ height: '50%' }}></div>
+        <div className="flex-1 bg-gray-200 rounded-sm" style={{ height: '60%' }}></div>
+        <div className="flex-1 bg-gray-200 rounded-sm" style={{ height: '45%' }}></div>
+      </div>
+      <p className="text-[10px] text-gray-400 mt-1">7 days</p>
     </div>
   )
 }

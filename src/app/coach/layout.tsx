@@ -29,7 +29,7 @@ export default function CoachLayout({
 
   return (
     <div
-      className="min-h-screen bg-white text-gray-900 flex w-full"
+      className="min-h-screen bg-white text-gray-900 flex w-full max-w-[1600px] mx-auto"
       style={{ fontFamily: "'DM Sans', sans-serif" }}
     >
       {/* Desktop Sidebar — stays mounted always */}

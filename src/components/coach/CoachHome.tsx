@@ -4,7 +4,7 @@ import React from 'react'
 import { useRouter } from 'next/navigation'
 import { 
   Clock, MapPin, Star, TrendingUp, AlertCircle, 
-  ChevronRight, PoundSterling, Check
+  ChevronRight, PoundSterling, Check, Calendar, Plus
 } from 'lucide-react'
 
 const avatarUrl = "https://images.unsplash.com/photo-1741363863033-2d68f0bd9fde?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxpbmRpYW4lMjBtYW4lMjBzbWlsaW5nJTIwcG9ydHJhaXR8ZW58MXx8fHwxNzc1NDg3OTc5fDA&ixlib=rb-4.1.0&q=80&w=1080"
@@ -16,6 +16,19 @@ const fallbackAvatarUrl = "https://images.unsplash.com/photo-1609422644211-a85c3
 export function CoachHome() {
   const router = useRouter()
   const [profileExpanded, setProfileExpanded] = React.useState(false)
+  
+  // CHANGE 1: Derive session count from Today's lineup data
+  const todaySessions = [
+    { time: '14:00', duration: '90m', title: 'U14 Fast Bowling Masterclass', location: "Lord's Indoor Centre", active: true },
+    { time: '16:00', duration: '60m', title: '1-on-1 with James T.', location: 'The Oval Nets', type: 'Private' },
+    { time: '18:00', duration: '120m', title: "Senior Men's Net Session", location: 'Wandsworth CC' },
+  ]
+  const sessionCount = todaySessions.length
+  const getSessionSubtitle = () => {
+    if (sessionCount === 0) return "No sessions today. A good day to plan ahead."
+    if (sessionCount === 1) return "You have 1 session today. Let's get ready."
+    return `You have ${sessionCount} sessions today. Let's get ready.`
+  }
 
   return (
     <div className="flex flex-1 min-h-screen">
@@ -35,43 +48,46 @@ export function CoachHome() {
           </div>
         </div>
 
-        {/* Desktop Greeting */}
+        {/* Desktop Greeting - CHANGE 1: emoji + subtitle */}
         <div className="hidden md:flex justify-between items-end">
           <div>
             <p className="text-gray-500 text-sm mb-1.5 font-medium">Tuesday, 14 May</p>
-            <h1 className="text-4xl font-bold tracking-tight text-gray-900">Good morning, Ravi</h1>
+            <h1 className="text-4xl font-bold tracking-tight text-gray-900">Good morning, Ravi 👋</h1>
+            <p className="text-sm text-gray-500 mt-1">{getSessionSubtitle()}</p>
           </div>
         </div>
 
-        {/* Mobile Greeting */}
+        {/* Mobile Greeting - CHANGE 1: emoji + subtitle */}
         <div className="md:hidden">
-          <h1 className="text-[28px] font-bold tracking-tight text-gray-900 leading-tight">Good morning, Ravi</h1>
+          <h1 className="text-[28px] font-bold tracking-tight text-gray-900 leading-tight">Good morning, Ravi 👋</h1>
+          <p className="text-sm text-gray-500 mt-1">{getSessionSubtitle()}</p>
         </div>
 
-        {/* Alerts */}
+        {/* Alerts - CHANGE 2: coloured left border */}
         <div className="flex flex-col gap-3">
-          <div className="bg-amber-50 rounded-xl overflow-hidden shadow-sm transition-all duration-300">
+          <div className="bg-[#EFF7FF] border-l-4 border-[#0077CC] rounded-r-lg overflow-hidden transition-all duration-300">
             <div
               onClick={() => setProfileExpanded(!profileExpanded)}
-              className="p-3.5 flex items-center justify-between gap-2 text-amber-900 cursor-pointer hover:bg-amber-100/50 transition-colors"
+              className="p-3.5 flex items-center justify-between gap-2 text-blue-800 cursor-pointer hover:bg-blue-100/50 transition-colors"
             >
               <div className="flex items-center gap-2.5 md:gap-3 min-w-0">
-                <AlertCircle size={18} className="text-amber-600 shrink-0" />
+                <AlertCircle size={18} className="text-[#0077CC] shrink-0" />
                 <span className="text-[14px] md:text-[15px] font-medium truncate">Complete profile to go live</span>
               </div>
               <div className="flex items-center gap-2.5 md:gap-3 shrink-0">
                 <div className="relative w-7 h-7 flex items-center justify-center shrink-0">
                   <svg className="w-full h-full transform -rotate-90">
-                    <circle cx="14" cy="14" r="12" stroke="currentColor" strokeWidth="2.5" fill="none" className="text-amber-200" />
-                    <circle cx="14" cy="14" r="12" stroke="currentColor" strokeWidth="2.5" fill="none" strokeDasharray="75.4" strokeDashoffset="49" className="text-amber-500" strokeLinecap="round" />
+                    <circle cx="14" cy="14" r="12" stroke="currentColor" strokeWidth="2.5" fill="none" className="text-blue-200" />
+                    <circle cx="14" cy="14" r="12" stroke="currentColor" strokeWidth="2.5" fill="none" strokeDasharray="75.4" strokeDashoffset="49" className="text-[#0077CC]" strokeLinecap="round" />
                   </svg>
-                  <span className="absolute text-[8px] font-bold text-amber-800">35%</span>
+                  <span className="absolute text-[8px] font-bold text-blue-800">35%</span>
                 </div>
-                <ChevronRight size={18} className={`text-amber-600/60 transition-transform duration-300 shrink-0 ${profileExpanded ? 'rotate-90' : ''}`} />
+                <span className="text-[#0077CC] text-sm font-bold cursor-pointer hover:underline">Finish setup →</span>
+                <ChevronRight size={18} className={`text-[#0077CC]/60 transition-transform duration-300 shrink-0 ${profileExpanded ? 'rotate-90' : ''}`} />
               </div>
             </div>
             {profileExpanded && (
-              <div className="px-4 pb-4 pt-1 border-t border-amber-200/40 bg-amber-50/50">
+              <div className="px-4 pb-4 pt-1 border-t border-blue-200/40 bg-blue-50/50">
                 <ul className="flex flex-col gap-3 mt-2">
                   <ProfileChecklistItem title="Basic profile" completed={true} onNavigate={() => router.push('/coach/onboarding/profile')} />
                   <ProfileChecklistItem title="Sport & pricing" completed={false} onNavigate={() => router.push('/coach/onboarding/pricing')} />
@@ -86,14 +102,39 @@ export function CoachHome() {
           
           <div
             onClick={() => router.push('/coach/bookings')}
-            className="bg-red-50 rounded-xl p-3.5 flex items-center justify-between gap-2 text-red-900 shadow-sm cursor-pointer hover:bg-red-100/50 transition-colors"
+            className="bg-amber-50 border-l-4 border-amber-400 rounded-r-lg p-3.5 flex items-center justify-between gap-2 text-amber-900 cursor-pointer hover:bg-amber-100/50 transition-colors"
           >
             <div className="flex items-center gap-2.5 md:gap-3 min-w-0">
-              <div className="w-5 h-5 rounded-full bg-red-100 flex items-center justify-center text-xs font-bold text-red-700 shrink-0">2</div>
+              <div className="w-5 h-5 rounded-full bg-amber-100 flex items-center justify-center text-xs font-bold text-amber-700 shrink-0">2</div>
               <span className="text-[14px] md:text-[15px] font-medium truncate">Bookings need approval</span>
             </div>
-            <ChevronRight size={18} className="text-red-600/60 shrink-0" />
+            <span className="text-amber-700 text-sm font-bold cursor-pointer hover:underline">Review →</span>
           </div>
+        </div>
+
+        {/* CHANGE 3: CTA button row */}
+        <div className="flex flex-col md:flex-row gap-3">
+          <button
+            onClick={() => {/* TODO CD-01: wire Create Session CTA */}}
+            className="flex-1 h-10 bg-[#0077CC] text-white rounded-lg text-sm font-medium flex items-center justify-center gap-2 hover:bg-[#0066AA] transition-colors"
+          >
+            <Plus size={16} />
+            Create Session
+          </button>
+          <button
+            onClick={() => {/* TODO CD-01: wire Add Availability CTA */}}
+            className="flex-1 h-10 bg-white text-gray-700 border border-gray-200 rounded-lg text-sm font-medium flex items-center justify-center gap-2 hover:bg-gray-50 transition-colors"
+          >
+            <Plus size={16} />
+            Add Availability
+          </button>
+          <button
+            onClick={() => {/* TODO CD-01: wire Create Programme CTA */}}
+            className="flex-1 h-10 bg-white text-gray-700 border border-gray-200 rounded-lg text-sm font-medium flex items-center justify-center gap-2 hover:bg-gray-50 transition-colors"
+          >
+            <Plus size={16} />
+            Create Programme
+          </button>
         </div>
 
         {/* Up Next Hero Card */}
@@ -104,7 +145,8 @@ export function CoachHome() {
           </div>
           <div className="relative h-64 md:h-[340px] w-full rounded-2xl md:rounded-[24px] overflow-hidden shadow-sm group cursor-pointer isolate">
             <img src={upNextUrl} alt="Cricket Training" className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105 -z-10" />
-            <div className="absolute inset-0 bg-gradient-to-t from-gray-900/90 via-gray-900/30 to-black/10 -z-10"></div>
+            {/* CHANGE 4: gradient overlay for text readability */}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-transparent" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0) 55%)' }}></div>
             <div className="absolute top-4 left-4 md:top-6 md:left-6 bg-white/20 backdrop-blur-md border border-white/20 text-white text-[13px] font-bold px-3.5 py-1.5 rounded-full shadow-sm">
               Starts in 45m
             </div>
@@ -124,24 +166,37 @@ export function CoachHome() {
           <TodayLineup />
         </div>
 
-        {/* Stats */}
-        <section className="grid grid-cols-2 gap-3 md:gap-4 mt-2 md:mt-0">
-          <div className="bg-white border border-gray-100 rounded-[20px] p-5 md:p-6 shadow-sm flex flex-col gap-1 relative overflow-hidden hover:shadow-md transition-shadow cursor-pointer group">
-            <div className="absolute -top-4 -right-4 p-4 opacity-[0.03] group-hover:opacity-[0.05] transition-opacity"><TrendingUp size={96} /></div>
-            <div className="w-10 h-10 rounded-full bg-blue-50 text-[#0077CC] flex items-center justify-center mb-3"><PoundSterling size={20} /></div>
-            <p className="text-gray-500 text-[15px] font-medium">Earnings</p>
-            <h3 className="text-[28px] md:text-[32px] font-bold text-gray-900 tracking-tight">£1,240</h3>
-            <div className="flex items-center gap-1 mt-1 text-green-600 bg-green-50 w-fit px-2 py-0.5 rounded-md">
-              <TrendingUp size={12} strokeWidth={3} />
-              <span className="text-[11px] font-bold uppercase tracking-wide">12% this month</span>
+        {/* CHANGE 7: Removed Earnings and Rating cards - now in right panel */}
+        {/* CHANGE 8: Weekly Overview 4-stat row */}
+        <section className="flex flex-col gap-3 mt-2 md:mt-0">
+          <h2 className="text-base font-semibold text-gray-900">Weekly Overview</h2>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="bg-white border border-gray-100 rounded-[10px] p-4 flex flex-col gap-1">
+              <Calendar size={16} className="text-[#0077CC] mb-1" />
+              <p className="text-xs text-gray-500">Sessions this week</p>
+              <p className="text-2xl font-medium text-gray-900">12</p>
             </div>
-          </div>
-          <div className="bg-white border border-gray-100 rounded-[20px] p-5 md:p-6 shadow-sm flex flex-col gap-1 relative overflow-hidden hover:shadow-md transition-shadow cursor-pointer group">
-            <div className="absolute -top-4 -right-4 p-4 opacity-[0.03] group-hover:opacity-[0.05] transition-opacity"><Star size={96} /></div>
-            <div className="w-10 h-10 rounded-full bg-amber-50 text-amber-500 flex items-center justify-center mb-3"><Star size={20} fill="currentColor" /></div>
-            <p className="text-gray-500 text-[15px] font-medium">Rating</p>
-            <h3 className="text-[28px] md:text-[32px] font-bold text-gray-900 tracking-tight">4.8</h3>
-            <p className="text-[13px] text-gray-500 font-medium mt-1.5">Based on 42 reviews</p>
+            <div className="bg-white border border-gray-100 rounded-[10px] p-4 flex flex-col gap-1">
+              <Clock size={16} className="text-amber-600 mb-1" />
+              <p className="text-xs text-gray-500">Bookings pending</p>
+              <div className="flex items-baseline gap-2">
+                <p className="text-2xl font-medium text-gray-900">3</p>
+                <span className="text-[11px] font-medium text-amber-600">+2 new</span>
+              </div>
+            </div>
+            <div className="bg-white border border-gray-100 rounded-[10px] p-4 flex flex-col gap-1">
+              <PoundSterling size={16} className="text-green-600 mb-1" />
+              <p className="text-xs text-gray-500">Revenue this week</p>
+              <div className="flex items-baseline gap-2">
+                <p className="text-2xl font-medium text-gray-900">£520</p>
+                <span className="text-[11px] font-medium text-green-600">+15%</span>
+              </div>
+            </div>
+            <div className="bg-white border border-gray-100 rounded-[10px] p-4 flex flex-col gap-1">
+              <Check size={16} className="text-[#0077CC] mb-1" />
+              <p className="text-xs text-gray-500">Completion rate</p>
+              <p className="text-2xl font-medium text-gray-900">98%</p>
+            </div>
           </div>
         </section>
 
@@ -151,7 +206,8 @@ export function CoachHome() {
             <h2 className="text-[19px] font-bold text-gray-900">Group programmes</h2>
             <span onClick={() => router.push('/coach/programmes')} className="text-[#0077CC] text-sm font-bold cursor-pointer hover:underline">Manage</span>
           </div>
-          <div className="flex gap-4 overflow-x-auto pb-4 -mx-5 px-5 md:mx-0 md:px-0 snap-x">
+          {/* CHANGE 9: Responsive grid for group programmes */}
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 md:gap-4">
             <GroupCard title="Summer Youth Camp" spots="12/15 spots filled" image={group1Url} active />
             <GroupCard title="Elite Spin Bowling" spots="4/8 spots filled" image={group2Url} />
             <GroupCard title="Weekend Warriors" spots="20/20 spots filled" image={fallbackAvatarUrl} />
@@ -160,11 +216,7 @@ export function CoachHome() {
         </div>
       </div>
 
-      {/* Desktop Right Panel */}
-      <aside className="hidden xl:flex w-80 lg:w-[360px] shrink-0 flex-col gap-10 bg-white p-8 sticky top-0 h-screen overflow-y-auto border-l border-gray-100 z-10">
-        <ThisWeekStrip isDesktop />
-        <TodayLineup isDesktop />
-      </aside>
+      {/* CHANGE 5: Removed duplicate right panel - now handled in layout.tsx */}
     </div>
   )
 }
@@ -205,6 +257,7 @@ function ThisWeekStrip({ isDesktop }: { isDesktop?: boolean }) {
 }
 
 function TodayLineup({ isDesktop }: { isDesktop?: boolean }) {
+  // Using same session data as defined at component top
   const sessions = [
     { time: '14:00', duration: '90m', title: 'U14 Fast Bowling Masterclass', location: "Lord's Indoor Centre", active: true },
     { time: '16:00', duration: '60m', title: '1-on-1 with James T.', location: 'The Oval Nets', type: 'Private' },
@@ -260,7 +313,7 @@ function ProfileChecklistItem({ title, completed, onNavigate }: { title: string;
 
 function GroupCard({ title, spots, image, active }: { title: string; spots: string; image: string; active?: boolean }) {
   return (
-    <div className="min-w-[240px] md:min-w-[260px] snap-center flex flex-col bg-white border border-gray-100 rounded-[20px] overflow-hidden shadow-[0_2px_16px_rgba(0,0,0,0.03)] cursor-pointer hover:shadow-lg hover:border-gray-200 transition-all group">
+    <div className="flex flex-col bg-white border border-gray-100 rounded-[20px] overflow-hidden shadow-[0_2px_16px_rgba(0,0,0,0.03)] cursor-pointer hover:shadow-lg hover:border-gray-200 transition-all group">
       <div className="h-[140px] w-full bg-gray-100 relative overflow-hidden">
         <img src={image} alt={title} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
         <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
