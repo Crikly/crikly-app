@@ -81,11 +81,17 @@ function EventBlock({ top, height, type, title, subtitle, sessionId, onCardClick
   )
 }
 
+// CF-D02c FIX 1: Single popover state
+type ActivePopover =
+  | { type: 'session'; sessionId: string; sessionType: string; x: number; y: number }
+  | { type: 'creation'; date: string; time: string; x: number; y: number }
+  | null
+
 export function Schedule() {
   const router = useRouter()
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
-  const [popoverState, setPopoverState] = useState<{ x: number; y: number; sessionId: string; type: string } | null>(null)
-  const [creationPopover, setCreationPopover] = useState<{ x: number; y: number; date: string; time: string } | null>(null)
+  const [activePopover, setActivePopover] = useState<ActivePopover>(null)
+  const [weekOffset, setWeekOffset] = useState(0) // CF-D02c FIX 3: Week navigation
   const gridRef = useRef<HTMLDivElement>(null)
   const scheduleContainerRef = useRef<HTMLDivElement>(null)
 
@@ -95,19 +101,17 @@ export function Schedule() {
     }
   }, [])
 
-  // CF-D02b: Close popovers on outside click or Escape
+  // CF-D02c FIX 1: Close popover on outside click or Escape
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       const target = e.target as HTMLElement
       if (!target.closest('.session-popover') && !target.closest('.session-card')) {
-        setPopoverState(null)
-        setCreationPopover(null)
+        setActivePopover(null)
       }
     }
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        setPopoverState(null)
-        setCreationPopover(null)
+        setActivePopover(null)
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
@@ -118,31 +122,33 @@ export function Schedule() {
     }
   }, [])
 
-  // CF-D02b CHANGE 1: Handle session card click
+  // CF-D02c FIX 1: Handle session card click (single popover)
   const handleCardClick = (e: React.MouseEvent, sessionId: string, type: string) => {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
     const containerRect = scheduleContainerRef.current?.getBoundingClientRect()
     if (!containerRect) return
     
-    setPopoverState({
-      x: rect.right - containerRect.left + 8,
-      y: rect.top - containerRect.top,
+    setActivePopover({
+      type: 'session',
       sessionId,
-      type
+      sessionType: type,
+      x: rect.right - containerRect.left + 8,
+      y: rect.top - containerRect.top
     })
   }
 
-  // CF-D02b CHANGE 2: Handle empty/available slot click
+  // CF-D02c FIX 1: Handle empty/available slot click (single popover)
   const handleSlotClick = (e: React.MouseEvent, date: string, time: string) => {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
     const containerRect = scheduleContainerRef.current?.getBoundingClientRect()
     if (!containerRect) return
     
-    setCreationPopover({
-      x: rect.right - containerRect.left + 8,
-      y: rect.top - containerRect.top,
+    setActivePopover({
+      type: 'creation',
       date,
-      time
+      time,
+      x: rect.right - containerRect.left + 8,
+      y: rect.top - containerRect.top
     })
   }
 
@@ -174,14 +180,17 @@ export function Schedule() {
               </div>
               <div className="flex items-center gap-2">
                 <div className="flex bg-white border border-gray-200 rounded-full p-1">
-                  <button className="px-3 py-1 rounded-full text-[12px] font-medium text-gray-600 hover:bg-gray-50">Day</button>
+                  {/* CF-D02c FIX 3: Day and Month disabled */}
+                  <button title="Coming soon" className="px-3 py-1 rounded-full text-[12px] font-medium text-gray-600 opacity-40 cursor-not-allowed">Day</button>
                   <button className="px-3 py-1 rounded-full text-[12px] font-medium bg-[#0077CC] text-white">Week</button>
-                  <button className="px-3 py-1 rounded-full text-[12px] font-medium text-gray-600 hover:bg-gray-50">Month</button>
+                  <button title="Coming soon" className="px-3 py-1 rounded-full text-[12px] font-medium text-gray-600 opacity-40 cursor-not-allowed">Month</button>
                 </div>
-                <button className="px-3 py-1 border border-gray-200 rounded-md text-[12px] font-medium text-gray-700 hover:bg-gray-50 h-[30px]">Today</button>
+                {/* CF-D02c FIX 3: Today button resets to current week */}
+                <button onClick={() => setWeekOffset(0)} className="px-3 py-1 border border-gray-200 rounded-md text-[12px] font-medium text-gray-700 hover:bg-gray-50 h-[30px]">Today</button>
                 <div className="flex border border-gray-200 rounded-md">
-                  <button className="w-7 h-7 flex items-center justify-center border-r border-gray-200 hover:bg-gray-50 text-gray-600"><ChevronLeft size={16} /></button>
-                  <button className="w-7 h-7 flex items-center justify-center hover:bg-gray-50 text-gray-600"><ChevronRight size={16} /></button>
+                  {/* CF-D02c FIX 3: Prev/Next week navigation */}
+                  <button onClick={() => setWeekOffset(prev => prev - 1)} className="w-7 h-7 flex items-center justify-center border-r border-gray-200 hover:bg-gray-50 text-gray-600"><ChevronLeft size={16} /></button>
+                  <button onClick={() => setWeekOffset(prev => prev + 1)} className="w-7 h-7 flex items-center justify-center hover:bg-gray-50 text-gray-600"><ChevronRight size={16} /></button>
                 </div>
               </div>
             </div>
@@ -284,11 +293,12 @@ export function Schedule() {
               const rect = e.currentTarget.getBoundingClientRect()
               const containerRect = scheduleContainerRef.current?.getBoundingClientRect()
               if (!containerRect) return
-              setCreationPopover({
-                x: rect.left - containerRect.left,
-                y: rect.top - containerRect.top - 300,
+              setActivePopover({
+                type: 'creation',
                 date: 'Wed 8 Apr',
-                time: '09:00'
+                time: '09:00',
+                x: rect.left - containerRect.left,
+                y: rect.top - containerRect.top - 300
               })
             }}
             className="self-end mt-3 mb-2 bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-full px-[18px] py-2 flex items-center gap-2 transition-colors text-[13px] font-medium"
@@ -369,11 +379,25 @@ export function Schedule() {
           </div>
         </div>
 
-        {/* CF-D02b CHANGE 1: Session popovers */}
-        {popoverState && <SessionPopover {...popoverState} onClose={() => setPopoverState(null)} />}
-        
-        {/* CF-D02b CHANGE 2: Creation popover */}
-        {creationPopover && <CreationPopover {...creationPopover} onClose={() => setCreationPopover(null)} />}
+        {/* CF-D02c FIX 1: Single popover rendering */}
+        {activePopover?.type === 'session' && (
+          <SessionPopover 
+            x={activePopover.x} 
+            y={activePopover.y} 
+            sessionId={activePopover.sessionId} 
+            type={activePopover.sessionType} 
+            onClose={() => setActivePopover(null)} 
+          />
+        )}
+        {activePopover?.type === 'creation' && (
+          <CreationPopover 
+            x={activePopover.x} 
+            y={activePopover.y} 
+            date={activePopover.date} 
+            time={activePopover.time} 
+            onClose={() => setActivePopover(null)} 
+          />
+        )}
       </div>
 
       {/* ADD MODAL */}

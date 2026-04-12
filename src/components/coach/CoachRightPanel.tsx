@@ -7,7 +7,8 @@ import { ChevronRight, ChevronLeft, MapPin, Star, PoundSterling } from 'lucide-r
 
 export function CoachRightPanel() {
   const pathname = usePathname()
-  const isScheduleRoute = pathname === '/coach/schedule'
+  // CF-D02c FIX 2: Improved route detection
+  const isScheduleRoute = pathname === '/coach/schedule' || pathname.includes('/schedule')
   const [selectedDate, setSelectedDate] = useState<number | null>(8) // Default to today (8th)
 
   return (
@@ -164,7 +165,7 @@ function TotalEarningsCard() {
 
 // CHANGE 6: Schedule-specific right panel components
 
-// CF-D02b CHANGE 4: Enhanced mini calendar with dots and click functionality
+// CF-D02c FIX 2: Enhanced mini calendar with dots and click functionality
 function MiniCalendar({ selectedDate, onDateSelect }: { selectedDate: number | null; onDateSelect: (date: number) => void }) {
   // Stub session data mapped to dates
   const sessionsByDate: Record<number, Array<'confirmed' | 'programme' | 'pending' | 'blocked'>> = {
@@ -177,9 +178,9 @@ function MiniCalendar({ selectedDate, onDateSelect }: { selectedDate: number | n
     12: ['programme'], // Sun
   }
 
+  // CF-D02c FIX 2: Improved dot rendering with consistent container
   const getDots = (date: number) => {
     const sessions = sessionsByDate[date] || []
-    if (sessions.length === 0) return null
     
     const dotColors: Record<string, string> = {
       confirmed: '#3B82F6',
@@ -188,13 +189,22 @@ function MiniCalendar({ selectedDate, onDateSelect }: { selectedDate: number | n
       blocked: '#D1D5DB',
     }
     
-    const dots = sessions.slice(0, 3).map((type, i) => (
-      <div key={i} className="w-1 h-1 rounded-full" style={{ backgroundColor: dotColors[type] }} />
-    ))
+    // Always render container for consistent height
+    if (sessions.length === 0) {
+      return <div className="flex gap-0.5 justify-center items-center h-[6px] mt-[1px]"></div>
+    }
     
-    return <div className="flex gap-0.5 justify-center mt-0.5">{dots}</div>
+    const displaySessions = sessions.slice(0, 3)
+    // If more than 3 sessions, make 3rd dot grey
+    const dots = displaySessions.map((type, i) => {
+      const color = (sessions.length > 3 && i === 2) ? '#D1D5DB' : dotColors[type]
+      return <div key={i} className="w-1 h-1 rounded-full" style={{ backgroundColor: color }} />
+    })
+    
+    return <div className="flex gap-0.5 justify-center items-center h-[6px] mt-[1px]">{dots}</div>
   }
 
+  // CF-D02c FIX 2: Improved date rendering with proper selection state
   const renderDate = (date: number, isCurrentMonth: boolean, isToday: boolean) => {
     const isSelected = selectedDate === date && !isToday
     
@@ -202,7 +212,9 @@ function MiniCalendar({ selectedDate, onDateSelect }: { selectedDate: number | n
       <div 
         key={date} 
         onClick={() => isCurrentMonth && onDateSelect(date)}
-        className={`py-1 flex flex-col items-center cursor-pointer min-h-[32px] ${
+        className={`py-1 flex flex-col items-center ${
+          isCurrentMonth ? 'cursor-pointer' : 'cursor-default'
+        } min-h-[38px] ${
           !isCurrentMonth ? 'text-gray-300' :
           isToday ? 'text-white font-bold' :
           isSelected ? 'text-[#0077CC] font-medium' :
@@ -216,7 +228,8 @@ function MiniCalendar({ selectedDate, onDateSelect }: { selectedDate: number | n
         ) : (
           <span className="text-[13px]">{date}</span>
         )}
-        {isCurrentMonth && getDots(date)}
+        {/* CF-D02c FIX 2: Always render dot container for consistent spacing */}
+        {getDots(date)}
       </div>
     )
   }
@@ -278,7 +291,7 @@ function FreeSlotsThisWeek() {
   )
 }
 
-// CF-D02b CHANGE 4: Day session list with back to week functionality
+// CF-D02c FIX 2: Day session list with proper default state
 function DaySessionList({ selectedDate, onBackToWeek }: { selectedDate: number | null; onBackToWeek: () => void }) {
   // TODO CF-D02b: derive day sessions from real schedule/booking data
   const allSessions = [
@@ -307,9 +320,11 @@ function DaySessionList({ selectedDate, onBackToWeek }: { selectedDate: number |
     <div>
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-[12px] font-medium text-gray-900">
+          {/* CF-D02c FIX 2: Default shows today, no back link for today */}
           {isToday ? 'Today, 8 Apr' : selectedDate ? dayNames[selectedDate] : 'Today, 8 Apr'}
         </h3>
-        {!isToday && selectedDate !== 8 && (
+        {/* CF-D02c FIX 2: Only show back link when viewing non-today date */}
+        {!isToday && selectedDate !== null && selectedDate !== 8 && (
           <button onClick={onBackToWeek} className="text-[11px] text-[#0077CC] font-medium hover:underline">
             ← This week
           </button>
