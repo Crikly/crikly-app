@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { ChevronRight, ChevronLeft, MapPin, Star, PoundSterling } from 'lucide-react'
@@ -7,14 +8,15 @@ import { ChevronRight, ChevronLeft, MapPin, Star, PoundSterling } from 'lucide-r
 export function CoachRightPanel() {
   const pathname = usePathname()
   const isScheduleRoute = pathname === '/coach/schedule'
+  const [selectedDate, setSelectedDate] = useState<number | null>(8) // Default to today (8th)
 
   return (
     <aside className="hidden xl:flex w-96 shrink-0 flex-col gap-10 bg-white p-8 sticky top-0 h-screen overflow-y-auto border-l border-gray-100">
       {isScheduleRoute ? (
         <>
-          <MiniCalendar />
+          <MiniCalendar selectedDate={selectedDate} onDateSelect={setSelectedDate} />
           <FreeSlotsThisWeek />
-          <ThisWeekSummary />
+          <DaySessionList selectedDate={selectedDate} onBackToWeek={() => setSelectedDate(8)} />
           <SmartInsightCard />
           <PendingApprovalCard />
         </>
@@ -162,7 +164,63 @@ function TotalEarningsCard() {
 
 // CHANGE 6: Schedule-specific right panel components
 
-function MiniCalendar() {
+// CF-D02b CHANGE 4: Enhanced mini calendar with dots and click functionality
+function MiniCalendar({ selectedDate, onDateSelect }: { selectedDate: number | null; onDateSelect: (date: number) => void }) {
+  // Stub session data mapped to dates
+  const sessionsByDate: Record<number, Array<'confirmed' | 'programme' | 'pending' | 'blocked'>> = {
+    6: ['confirmed', 'programme'], // Mon
+    7: [], // Tue (available slot, no sessions)
+    8: ['confirmed', 'pending'], // Wed (today)
+    9: ['programme'], // Thu
+    10: [], // Fri (available slot)
+    11: ['blocked'], // Sat
+    12: ['programme'], // Sun
+  }
+
+  const getDots = (date: number) => {
+    const sessions = sessionsByDate[date] || []
+    if (sessions.length === 0) return null
+    
+    const dotColors: Record<string, string> = {
+      confirmed: '#3B82F6',
+      programme: '#7C3AED',
+      pending: '#F59E0B',
+      blocked: '#D1D5DB',
+    }
+    
+    const dots = sessions.slice(0, 3).map((type, i) => (
+      <div key={i} className="w-1 h-1 rounded-full" style={{ backgroundColor: dotColors[type] }} />
+    ))
+    
+    return <div className="flex gap-0.5 justify-center mt-0.5">{dots}</div>
+  }
+
+  const renderDate = (date: number, isCurrentMonth: boolean, isToday: boolean) => {
+    const isSelected = selectedDate === date && !isToday
+    
+    return (
+      <div 
+        key={date} 
+        onClick={() => isCurrentMonth && onDateSelect(date)}
+        className={`py-1 flex flex-col items-center cursor-pointer min-h-[32px] ${
+          !isCurrentMonth ? 'text-gray-300' :
+          isToday ? 'text-white font-bold' :
+          isSelected ? 'text-[#0077CC] font-medium' :
+          'text-gray-700'
+        }`}
+      >
+        {isToday ? (
+          <span className="w-6 h-6 bg-[#0077CC] text-white rounded-full flex items-center justify-center text-[13px]">{date}</span>
+        ) : isSelected ? (
+          <span className="w-6 h-6 bg-blue-100 text-[#0077CC] rounded-full flex items-center justify-center text-[13px]">{date}</span>
+        ) : (
+          <span className="text-[13px]">{date}</span>
+        )}
+        {isCurrentMonth && getDots(date)}
+      </div>
+    )
+  }
+
   return (
     <div className="bg-white border border-gray-200 rounded-[16px] p-5 shadow-sm">
       <div className="flex items-center justify-between mb-4">
@@ -175,24 +233,16 @@ function MiniCalendar() {
       <div className="grid grid-cols-7 gap-y-2 text-center text-[12px] font-medium mb-2">
         {['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map(d => <div key={d} className="text-gray-400">{d}</div>)}
       </div>
-      <div className="grid grid-cols-7 gap-y-1 text-center text-[13px] relative z-0">
+      <div className="grid grid-cols-7 gap-y-1 text-center relative z-0">
         <div className="absolute left-0 right-0 top-[28px] h-[28px] bg-[#EFF6FF] rounded-md -z-10" />
-        <div className="py-1 text-gray-300">30</div><div className="py-1 text-gray-300">31</div>
-        <div className="py-1 text-gray-700">1</div><div className="py-1 text-gray-700">2</div>
-        <div className="py-1 text-gray-700">3</div><div className="py-1 text-gray-700">4</div><div className="py-1 text-gray-700">5</div>
-        <div className="py-1 text-[#0077CC] font-medium">6</div><div className="py-1 text-[#0077CC] font-medium">7</div>
-        <div className="py-1 text-white font-bold relative flex justify-center items-center">
-          <span className="relative z-10 w-6 h-6 border-2 border-[#0077CC] text-[#0077CC] bg-white rounded-full flex items-center justify-center">8</span>
-        </div>
-        <div className="py-1 text-[#0077CC] font-medium">9</div><div className="py-1 text-[#0077CC] font-medium">10</div>
-        <div className="py-1 text-[#0077CC] font-medium">11</div><div className="py-1 text-[#0077CC] font-medium">12</div>
-        <div className="py-1 text-gray-700">13</div><div className="py-1 text-gray-700">14</div><div className="py-1 text-gray-700">15</div>
-        <div className="py-1 text-gray-700">16</div><div className="py-1 text-gray-700">17</div><div className="py-1 text-gray-700">18</div><div className="py-1 text-gray-700">19</div>
-        <div className="py-1 text-gray-700">20</div><div className="py-1 text-gray-700">21</div><div className="py-1 text-gray-700">22</div>
-        <div className="py-1 text-gray-700">23</div><div className="py-1 text-gray-700">24</div><div className="py-1 text-gray-700">25</div><div className="py-1 text-gray-700">26</div>
-        <div className="py-1 text-gray-700">27</div><div className="py-1 text-gray-700">28</div><div className="py-1 text-gray-700">29</div>
-        <div className="py-1 text-gray-700">30</div>
-        <div className="py-1 text-gray-300">1</div><div className="py-1 text-gray-300">2</div><div className="py-1 text-gray-300">3</div>
+        {renderDate(30, false, false)}
+        {renderDate(31, false, false)}
+        {[1,2,3,4,5].map(d => renderDate(d, true, false))}
+        {[6,7].map(d => renderDate(d, true, false))}
+        {renderDate(8, true, true)}
+        {[9,10,11,12].map(d => renderDate(d, true, false))}
+        {[13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30].map(d => renderDate(d, true, false))}
+        {[1,2,3].map(d => renderDate(d, false, false))}
       </div>
     </div>
   )
@@ -228,34 +278,68 @@ function FreeSlotsThisWeek() {
   )
 }
 
-function ThisWeekSummary() {
-  const sessions = [
-    { day: 'Mon', name: 'James Okafor', time: '09:00', sport: 'Cricket', status: 'confirmed', color: 'bg-blue-500' },
-    { day: 'Mon', name: 'Junior Cricket', time: '14:00', sport: 'Cricket', status: 'programme', color: 'bg-purple-500' },
-    { day: 'Wed', name: 'David Chen', time: '13:00', sport: 'Cricket', status: 'pending', color: 'bg-amber-400' },
-    { day: 'Wed', name: 'Marcus Trent', time: '10:00', sport: 'Football', status: 'confirmed', color: 'bg-blue-500' },
+// CF-D02b CHANGE 4: Day session list with back to week functionality
+function DaySessionList({ selectedDate, onBackToWeek }: { selectedDate: number | null; onBackToWeek: () => void }) {
+  // TODO CF-D02b: derive day sessions from real schedule/booking data
+  const allSessions = [
+    { date: 6, day: 'Mon', name: 'James Okafor', time: '09:00', sport: 'Cricket', status: 'confirmed', color: '#3B82F6' },
+    { date: 6, day: 'Mon', name: 'Junior Cricket', time: '14:00', sport: 'Cricket', status: 'programme', color: '#7C3AED' },
+    { date: 8, day: 'Wed', name: 'Marcus Trent', time: '10:00', sport: 'Football', status: 'confirmed', color: '#3B82F6' },
+    { date: 8, day: 'Wed', name: 'David Chen', time: '13:00', sport: 'Cricket', status: 'pending', color: '#F59E0B' },
+    { date: 9, day: 'Thu', name: 'Advanced Batting', time: '09:00', sport: 'Cricket', status: 'programme', color: '#7C3AED' },
+    { date: 12, day: 'Sun', name: 'Open Net Session', time: '10:00', sport: 'Football', status: 'programme', color: '#7C3AED' },
   ]
+
+  const daySessions = allSessions.filter(s => s.date === selectedDate)
+  const isToday = selectedDate === 8
   
+  const dayNames: Record<number, string> = {
+    6: 'Monday, 6 Apr',
+    7: 'Tuesday, 7 Apr',
+    8: 'Wednesday, 8 Apr',
+    9: 'Thursday, 9 Apr',
+    10: 'Friday, 10 Apr',
+    11: 'Saturday, 11 Apr',
+    12: 'Sunday, 12 Apr',
+  }
+
   return (
     <div>
-      <h3 className="text-[12px] font-medium text-gray-900 mb-3">This week</h3>
-      <div className="space-y-3">
-        {sessions.map((session, i) => (
-          <div key={i} className="flex items-start gap-2">
-            <div className={`w-[7px] h-[7px] rounded-full ${session.color} mt-1.5 shrink-0`} />
-            <div className="flex-1 min-w-0">
-              <div className="text-[11px] font-medium text-gray-900 leading-tight">{session.day} · {session.name} · {session.time}</div>
-              <div className="text-[10px] text-gray-500 leading-tight mt-0.5">{session.sport} · {session.status.charAt(0).toUpperCase() + session.status.slice(1)}</div>
-            </div>
-          </div>
-        ))}
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-[12px] font-medium text-gray-900">
+          {isToday ? 'Today, 8 Apr' : selectedDate ? dayNames[selectedDate] : 'Today, 8 Apr'}
+        </h3>
+        {!isToday && selectedDate !== 8 && (
+          <button onClick={onBackToWeek} className="text-[11px] text-[#0077CC] font-medium hover:underline">
+            ← This week
+          </button>
+        )}
       </div>
+      
+      {daySessions.length > 0 ? (
+        <div className="divide-y divide-gray-100">
+          {daySessions.map((session, i) => (
+            <div key={i} className="flex items-start gap-2 py-1.5">
+              <div className="w-1 h-1 rounded-full mt-1.5 shrink-0" style={{ backgroundColor: session.color }} />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-[11px] font-medium text-gray-700">{session.time}</span>
+                  <span className="text-[11px] text-gray-900">{session.name}</span>
+                </div>
+                <div className="text-[10px] text-gray-400 mt-0.5">{session.sport} · {session.status.charAt(0).toUpperCase() + session.status.slice(1)}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-[11px] text-gray-400 italic py-2">No sessions on this day</p>
+      )}
     </div>
   )
 }
 
 function SmartInsightCard() {
-  // TODO CF-D02: derive insight from real earnings/availability data
+  // TODO CF-D02b: derive insight from real earnings/availability data
   return (
     <div className="bg-[#E8F5F0] border-l-[3px] border-l-[#1D9E75] rounded-lg px-3 py-2.5">
       <div className="text-[9px] text-[#0F6E56] uppercase tracking-wider font-medium mb-1">Insight</div>
