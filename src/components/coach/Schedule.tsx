@@ -126,34 +126,40 @@ export function Schedule() {
   }, [])
 
   // CF-D02c FIX 1: Handle session card click (single popover)
+  // CF-D02h FIX 1: Use fixed positioning with viewport coordinates
   const handleCardClick = (e: React.MouseEvent, sessionId: string, type: string) => {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-    const containerRect = scheduleContainerRef.current?.getBoundingClientRect()
-    if (!containerRect) return
+    
+    // Calculate position relative to viewport, clamped to stay on screen
+    const x = Math.min(rect.right + 8, window.innerWidth - 296) // 296 = 280px width + 16px margin
+    const y = Math.min(rect.top, window.innerHeight - 400)
     
     setActivePopover({
       type: 'session',
       sessionId,
       sessionType: type,
-      x: rect.right - containerRect.left + 8,
-      y: rect.top - containerRect.top
+      x,
+      y
     })
   }
 
   // CF-D02c FIX 1: Handle empty/available slot click (single popover)
   // CF-D02d BUG FIX 3: Add source field
+  // CF-D02h FIX 1: Use fixed positioning with viewport coordinates
   const handleSlotClick = (e: React.MouseEvent, date: string, time: string) => {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-    const containerRect = scheduleContainerRef.current?.getBoundingClientRect()
-    if (!containerRect) return
+    
+    // Calculate position relative to viewport, clamped to stay on screen
+    const x = Math.min(rect.right + 8, window.innerWidth - 296) // 296 = 280px width + 16px margin
+    const y = Math.min(rect.top, window.innerHeight - 400)
     
     setActivePopover({
       type: 'creation',
       source: 'slot',
       date,
       time,
-      x: rect.right - containerRect.left + 8,
-      y: rect.top - containerRect.top
+      x,
+      y
     })
   }
 
@@ -210,7 +216,7 @@ export function Schedule() {
                 </button>
               </div>
               <div className="flex items-center gap-3">
-                <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-sm bg-blue-500" /><span className="text-[10px] text-gray-500">Confirmed</span></div>
+                <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-sm bg-blue-500" /><span className="text-[10px] text-gray-500">1-on-1</span></div>
                 <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-sm bg-purple-600" /><span className="text-[10px] text-gray-500">Programme</span></div>
                 <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-sm bg-amber-400" /><span className="text-[10px] text-gray-500">Pending</span></div>
                 <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-sm bg-gray-300" /><span className="text-[10px] text-gray-500">Blocked</span></div>
@@ -304,16 +310,20 @@ export function Schedule() {
           <button
             onClick={(e) => {
               // CF-D02d BUG FIX 3: Set source to 'button' for editable date
+              // CF-D02h FIX 1: Use fixed positioning with viewport coordinates
               const rect = e.currentTarget.getBoundingClientRect()
-              const containerRect = scheduleContainerRef.current?.getBoundingClientRect()
-              if (!containerRect) return
+              
+              // Calculate position relative to viewport, clamped to stay on screen
+              const x = Math.min(rect.left, window.innerWidth - 296)
+              const y = Math.min(rect.top - 300, window.innerHeight - 400)
+              
               setActivePopover({
                 type: 'creation',
                 source: 'button',
                 date: 'Wed 8 Apr',
                 time: '09:00',
-                x: rect.left - containerRect.left,
-                y: rect.top - containerRect.top - 300
+                x,
+                y
               })
             }}
             className="self-end mt-3 mb-2 bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-full px-[18px] py-2 flex items-center gap-2 transition-colors text-[13px] font-medium"
@@ -322,76 +332,6 @@ export function Schedule() {
             <Plus size={14} />
             <span>Add to schedule</span>
           </button>
-        </div>
-
-        {/* RIGHT COLUMN */}
-        <div className="w-full lg:w-[320px] shrink-0 flex flex-col gap-6 pt-[68px]">
-          
-          {/* Mini Month */}
-          <div className="bg-white border border-gray-200 rounded-[16px] p-5 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-[15px] font-bold text-gray-900">April 2026</h3>
-              <div className="flex gap-1">
-                <button className="p-1 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-50"><ChevronLeft size={16} /></button>
-                <button className="p-1 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-50"><ChevronRight size={16} /></button>
-              </div>
-            </div>
-            <div className="grid grid-cols-7 gap-y-2 text-center text-[12px] font-medium mb-2">
-              {['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map(d => <div key={d} className="text-gray-400">{d}</div>)}
-            </div>
-            <div className="grid grid-cols-7 gap-y-1 text-center text-[13px] relative z-0">
-              <div className="absolute left-0 right-0 top-[28px] h-[28px] bg-[#EFF6FF] rounded-md -z-10" />
-              {/* Row 1 */}
-              <div className="py-1 text-gray-300">30</div><div className="py-1 text-gray-300">31</div>
-              <div className="py-1 text-gray-700">1</div><div className="py-1 text-gray-700">2</div>
-              <div className="py-1 text-gray-700">3</div><div className="py-1 text-gray-700">4</div><div className="py-1 text-gray-700">5</div>
-              {/* Row 2 — current week */}
-              <div className="py-1 text-[#0077CC] font-medium">6</div><div className="py-1 text-[#0077CC] font-medium">7</div>
-              <div className="py-1 text-white font-bold relative flex justify-center items-center">
-                <span className="relative z-10 w-6 h-6 border-2 border-[#0077CC] text-[#0077CC] bg-white rounded-full flex items-center justify-center">8</span>
-              </div>
-              <div className="py-1 text-[#0077CC] font-medium">9</div><div className="py-1 text-[#0077CC] font-medium">10</div>
-              <div className="py-1 text-[#0077CC] font-medium">11</div><div className="py-1 text-[#0077CC] font-medium">12</div>
-              {/* Row 3 */}
-              <div className="py-1 text-gray-700">13</div><div className="py-1 text-gray-700">14</div><div className="py-1 text-gray-700">15</div>
-              <div className="py-1 text-gray-700">16</div><div className="py-1 text-gray-700">17</div><div className="py-1 text-gray-700">18</div><div className="py-1 text-gray-700">19</div>
-              {/* Row 4 */}
-              <div className="py-1 text-gray-700">20</div><div className="py-1 text-gray-700">21</div><div className="py-1 text-gray-700">22</div>
-              <div className="py-1 text-gray-700">23</div><div className="py-1 text-gray-700">24</div><div className="py-1 text-gray-700">25</div><div className="py-1 text-gray-700">26</div>
-              {/* Row 5 */}
-              <div className="py-1 text-gray-700">27</div><div className="py-1 text-gray-700">28</div><div className="py-1 text-gray-700">29</div>
-              <div className="py-1 text-gray-700">30</div>
-              <div className="py-1 text-gray-300">1</div><div className="py-1 text-gray-300">2</div><div className="py-1 text-gray-300">3</div>
-            </div>
-          </div>
-
-          {/* This week summary */}
-          <div>
-            <h3 className="text-[16px] font-bold text-gray-900 mb-4">This week</h3>
-            <div className="space-y-4">
-              <div className="flex items-start gap-3">
-                <div className="w-2.5 h-2.5 rounded-full bg-[#0077CC] mt-1.5 shrink-0" />
-                <div className="text-[14px] text-gray-700 leading-tight"><span className="font-bold text-gray-900">Mon</span> · James Okafor · 09:00 · Cricket</div>
-              </div>
-              <div className="flex items-start gap-3">
-                <div className="w-2.5 h-2.5 rounded-full bg-[#7C3AED] mt-1.5 shrink-0" />
-                <div className="text-[14px] text-gray-700 leading-tight"><span className="font-bold text-gray-900">Mon</span> · Junior Cricket · 14:00</div>
-              </div>
-              <div className="flex items-start gap-3">
-                <div className="w-2.5 h-2.5 rounded-full bg-[#F59E0B] mt-1.5 shrink-0" />
-                <div className="text-[14px] text-gray-700 leading-tight"><span className="font-bold text-gray-900">Wed</span> · David Chen · Approval needed</div>
-              </div>
-              <div className="flex items-start gap-3">
-                <div className="w-2.5 h-2.5 rounded-full bg-[#0077CC] mt-1.5 shrink-0" />
-                <div className="text-[14px] text-gray-700 leading-tight"><span className="font-bold text-gray-900">Wed</span> · Marcus Trent · 10:00 · Football</div>
-              </div>
-            </div>
-
-            <div className="mt-6 bg-[#FEF3C7] border border-[#FDE68A] rounded-[12px] p-4 flex items-center justify-between shadow-sm">
-              <div className="text-[14px] font-bold text-[#92400E]">1 booking needs your approval</div>
-              <button onClick={() => router.push('/coach/bookings')} className="text-[14px] font-bold text-[#0077CC] hover:underline">Review →</button>
-            </div>
-          </div>
         </div>
 
         {/* CF-D02c FIX 1: Single popover rendering */}
@@ -581,10 +521,12 @@ function SessionPopover({ x, y, sessionId, type, onClose }: { x: number; y: numb
 
   return (
     <div 
-      className="session-popover absolute bg-white rounded-xl border border-gray-100 p-4 z-50 w-[280px] animate-in fade-in slide-in-from-top-1 duration-150"
+      className="session-popover bg-white rounded-xl border border-gray-100 p-4 w-[280px] animate-in fade-in slide-in-from-top-1 duration-150"
       style={{ 
+        position: 'fixed',
         left: `${x}px`, 
         top: `${y}px`,
+        zIndex: 9999,
         boxShadow: '0 8px 24px rgba(0,0,0,0.12)'
       }}
     >
@@ -614,10 +556,12 @@ function CreationPopover({ x, y, source, date, time, onClose }: { x: number; y: 
 
   return (
     <div 
-      className="session-popover absolute bg-white rounded-xl border border-gray-100 p-4 z-50 w-[280px] animate-in fade-in slide-in-from-top-1 duration-150"
+      className="session-popover bg-white rounded-xl border border-gray-100 p-4 w-[280px] animate-in fade-in slide-in-from-top-1 duration-150"
       style={{ 
+        position: 'fixed',
         left: `${x}px`, 
         top: `${y}px`,
+        zIndex: 9999,
         boxShadow: '0 8px 24px rgba(0,0,0,0.12)'
       }}
     >
