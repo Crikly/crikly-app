@@ -16,8 +16,8 @@ export function CoachRightPanel() {
       {isScheduleRoute ? (
         <>
           <MiniCalendar selectedDate={selectedDate} onDateSelect={setSelectedDate} />
-          <FreeSlotsThisWeek />
           <DaySessionList selectedDate={selectedDate} onBackToWeek={() => setSelectedDate(8)} />
+          <FreeSlotsThisWeek />
           <SmartInsightCard />
           <PendingApprovalCard />
         </>
