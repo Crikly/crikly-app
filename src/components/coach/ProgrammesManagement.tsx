@@ -20,21 +20,33 @@ export function ProgrammesManagement() {
   const getStatusStyles = (status: Programme['status']) => {
     switch (status) {
       case 'Active': return 'bg-[#DCFCE7] text-[#15803D]'
-      case 'Full': return 'bg-[#E0F6F8] text-[#0099AA]'
+      case 'Full': return 'bg-[#0077CC] text-white'
       case 'Draft': return 'bg-[#F3F4F6] text-[#6B7280]'
       default: return 'bg-gray-100 text-gray-800'
     }
   }
   const currentProgrammes = activeTab === 'Active' ? activeProgrammes : draftProgrammes
+  
+  // CF-D05 CHANGE 1: Calculate subtitle stats
+  const activeCount = activeProgrammes.filter(p => p.status === 'Active').length
+  const fullCount = activeProgrammes.filter(p => p.status === 'Full').length
+  const leastFullProgramme = activeProgrammes
+    .filter(p => p.status === 'Active')
+    .sort((a, b) => (a.spotsFilled / a.spotsTotal) - (b.spotsFilled / b.spotsTotal))[0]
+  const spotsRemaining = leastFullProgramme ? leastFullProgramme.spotsTotal - leastFullProgramme.spotsFilled : 0
 
   return (
-    <div className="min-h-screen bg-gray-50 font-sans" style={{ fontFamily: "'DM Sans', sans-serif" }}>
-      <div className="w-full max-w-2xl mx-auto bg-gray-50 min-h-screen relative flex flex-col pb-12">
+    <div className="min-h-screen bg-white font-sans" style={{ fontFamily: "'DM Sans', sans-serif" }}>
+      <div className="w-full max-w-2xl mx-auto bg-white min-h-screen relative flex flex-col pb-12">
         <div className="px-5 pt-8 pb-2 bg-white sticky top-0 z-10">
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center justify-between mb-2">
             <h1 className="text-[28px] font-bold text-gray-900 tracking-tight">Programmes</h1>
             <button className="bg-[#0077CC] hover:bg-[#0066AA] text-white px-3.5 py-2 rounded-full text-[13px] font-bold flex items-center gap-1.5 transition-colors shadow-sm"><Plus size={16} />New Programme</button>
           </div>
+          {/* CF-D05 CHANGE 1: State-aware subtitle */}
+          <p className="text-[13px] text-gray-500 mt-1 mb-4">
+            {activeCount} active · {fullCount} full{spotsRemaining > 0 && leastFullProgramme ? ` · ${spotsRemaining} spots available in ${leastFullProgramme.name}` : ''}
+          </p>
           <div className="flex items-center gap-6 border-b border-gray-100">
             {(['Active', 'Draft'] as Tab[]).map((tab) => (
               <button key={tab} onClick={() => setActiveTab(tab)} className={`pb-3 text-[15px] font-bold transition-colors relative whitespace-nowrap ${activeTab === tab ? 'text-[#0077CC]' : 'text-gray-500 hover:text-gray-700'}`}>
@@ -44,33 +56,201 @@ export function ProgrammesManagement() {
             ))}
           </div>
         </div>
-        <div className="flex-1 px-5 py-5 space-y-3.5 bg-gray-50/30">
+        <div className="flex-1 px-5 py-5 space-y-3" style={{ background: 'transparent' }}>
           {currentProgrammes.length > 0 ? currentProgrammes.map(programme => {
             const fillPercentage = (programme.spotsFilled / programme.spotsTotal) * 100
             const isDraft = programme.status === 'Draft'
+            const isFull = programme.status === 'Full'
+            const spotsRemaining = programme.spotsTotal - programme.spotsFilled
+            
+            // CF-D05 CHANGE 2: Fill rate colors
+            const getFillValueColor = () => {
+              if (fillPercentage < 25) return '#92400E'
+              return '#1F2937'
+            }
+            const getBarColor = () => {
+              if (fillPercentage < 25) return '#F59E0B'
+              return '#0077CC'
+            }
+            const getSpotsTextColor = () => {
+              if (fillPercentage < 25) return '#92400E'
+              return '#6B7280'
+            }
+            
             return (
-              <div key={programme.id} className={`bg-white border border-[#E2E8F0] rounded-[16px] p-5 shadow-sm cursor-pointer hover:border-[#0077CC]/30 transition-colors ${isDraft ? 'opacity-80' : ''}`}>
-                <div className="flex items-center justify-between">
-                  <div className="flex-1 space-y-3.5 pr-2">
-                    <div className="flex justify-between items-start gap-2">
-                      <h3 className="text-[16px] font-bold text-gray-900 leading-tight">{programme.name}</h3>
-                      <div className={`px-2.5 py-1 rounded-full text-[12px] font-bold shrink-0 ${getStatusStyles(programme.status)}`}>{programme.status}</div>
-                    </div>
-                    <div className="flex items-center gap-2.5 text-gray-600"><Calendar size={16} className="text-gray-400 shrink-0" /><span className="text-[14px] font-medium">{programme.schedule}</span></div>
-                    <div className="space-y-1.5">
-                      <div className="flex items-center gap-2.5 text-gray-600"><Users size={16} className="text-gray-400 shrink-0" /><span className="text-[14px] font-medium">{programme.spotsFilled} / {programme.spotsTotal} spots filled</span></div>
-                      <div className="ml-6 h-1.5 bg-gray-100 rounded-full overflow-hidden"><div className="h-full rounded-full bg-[#0077CC]" style={{ width: `${fillPercentage}%` }} /></div>
-                    </div>
-                    <div className="flex items-center gap-2.5 text-gray-600 pt-0.5"><Tag size={16} className="text-gray-400 shrink-0" /><span className="text-[14px] font-medium">{programme.price}</span></div>
+              <div 
+                key={programme.id} 
+                className={`rounded-xl cursor-pointer overflow-hidden ${isDraft ? 'opacity-80' : ''}`}
+                style={{ 
+                  background: isFull ? '#F0F7FF' : '#FFFFFF',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+                  transition: 'all 150ms ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)'
+                  e.currentTarget.style.transform = 'scale(1.005)'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.06)'
+                  e.currentTarget.style.transform = 'scale(1)'
+                }}
+                onClick={() => router.push(`/coach/programmes/${programme.id}`)}
+              >
+                <div className="p-4">
+                  {/* CF-D05 CHANGE 2: Restructured card */}
+                  {/* 1. Programme name + status badge */}
+                  <div className="flex justify-between items-start gap-2 mb-2">
+                    <h3 className="text-[14px] font-medium text-gray-900 leading-tight">{programme.name}</h3>
+                    <div className={`px-2.5 py-1 rounded-full text-[12px] font-bold shrink-0 ${getStatusStyles(programme.status)}`}>{programme.status}</div>
                   </div>
-                  <div className="shrink-0 text-gray-300"><ChevronRight size={20} /></div>
+                  
+                  {/* 2. Schedule meta */}
+                  <div className="flex items-center gap-2 text-gray-500 mb-2">
+                    <Calendar size={14} className="text-gray-400 shrink-0" />
+                    <span className="text-[12px]">{programme.schedule}</span>
+                  </div>
+                  
+                  {/* 3. Price meta */}
+                  <div className="flex items-center gap-2 text-gray-500 mb-3">
+                    <Tag size={14} className="text-gray-400 shrink-0" />
+                    <span className="text-[12px]">{programme.price}</span>
+                  </div>
+                  
+                  {/* 4. Fill rate section */}
+                  <div className="mb-3">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-[11px] text-gray-400">Fill rate</span>
+                      <span 
+                        className="text-[13px] font-medium"
+                        style={{ color: isFull ? '#0077CC' : getFillValueColor() }}
+                      >
+                        {isFull ? '100% full' : `${Math.round(fillPercentage)}% full`}
+                      </span>
+                    </div>
+                    <div className="h-[6px] bg-gray-100 rounded-full overflow-hidden mb-1.5">
+                      <div 
+                        className="h-full rounded-full transition-all"
+                        style={{ 
+                          width: `${fillPercentage}%`,
+                          backgroundColor: isFull ? '#0077CC' : getBarColor()
+                        }}
+                      />
+                    </div>
+                    <p 
+                      className="text-[11px]"
+                      style={{ color: isFull ? '#0077CC' : getSpotsTextColor() }}
+                    >
+                      {isFull 
+                        ? `All ${programme.spotsTotal} spots filled · open a new cohort?`
+                        : `${programme.spotsFilled} / ${programme.spotsTotal} spots filled · ${spotsRemaining} remaining`
+                      }
+                    </p>
+                  </div>
+                  
+                  {/* 5. Price + chevron row */}
+                  <div className="flex items-center justify-between pt-2 border-t-[0.5px] border-gray-100">
+                    <span className="text-[16px] font-bold text-gray-900">{programme.price.split(' ')[0]}</span>
+                    <ChevronRight size={20} className="text-gray-400" />
+                  </div>
                 </div>
-                {isDraft && (
-                  <div className="mt-5 pt-4 border-t border-gray-100 flex gap-3">
-                    <button className="flex-1 py-2.5 flex items-center justify-center border border-[#0077CC] text-[#0077CC] rounded-xl text-[14px] font-bold hover:bg-[#E6F3FB] transition-colors bg-white">Edit</button>
-                    <button className="flex-1 py-2.5 flex items-center justify-center bg-[#0077CC] text-white rounded-xl text-[14px] font-bold hover:bg-[#0066AA] transition-colors">Publish</button>
-                  </div>
-                )}
+                
+                {/* CF-D05 CHANGE 4: Quick action row */}
+                <div className="border-t-[0.5px] border-gray-100 px-4 py-2 flex gap-2 bg-white">
+                  {isDraft ? (
+                    // Draft programme actions
+                    <>
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          // TODO CF-D05: wire Publish action
+                        }}
+                        className="flex-1 bg-[#0077CC] text-white rounded-md text-[11px] py-1.5 text-center hover:bg-[#0066AA] transition-all duration-150"
+                      >
+                        Publish
+                      </button>
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          // TODO CF-D05: wire Edit action
+                        }}
+                        className="flex-1 bg-white border border-gray-200 text-gray-600 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 hover:border-gray-300 hover:text-gray-700 transition-all duration-150"
+                      >
+                        Edit
+                      </button>
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          // TODO CF-D05: wire Delete action
+                        }}
+                        className="flex-1 bg-white border border-gray-200 text-red-600 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 hover:border-gray-300 transition-all duration-150"
+                      >
+                        Delete
+                      </button>
+                    </>
+                  ) : isFull ? (
+                    // Full programme actions
+                    <>
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          // TODO CF-D05: wire Open new cohort action
+                        }}
+                        className="flex-1 bg-[#0077CC] text-white rounded-md text-[11px] py-1.5 text-center hover:bg-[#0066AA] transition-all duration-150"
+                      >
+                        Open new cohort ↗
+                      </button>
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          // TODO CF-D05: wire Duplicate action
+                        }}
+                        className="flex-1 bg-white border border-gray-200 text-gray-600 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 hover:border-gray-300 hover:text-gray-700 transition-all duration-150"
+                      >
+                        Duplicate
+                      </button>
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          // TODO CF-D05: wire Manage action
+                        }}
+                        className="flex-1 bg-white border border-gray-200 text-gray-600 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 hover:border-gray-300 hover:text-gray-700 transition-all duration-150"
+                      >
+                        Manage →
+                      </button>
+                    </>
+                  ) : (
+                    // Active (not full) programme actions
+                    <>
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          // TODO CF-D05: wire Promote action
+                        }}
+                        className="flex-1 bg-[#0077CC] text-white rounded-md text-[11px] py-1.5 text-center hover:bg-[#0066AA] transition-all duration-150"
+                      >
+                        Promote ↗
+                      </button>
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          // TODO CF-D05: wire Duplicate action
+                        }}
+                        className="flex-1 bg-white border border-gray-200 text-gray-600 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 hover:border-gray-300 hover:text-gray-700 transition-all duration-150"
+                      >
+                        Duplicate
+                      </button>
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          // TODO CF-D05: wire Manage action
+                        }}
+                        className="flex-1 bg-white border border-gray-200 text-gray-600 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 hover:border-gray-300 hover:text-gray-700 transition-all duration-150"
+                      >
+                        Manage →
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
             )
           }) : (
