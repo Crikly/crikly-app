@@ -114,7 +114,7 @@ export function BookingsManagement() {
           </div>
         </div>
 
-        <div className="flex-1 px-5 py-5 pb-12 bg-gray-50/30">
+        <div className="flex-1 px-5 py-5 pb-12" style={{ background: 'transparent' }}>
           {/* CF-D03 CHANGE 3: Urgent banner for pending approvals (Upcoming tab only) */}
           {activeTab === 'Upcoming' && pendingCount > 0 && (
             <div className="mb-5 p-3 bg-[#FFFBEB] border-l-4 border-l-[#F59E0B] rounded-r-[10px] flex items-center justify-between">
@@ -124,7 +124,7 @@ export function BookingsManagement() {
                 </div>
                 <div>
                   <p className="text-[13px] font-medium text-[#78350F]">{pendingCount} booking{pendingCount > 1 ? 's' : ''} need{pendingCount === 1 ? 's' : ''} your approval</p>
-                  <p className="text-[11px] text-[#92400E] mt-0.5">Parents are waiting — respond within 24 hours</p>
+                  <p className="text-[11px] text-[#92400E] mt-0.5">Respond now — parents are waiting to confirm</p>
                 </div>
               </div>
               <button 
@@ -136,7 +136,7 @@ export function BookingsManagement() {
             </div>
           )}
 
-          <div className="flex flex-col gap-3.5">
+          <div className="flex flex-col gap-3">
             {currentBookings.map((booking) => {
               const isGroup = booking.type.includes('Group')
               const isStartingSoon = booking.status === 'Starting soon'
@@ -145,15 +145,23 @@ export function BookingsManagement() {
               return (
                 <div 
                   key={booking.id} 
-                  className={`relative bg-white rounded-[16px] shadow-sm cursor-pointer hover:border-[#0077CC]/30 transition-colors overflow-hidden ${
+                  className={`relative rounded-[16px] shadow-sm cursor-pointer transition-all overflow-hidden ${
                     activeTab === 'Past' ? 'opacity-80' : ''
                   } ${isStartingSoon ? 'border-[1.5px] border-[#FCD34D]' : 'border border-[#E2E8F0]'}`}
-                  style={{ borderLeft: `3px solid ${leftBorderColor}`, borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }}
+                  style={{ 
+                    borderLeft: `3px solid ${leftBorderColor}`, 
+                    borderTopLeftRadius: 0, 
+                    borderBottomLeftRadius: 0,
+                    background: isStartingSoon ? '#FFFDF5' : '#FFFFFF'
+                  }}
                 >
-                  <div className="p-4" onClick={() => router.push(`/coach/bookings/${booking.id}`)}>
+                  <div 
+                    className="p-3 hover:bg-[#F9FAFB] transition-colors" 
+                    onClick={() => router.push(`/coach/bookings/${booking.id}`)}
+                  >
                     {/* CF-D03 CHANGE 4: Card content hierarchy */}
                     {/* 1. Date/time + status badge */}
-                    <div className="flex justify-between items-center mb-2">
+                    <div className="flex justify-between items-center mb-1.5">
                       <div className="text-[15px] font-bold text-gray-900">
                         {booking.date} <span className="text-gray-500 font-medium ml-1.5">{booking.time}</span>
                       </div>
@@ -166,18 +174,18 @@ export function BookingsManagement() {
                     </div>
 
                     {/* 2. Session meta */}
-                    <div className="text-[13px] text-gray-500 mb-2">
+                    <div className="text-[13px] text-gray-500 mb-1">
                       {booking.sport} · {booking.duration} · {booking.type}
                     </div>
 
                     {/* 3. Player/parent name */}
-                    <div className="text-[13px] font-medium text-gray-900 mb-2">
+                    <div className="text-[13px] font-medium text-gray-900 mb-1">
                       {booking.client}
                     </div>
 
                     {/* CF-D03 CHANGE 6: Group booking presentation */}
                     {isGroup && booking.participants && (
-                      <div className="mb-3">
+                      <div className="mb-2">
                         {/* Participant avatar stack */}
                         <div className="flex items-center mb-2">
                           {booking.participants.slice(0, 3).map((participant, idx) => {
@@ -204,80 +212,104 @@ export function BookingsManagement() {
                         
                         {/* Spots progress bar */}
                         {booking.spotsFilled !== undefined && booking.spotsTotal !== undefined && (
-                          <div>
-                            <div className="w-full h-[4px] bg-gray-100 rounded-full overflow-hidden">
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 h-[4px] bg-gray-100 rounded-full overflow-hidden">
                               <div 
                                 className="h-full bg-purple-500 rounded-full"
                                 style={{ width: `${(booking.spotsFilled / booking.spotsTotal) * 100}%` }}
                               />
                             </div>
-                            <p className="text-[10px] text-purple-700 font-medium mt-1">
-                              {booking.spotsFilled}/{booking.spotsTotal} spots filled
-                            </p>
+                            <span className="text-[10px] text-purple-600 font-medium whitespace-nowrap">
+                              {booking.spotsFilled} / {booking.spotsTotal}
+                            </span>
                           </div>
                         )}
                       </div>
                     )}
 
                     {/* 4. Location */}
-                    <div className="flex items-center gap-2 text-[13px] text-gray-500 mb-3">
+                    <div className="flex items-center gap-2 text-[13px] text-gray-500 mb-2">
                       <MapPin size={14} className="text-gray-400" />
                       <span className="truncate">{booking.location}</span>
                     </div>
 
                     {/* 5. Price + chevron */}
-                    <div className="flex items-center justify-between pt-3 border-t-[0.5px] border-gray-100">
+                    <div className="flex items-center justify-between pt-2 border-t-[0.5px] border-gray-100">
                       <span className="text-[16px] font-bold text-gray-900">£{booking.price}</span>
                       <ChevronRight size={20} className="text-gray-400" />
                     </div>
                   </div>
 
-                  {/* CF-D03 CHANGE 5: Quick action row (Upcoming tab only) */}
+                  {/* CF-D03b POLISH 4: Action row patterns by state */}
                   {activeTab === 'Upcoming' && (
-                    <div className="border-t-[0.5px] border-gray-100 px-4 py-2 flex gap-2">
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          // TODO CF-D03: wire Message action
-                        }}
-                        className="flex-1 bg-white border border-gray-200 text-gray-700 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 transition-colors"
-                      >
-                        Message
-                      </button>
-                      {isGroup ? (
-                        <button 
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            // TODO CF-D03: wire Message group action
-                          }}
-                          className="flex-1 bg-white border border-gray-200 text-gray-700 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 transition-colors"
-                        >
-                          Message group
-                        </button>
+                    <div className="border-t-[0.5px] border-gray-100 px-4 py-1.5 flex gap-2 bg-white">
+                      {isStartingSoon ? (
+                        // PATTERN B: Starting soon - Message + Mark complete (primary)
+                        <>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              // TODO CF-D03: wire Message action
+                            }}
+                            className="flex-1 bg-white border border-gray-200 text-gray-600 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 transition-colors"
+                          >
+                            Message
+                          </button>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              // TODO CF-D03: wire Mark complete action
+                            }}
+                            className="flex-1 bg-[#0077CC] text-white font-medium rounded-md text-[11px] py-1.5 text-center hover:bg-[#0066AA] transition-colors"
+                          >
+                            Mark complete →
+                          </button>
+                        </>
+                      ) : isGroup ? (
+                        // PATTERN C: Group - Message group + View details
+                        <>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              // TODO CF-D03: wire Message group action
+                            }}
+                            className="flex-1 bg-white border border-gray-200 text-gray-600 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 transition-colors"
+                          >
+                            Message group
+                          </button>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              // TODO CF-D03: wire View details to booking detail route
+                            }}
+                            className="flex-1 bg-white border border-gray-200 text-gray-600 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 transition-colors"
+                          >
+                            View details
+                          </button>
+                        </>
                       ) : (
-                        <button 
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            // TODO CF-D03: wire Mark complete action
-                          }}
-                          className={`flex-1 rounded-md text-[11px] py-1.5 text-center transition-colors ${
-                            isStartingSoon 
-                              ? 'bg-[#0077CC] text-white hover:bg-[#0066AA]' 
-                              : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'
-                          }`}
-                        >
-                          Mark complete
-                        </button>
+                        // PATTERN A: Normal - Message + View details
+                        <>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              // TODO CF-D03: wire Message action
+                            }}
+                            className="flex-1 bg-white border border-gray-200 text-gray-600 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 transition-colors"
+                          >
+                            Message
+                          </button>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              // TODO CF-D03: wire View details to booking detail route
+                            }}
+                            className="flex-1 bg-white border border-gray-200 text-gray-600 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 transition-colors"
+                          >
+                            View details
+                          </button>
+                        </>
                       )}
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          // TODO CF-D03: wire View details to booking detail route
-                        }}
-                        className="flex-1 bg-white border border-gray-200 text-gray-700 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 transition-colors"
-                      >
-                        View details
-                      </button>
                     </div>
                   )}
                 </div>

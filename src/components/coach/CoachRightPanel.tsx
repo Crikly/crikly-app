@@ -404,7 +404,7 @@ function BookingsPendingApprovals() {
         {pendingBookings.map((booking) => (
           <div 
             key={booking.id}
-            className="bg-[#FFFBEB] border-[0.5px] border-[#FCD34D] rounded-[10px] p-3"
+            className="bg-[#FFFBEB] border-[0.5px] border-gray-100 rounded-[10px] p-3"
           >
             <p className="text-[12px] font-medium text-gray-900 mb-1">{booking.client}</p>
             <p className="text-[10px] text-gray-500 mb-1">
@@ -416,7 +416,7 @@ function BookingsPendingApprovals() {
                 onClick={() => {
                   // TODO CF-D03: wire Approve to booking approval API
                 }}
-                className="flex-1 bg-[#3B6D11] text-white text-[11px] font-medium rounded-md py-1.5 text-center hover:bg-[#2F5A0D] transition-colors"
+                className="flex-1 bg-[#0077CC] text-white text-[11px] font-medium rounded-md py-1.5 text-center hover:bg-[#0066AA] transition-colors"
               >
                 ✓ Approve
               </button>
@@ -444,7 +444,7 @@ function BookingsTodaySessions() {
 
   return (
     <div className="border-t-[0.5px] border-gray-100 pt-3.5">
-      <h3 className="text-[13px] font-medium text-gray-900 mb-2">Today's sessions</h3>
+      <h3 className="text-[12px] text-gray-400 mb-2">Today's sessions</h3>
       <div className="space-y-3">
         {todaySessions.map((session, idx) => (
           <div key={session.id}>
@@ -475,9 +475,7 @@ function BookingsTodaySessions() {
 function BookingsWeeklyEarnings() {
   return (
     <div className="border-t-[0.5px] border-gray-100 pt-3.5">
-      <h3 className="text-[13px] font-medium text-gray-900 mb-2">This week's earnings</h3>
-      <p className="text-[22px] font-medium text-gray-900">£225</p>
-      <p className="text-[11px] text-gray-500 mt-1">from 3 confirmed sessions</p>
+      <p className="text-[13px] text-gray-500">£225 this week</p>
     </div>
   )
 }
