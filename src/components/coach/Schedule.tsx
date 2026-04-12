@@ -137,11 +137,12 @@ export function Schedule() {
   // CF-D02c FIX 1: Handle session card click (single popover)
   // CF-D02h FIX 1: Use fixed positioning with viewport coordinates
   // CF-D02i: Clamp to not overlap right panel
+  // CF-D02j: Update clamping for 380px popover width
   const handleCardClick = (e: React.MouseEvent, sessionId: string, type: string) => {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
     
     // Anchor to card but clamp to not overlap right panel
-    const x = Math.min(rect.right + 8, window.innerWidth - RIGHT_PANEL_WIDTH - 308) // 308 = 300px width + 8px margin
+    const x = Math.min(rect.right + 8, window.innerWidth - RIGHT_PANEL_WIDTH - 388) // 388 = 380px width + 8px margin
     const y = Math.min(rect.top, window.innerHeight - 400)
     
     setActivePopover({
@@ -157,10 +158,11 @@ export function Schedule() {
   // CF-D02d BUG FIX 3: Add source field
   // CF-D02h FIX 1: Use fixed positioning with viewport coordinates
   // CF-D02i: Centre in main content area
+  // CF-D02j: Update for 380px popover width
   const handleSlotClick = (e: React.MouseEvent, date: string, time: string) => {
     // Centre popover in main content area
     const mainWidth = window.innerWidth - SIDEBAR_WIDTH - RIGHT_PANEL_WIDTH
-    const popoverX = SIDEBAR_WIDTH + (mainWidth / 2) - 150 // 150 = half of 300px popover width
+    const popoverX = SIDEBAR_WIDTH + (mainWidth / 2) - 190 // 190 = half of 380px popover width
     const popoverY = window.innerHeight * 0.25
     
     setActivePopover({
@@ -322,10 +324,11 @@ export function Schedule() {
               // CF-D02d BUG FIX 3: Set source to 'button' for editable date
               // CF-D02h FIX 1: Use fixed positioning with viewport coordinates
               // CF-D02i: Centre in main content area
+              // CF-D02j: Update for 380px popover width
               
               // Centre popover in main content area
               const mainWidth = window.innerWidth - SIDEBAR_WIDTH - RIGHT_PANEL_WIDTH
-              const popoverX = SIDEBAR_WIDTH + (mainWidth / 2) - 150 // 150 = half of 300px popover width
+              const popoverX = SIDEBAR_WIDTH + (mainWidth / 2) - 190 // 190 = half of 380px popover width
               const popoverY = window.innerHeight * 0.25
               
               setActivePopover({
@@ -575,8 +578,8 @@ function CreationPopover({ x, y, source, date, time, onClose }: { x: number; y: 
         left: `${x}px`, 
         top: `${y}px`,
         zIndex: 9999,
-        width: '300px',
-        maxWidth: '300px',
+        width: '380px',
+        maxWidth: '380px',
         boxShadow: '0 8px 24px rgba(0,0,0,0.12)'
       }}
     >
