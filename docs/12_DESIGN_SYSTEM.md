@@ -1,7 +1,7 @@
 # Crikly — Design System
 
-**Version:** 1.0
-**Last Updated:** March 2026
+**Version:** 1.1
+**Last Updated:** April 2026
 **Applies to:** Web PWA (Tailwind/Next.js) + Flutter Mobile (Phase 2)
 
 Single source of truth for all visual decisions. Every colour, font,
@@ -174,11 +174,77 @@ Read this file before building any UI component.
 
 ### Cards
 
+**Rules:**
+- No border on any card (not even 0.5px) — shadow provides elevation
+- No background colour change on hover — shadow + scale only
+- Action rows inside cards do NOT inherit the card hover state
+- Action rows have their own independent hover states (see Buttons)
+- Cards with status context (bookings, schedule) use shadow only
+  for elevation — no left border accents, no coloured borders
+
+**Status indicators on cards:**
+- Use status BADGES (top-right of card) — not borders
+- Use subtle background tints for urgency (e.g. #FFFDF5 for starting soon)
+- Never use full card borders to communicate status
+
+**Standard card:**
 - Background: white (light) / neutral-50 (dark)
-- Border: 0.5px solid neutral-100
-- Border radius: radius-lg
-- Padding: space-4 (16px)
-- No shadows on standard cards
+- Border: none
+- Border radius: 12px (rounded-xl)
+- Padding: 12px (p-3)
+- Shadow (resting): 0 1px 3px rgba(0,0,0,0.06)
+- Shadow (hover): 0 2px 8px rgba(0,0,0,0.08)
+- Transform (hover): scale(1.005)
+- Transform (active): scale(0.998)
+- Transition: all 150ms ease
+
+---
+
+## Interaction Patterns
+
+These patterns are non-negotiable. Apply consistently across all screens.
+
+### Quick action buttons (inside cards)
+
+**Secondary action button:**
+- Resting: bg-white, border 1px solid #E2E8F0, text #475569, 11px
+- Hover: bg-gray-50 (#F9FAFB), border #CBD5E1, text #374151
+- Transition: all 150ms ease
+- Border-radius: 6px
+- Padding: 6px 0, flex: 1
+
+**Primary action button (e.g. Mark complete, Approve):**
+- Resting: bg-[#0077CC], text white, 11px, font-weight 500
+- Hover: bg-[#0066AA]
+- Transition: all 150ms ease
+
+### Action row patterns by booking state
+
+**Pattern A — Normal upcoming booking:**
+- [Message]   [View details]
+- Both secondary. No "Mark complete" until session is imminent.
+
+**Pattern B — Starting soon (today, within 2 hours):**
+- [Message]   [Mark complete →]
+- Mark complete = primary (brand-600). Message = secondary.
+- No "View details" — coach needs to act, not browse.
+
+**Pattern C — Group booking:**
+- [Message group]   [View details]
+- Both secondary. No "Mark complete" for group sessions.
+
+### Card ordering rules
+
+- Starting soon cards always appear FIRST in any booking list
+- Then sort by date ascending
+- Past bookings go to a separate tab — never mixed with upcoming
+
+### Approve / Decline pattern (right panel)
+
+- Approve: bg-[#0077CC] (brand-600), white text — always blue, never green
+- Decline: bg-white, border red-200, text red-600 — destructive but quiet
+
+---
 
 ### Badges
 
@@ -186,7 +252,7 @@ Read this file before building any UI component.
 |---|---|---|---|
 | DBS verified | #E0F6F8 | #006677 | Coach verification |
 | Premium | #E6F3FB | #0C447C | Premium tier |
-| Confirmed | success-10 | #1A7A4A | Confirmed bookings |
+| 1-on-1 | #E0F6F8 | #0099AA | Confirmed 1-on-1 bookings |
 | Cancelled | #FEE2E2 | #B91C1C | Cancelled bookings |
 
 All badges: 11px, weight 500, radius-sm, padding 3px 8px.
@@ -245,6 +311,7 @@ shadow-{none|sm|md|focus}
 
 ---
 
-*Crikly Design System v1.0 — March 2026*
+*Crikly Design System v1.1 — April 2026*
+*v1.1: Added card interaction rules and coach UI patterns*
 *Read this before building any component.*
 *All values are final unless explicitly updated here.*
