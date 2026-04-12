@@ -9,6 +9,8 @@ export function CoachRightPanel() {
   const pathname = usePathname()
   // CF-D02d BUG FIX 1: Route detection confirmed working
   const isScheduleRoute = pathname === '/coach/schedule' || pathname.includes('/schedule')
+  // CF-D03 CHANGE 7: Detect bookings route
+  const isBookingsRoute = pathname === '/coach/bookings' || pathname.includes('/bookings')
   const [selectedDate, setSelectedDate] = useState<number | null>(8) // Default to today (8th)
 
   return (
@@ -20,6 +22,12 @@ export function CoachRightPanel() {
           <FreeSlotsThisWeek />
           <SmartInsightCard />
           <PendingApprovalCard />
+        </>
+      ) : isBookingsRoute ? (
+        <>
+          <BookingsPendingApprovals />
+          <BookingsTodaySessions />
+          <BookingsWeeklyEarnings />
         </>
       ) : (
         <>
@@ -378,6 +386,98 @@ function PendingApprovalCard() {
       >
         Review now →
       </button>
+    </div>
+  )
+}
+
+// CF-D03 CHANGE 7: Bookings-specific right panel components
+function BookingsPendingApprovals() {
+  const pendingBookings = [
+    { id: '1', client: 'David Chen', sport: 'Cricket', type: '1-on-1', date: 'Mon 14 Apr', time: '18:00', requestedAgo: '2 hours ago' },
+    { id: '2', client: "Liam O'Connor", sport: 'Cricket', type: '1-on-1', date: 'Wed 16 Apr', time: '17:00', requestedAgo: '5 hours ago' }
+  ]
+
+  return (
+    <div>
+      <h3 className="text-[13px] font-medium text-gray-900 mb-2">Pending approvals</h3>
+      <div className="space-y-2">
+        {pendingBookings.map((booking) => (
+          <div 
+            key={booking.id}
+            className="bg-[#FFFBEB] border-[0.5px] border-[#FCD34D] rounded-[10px] p-3"
+          >
+            <p className="text-[12px] font-medium text-gray-900 mb-1">{booking.client}</p>
+            <p className="text-[10px] text-gray-500 mb-1">
+              {booking.sport} · {booking.type} · {booking.date} {booking.time}
+            </p>
+            <p className="text-[10px] text-[#92400E] mb-2">Requested {booking.requestedAgo}</p>
+            <div className="flex gap-1.5">
+              <button 
+                onClick={() => {
+                  // TODO CF-D03: wire Approve to booking approval API
+                }}
+                className="flex-1 bg-[#3B6D11] text-white text-[11px] font-medium rounded-md py-1.5 text-center hover:bg-[#2F5A0D] transition-colors"
+              >
+                ✓ Approve
+              </button>
+              <button 
+                onClick={() => {
+                  // TODO CF-D03: wire Decline to booking decline API
+                }}
+                className="flex-1 bg-white border border-[#F09595] text-red-700 text-[11px] font-medium rounded-md py-1.5 text-center hover:bg-red-50 transition-colors"
+              >
+                ✗ Decline
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function BookingsTodaySessions() {
+  const todaySessions = [
+    { id: '1', time: '14:00', client: 'James Okafor', sport: 'Cricket', status: 'Confirmed', statusColor: '#3B82F6' },
+    { id: '2', time: '16:30', client: 'Marcus Trent', sport: 'Cricket', status: 'Starting soon', statusColor: '#F59E0B' }
+  ]
+
+  return (
+    <div className="border-t-[0.5px] border-gray-100 pt-3.5">
+      <h3 className="text-[13px] font-medium text-gray-900 mb-2">Today's sessions</h3>
+      <div className="space-y-3">
+        {todaySessions.map((session, idx) => (
+          <div key={session.id}>
+            <div className="flex items-start gap-2">
+              <div 
+                className="w-[7px] h-[7px] rounded-full mt-1 shrink-0"
+                style={{ backgroundColor: session.statusColor }}
+              />
+              <div className="flex-1">
+                <p className="text-[11px] font-medium text-gray-900">
+                  {session.time} · {session.client}
+                </p>
+                <p className="text-[10px] text-gray-500 mt-0.5">
+                  {session.sport} · {session.status}
+                </p>
+              </div>
+            </div>
+            {idx < todaySessions.length - 1 && (
+              <div className="border-t-[0.5px] border-gray-100 mt-3" />
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function BookingsWeeklyEarnings() {
+  return (
+    <div className="border-t-[0.5px] border-gray-100 pt-3.5">
+      <h3 className="text-[13px] font-medium text-gray-900 mb-2">This week's earnings</h3>
+      <p className="text-[22px] font-medium text-gray-900">£225</p>
+      <p className="text-[11px] text-gray-500 mt-1">from 3 confirmed sessions</p>
     </div>
   )
 }
