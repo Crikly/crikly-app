@@ -53,6 +53,8 @@ export function AvailabilityManagement() {
   ])
   const availableSports = useMemo(() => [...new Set(scheduleBlocks.map(b => b.sport))], [scheduleBlocks])
   const [showAddForm, setShowAddForm] = useState(false)
+  // CF-D06b FIX 1: Add preselectedDay state
+  const [preselectedDay, setPreselectedDay] = useState<string | null>(null)
   const [formSport, setFormSport] = useState(availableSports[0] ?? '')
   const [formDays, setFormDays] = useState<string[]>([])
   const [formStartTime, setFormStartTime] = useState('09:00')
@@ -61,8 +63,51 @@ export function AvailabilityManagement() {
   const [formVenue, setFormVenue] = useState('')
   const [formPrice, setFormPrice] = useState('')
   const toggleDay = (day: string) => setFormDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day])
-  const conflict = useMemo(() => { for (const day of formDays) { const existing = scheduleBlocks.find(b => b.sport === formSport && b.day === day); if (existing) return { day, block: existing } } return null }, [formSport, formDays, scheduleBlocks])
-  const resetForm = () => { setFormSport(availableSports[0] ?? ''); setFormDays([]); setFormStartTime('09:00'); setFormEndTime('10:00'); setFormRepeat('Weekly'); setFormVenue(''); setFormPrice(''); setShowAddForm(false) }
+  
+  // CF-D06b FIX 2: Replace same-day check with time overlap validation
+  const timeToMinutes = (time: string) => {
+    const [h, m] = time.split(':').map(Number)
+    return h * 60 + m
+  }
+  
+  const conflict = useMemo(() => {
+    for (const day of formDays) {
+      const existingBlocks = scheduleBlocks.filter(b => b.day === day)
+      for (const existing of existingBlocks) {
+        // Parse existing time range (format: "09:00 – 12:00")
+        const [existStartStr, existEndStr] = existing.time.split(' – ')
+        const existStart = timeToMinutes(existStartStr)
+        const existEnd = timeToMinutes(existEndStr)
+        const newStart = timeToMinutes(formStartTime)
+        const newEnd = timeToMinutes(formEndTime)
+        
+        // Check for overlap: newStart < existEnd AND newEnd > existStart
+        if (newStart < existEnd && newEnd > existStart) {
+          return { day, block: existing, message: 'This slot overlaps with an existing block. Choose a different time.' }
+        }
+      }
+    }
+    return null
+  }, [formSport, formDays, formStartTime, formEndTime, scheduleBlocks])
+  
+  const resetForm = () => { 
+    setFormSport(availableSports[0] ?? '')
+    setFormDays([])
+    setFormStartTime('09:00')
+    setFormEndTime('10:00')
+    setFormRepeat('Weekly')
+    setFormVenue('')
+    setFormPrice('')
+    setShowAddForm(false)
+    setPreselectedDay(null) // CF-D06b FIX 1: Reset preselected day
+  }
+  
+  // CF-D06b FIX 1: Effect to preselect day when form opens
+  React.useEffect(() => {
+    if (showAddForm && preselectedDay && !formDays.includes(preselectedDay)) {
+      setFormDays([preselectedDay])
+    }
+  }, [showAddForm, preselectedDay])
   const [currentMonth, setCurrentMonth] = useState(3)
   const [currentYear, setCurrentYear] = useState(2026)
   const [rangeStart, setRangeStart] = useState<Date | null>(null)
@@ -118,69 +163,76 @@ export function AvailabilityManagement() {
             <div className="flex flex-col gap-6 mb-6">
               {DAY_ABBR.map((dayAbbr) => {
                 const dayFull = DAY_FULL[dayAbbr]
-                const blockForDay = scheduleBlocks.find(b => b.day === dayAbbr)
+                // CF-D06b FIX 2: Get ALL blocks for this day (not just first one)
+                const blocksForDay = scheduleBlocks.filter(b => b.day === dayAbbr)
                 
                 return (
                   <div key={dayAbbr}>
                     {/* Day heading */}
                     <h3 className="text-[12px] text-gray-400 uppercase tracking-wider mb-1.5">{dayFull}</h3>
                     
-                    {blockForDay ? (
-                      // CF-D06 CHANGE 3: Existing block card
-                      <div 
-                        className="rounded-xl cursor-pointer overflow-hidden"
-                        style={{ 
-                          background: '#FFFFFF',
-                          boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
-                          transition: 'all 150ms ease'
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)'
-                          e.currentTarget.style.transform = 'scale(1.005)'
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.06)'
-                          e.currentTarget.style.transform = 'scale(1)'
-                        }}
-                      >
-                        <div className="px-4 py-3 flex items-center gap-3">
-                          {/* Day pill */}
-                          <div className="w-[42px] h-[42px] bg-[#E6F1FB] rounded-[10px] flex items-center justify-center shrink-0">
-                            <span className="text-[#0C447C] text-[11px] font-medium">{dayAbbr}</span>
-                          </div>
-                          
-                          {/* Block content */}
-                          <div className="flex-1 flex flex-col">
-                            <div className="text-[13px] font-medium text-gray-900">
-                              {blockForDay.sport} · {blockForDay.time}
+                    {blocksForDay.length > 0 ? (
+                      // CF-D06 CHANGE 3: Existing block card(s)
+                      // CF-D06b FIX 2: Show all blocks for this day stacked
+                      <div className="flex flex-col gap-2">
+                        {blocksForDay.map((blockForDay) => (
+                          <div 
+                            key={blockForDay.id}
+                            className="rounded-xl cursor-pointer overflow-hidden"
+                            style={{ 
+                              background: '#FFFFFF',
+                              boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+                              transition: 'all 150ms ease'
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)'
+                              e.currentTarget.style.transform = 'scale(1.005)'
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.06)'
+                              e.currentTarget.style.transform = 'scale(1)'
+                            }}
+                          >
+                            <div className="px-4 py-3 flex items-center gap-3">
+                              {/* Day pill */}
+                              <div className="w-[42px] h-[42px] bg-[#E6F1FB] rounded-[10px] flex items-center justify-center shrink-0">
+                                <span className="text-[#0C447C] text-[11px] font-medium">{dayAbbr}</span>
+                              </div>
+                              
+                              {/* Block content */}
+                              <div className="flex-1 flex flex-col">
+                                <div className="text-[13px] font-medium text-gray-900">
+                                  {blockForDay.sport} · {blockForDay.time}
+                                </div>
+                                <div className="text-[11px] text-gray-500">
+                                  {blockForDay.location} · {blockForDay.price}
+                                </div>
+                              </div>
+                              
+                              {/* Edit/delete icons */}
+                              <div className="flex items-center gap-1 shrink-0">
+                                <button 
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    // TODO CF-D06: wire edit action
+                                  }}
+                                  className="w-7 h-7 flex items-center justify-center border-[0.5px] border-gray-100 bg-white rounded-md hover:bg-gray-50 transition-colors"
+                                >
+                                  <Pencil size={12} className="text-gray-400" />
+                                </button>
+                                <button 
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    // TODO CF-D06: wire delete action
+                                  }}
+                                  className="w-7 h-7 flex items-center justify-center border-[0.5px] border-gray-100 bg-white rounded-md hover:bg-gray-50 transition-colors"
+                                >
+                                  <X size={12} className="text-gray-400" />
+                                </button>
+                              </div>
                             </div>
-                            <div className="text-[11px] text-gray-500">
-                              {blockForDay.location} · {blockForDay.price}
-                            </div>
                           </div>
-                          
-                          {/* Edit/delete icons */}
-                          <div className="flex items-center gap-1 shrink-0">
-                            <button 
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                // TODO CF-D06: wire edit action
-                              }}
-                              className="w-7 h-7 flex items-center justify-center border-[0.5px] border-gray-100 bg-white rounded-md hover:bg-gray-50 transition-colors"
-                            >
-                              <Pencil size={12} className="text-gray-400" />
-                            </button>
-                            <button 
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                // TODO CF-D06: wire delete action
-                              }}
-                              className="w-7 h-7 flex items-center justify-center border-[0.5px] border-gray-100 bg-white rounded-md hover:bg-gray-50 transition-colors"
-                            >
-                              <X size={12} className="text-gray-400" />
-                            </button>
-                          </div>
-                        </div>
+                        ))}
                       </div>
                     ) : (
                       // CF-D06 CHANGE 4: Empty day card
@@ -198,8 +250,9 @@ export function AvailabilityManagement() {
                           e.currentTarget.style.background = '#FFFFFF'
                         }}
                         onClick={() => {
+                          // CF-D06b FIX 1: Preselect the clicked day
+                          setPreselectedDay(dayAbbr)
                           setShowAddForm(true)
-                          // TODO CF-D06: wire empty day click to add availability flow
                         }}
                       >
                         <div className="px-4 py-3 flex items-center gap-3">
@@ -282,7 +335,8 @@ export function AvailabilityManagement() {
                 {conflict && (
                   <div className="mb-4 flex items-start gap-2.5 bg-red-50 border border-red-200/70 rounded-xl px-4 py-3">
                     <AlertTriangle size={15} className="text-red-500 mt-0.5 shrink-0" />
-                    <p className="text-[13px] font-medium text-red-700 leading-snug">{conflict.block.sport} on {DAY_FULL[conflict.day]} already has a block from {conflict.block.time}. Adjust the time or day.</p>
+                    {/* CF-D06b FIX 2: Updated error message for overlap */}
+                    <p className="text-[13px] font-medium text-red-700 leading-snug">{conflict.message}</p>
                   </div>
                 )}
                 <div className="flex items-center justify-between">
