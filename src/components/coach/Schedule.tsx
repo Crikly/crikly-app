@@ -102,6 +102,10 @@ export function Schedule() {
   const [weekOffset, setWeekOffset] = useState(0) // CF-D02c FIX 3: Week navigation
   const gridRef = useRef<HTMLDivElement>(null)
   const scheduleContainerRef = useRef<HTMLDivElement>(null)
+  
+  // CF-D02i: Layout dimensions for popover positioning
+  const SIDEBAR_WIDTH = 288 // w-72 from layout.tsx
+  const RIGHT_PANEL_WIDTH = 384 // w-96 from CoachRightPanel.tsx
 
   useEffect(() => {
     if (gridRef.current) {
@@ -132,11 +136,12 @@ export function Schedule() {
 
   // CF-D02c FIX 1: Handle session card click (single popover)
   // CF-D02h FIX 1: Use fixed positioning with viewport coordinates
+  // CF-D02i: Clamp to not overlap right panel
   const handleCardClick = (e: React.MouseEvent, sessionId: string, type: string) => {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
     
-    // Calculate position relative to viewport, clamped to stay on screen
-    const x = Math.min(rect.right + 8, window.innerWidth - 296) // 296 = 280px width + 16px margin
+    // Anchor to card but clamp to not overlap right panel
+    const x = Math.min(rect.right + 8, window.innerWidth - RIGHT_PANEL_WIDTH - 308) // 308 = 300px width + 8px margin
     const y = Math.min(rect.top, window.innerHeight - 400)
     
     setActivePopover({
@@ -151,21 +156,20 @@ export function Schedule() {
   // CF-D02c FIX 1: Handle empty/available slot click (single popover)
   // CF-D02d BUG FIX 3: Add source field
   // CF-D02h FIX 1: Use fixed positioning with viewport coordinates
-  // CF-D02i: Pin popover 340px from right edge
+  // CF-D02i: Centre in main content area
   const handleSlotClick = (e: React.MouseEvent, date: string, time: string) => {
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-    
-    // Pin popover 340px from right edge (300px width + 40px margin)
-    const x = Math.max(8, window.innerWidth - 340)
-    const y = Math.min(rect.top, window.innerHeight - 400)
+    // Centre popover in main content area
+    const mainWidth = window.innerWidth - SIDEBAR_WIDTH - RIGHT_PANEL_WIDTH
+    const popoverX = SIDEBAR_WIDTH + (mainWidth / 2) - 150 // 150 = half of 300px popover width
+    const popoverY = window.innerHeight * 0.25
     
     setActivePopover({
       type: 'creation',
       source: 'slot',
       date,
       time,
-      x,
-      y
+      x: popoverX,
+      y: popoverY
     })
   }
 
@@ -317,20 +321,20 @@ export function Schedule() {
             onClick={(e) => {
               // CF-D02d BUG FIX 3: Set source to 'button' for editable date
               // CF-D02h FIX 1: Use fixed positioning with viewport coordinates
-              // CF-D02i: Pin popover 340px from right edge
-              const rect = e.currentTarget.getBoundingClientRect()
+              // CF-D02i: Centre in main content area
               
-              // Pin popover 340px from right edge (300px width + 40px margin)
-              const x = Math.max(8, window.innerWidth - 340)
-              const y = Math.min(rect.top - 300, window.innerHeight - 400)
+              // Centre popover in main content area
+              const mainWidth = window.innerWidth - SIDEBAR_WIDTH - RIGHT_PANEL_WIDTH
+              const popoverX = SIDEBAR_WIDTH + (mainWidth / 2) - 150 // 150 = half of 300px popover width
+              const popoverY = window.innerHeight * 0.25
               
               setActivePopover({
                 type: 'creation',
                 source: 'button',
                 date: 'Wed 8 Apr',
                 time: '09:00',
-                x,
-                y
+                x: popoverX,
+                y: popoverY
               })
             }}
             className="self-end mt-3 mb-2 bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-full px-[18px] py-2 flex items-center gap-2 transition-colors text-[13px] font-medium"
