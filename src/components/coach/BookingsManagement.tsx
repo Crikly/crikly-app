@@ -68,14 +68,6 @@ export function BookingsManagement() {
   const upcomingCount = upcomingBookings.length
   const pendingCount = pendingBookings.length
 
-  // CF-D03 CHANGE 4: Get left border color based on status
-  const getLeftBorderColor = (status: string, type: string) => {
-    if (status === 'Starting soon') return '#F59E0B' // amber-400
-    if (status === 'Awaiting approval') return '#F59E0B' // amber-400
-    if (type.includes('Group')) return '#7C3AED' // purple-600
-    if (status === 'Confirmed') return '#3B82F6' // blue-500
-    return '#3B82F6' // default blue
-  }
 
   return (
     <div className="min-h-screen bg-white" style={{ fontFamily: "'DM Sans', sans-serif" }}>
@@ -140,18 +132,14 @@ export function BookingsManagement() {
             {currentBookings.map((booking) => {
               const isGroup = booking.type.includes('Group')
               const isStartingSoon = booking.status === 'Starting soon'
-              const leftBorderColor = getLeftBorderColor(booking.status, booking.type)
               
               return (
                 <div 
                   key={booking.id} 
-                  className={`relative rounded-[16px] cursor-pointer transition-all overflow-hidden ${
+                  className={`relative rounded-xl cursor-pointer transition-all overflow-hidden ${
                     activeTab === 'Past' ? 'opacity-80' : ''
                   }`}
                   style={{ 
-                    borderLeft: `3px solid ${leftBorderColor}`, 
-                    borderTopLeftRadius: 0, 
-                    borderBottomLeftRadius: 0,
                     background: isStartingSoon ? '#FFFDF5' : '#FFFFFF',
                     boxShadow: '0 1px 3px rgba(0,0,0,0.06)'
                   }}
@@ -170,7 +158,7 @@ export function BookingsManagement() {
                         {isStartingSoon && (
                           <span className="w-[6px] h-[6px] rounded-full bg-[#F59E0B] pulse-dot" />
                         )}
-                        {booking.status}
+                        {booking.status === 'Confirmed' ? '1-on-1' : booking.status}
                       </div>
                     </div>
 
