@@ -42,13 +42,13 @@ export function CoachRightPanel() {
 
 function ThisWeekStrip({ isDesktop }: { isDesktop?: boolean }) {
   const days = [
-    { label: 'M', date: '13' },
-    { label: 'T', date: '14', active: true, hasSession: true },
-    { label: 'W', date: '15', hasSession: true },
-    { label: 'T', date: '16' },
-    { label: 'F', date: '17', hasSession: true },
-    { label: 'S', date: '18', hasSession: true },
-    { label: 'S', date: '19' },
+    { label: 'M', date: '13', sessions: [] },
+    { label: 'T', date: '14', active: true, sessions: [{ type: '1-on-1', color: '#3B82F6' }, { type: 'group', color: '#7C3AED' }] },
+    { label: 'W', date: '15', sessions: [{ type: 'pending', color: '#F59E0B' }] },
+    { label: 'T', date: '16', sessions: [{ type: 'blocked', color: '#D1D5DB' }] },
+    { label: 'F', date: '17', sessions: [{ type: '1-on-1', color: '#3B82F6' }] },
+    { label: 'S', date: '18', sessions: [{ type: 'group', color: '#7C3AED' }, { type: '1-on-1', color: '#3B82F6' }, { type: 'pending', color: '#F59E0B' }] },
+    { label: 'S', date: '19', sessions: [] },
   ]
   return (
     <div className="flex flex-col gap-4">
@@ -65,8 +65,14 @@ function ThisWeekStrip({ isDesktop }: { isDesktop?: boolean }) {
             <div className={`w-9 h-9 rounded-full flex items-center justify-center text-[15px] font-bold transition-all ${day.active ? 'bg-[#0077CC] text-white shadow-md' : 'text-gray-700 group-hover:bg-gray-200'}`}>
               {day.date}
             </div>
-            <div className="h-1.5 flex justify-center w-full">
-              {day.hasSession && <div className={`w-1.5 h-1.5 rounded-full ${day.active ? 'bg-[#0077CC]' : 'bg-gray-300'}`}></div>}
+            <div className="h-1.5 flex justify-center items-center gap-0.5">
+              {day.sessions.slice(0, 3).map((session, idx) => (
+                <div 
+                  key={idx} 
+                  className="w-1 h-1 rounded-full" 
+                  style={{ backgroundColor: session.color }}
+                />
+              ))}
             </div>
           </div>
         ))}
