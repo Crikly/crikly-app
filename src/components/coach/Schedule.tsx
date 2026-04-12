@@ -54,7 +54,9 @@ function EventBlock({ top, height, type, title, subtitle, sessionId, onCardClick
   }
 
   // CF-D02b CHANGE 1 & 2: Handle card click
+  // CF-D02e BUG FIX 2: Stop propagation to prevent cell click
   const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation()
     if (sessionId && onCardClick) {
       onCardClick(e, sessionId, type)
     }
@@ -598,7 +600,6 @@ function SessionPopover({ x, y, sessionId, type, onClose }: { x: number; y: numb
 // CF-D02d BUG FIX 3: Add source prop to make date editable when triggered from button
 function CreationPopover({ x, y, source, date, time, onClose }: { x: number; y: number; source: 'slot' | 'button'; date: string; time: string; onClose: () => void }) {
   const [sessionType, setSessionType] = useState<'1-on-1' | 'Group'>('1-on-1')
-  const [selectedDate, setSelectedDate] = useState(date)
   const [startTime, setStartTime] = useState(time)
   const [endTime, setEndTime] = useState(() => {
     const [hours, mins] = time.split(':').map(Number)
@@ -610,18 +611,6 @@ function CreationPopover({ x, y, source, date, time, onClose }: { x: number; y: 
     const hour = (i + 6).toString().padStart(2, '0')
     return [`${hour}:00`, `${hour}:30`]
   }).flat()
-
-  // CF-D02d BUG FIX 3: Generate date options for next 14 days
-  const dateOptions = Array.from({ length: 14 }, (_, i) => {
-    const baseDate = new Date(2026, 3, 8) // April 8, 2026 (today)
-    const futureDate = new Date(baseDate)
-    futureDate.setDate(baseDate.getDate() + i)
-    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-    const dayName = dayNames[futureDate.getDay()]
-    const day = futureDate.getDate()
-    const month = futureDate.toLocaleString('en-US', { month: 'short' })
-    return `${dayName} ${day} ${month}`
-  })
 
   return (
     <div 
@@ -646,15 +635,14 @@ function CreationPopover({ x, y, source, date, time, onClose }: { x: number; y: 
         />
         
         <div className="flex gap-2">
-          {/* CF-D02d BUG FIX 3: Date field - editable if source is 'button', read-only if 'slot' */}
+          {/* CF-D02e BUG FIX 3: Native date input when triggered from button, read-only text when from slot */}
           {source === 'button' ? (
-            <select 
-              value={selectedDate} 
-              onChange={(e) => setSelectedDate(e.target.value)} 
+            <input
+              type="date"
+              defaultValue={new Date().toISOString().split('T')[0]}
+              min={new Date().toISOString().split('T')[0]}
               className="text-[13px] border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-brand-600"
-            >
-              {dateOptions.map(d => <option key={d} value={d}>{d}</option>)}
-            </select>
+            />
           ) : (
             <div className="text-[13px] text-gray-600 py-2">{date}</div>
           )}

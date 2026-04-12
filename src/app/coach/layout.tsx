@@ -25,7 +25,8 @@ export default function CoachLayout({
 
   const nav = (path: string) => router.push(path)
 
-  const showRightPanel = !pathname.startsWith('/coach/schedule')
+  // CF-D02e BUG FIX 1: Always show right panel - it handles route-specific content internally
+  const showRightPanel = true
 
   return (
     <div
@@ -94,7 +95,7 @@ export default function CoachLayout({
         {children}
       </main>
 
-      {/* Right Panel — hidden on schedule page */}
+      {/* Right Panel — route-aware content */}
       {showRightPanel && <CoachRightPanel />}
 
       {/* Mobile Bottom Nav — stays mounted always */}
