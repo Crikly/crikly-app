@@ -27,6 +27,7 @@ export function BookingsManagement() {
   const [activeTab, setActiveTab] = useState<Tab>('Upcoming')
   
   const upcomingBookings: Booking[] = [
+    { id: '3', date: 'Today', time: '16:30', status: 'Starting soon', statusBg: '#FEF3C7', statusText: '#B45309', sport: 'Cricket', duration: '60 min', type: '1-on-1', client: 'Marcus Trent', location: 'Indoor Nets, Battersea', price: '55' },
     { id: '1', date: 'Thu 10 Apr', time: '14:00', status: 'Confirmed', statusBg: '#E0F6F8', statusText: '#0099AA', sport: 'Cricket', duration: '60 min', type: '1-on-1', client: 'James Okafor', location: 'Oval Cricket Ground', price: '50' },
     { 
       id: '2', 
@@ -49,8 +50,7 @@ export function BookingsManagement() {
       ],
       spotsFilled: 4,
       spotsTotal: 6
-    },
-    { id: '3', date: 'Today', time: '16:30', status: 'Starting soon', statusBg: '#FEF3C7', statusText: '#B45309', sport: 'Cricket', duration: '60 min', type: '1-on-1', client: 'Marcus Trent', location: 'Indoor Nets, Battersea', price: '55' }
+    }
   ]
   
   const pendingBookings: Booking[] = [
@@ -136,16 +136,31 @@ export function BookingsManagement() {
               return (
                 <div 
                   key={booking.id} 
-                  className={`relative rounded-xl cursor-pointer transition-all overflow-hidden ${
+                  className={`relative rounded-xl cursor-pointer overflow-hidden group ${
                     activeTab === 'Past' ? 'opacity-80' : ''
                   }`}
                   style={{ 
                     background: isStartingSoon ? '#FFFDF5' : '#FFFFFF',
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.06)'
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+                    transition: 'all 150ms ease'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)'
+                    e.currentTarget.style.transform = 'scale(1.005)'
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.06)'
+                    e.currentTarget.style.transform = 'scale(1)'
+                  }}
+                  onMouseDown={(e) => {
+                    e.currentTarget.style.transform = 'scale(0.998)'
+                  }}
+                  onMouseUp={(e) => {
+                    e.currentTarget.style.transform = 'scale(1.005)'
                   }}
                 >
                   <div 
-                    className="p-3 hover:bg-[#F9FAFB] transition-colors" 
+                    className="p-3" 
                     onClick={() => router.push(`/coach/bookings/${booking.id}`)}
                   >
                     {/* CF-D03 CHANGE 4: Card content hierarchy */}
@@ -229,7 +244,7 @@ export function BookingsManagement() {
                     </div>
                   </div>
 
-                  {/* CF-D03b POLISH 4: Action row patterns by state */}
+                  {/* CF-D03e FIX 3: Action row with consistent hover states */}
                   {activeTab === 'Upcoming' && (
                     <div className="border-t-[0.5px] border-gray-100 px-4 py-1.5 flex gap-2 bg-white">
                       {isStartingSoon ? (
@@ -240,7 +255,7 @@ export function BookingsManagement() {
                               e.stopPropagation()
                               // TODO CF-D03: wire Message action
                             }}
-                            className="flex-1 bg-white border border-gray-200 text-gray-600 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 transition-colors"
+                            className="flex-1 bg-white border border-gray-200 text-gray-600 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 hover:border-gray-300 hover:text-gray-700 transition-all duration-150"
                           >
                             Message
                           </button>
@@ -249,7 +264,7 @@ export function BookingsManagement() {
                               e.stopPropagation()
                               // TODO CF-D03: wire Mark complete action
                             }}
-                            className="flex-1 bg-[#0077CC] text-white font-medium rounded-md text-[11px] py-1.5 text-center hover:bg-[#0066AA] transition-colors"
+                            className="flex-1 bg-[#0077CC] text-white font-medium rounded-md text-[11px] py-1.5 text-center hover:bg-[#0066AA] transition-all duration-150"
                           >
                             Mark complete →
                           </button>
@@ -262,7 +277,7 @@ export function BookingsManagement() {
                               e.stopPropagation()
                               // TODO CF-D03: wire Message group action
                             }}
-                            className="flex-1 bg-white border border-gray-200 text-gray-600 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 transition-colors"
+                            className="flex-1 bg-white border border-gray-200 text-gray-600 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 hover:border-gray-300 hover:text-gray-700 transition-all duration-150"
                           >
                             Message group
                           </button>
@@ -271,7 +286,7 @@ export function BookingsManagement() {
                               e.stopPropagation()
                               // TODO CF-D03: wire View details to booking detail route
                             }}
-                            className="flex-1 bg-white border border-gray-200 text-gray-600 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 transition-colors"
+                            className="flex-1 bg-white border border-gray-200 text-gray-600 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 hover:border-gray-300 hover:text-gray-700 transition-all duration-150"
                           >
                             View details
                           </button>
@@ -284,7 +299,7 @@ export function BookingsManagement() {
                               e.stopPropagation()
                               // TODO CF-D03: wire Message action
                             }}
-                            className="flex-1 bg-white border border-gray-200 text-gray-600 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 transition-colors"
+                            className="flex-1 bg-white border border-gray-200 text-gray-600 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 hover:border-gray-300 hover:text-gray-700 transition-all duration-150"
                           >
                             Message
                           </button>
@@ -293,7 +308,7 @@ export function BookingsManagement() {
                               e.stopPropagation()
                               // TODO CF-D03: wire View details to booking detail route
                             }}
-                            className="flex-1 bg-white border border-gray-200 text-gray-600 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 transition-colors"
+                            className="flex-1 bg-white border border-gray-200 text-gray-600 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 hover:border-gray-300 hover:text-gray-700 transition-all duration-150"
                           >
                             View details
                           </button>
