@@ -146,11 +146,12 @@ export function Schedule() {
   // CF-D02c FIX 1: Handle empty/available slot click (single popover)
   // CF-D02d BUG FIX 3: Add source field
   // CF-D02h FIX 1: Use fixed positioning with viewport coordinates
+  // CF-D02i: Fix clamping to prevent right-side clipping
   const handleSlotClick = (e: React.MouseEvent, date: string, time: string) => {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
     
     // Calculate position relative to viewport, clamped to stay on screen
-    const x = Math.min(rect.right + 8, window.innerWidth - 296) // 296 = 280px width + 16px margin
+    const x = Math.max(8, Math.min(rect.left, window.innerWidth - 316)) // 316 = 300px width + 16px margin
     const y = Math.min(rect.top, window.innerHeight - 400)
     
     setActivePopover({
@@ -311,10 +312,11 @@ export function Schedule() {
             onClick={(e) => {
               // CF-D02d BUG FIX 3: Set source to 'button' for editable date
               // CF-D02h FIX 1: Use fixed positioning with viewport coordinates
+              // CF-D02i: Fix clamping to prevent right-side clipping
               const rect = e.currentTarget.getBoundingClientRect()
               
               // Calculate position relative to viewport, clamped to stay on screen
-              const x = Math.min(rect.left, window.innerWidth - 296)
+              const x = Math.max(8, Math.min(rect.left, window.innerWidth - 316)) // 316 = 300px width + 16px margin
               const y = Math.min(rect.top - 300, window.innerHeight - 400)
               
               setActivePopover({
@@ -556,12 +558,14 @@ function CreationPopover({ x, y, source, date, time, onClose }: { x: number; y: 
 
   return (
     <div 
-      className="session-popover bg-white rounded-xl border border-gray-100 p-4 w-[280px] animate-in fade-in slide-in-from-top-1 duration-150"
+      className="session-popover bg-white rounded-xl border border-gray-100 p-4 animate-in fade-in slide-in-from-top-1 duration-150"
       style={{ 
         position: 'fixed',
         left: `${x}px`, 
         top: `${y}px`,
         zIndex: 9999,
+        width: '300px',
+        maxWidth: '300px',
         boxShadow: '0 8px 24px rgba(0,0,0,0.12)'
       }}
     >
