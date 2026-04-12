@@ -98,7 +98,11 @@ export function AvailabilityManagement() {
       <div className="w-full max-w-[640px] px-6">
         <div className="mb-8">
           <h1 className="text-[32px] font-bold text-gray-900 leading-tight mb-2">Availability</h1>
-          <p className="text-[16px] text-gray-500 font-medium">Manage your recurring schedule and blocked dates</p>
+          {/* CF-D06 CHANGE 1: State-aware subtitle */}
+          <p className="text-[13px] text-gray-500 mt-1">
+            3 recurring blocks · Mon, Wed & Sat
+            {/* TODO CF-D06: derive from real availability data */}
+          </p>
         </div>
         <div className="flex border-b border-gray-100 mb-8">
           {(['schedule', 'blocked'] as const).map(tab => (
@@ -109,30 +113,121 @@ export function AvailabilityManagement() {
         </div>
 
         {activeTab === 'schedule' && (
-          <div className="flex flex-col">
-            <h2 className="text-[18px] font-bold text-gray-900 mb-4">Your recurring blocks</h2>
-            <div className="flex flex-col gap-3 mb-6">
-              {scheduleBlocks.map(block => (
-                <div key={block.id} className="bg-white border border-gray-100 shadow-sm rounded-2xl p-4 flex items-center justify-between hover:shadow-md transition-shadow">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-[#E6F3FB] rounded-xl flex items-center justify-center shrink-0">
-                      <span className="text-[#0077CC] font-bold text-[15px]">{block.day}</span>
-                    </div>
-                    <div className="flex flex-col">
-                      <div className="text-[15px] font-bold text-gray-900 mb-0.5">{block.sport} <span className="text-gray-300 mx-1.5">•</span> {block.time}</div>
-                      <div className="text-[14px] text-gray-500 font-medium">{block.location} <span className="text-gray-300 mx-1.5">•</span> {block.price}</div>
-                    </div>
+          <div className="flex flex-col pb-20">
+            {/* CF-D06 CHANGE 2: Mon-Sun day structure */}
+            <div className="flex flex-col gap-6 mb-6">
+              {DAY_ABBR.map((dayAbbr) => {
+                const dayFull = DAY_FULL[dayAbbr]
+                const blockForDay = scheduleBlocks.find(b => b.day === dayAbbr)
+                
+                return (
+                  <div key={dayAbbr}>
+                    {/* Day heading */}
+                    <h3 className="text-[12px] text-gray-400 uppercase tracking-wider mb-1.5">{dayFull}</h3>
+                    
+                    {blockForDay ? (
+                      // CF-D06 CHANGE 3: Existing block card
+                      <div 
+                        className="rounded-xl cursor-pointer overflow-hidden"
+                        style={{ 
+                          background: '#FFFFFF',
+                          boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+                          transition: 'all 150ms ease'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)'
+                          e.currentTarget.style.transform = 'scale(1.005)'
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.06)'
+                          e.currentTarget.style.transform = 'scale(1)'
+                        }}
+                      >
+                        <div className="px-4 py-3 flex items-center gap-3">
+                          {/* Day pill */}
+                          <div className="w-[42px] h-[42px] bg-[#E6F1FB] rounded-[10px] flex items-center justify-center shrink-0">
+                            <span className="text-[#0C447C] text-[11px] font-medium">{dayAbbr}</span>
+                          </div>
+                          
+                          {/* Block content */}
+                          <div className="flex-1 flex flex-col">
+                            <div className="text-[13px] font-medium text-gray-900">
+                              {blockForDay.sport} · {blockForDay.time}
+                            </div>
+                            <div className="text-[11px] text-gray-500">
+                              {blockForDay.location} · {blockForDay.price}
+                            </div>
+                          </div>
+                          
+                          {/* Edit/delete icons */}
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                // TODO CF-D06: wire edit action
+                              }}
+                              className="w-7 h-7 flex items-center justify-center border-[0.5px] border-gray-100 bg-white rounded-md hover:bg-gray-50 transition-colors"
+                            >
+                              <Pencil size={12} className="text-gray-400" />
+                            </button>
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                // TODO CF-D06: wire delete action
+                              }}
+                              className="w-7 h-7 flex items-center justify-center border-[0.5px] border-gray-100 bg-white rounded-md hover:bg-gray-50 transition-colors"
+                            >
+                              <X size={12} className="text-gray-400" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      // CF-D06 CHANGE 4: Empty day card
+                      <div 
+                        className="rounded-xl cursor-pointer"
+                        style={{ 
+                          background: '#FFFFFF',
+                          border: '1.5px dashed #B5D4F4',
+                          transition: 'background 150ms ease'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = '#F0F7FF'
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = '#FFFFFF'
+                        }}
+                        onClick={() => {
+                          setShowAddForm(true)
+                          // TODO CF-D06: wire empty day click to add availability flow
+                        }}
+                      >
+                        <div className="px-4 py-3 flex items-center gap-3">
+                          {/* Empty day pill */}
+                          <div className="w-[42px] h-[42px] bg-[#F0F7FF] rounded-[10px] flex items-center justify-center shrink-0">
+                            <span className="text-[#B5D4F4] text-[11px] font-medium">{dayAbbr}</span>
+                          </div>
+                          
+                          {/* Content */}
+                          <div className="flex-1 flex flex-col">
+                            <div className="text-[12px] font-medium text-[#0077CC]">
+                              + Add availability
+                            </div>
+                            <div className="text-[11px] text-[#85B7EB]">
+                              No slots on {dayFull} yet
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button className="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-[#0077CC] hover:bg-blue-50 rounded-full transition-colors"><Pencil size={18} /></button>
-                    <button className="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"><X size={20} /></button>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
 
+            {/* CF-D06 CHANGE 5: Refined add button */}
             {showAddForm ? (
-              <div className="border border-gray-200 rounded-2xl p-5 bg-white shadow-sm">
+              <div className="border border-gray-200 rounded-xl p-5 bg-white shadow-sm">
                 <h3 className="text-[16px] font-bold text-gray-900 mb-5">New availability block</h3>
                 <div className="mb-4">
                   <label className="block text-[12px] font-bold text-gray-500 mb-1.5 uppercase tracking-wider">Sport</label>
@@ -198,10 +293,35 @@ export function AvailabilityManagement() {
                 </div>
               </div>
             ) : (
-              <button onClick={() => setShowAddForm(true)} className="w-full py-4 border-2 border-[#0077CC] text-[#0077CC] rounded-xl font-bold text-[15px] hover:bg-blue-50 transition-colors flex items-center justify-center gap-2">
-                <Plus size={18} />Add another block
+              <button 
+                onClick={() => setShowAddForm(true)} 
+                className="w-full rounded-xl font-medium text-[13px] flex items-center justify-center gap-2 transition-colors"
+                style={{
+                  background: '#FFFFFF',
+                  border: '1.5px dashed #0077CC',
+                  color: '#0077CC',
+                  padding: '12px 16px'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = '#E6F1FB'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = '#FFFFFF'
+                }}
+              >
+                <Plus size={16} />Add another block
               </button>
             )}
+            
+            {/* CF-D06 CHANGE 6: Save changes bar - right-aligned pill */}
+            <div 
+              className="sticky bottom-0 bg-white border-t-[0.5px] border-gray-100 px-6 py-3 flex justify-end"
+              style={{ boxShadow: '0 -2px 8px rgba(0,0,0,0.04)' }}
+            >
+              <button className="bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-full px-7 py-2.5 text-[13px] font-medium transition-colors">
+                Save changes
+              </button>
+            </div>
           </div>
         )}
 
@@ -299,13 +419,6 @@ export function AvailabilityManagement() {
         )}
       </div>
 
-      {activeTab === 'schedule' && (
-        <div className="fixed bottom-0 left-0 lg:left-[288px] right-0 bg-white/90 backdrop-blur-md border-t border-gray-100 p-5 flex justify-center z-40 shadow-[0_-10px_40px_rgba(0,0,0,0.04)]">
-          <div className="w-full max-w-[640px]">
-            <button className="w-full py-4 bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-xl font-bold text-[16px] transition-colors shadow-sm">Save changes</button>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
