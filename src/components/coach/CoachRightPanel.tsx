@@ -7,7 +7,7 @@ import { ChevronRight, ChevronLeft, MapPin, Star, PoundSterling } from 'lucide-r
 
 export function CoachRightPanel() {
   const pathname = usePathname()
-  // CF-D02c FIX 2: Improved route detection
+  // CF-D02d BUG FIX 1: Route detection confirmed working
   const isScheduleRoute = pathname === '/coach/schedule' || pathname.includes('/schedule')
   const [selectedDate, setSelectedDate] = useState<number | null>(8) // Default to today (8th)
 

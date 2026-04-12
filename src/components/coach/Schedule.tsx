@@ -82,9 +82,10 @@ function EventBlock({ top, height, type, title, subtitle, sessionId, onCardClick
 }
 
 // CF-D02c FIX 1: Single popover state
+// CF-D02d BUG FIX 3: Add source field to distinguish slot vs button trigger
 type ActivePopover =
   | { type: 'session'; sessionId: string; sessionType: string; x: number; y: number }
-  | { type: 'creation'; date: string; time: string; x: number; y: number }
+  | { type: 'creation'; source: 'slot' | 'button'; date: string; time: string; x: number; y: number }
   | null
 
 export function Schedule() {
@@ -138,6 +139,7 @@ export function Schedule() {
   }
 
   // CF-D02c FIX 1: Handle empty/available slot click (single popover)
+  // CF-D02d BUG FIX 3: Add source field
   const handleSlotClick = (e: React.MouseEvent, date: string, time: string) => {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
     const containerRect = scheduleContainerRef.current?.getBoundingClientRect()
@@ -145,6 +147,7 @@ export function Schedule() {
     
     setActivePopover({
       type: 'creation',
+      source: 'slot',
       date,
       time,
       x: rect.right - containerRect.left + 8,
@@ -234,15 +237,24 @@ export function Schedule() {
 
             <div className="flex-1 overflow-y-auto relative scroll-smooth" ref={gridRef}>
               <div className="relative w-full" style={{ height: `${hours.length * 64}px` }}>
-                <div className="absolute inset-0 flex flex-col pointer-events-none z-0">
-                  {hours.map((hour) => (
+                {/* CF-D02d BUG FIX 2: Make empty cells clickable */}
+                <div className="absolute inset-0 flex flex-col pointer-events-auto z-0">
+                  {hours.map((hour, hourIdx) => (
                     <div key={hour} className="h-[64px] border-b border-gray-100 flex w-full">
-                      <div className="w-16 shrink-0 border-r border-gray-200 flex items-start justify-end pr-2 pt-1 relative">
+                      <div className="w-16 shrink-0 border-r border-gray-200 flex items-start justify-end pr-2 pt-1 relative pointer-events-none">
                         <span className="text-[12px] text-gray-400 font-medium bg-white">{hour.toString().padStart(2, '0')}:00</span>
                       </div>
-                      {days.map((day, idx) => (
-                        <div key={idx} className={`flex-1 border-r last:border-r-0 border-gray-100 ${day.isToday ? 'bg-[#EFF7FF]' : ''}`} />
-                      ))}
+                      {days.map((day, idx) => {
+                        const timeStr = `${hour.toString().padStart(2, '0')}:00`
+                        const dateStr = `${day.name} ${day.date} Apr`
+                        return (
+                          <div 
+                            key={idx} 
+                            className={`flex-1 border-r last:border-r-0 border-gray-100 cursor-pointer transition-colors hover:bg-[rgba(0,119,204,0.03)] ${day.isToday ? 'bg-[#EFF7FF]' : ''}`}
+                            onClick={(e) => handleSlotClick(e, dateStr, timeStr)}
+                          />
+                        )
+                      })}
                     </div>
                   ))}
                 </div>
@@ -289,12 +301,13 @@ export function Schedule() {
           {/* CF-D02b CHANGE 3: Add button below grid */}
           <button
             onClick={(e) => {
-              // TODO CF-D02b: wire Add to schedule button to creation flow
+              // CF-D02d BUG FIX 3: Set source to 'button' for editable date
               const rect = e.currentTarget.getBoundingClientRect()
               const containerRect = scheduleContainerRef.current?.getBoundingClientRect()
               if (!containerRect) return
               setActivePopover({
                 type: 'creation',
+                source: 'button',
                 date: 'Wed 8 Apr',
                 time: '09:00',
                 x: rect.left - containerRect.left,
@@ -393,6 +406,7 @@ export function Schedule() {
           <CreationPopover 
             x={activePopover.x} 
             y={activePopover.y} 
+            source={activePopover.source}
             date={activePopover.date} 
             time={activePopover.time} 
             onClose={() => setActivePopover(null)} 
@@ -581,8 +595,10 @@ function SessionPopover({ x, y, sessionId, type, onClose }: { x: number; y: numb
 }
 
 // CF-D02b CHANGE 2: Creation Popover Component
-function CreationPopover({ x, y, date, time, onClose }: { x: number; y: number; date: string; time: string; onClose: () => void }) {
+// CF-D02d BUG FIX 3: Add source prop to make date editable when triggered from button
+function CreationPopover({ x, y, source, date, time, onClose }: { x: number; y: number; source: 'slot' | 'button'; date: string; time: string; onClose: () => void }) {
   const [sessionType, setSessionType] = useState<'1-on-1' | 'Group'>('1-on-1')
+  const [selectedDate, setSelectedDate] = useState(date)
   const [startTime, setStartTime] = useState(time)
   const [endTime, setEndTime] = useState(() => {
     const [hours, mins] = time.split(':').map(Number)
@@ -594,6 +610,18 @@ function CreationPopover({ x, y, date, time, onClose }: { x: number; y: number; 
     const hour = (i + 6).toString().padStart(2, '0')
     return [`${hour}:00`, `${hour}:30`]
   }).flat()
+
+  // CF-D02d BUG FIX 3: Generate date options for next 14 days
+  const dateOptions = Array.from({ length: 14 }, (_, i) => {
+    const baseDate = new Date(2026, 3, 8) // April 8, 2026 (today)
+    const futureDate = new Date(baseDate)
+    futureDate.setDate(baseDate.getDate() + i)
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+    const dayName = dayNames[futureDate.getDay()]
+    const day = futureDate.getDate()
+    const month = futureDate.toLocaleString('en-US', { month: 'short' })
+    return `${dayName} ${day} ${month}`
+  })
 
   return (
     <div 
@@ -618,7 +646,18 @@ function CreationPopover({ x, y, date, time, onClose }: { x: number; y: number; 
         />
         
         <div className="flex gap-2">
-          <div className="text-[13px] text-gray-600 py-2">{date}</div>
+          {/* CF-D02d BUG FIX 3: Date field - editable if source is 'button', read-only if 'slot' */}
+          {source === 'button' ? (
+            <select 
+              value={selectedDate} 
+              onChange={(e) => setSelectedDate(e.target.value)} 
+              className="text-[13px] border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-brand-600"
+            >
+              {dateOptions.map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
+          ) : (
+            <div className="text-[13px] text-gray-600 py-2">{date}</div>
+          )}
           <select value={startTime} onChange={(e) => setStartTime(e.target.value)} className="text-[13px] border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-brand-600">
             {timeOptions.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
