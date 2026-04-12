@@ -27,7 +27,6 @@ export function CoachRightPanel() {
         <>
           <BookingsPendingApprovals />
           <BookingsTodaySessions />
-          <BookingsWeeklyEarnings />
         </>
       ) : (
         <>
@@ -472,10 +471,3 @@ function BookingsTodaySessions() {
   )
 }
 
-function BookingsWeeklyEarnings() {
-  return (
-    <div className="border-t-[0.5px] border-gray-100 pt-3.5">
-      <p className="text-[13px] text-gray-500">£225 this week</p>
-    </div>
-  )
-}

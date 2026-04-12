@@ -78,7 +78,7 @@ export function BookingsManagement() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50" style={{ fontFamily: "'DM Sans', sans-serif" }}>
+    <div className="min-h-screen bg-white" style={{ fontFamily: "'DM Sans', sans-serif" }}>
       <div className="w-full max-w-2xl mx-auto bg-white min-h-screen relative flex flex-col">
         {/* CF-D03 CHANGE 1: Page header with state-aware subtitle */}
         <div className="px-5 pt-8 pb-2 bg-white sticky top-0 z-10">
@@ -145,14 +145,15 @@ export function BookingsManagement() {
               return (
                 <div 
                   key={booking.id} 
-                  className={`relative rounded-[16px] shadow-sm cursor-pointer transition-all overflow-hidden ${
+                  className={`relative rounded-[16px] cursor-pointer transition-all overflow-hidden ${
                     activeTab === 'Past' ? 'opacity-80' : ''
-                  } ${isStartingSoon ? 'border-[1.5px] border-[#FCD34D]' : 'border border-[#E2E8F0]'}`}
+                  }`}
                   style={{ 
                     borderLeft: `3px solid ${leftBorderColor}`, 
                     borderTopLeftRadius: 0, 
                     borderBottomLeftRadius: 0,
-                    background: isStartingSoon ? '#FFFDF5' : '#FFFFFF'
+                    background: isStartingSoon ? '#FFFDF5' : '#FFFFFF',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.06)'
                   }}
                 >
                   <div 
