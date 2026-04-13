@@ -1,20 +1,21 @@
 'use client'
 import React, { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Camera, ChevronRight, User, Tag, Award, Calendar, ShieldCheck, CreditCard, CheckCircle2 } from 'lucide-react'
+import { Pencil, ChevronRight, User, Tag, Award, Calendar, ShieldCheck, CreditCard, CheckCircle2, Star, Share2, ExternalLink, Circle } from 'lucide-react'
 
 interface ProfileSection { id: string; icon: React.ReactNode; title: string; subtitle: string; isComplete: boolean }
 
 export function ProfileEdit() {
   const router = useRouter()
   const [isPaused, setIsPaused] = useState(false)
+  // CF-D07 CHANGE 2: Mark Qualifications as incomplete to demonstrate pattern
   const sections: ProfileSection[] = [
-    { id: 'personal', icon: <User size={20} className="text-[#0077CC]" />, title: 'Personal Info', subtitle: 'Name, bio, location, profile photo', isComplete: true },
-    { id: 'sports', icon: <Tag size={20} className="text-[#0077CC]" />, title: 'Sports & Pricing', subtitle: 'Cricket · £50/hr 1-on-1', isComplete: true },
-    { id: 'qualifications', icon: <Award size={20} className="text-[#0077CC]" />, title: 'Qualifications', subtitle: 'ECB Level 2 · DBS checked', isComplete: true },
-    { id: 'availability', icon: <Calendar size={20} className="text-[#0077CC]" />, title: 'Availability', subtitle: 'Mon, Wed, Fri · 09:00–18:00', isComplete: true },
-    { id: 'policy', icon: <ShieldCheck size={20} className="text-[#0077CC]" />, title: 'Booking Policy', subtitle: 'Instant booking · 24hr cancellation', isComplete: true },
-    { id: 'payment', icon: <CreditCard size={20} className="text-[#0077CC]" />, title: 'Payment Setup', subtitle: 'Stripe connected · ****4242', isComplete: true }
+    { id: 'personal', icon: <User size={18} className="text-[#0077CC]" />, title: 'Personal Info', subtitle: 'Name, bio, location, profile photo', isComplete: true },
+    { id: 'sports', icon: <Tag size={18} className="text-[#0077CC]" />, title: 'Sports & Pricing', subtitle: 'Cricket · £50/hr 1-on-1', isComplete: true },
+    { id: 'qualifications', icon: <Award size={18} className="text-[#F59E0B]" />, title: 'Qualifications', subtitle: 'Add your coaching badge and DBS certificate', isComplete: false },
+    { id: 'availability', icon: <Calendar size={18} className="text-[#0077CC]" />, title: 'Availability', subtitle: 'Mon, Wed, Fri · 09:00–18:00', isComplete: true },
+    { id: 'policy', icon: <ShieldCheck size={18} className="text-[#0077CC]" />, title: 'Booking Policy', subtitle: 'Instant booking · 24hr cancellation', isComplete: true },
+    { id: 'payment', icon: <CreditCard size={18} className="text-[#0077CC]" />, title: 'Payment Setup', subtitle: 'Stripe connected · ****4242', isComplete: true }
   ]
   const sectionRoutes: Record<string, string> = {
     personal: '/coach/onboarding/profile',
@@ -25,63 +26,172 @@ export function ProfileEdit() {
     payment: '/coach/get-paid'
   }
 
+  const profileCompleteness = 85
+  
   return (
-    <div className="min-h-screen bg-gray-50 font-sans" style={{ fontFamily: "'DM Sans', sans-serif" }}>
-      <div className="w-full max-w-2xl mx-auto bg-gray-50 min-h-screen relative flex flex-col pb-12">
-        <div className="px-5 pt-8 pb-4 bg-gray-50 sticky top-0 z-10">
+    <div className="min-h-screen bg-white font-sans" style={{ fontFamily: "'DM Sans', sans-serif" }}>
+      <div className="w-full max-w-2xl mx-auto bg-white min-h-screen relative flex flex-col pb-12">
+        <div className="px-5 pt-8 pb-4 bg-white sticky top-0 z-10">
           <h1 className="text-[28px] font-bold text-gray-900 tracking-tight">Profile</h1>
         </div>
-        <div className="px-5 space-y-6">
-          <div className="bg-white border border-[#E2E8F0] rounded-[16px] p-5 shadow-sm">
-            <div className="flex items-center gap-4">
+        <div className="px-5 space-y-4">
+          {/* CF-D07 CHANGE 1: Identity hero with stronger presence */}
+          <div className="bg-white rounded-[14px] p-5 shadow-sm">
+            {/* Top row */}
+            <div className="flex gap-3.5 items-start mb-3.5">
+              {/* Avatar with edit overlay */}
               <div className="relative shrink-0">
-                <div className="w-16 h-16 bg-[#E6F3FB] rounded-full flex items-center justify-center text-[20px] font-bold text-[#0077CC]">AJ</div>
-                <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-white border border-gray-200 rounded-full flex items-center justify-center shadow-sm text-gray-600 cursor-pointer hover:text-[#0077CC] transition-colors"><Camera size={12} strokeWidth={2.5} /></div>
+                <div className="w-16 h-16 bg-[#E6F1FB] rounded-full flex items-center justify-center text-[20px] font-medium text-[#0C447C]">AJ</div>
+                <button 
+                  onClick={() => {
+                    // TODO CF-D07: wire avatar upload
+                  }}
+                  className="absolute bottom-0 right-0 w-5 h-5 bg-[#0077CC] rounded-full flex items-center justify-center border-2 border-white cursor-pointer hover:bg-[#0066AA] transition-colors"
+                >
+                  <Pencil size={10} className="text-white" />
+                </button>
               </div>
+              
+              {/* Coach info */}
               <div className="flex-1 min-w-0">
-                <h2 className="text-[18px] font-bold text-gray-900 truncate">Alex Johnson</h2>
-                <div className="text-[14px] text-gray-500 font-medium mt-0.5 truncate">Cricket Coach · London</div>
-              </div>
-            </div>
-            <div className="mt-5 pt-5 border-t border-gray-100">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-[13px] font-bold text-gray-700">Profile 85% complete</span>
-              </div>
-              <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                <div className="h-full bg-[#0077CC] rounded-full" style={{ width: '85%' }} />
-              </div>
-            </div>
-          </div>
-          <div className="bg-white border border-[#E2E8F0] rounded-[16px] shadow-sm overflow-hidden flex flex-col divide-y divide-gray-100">
-            {sections.map((section) => (
-              <button key={section.id} onClick={() => router.push(sectionRoutes[section.id])} className="w-full p-4 flex items-center text-left hover:bg-gray-50 transition-colors group">
-                <div className="w-10 h-10 bg-[#E6F3FB] rounded-full flex items-center justify-center shrink-0 mr-4">{section.icon}</div>
-                <div className="flex-1 min-w-0 pr-4">
-                  <div className="text-[15px] font-bold text-gray-900 truncate">{section.title}</div>
-                  <div className="text-[13px] text-gray-500 font-medium mt-0.5 truncate">{section.subtitle}</div>
+                <h2 className="text-[18px] font-medium text-gray-900 truncate">Alex Johnson</h2>
+                <div className="text-[13px] text-gray-500 mt-0.5 truncate">Cricket Coach · London</div>
+                
+                {/* Trust row */}
+                <div className="flex items-center gap-2.5 mt-1.5">
+                  <div className="flex items-center gap-1">
+                    <Star size={13} className="text-amber-500 fill-amber-500" />
+                    <span className="text-[13px] font-medium text-gray-900">4.8</span>
+                    <span className="text-[11px] text-gray-400">(42 reviews)</span>
+                  </div>
+                  <div className="px-2 py-0.5 bg-[#E0F6F8] text-[#006677] text-[10px] font-medium rounded-full">
+                    ✓ DBS checked
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  {section.isComplete && <CheckCircle2 size={18} className="text-[#15803D] mr-1" />}
-                  <ChevronRight size={20} className="text-gray-300 group-hover:text-gray-400 transition-colors" />
-                </div>
-              </button>
-            ))}
-          </div>
-          <div className="pt-2 space-y-3">
-            <h3 className="text-[12px] font-bold text-gray-500 uppercase tracking-wider px-1">Account</h3>
-            <div className="bg-white border border-[#E2E8F0] rounded-[16px] shadow-sm overflow-hidden">
-              <div className="flex flex-col divide-y divide-gray-100">
-                <div className="p-4 px-5 flex items-center justify-between">
-                  <span className="text-[15px] font-medium text-gray-600">Pause profile</span>
-                  <button onClick={() => setIsPaused(!isPaused)} className={`w-11 h-6 rounded-full relative transition-colors ${isPaused ? 'bg-[#0077CC]' : 'bg-gray-200'}`}>
-                    <div className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform shadow-sm ${isPaused ? 'translate-x-5' : 'translate-x-0'}`} />
-                  </button>
-                </div>
-                <button className="w-full p-4 px-5 flex items-center text-left hover:bg-red-50 transition-colors">
-                  <span className="text-[15px] font-bold text-[#DC2626]">Delete account</span>
+              </div>
+              
+              {/* Action buttons */}
+              <div className="flex gap-2 shrink-0">
+                <button 
+                  onClick={() => {
+                    // TODO CF-D07: wire to public profile preview
+                  }}
+                  className="px-3 py-1.5 bg-white border border-gray-200 text-gray-600 text-[11px] font-medium rounded-full hover:bg-gray-50 transition-colors flex items-center gap-1"
+                >
+                  Preview <ExternalLink size={10} />
+                </button>
+                <button 
+                  onClick={() => {
+                    // TODO CF-D07: wire to share profile
+                  }}
+                  className="px-3 py-1.5 bg-white border border-gray-200 text-gray-600 text-[11px] font-medium rounded-full hover:bg-gray-50 transition-colors flex items-center gap-1"
+                >
+                  <Share2 size={10} /> Share
                 </button>
               </div>
             </div>
+            
+            {/* Progress section */}
+            <div className="pt-3.5 border-t-[0.5px] border-gray-100">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[12px] font-medium text-gray-900">Profile completeness</span>
+                <span className="text-[12px] font-medium text-[#0077CC]">{profileCompleteness}%</span>
+              </div>
+              <div className="h-1.5 bg-[#E6F1FB] rounded-full overflow-hidden">
+                <div className="h-full bg-[#0077CC] rounded-full transition-all" style={{ width: `${profileCompleteness}%` }} />
+              </div>
+              <p className="text-[11px] font-medium text-[#0077CC] mt-1">
+                {profileCompleteness < 100 
+                  ? 'Almost there — complete your qualifications to go fully live'
+                  : "You're live and looking great"
+                }
+              </p>
+            </div>
+          </div>
+          {/* CF-D07 CHANGE 2: Section rows with complete/incomplete hierarchy */}
+          <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+            {sections.map((section, index) => {
+              const isLast = index === sections.length - 1
+              return (
+                <button 
+                  key={section.id} 
+                  onClick={() => router.push(sectionRoutes[section.id])} 
+                  className={`w-full flex items-center gap-3 px-4 py-3.5 text-left transition-colors group ${
+                    !section.isComplete 
+                      ? 'bg-[#FFFBEB] hover:bg-[#FEF9EE]' 
+                      : 'bg-white hover:bg-gray-50'
+                  } ${!isLast ? 'border-b-[0.5px] border-gray-100' : ''}`}
+                >
+                  {/* Icon container */}
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                    !section.isComplete ? 'bg-[#FEF3C7]' : 'bg-[#F0FDF4]'
+                  }`}>
+                    {section.icon}
+                  </div>
+                  
+                  {/* Section content */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className={`text-[13px] truncate ${
+                        !section.isComplete 
+                          ? 'font-medium text-gray-900' 
+                          : 'font-normal text-gray-500'
+                      }`}>
+                        {section.title}
+                      </span>
+                      {!section.isComplete && (
+                        <span className="px-1.5 py-0.5 bg-[#FEF3C7] text-[#92400E] text-[9px] font-medium rounded shrink-0">
+                          Do next
+                        </span>
+                      )}
+                    </div>
+                    <div className={`text-[11px] mt-0.5 truncate ${
+                      !section.isComplete ? 'text-[#92400E]' : 'text-gray-400'
+                    }`}>
+                      {section.subtitle}
+                    </div>
+                  </div>
+                  
+                  {/* Right indicators */}
+                  <div className="flex items-center gap-2 shrink-0">
+                    {section.isComplete ? (
+                      <div className="w-[18px] h-[18px] bg-green-100 rounded-full flex items-center justify-center">
+                        <CheckCircle2 size={12} className="text-green-700" strokeWidth={2.5} />
+                      </div>
+                    ) : (
+                      <Circle size={18} className="text-[#FCD34D]" strokeWidth={1.5} />
+                    )}
+                    <ChevronRight size={18} className={!section.isComplete ? 'text-gray-400' : 'text-gray-300'} />
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+          {/* CF-D07 CHANGE 3: Account section with calmer tone */}
+          <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+            <div className="px-4 pt-3 pb-1.5">
+              <h3 className="text-[9px] font-medium text-gray-400 uppercase tracking-wider">ACCOUNT</h3>
+            </div>
+            
+            {/* Pause profile row */}
+            <div className="px-4 py-3.5 flex items-center justify-between border-t-[0.5px] border-gray-100">
+              <div className="flex-1">
+                <div className="text-[13px] font-medium text-gray-900">Pause profile</div>
+                <div className="text-[11px] text-gray-400 mt-0.5">Temporarily hide from search</div>
+              </div>
+              <button 
+                onClick={() => setIsPaused(!isPaused)} 
+                className={`w-11 h-6 rounded-full relative transition-colors ${isPaused ? 'bg-[#0077CC]' : 'bg-gray-200'}`}
+              >
+                <div className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform shadow-sm ${isPaused ? 'translate-x-5' : 'translate-x-0'}`} />
+              </button>
+            </div>
+            
+            {/* Delete account row */}
+            <button className="w-full px-4 py-3.5 flex items-center justify-between text-left hover:bg-red-50 transition-colors border-t-[0.5px] border-gray-100">
+              <span className="text-[13px] font-medium text-[#B91C1C]">Delete account</span>
+              <ChevronRight size={18} className="text-red-300" />
+            </button>
           </div>
         </div>
       </div>

@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { ChevronRight, ChevronLeft, MapPin, Star, PoundSterling } from 'lucide-react'
+import { ChevronRight, ChevronLeft, MapPin, Star, PoundSterling, Calendar } from 'lucide-react'
 
 export function CoachRightPanel() {
   const pathname = usePathname()
@@ -11,6 +11,8 @@ export function CoachRightPanel() {
   const isScheduleRoute = pathname === '/coach/schedule' || pathname.includes('/schedule')
   // CF-D03 CHANGE 7: Detect bookings route
   const isBookingsRoute = pathname === '/coach/bookings' || pathname.includes('/bookings')
+  // CF-D07 CHANGE 4: Detect profile route
+  const isProfileRoute = pathname === '/coach/profile' || pathname.includes('/profile')
   const [selectedDate, setSelectedDate] = useState<number | null>(8) // Default to today (8th)
 
   return (
@@ -28,6 +30,12 @@ export function CoachRightPanel() {
           <BookingsPendingApprovals />
           <BookingsTodaySessions />
         </>
+      ) : isProfileRoute ? (
+        // CF-D07 CHANGE 4: Profile-specific right panel
+        <>
+          <ProfilePublicPreview />
+          <ProfileCompletenessNotice />
+        </>
       ) : (
         <>
           <ThisWeekStrip isDesktop />
@@ -37,6 +45,78 @@ export function CoachRightPanel() {
         </>
       )}
     </aside>
+  )
+}
+
+// CF-D07 CHANGE 4: Profile public preview component
+function ProfilePublicPreview() {
+  return (
+    <div>
+      <div className="text-[9px] font-medium text-gray-400 uppercase tracking-wider mb-2">WHAT PARENTS SEE</div>
+      
+      <div className="bg-[#F8F9FA] rounded-xl p-3.5 border-[0.5px] border-gray-100">
+        {/* Avatar */}
+        <div className="flex items-start gap-3 mb-3">
+          <div className="w-12 h-12 bg-[#E6F1FB] rounded-full flex items-center justify-center text-[14px] font-medium text-[#0C447C] shrink-0">
+            AJ
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-[14px] font-medium text-gray-900 truncate">Alex Johnson</h3>
+            <p className="text-[11px] text-gray-500 mt-0.5">Cricket Coach</p>
+          </div>
+        </div>
+        
+        {/* Rating */}
+        <div className="flex items-center gap-1 mb-2">
+          {[1,2,3,4,5].map(i => (
+            <Star key={i} size={11} className="text-amber-500 fill-amber-500" />
+          ))}
+        </div>
+        <p className="text-[11px] text-gray-400 mb-2">4.8 · 42 reviews</p>
+        
+        {/* Meta rows */}
+        <div className="space-y-1.5 mb-2">
+          <div className="flex items-center gap-1.5 text-[11px] text-gray-500">
+            <MapPin size={11} className="shrink-0" />
+            <span>Oval Cricket Ground</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-[11px] text-gray-500">
+            <Calendar size={11} className="shrink-0" />
+            <span>Mon, Wed, Fri</span>
+          </div>
+        </div>
+        
+        {/* Price */}
+        <p className="text-[15px] font-medium text-gray-900 mb-2">from £50 / session</p>
+        
+        {/* DBS badge */}
+        <div className="inline-block px-2 py-0.5 bg-[#E0F6F8] text-[#006677] text-[10px] font-medium rounded-full mb-2.5">
+          ✓ DBS checked
+        </div>
+        
+        {/* Book button */}
+        <button 
+          onClick={() => {
+            // TODO CF-D07: stub
+          }}
+          className="w-full bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-lg py-2 text-[12px] font-medium transition-colors"
+        >
+          Book a session
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// CF-D07 CHANGE 4: Profile completeness notice
+function ProfileCompletenessNotice() {
+  return (
+    <div className="bg-[#FFFBEB] rounded-lg p-3 border-l-[3px] border-[#F59E0B]">
+      <h4 className="text-[11px] font-medium text-[#78350F] mb-1">85% complete</h4>
+      <p className="text-[10px] text-[#92400E] leading-relaxed">
+        Add qualifications to unlock full search visibility
+      </p>
+    </div>
   )
 }
 
