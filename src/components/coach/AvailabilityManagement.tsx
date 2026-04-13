@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { Pencil, X, ChevronLeft, ChevronRight, Plus, ChevronDown, AlertTriangle } from 'lucide-react'
 
@@ -46,6 +46,8 @@ function buildCalendar(year: number, month: number): CalDay[] {
 export function AvailabilityManagement() {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<'schedule' | 'blocked'>('schedule')
+  // CF-D06c: Ref for auto-scrolling to add form
+  const addFormRef = useRef<HTMLDivElement>(null)
   const [scheduleBlocks] = useState<ScheduleBlock[]>([
     { id: 1, day: 'Mon', sport: 'Cricket', time: '09:00 – 12:00', location: 'Oval Cricket Ground', price: '£50/60min' },
     { id: 2, day: 'Wed', sport: 'Cricket', time: '14:00 – 17:00', location: 'Kennington Park', price: '£60/60min' },
@@ -253,6 +255,13 @@ export function AvailabilityManagement() {
                           // CF-D06b FIX 1: Preselect the clicked day
                           setPreselectedDay(dayAbbr)
                           setShowAddForm(true)
+                          // CF-D06c: Auto-scroll to form
+                          setTimeout(() => {
+                            addFormRef.current?.scrollIntoView({ 
+                              behavior: 'smooth', 
+                              block: 'start' 
+                            })
+                          }, 50)
                         }}
                       >
                         <div className="px-4 py-3 flex items-center gap-3">
@@ -280,7 +289,7 @@ export function AvailabilityManagement() {
 
             {/* CF-D06 CHANGE 5: Refined add button */}
             {showAddForm ? (
-              <div className="border border-gray-200 rounded-xl p-5 bg-white shadow-sm">
+              <div ref={addFormRef} className="border border-gray-200 rounded-xl p-5 bg-white shadow-sm">
                 <h3 className="text-[16px] font-bold text-gray-900 mb-5">New availability block</h3>
                 <div className="mb-4">
                   <label className="block text-[12px] font-bold text-gray-500 mb-1.5 uppercase tracking-wider">Sport</label>
@@ -348,7 +357,16 @@ export function AvailabilityManagement() {
               </div>
             ) : (
               <button 
-                onClick={() => setShowAddForm(true)} 
+                onClick={() => {
+                  setShowAddForm(true)
+                  // CF-D06c: Auto-scroll to form
+                  setTimeout(() => {
+                    addFormRef.current?.scrollIntoView({ 
+                      behavior: 'smooth', 
+                      block: 'start' 
+                    })
+                  }, 50)
+                }} 
                 className="w-full rounded-xl font-medium text-[13px] flex items-center justify-center gap-2 transition-colors"
                 style={{
                   background: '#FFFFFF',
