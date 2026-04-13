@@ -174,75 +174,67 @@ Read this file before building any UI component.
 
 ### Cards
 
-**Rules:**
-- No border on any card (not even 0.5px) — shadow provides elevation
-- No background colour change on hover — shadow + scale only
-- Action rows inside cards do NOT inherit the card hover state
-- Action rows have their own independent hover states (see Buttons)
-- Cards with status context (bookings, schedule) use shadow only
-  for elevation — no left border accents, no coloured borders
+**Standard card (all screens):**
+- Background: white (#FFFFFF) — always explicit white
+- Border: none — no outer border on any card
+- Border radius: 14px (radius-lg)
+- Padding: 12px–16px depending on density
+- Shadow resting: 0 1px 3px rgba(0,0,0,0.06)
+- Shadow hover: 0 2px 8px rgba(0,0,0,0.08)
 
-**Status indicators on cards:**
-- Use status BADGES (top-right of card) — not borders
-- Use subtle background tints for urgency (e.g. #FFFDF5 for starting soon)
-- Never use full card borders to communicate status
+**Card interaction states:**
+- Resting: box-shadow 0 1px 3px rgba(0,0,0,0.06), transform scale(1)
+- Hover (clickable cards): box-shadow 0 2px 8px rgba(0,0,0,0.08),
+  transform scale(1.005), cursor pointer
+- Active/pressed: transform scale(0.998)
+- Transition: all 150ms ease on all states
+- Background does NOT change on hover — shadow + scale only
+- Action rows inside cards do NOT inherit card hover state
 
-**Standard card:**
-- Background: white (light) / neutral-50 (dark)
-- Border: none
-- Border radius: 12px (rounded-xl)
-- Padding: 12px (p-3)
-- Shadow (resting): 0 1px 3px rgba(0,0,0,0.06)
-- Shadow (hover): 0 2px 8px rgba(0,0,0,0.08)
-- Transform (hover): scale(1.005)
-- Transform (active): scale(0.998)
-- Transition: all 150ms ease
+**Rules — non-negotiable:**
+- No border on any card (not even 0.5px)
+- No background colour change on card hover
+- No left border accents for status — use badges instead
+- Status communicated via badges (top-right) and subtle bg tints
+- Starting soon / urgent tint: #FFFDF5 (barely visible warm tint)
+
+### Layout — Page Backgrounds
+
+**Coach desktop shell:**
+- Page background (behind all columns): #F8F9FA (neutral-50 warm)
+- Main content column: white (#FFFFFF)
+- Right panel column: white (#FFFFFF)
+- Left sidebar: white (#FFFFFF) with border-right 0.5px neutral-100
+- Background is set ONCE in the layout — never overridden by
+  individual screen components
+
+**Rule:** Individual screen component outer wrappers must have NO
+background class. The layout provides the page background.
+Setting background in a screen component creates inconsistency.
 
 ---
 
 ## Interaction Patterns
 
-These patterns are non-negotiable. Apply consistently across all screens.
+**Quick action buttons inside cards:**
+- Secondary: white bg, 1px solid #E2E8F0 border, #475569 text, 11px
+  Hover: #F9FAFB bg, #CBD5E1 border — transition 150ms ease
+- Primary: #0077CC bg, white text, 11px, font-weight 500
+  Hover: #0066AA bg — transition 150ms ease
+- Border-radius: 6px. Padding: 6px 0. Flex: 1.
 
-### Quick action buttons (inside cards)
+**Approve / Decline pattern:**
+- Approve: #0077CC bg (brand-600) — always blue, never green
+- Decline: white bg, red-200 border, red-600 text — quiet destructive
 
-**Secondary action button:**
-- Resting: bg-white, border 1px solid #E2E8F0, text #475569, 11px
-- Hover: bg-gray-50 (#F9FAFB), border #CBD5E1, text #374151
-- Transition: all 150ms ease
-- Border-radius: 6px
-- Padding: 6px 0, flex: 1
+**Booking card action rows by state:**
+- Pattern A (normal upcoming): [Message] [View details] — both secondary
+- Pattern B (starting soon): [Message] secondary + [Mark complete] primary
+- Pattern C (group): [Message group] [View details] — both secondary
 
-**Primary action button (e.g. Mark complete, Approve):**
-- Resting: bg-[#0077CC], text white, 11px, font-weight 500
-- Hover: bg-[#0066AA]
-- Transition: all 150ms ease
-
-### Action row patterns by booking state
-
-**Pattern A — Normal upcoming booking:**
-- [Message]   [View details]
-- Both secondary. No "Mark complete" until session is imminent.
-
-**Pattern B — Starting soon (today, within 2 hours):**
-- [Message]   [Mark complete →]
-- Mark complete = primary (brand-600). Message = secondary.
-- No "View details" — coach needs to act, not browse.
-
-**Pattern C — Group booking:**
-- [Message group]   [View details]
-- Both secondary. No "Mark complete" for group sessions.
-
-### Card ordering rules
-
-- Starting soon cards always appear FIRST in any booking list
+**Card ordering:**
+- Starting soon / today cards always first in any booking list
 - Then sort by date ascending
-- Past bookings go to a separate tab — never mixed with upcoming
-
-### Approve / Decline pattern (right panel)
-
-- Approve: bg-[#0077CC] (brand-600), white text — always blue, never green
-- Decline: bg-white, border red-200, text red-600 — destructive but quiet
 
 ---
 
@@ -312,6 +304,4 @@ shadow-{none|sm|md|focus}
 ---
 
 *Crikly Design System v1.1 — April 2026*
-*v1.1: Added card interaction rules and coach UI patterns*
-*Read this before building any component.*
-*All values are final unless explicitly updated here.*
+*v1.1: Card interaction rules, layout backgrounds, action patterns*
