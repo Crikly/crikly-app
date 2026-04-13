@@ -69,7 +69,7 @@ export function ProfileStep() {
   const profileCompleteness = 35 // TODO: Calculate based on filled fields
   
   return (
-    <div className="min-h-full bg-white font-sans text-gray-900 flex pb-32">
+    <div className="min-h-full bg-white font-sans text-gray-900 flex">
       <div className="flex-1 flex justify-center">
         <div className="w-full max-w-3xl px-8 pt-10">
 
@@ -269,7 +269,7 @@ export function ProfileStep() {
         </div>
         
         {/* CF-D11e CHANGE 6: Clean save bar with pill button */}
-        <div className="sticky bottom-0 left-0 right-0 bg-white border-t-[0.5px] border-gray-100 px-6 py-3 flex justify-end items-center z-10 mt-8" style={{ boxShadow: '0 -2px 8px rgba(0,0,0,0.04)' }}>
+        <div className="sticky bottom-0 left-0 right-0 bg-white border-t-[0.5px] border-gray-100 px-6 py-3 flex justify-end items-center z-10" style={{ boxShadow: '0 -2px 8px rgba(0,0,0,0.04)' }}>
           <button
             onClick={handleSave}
             disabled={saving}
