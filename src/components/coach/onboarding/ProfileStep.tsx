@@ -2,7 +2,7 @@
 
 import React, { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Camera, MapPin, ChevronDown, Check } from 'lucide-react'
+import { Camera, MapPin, ChevronDown, Check } from 'lucide-react'
 
 export function ProfileStep() {
   const router = useRouter()
@@ -75,14 +75,6 @@ export function ProfileStep() {
 
         {/* TOP */}
         <div className="mb-10">
-          <button
-            onClick={() => router.push('/coach/dashboard')}
-            className="flex items-center gap-2 text-[#0077CC] hover:text-blue-800 font-bold text-[15px] mb-6 transition-colors"
-          >
-            <ArrowLeft size={18} />
-            <span>Dashboard</span>
-          </button>
-          
           {/* CF-D11b CHANGE 1: Step indicator */}
           <div className="mb-4">
             <div className="flex items-center gap-1.5 mb-2">
@@ -289,22 +281,14 @@ export function ProfileStep() {
         </div>
         
         {/* CF-D11b CHANGE 6: Right-aligned save bar - scoped to content column */}
-        <div className="sticky bottom-0 left-0 right-0 bg-white border-t-[0.5px] border-gray-100 px-6 py-3 flex justify-center z-10 mt-8" style={{ boxShadow: '0 -2px 8px rgba(0,0,0,0.04)' }}>
-          <div className="w-full max-w-[640px] flex items-center justify-end gap-4">
-            <button
-              onClick={() => router.push('/coach/dashboard')}
-              className="text-gray-500 hover:text-gray-900 text-[12px] font-medium transition-colors"
-            >
-              Save & go back to dashboard
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="px-7 py-2.5 bg-[#0077CC] hover:bg-[#0066AA] disabled:opacity-60 text-white rounded-full text-[13px] font-medium transition-colors"
-            >
-              {saving ? 'Saving...' : 'Save & continue →'}
-            </button>
-          </div>
+        <div className="sticky bottom-0 left-0 right-0 bg-white border-t-[0.5px] border-gray-100 px-6 py-3 flex justify-end z-10 mt-8" style={{ boxShadow: '0 -2px 8px rgba(0,0,0,0.04)' }}>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="px-7 py-2.5 bg-[#0077CC] hover:bg-[#0066AA] disabled:opacity-60 text-white rounded-full text-[13px] font-medium transition-colors"
+          >
+            {saving ? 'Saving...' : 'Save & continue →'}
+          </button>
         </div>
         </div>
       </div>
