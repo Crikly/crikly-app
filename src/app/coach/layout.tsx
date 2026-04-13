@@ -26,7 +26,8 @@ export default function CoachLayout({
   const nav = (path: string) => router.push(path)
 
   // CF-D02e BUG FIX 1: Always show right panel - it handles route-specific content internally
-  const showRightPanel = true
+  // CF-D11c: Hide on onboarding routes - onboarding screens manage their own inline right panels
+  const showRightPanel = !pathname.includes('/onboarding')
 
   return (
     <div
