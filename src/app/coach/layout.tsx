@@ -91,7 +91,7 @@ export default function CoachLayout({
       </aside>
 
       {/* Main content — swaps on navigation */}
-      <main className="flex-1 min-h-screen overflow-y-auto relative">
+      <main className="flex-1 min-h-screen overflow-y-auto relative bg-white">
         {children}
       </main>
 
