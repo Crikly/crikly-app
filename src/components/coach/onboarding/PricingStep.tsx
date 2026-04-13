@@ -83,6 +83,14 @@ export function PricingStep() {
 
         {/* TOP */}
         <div className="mb-10">
+          {/* CF-D12 FIX 2: Back button */}
+          <button
+            onClick={() => router.push('/coach/onboarding/sport')}
+            className="text-[13px] text-gray-500 hover:text-gray-900 transition-colors mb-4 cursor-pointer"
+          >
+            ← Back
+          </button>
+          
           {/* CF-D12 CHANGE 2A: Step indicator - Step 3 of 5 */}
           <div className="mb-4">
             <div className="flex items-center gap-1.5 mb-2">

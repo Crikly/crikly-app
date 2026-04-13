@@ -115,7 +115,7 @@ export function CoachHome() {
                       onNavigate={() => {
                         const routes = [
                           '/coach/onboarding/profile',
-                          '/coach/onboarding/pricing',
+                          '/coach/onboarding/sport',
                           '/coach/onboarding/qualifications',
                           '/coach/onboarding/availability',
                           '/coach/onboarding/policy',
