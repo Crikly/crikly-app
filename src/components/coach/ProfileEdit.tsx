@@ -36,9 +36,11 @@ export function ProfileEdit() {
         </div>
         <div className="px-5 space-y-4">
           {/* CF-D07 CHANGE 1: Identity hero with stronger presence */}
-          <div className="bg-white rounded-[14px] p-5 shadow-sm">
+          {/* CF-D07b POLISH 1: Increased padding to 24px */}
+          <div className="bg-white rounded-[14px] p-6 shadow-sm">
             {/* Top row */}
-            <div className="flex gap-3.5 items-start mb-3.5">
+            {/* CF-D07b POLISH 1: Increased gap to 16px */}
+            <div className="flex gap-4 items-start mb-3.5">
               {/* Avatar with edit overlay */}
               <div className="relative shrink-0">
                 <div className="w-16 h-16 bg-[#E6F1FB] rounded-full flex items-center justify-center text-[20px] font-medium text-[#0C447C]">AJ</div>
@@ -54,11 +56,13 @@ export function ProfileEdit() {
               
               {/* Coach info */}
               <div className="flex-1 min-w-0">
-                <h2 className="text-[18px] font-medium text-gray-900 truncate">Alex Johnson</h2>
+                {/* CF-D07b POLISH 1: Increased name to 20px */}
+                <h2 className="text-[20px] font-medium text-gray-900 truncate">Alex Johnson</h2>
                 <div className="text-[13px] text-gray-500 mt-0.5 truncate">Cricket Coach · London</div>
                 
                 {/* Trust row */}
-                <div className="flex items-center gap-2.5 mt-1.5">
+                {/* CF-D07b POLISH 1: Increased gap to 12px between rating and DBS */}
+                <div className="flex items-center gap-3 mt-1.5">
                   <div className="flex items-center gap-1">
                     <Star size={13} className="text-amber-500 fill-amber-500" />
                     <span className="text-[13px] font-medium text-gray-900">4.8</span>
@@ -71,7 +75,8 @@ export function ProfileEdit() {
               </div>
               
               {/* Action buttons */}
-              <div className="flex gap-2 shrink-0">
+              {/* CF-D07b POLISH 1: Added margin-left auto to push buttons to far right */}
+              <div className="flex gap-2 shrink-0 ml-auto">
                 <button 
                   onClick={() => {
                     // TODO CF-D07: wire to public profile preview
@@ -92,7 +97,8 @@ export function ProfileEdit() {
             </div>
             
             {/* Progress section */}
-            <div className="pt-3.5 border-t-[0.5px] border-gray-100">
+            {/* CF-D07b POLISH 1: Increased padding-top to 16px */}
+            <div className="pt-4 border-t-[0.5px] border-gray-100">
               <div className="flex items-center justify-between mb-1.5">
                 <span className="text-[12px] font-medium text-gray-900">Profile completeness</span>
                 <span className="text-[12px] font-medium text-[#0077CC]">{profileCompleteness}%</span>
@@ -100,10 +106,11 @@ export function ProfileEdit() {
               <div className="h-1.5 bg-[#E6F1FB] rounded-full overflow-hidden">
                 <div className="h-full bg-[#0077CC] rounded-full transition-all" style={{ width: `${profileCompleteness}%` }} />
               </div>
+              {/* CF-D07b POLISH 2: More outcome-oriented motivational copy */}
               <p className="text-[11px] font-medium text-[#0077CC] mt-1">
                 {profileCompleteness < 100 
-                  ? 'Almost there — complete your qualifications to go fully live'
-                  : "You're live and looking great"
+                  ? 'Almost there — add your qualifications to build trust with parents'
+                  : 'Your profile is live — parents can find and book you'
                 }
               </p>
             </div>
@@ -116,10 +123,10 @@ export function ProfileEdit() {
                 <button 
                   key={section.id} 
                   onClick={() => router.push(sectionRoutes[section.id])} 
-                  className={`w-full flex items-center gap-3 px-4 py-3.5 text-left transition-colors group ${
+                  className={`w-full flex items-center gap-3 text-left transition-colors group ${
                     !section.isComplete 
-                      ? 'bg-[#FFFBEB] hover:bg-[#FEF9EE]' 
-                      : 'bg-white hover:bg-gray-50'
+                      ? 'bg-[#FFFBEB] hover:bg-[#FEF9EE] px-4 py-[15px]' 
+                      : 'bg-white hover:bg-gray-50/50 px-4 py-3.5'
                   } ${!isLast ? 'border-b-[0.5px] border-gray-100' : ''}`}
                 >
                   {/* Icon container */}
@@ -132,6 +139,7 @@ export function ProfileEdit() {
                   {/* Section content */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
+                      {/* CF-D07b POLISH 3: Complete rows more muted (gray-500 weight 400), incomplete sharper (gray-900 weight 500) */}
                       <span className={`text-[13px] truncate ${
                         !section.isComplete 
                           ? 'font-medium text-gray-900' 
@@ -139,8 +147,9 @@ export function ProfileEdit() {
                       }`}>
                         {section.title}
                       </span>
+                      {/* CF-D07b POLISH 3: Refined "Do next" badge */}
                       {!section.isComplete && (
-                        <span className="px-1.5 py-0.5 bg-[#FEF3C7] text-[#92400E] text-[9px] font-medium rounded shrink-0">
+                        <span className="px-1.5 py-0.5 bg-[#FEF3C7] text-[#92400E] text-[10px] font-medium rounded shrink-0 ml-2">
                           Do next
                         </span>
                       )}
@@ -153,13 +162,14 @@ export function ProfileEdit() {
                   </div>
                   
                   {/* Right indicators */}
+                  {/* CF-D07b POLISH 3: Reduced tick to 16px circle, empty circle to 16px */}
                   <div className="flex items-center gap-2 shrink-0">
                     {section.isComplete ? (
-                      <div className="w-[18px] h-[18px] bg-green-100 rounded-full flex items-center justify-center">
-                        <CheckCircle2 size={12} className="text-green-700" strokeWidth={2.5} />
+                      <div className="w-4 h-4 bg-green-100 rounded-full flex items-center justify-center">
+                        <CheckCircle2 size={11} className="text-green-700" strokeWidth={2.5} />
                       </div>
                     ) : (
-                      <Circle size={18} className="text-[#FCD34D]" strokeWidth={1.5} />
+                      <Circle size={16} className="text-[#FCD34D]" strokeWidth={1.5} />
                     )}
                     <ChevronRight size={18} className={!section.isComplete ? 'text-gray-400' : 'text-gray-300'} />
                   </div>
@@ -168,7 +178,8 @@ export function ProfileEdit() {
             })}
           </div>
           {/* CF-D07 CHANGE 3: Account section with calmer tone */}
-          <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+          {/* CF-D07b POLISH 5: Increased margin-top to 24px for more separation */}
+          <div className="bg-white rounded-xl shadow-sm overflow-hidden mt-6">
             <div className="px-4 pt-3 pb-1.5">
               <h3 className="text-[9px] font-medium text-gray-400 uppercase tracking-wider">ACCOUNT</h3>
             </div>
@@ -188,7 +199,8 @@ export function ProfileEdit() {
             </div>
             
             {/* Delete account row */}
-            <button className="w-full px-4 py-3.5 flex items-center justify-between text-left hover:bg-red-50 transition-colors border-t-[0.5px] border-gray-100">
+            {/* CF-D07b POLISH 5: Ghost/text-only feel - text darkens on hover, no bg change */}
+            <button className="w-full px-4 py-3.5 flex items-center justify-between text-left transition-colors border-t-[0.5px] border-gray-100 hover:text-red-800">
               <span className="text-[13px] font-medium text-[#B91C1C]">Delete account</span>
               <ChevronRight size={18} className="text-red-300" />
             </button>

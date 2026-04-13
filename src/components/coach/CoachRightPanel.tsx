@@ -49,57 +49,64 @@ export function CoachRightPanel() {
 }
 
 // CF-D07 CHANGE 4: Profile public preview component
+// CF-D07b POLISH 4: More polished and realistic preview card
 function ProfilePublicPreview() {
   return (
     <div>
       <div className="text-[9px] font-medium text-gray-400 uppercase tracking-wider mb-2">WHAT PARENTS SEE</div>
       
-      <div className="bg-[#F8F9FA] rounded-xl p-3.5 border-[0.5px] border-gray-100">
+      {/* CF-D07b POLISH 4: White bg, shadow, no border */}
+      <div className="bg-white rounded-xl p-4 shadow-sm">
         {/* Avatar */}
         <div className="flex items-start gap-3 mb-3">
-          <div className="w-12 h-12 bg-[#E6F1FB] rounded-full flex items-center justify-center text-[14px] font-medium text-[#0C447C] shrink-0">
+          {/* CF-D07b POLISH 4: Added subtle ring around avatar */}
+          <div className="w-12 h-12 bg-[#E6F1FB] rounded-full flex items-center justify-center text-[14px] font-medium text-[#0C447C] shrink-0" style={{ boxShadow: '0 0 0 2px #E6F1FB' }}>
             AJ
           </div>
           <div className="flex-1 min-w-0">
-            <h3 className="text-[14px] font-medium text-gray-900 truncate">Alex Johnson</h3>
-            <p className="text-[11px] text-gray-500 mt-0.5">Cricket Coach</p>
+            {/* CF-D07b POLISH 4: Increased name to 15px */}
+            <h3 className="text-[15px] font-medium text-gray-900 truncate">Alex Johnson</h3>
+            {/* CF-D07b POLISH 4: Role text to 12px, neutral-400 */}
+            <p className="text-[12px] text-gray-400 mt-0.5">Cricket Coach</p>
           </div>
         </div>
         
-        {/* Rating */}
+        {/* CF-D07b POLISH 4: Stars + rating in flex row with gap */}
         <div className="flex items-center gap-1 mb-2">
           {[1,2,3,4,5].map(i => (
             <Star key={i} size={11} className="text-amber-500 fill-amber-500" />
           ))}
+          <span className="text-[13px] font-medium text-gray-900 ml-0.5">4.8</span>
+          <span className="text-[11px] text-gray-400">· 42 reviews</span>
         </div>
-        <p className="text-[11px] text-gray-400 mb-2">4.8 · 42 reviews</p>
         
         {/* Meta rows */}
         <div className="space-y-1.5 mb-2">
+          {/* CF-D07b POLISH 4: Icons at 12px */}
           <div className="flex items-center gap-1.5 text-[11px] text-gray-500">
-            <MapPin size={11} className="shrink-0" />
+            <MapPin size={12} className="shrink-0" />
             <span>Oval Cricket Ground</span>
           </div>
           <div className="flex items-center gap-1.5 text-[11px] text-gray-500">
-            <Calendar size={11} className="shrink-0" />
+            <Calendar size={12} className="shrink-0" />
             <span>Mon, Wed, Fri</span>
           </div>
         </div>
         
-        {/* Price */}
-        <p className="text-[15px] font-medium text-gray-900 mb-2">from £50 / session</p>
+        {/* CF-D07b POLISH 4: Price increased to 16px */}
+        <p className="text-[16px] font-medium text-gray-900 mb-2">from £50 / session</p>
         
         {/* DBS badge */}
         <div className="inline-block px-2 py-0.5 bg-[#E0F6F8] text-[#006677] text-[10px] font-medium rounded-full mb-2.5">
           ✓ DBS checked
         </div>
         
-        {/* Book button */}
+        {/* CF-D07b POLISH 4: Book button with pill shape (radius-999px), padding 10px */}
         <button 
           onClick={() => {
             // TODO CF-D07: stub
           }}
-          className="w-full bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-lg py-2 text-[12px] font-medium transition-colors"
+          className="w-full bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-full py-2.5 text-[12px] font-medium transition-colors"
         >
           Book a session
         </button>
