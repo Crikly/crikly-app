@@ -287,6 +287,25 @@ export function ProfileStep() {
           </div>
 
         </div>
+        
+        {/* CF-D11b CHANGE 6: Right-aligned save bar - scoped to content column */}
+        <div className="sticky bottom-0 left-0 right-0 bg-white border-t-[0.5px] border-gray-100 px-6 py-3 flex justify-center z-10 mt-8" style={{ boxShadow: '0 -2px 8px rgba(0,0,0,0.04)' }}>
+          <div className="w-full max-w-[640px] flex items-center justify-end gap-4">
+            <button
+              onClick={() => router.push('/coach/dashboard')}
+              className="text-gray-500 hover:text-gray-900 text-[12px] font-medium transition-colors"
+            >
+              Save & go back to dashboard
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="px-7 py-2.5 bg-[#0077CC] hover:bg-[#0066AA] disabled:opacity-60 text-white rounded-full text-[13px] font-medium transition-colors"
+            >
+              {saving ? 'Saving...' : 'Save & continue →'}
+            </button>
+          </div>
+        </div>
         </div>
       </div>
 
@@ -340,25 +359,6 @@ export function ProfileStep() {
           )}
         </div>
       </aside>
-
-      {/* CF-D11b CHANGE 6: Right-aligned save bar */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t-[0.5px] border-gray-100 px-6 py-3 flex justify-center z-50" style={{ boxShadow: '0 -2px 8px rgba(0,0,0,0.04)' }}>
-        <div className="w-full max-w-[640px] flex items-center justify-end gap-4">
-          <button
-            onClick={() => router.push('/coach/dashboard')}
-            className="text-gray-500 hover:text-gray-900 text-[12px] font-medium transition-colors"
-          >
-            Save & go back to dashboard
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="px-7 py-2.5 bg-[#0077CC] hover:bg-[#0066AA] disabled:opacity-60 text-white rounded-full text-[13px] font-medium transition-colors"
-          >
-            {saving ? 'Saving...' : 'Save & continue →'}
-          </button>
-        </div>
-      </div>
     </div>
   )
 }
