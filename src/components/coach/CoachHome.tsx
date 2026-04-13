@@ -18,6 +18,20 @@ export function CoachHome() {
   const router = useRouter()
   const [profileExpanded, setProfileExpanded] = React.useState(false)
   
+  // CF-D11a: Profile completion tracking
+  const profileSteps = [
+    { title: 'Basic profile', completed: true, guidance: '' },
+    { title: 'Sport & pricing', completed: false, guidance: '' },
+    { title: 'Qualifications', completed: false, guidance: 'Add your coaching badge to boost trust' },
+    { title: 'Availability', completed: false, guidance: 'Set when you coach so parents can book you' },
+    { title: 'Booking policy', completed: false, guidance: 'Tell parents how you handle cancellations' },
+    { title: 'Get paid (optional)', completed: false, guidance: 'Connect Stripe to receive payouts' },
+  ]
+  const completedCount = profileSteps.filter(s => s.completed).length
+  const totalCount = profileSteps.length
+  const completionPercentage = Math.round((completedCount / totalCount) * 100)
+  const firstIncompleteIndex = profileSteps.findIndex(s => !s.completed)
+  
   // CHANGE 1: Derive session count from Today's lineup data
   const todaySessions = [
     { time: '14:00', duration: '90m', title: 'U14 Fast Bowling Masterclass', location: "Lord's Indoor Centre", active: true },
@@ -64,38 +78,53 @@ export function CoachHome() {
           <p className="text-sm text-gray-500 mt-1">{getSessionSubtitle()}</p>
         </div>
 
-        {/* Alerts - CHANGE 2: coloured left border */}
+        {/* CF-D11a: Onboarding completion banner */}
         <div className="flex flex-col gap-3">
           <div className="bg-[#EFF7FF] border-l-4 border-[#0077CC] rounded-r-lg overflow-hidden transition-all duration-300">
+            {/* CF-D11a CHANGE 1: Banner header with completion % inline */}
             <div
               onClick={() => setProfileExpanded(!profileExpanded)}
               className="p-3.5 flex items-center justify-between gap-2 text-blue-800 cursor-pointer hover:bg-blue-100/50 transition-colors"
             >
               <div className="flex items-center gap-2.5 md:gap-3 min-w-0">
-                <AlertCircle size={18} className="text-[#0077CC] shrink-0" />
-                <span className="text-[14px] md:text-[15px] font-medium truncate">Complete profile to go live</span>
+                <span className="text-[13px] font-bold text-[#0077CC] shrink-0">{completionPercentage}% complete</span>
+                <span className="text-[14px] md:text-[15px] font-medium truncate">Complete your profile to appear in search</span>
               </div>
-              <div className="flex items-center gap-2.5 md:gap-3 shrink-0">
-                <div className="relative w-7 h-7 flex items-center justify-center shrink-0">
-                  <svg className="w-full h-full transform -rotate-90">
-                    <circle cx="14" cy="14" r="12" stroke="currentColor" strokeWidth="2.5" fill="none" className="text-blue-200" />
-                    <circle cx="14" cy="14" r="12" stroke="currentColor" strokeWidth="2.5" fill="none" strokeDasharray="75.4" strokeDashoffset="49" className="text-[#0077CC]" strokeLinecap="round" />
-                  </svg>
-                  <span className="absolute text-[8px] font-bold text-blue-800">35%</span>
-                </div>
-                <span className="text-[#0077CC] text-sm font-bold cursor-pointer hover:underline">Finish setup →</span>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-[#0077CC] text-sm font-bold cursor-pointer hover:underline hidden md:inline">Finish setup</span>
                 <ChevronRight size={18} className={`text-[#0077CC]/60 transition-transform duration-300 shrink-0 ${profileExpanded ? 'rotate-90' : ''}`} />
               </div>
             </div>
             {profileExpanded && (
-              <div className="px-4 pb-4 pt-1 border-t border-gray-200/40 bg-gray-50">
-                <ul className="flex flex-col gap-3 mt-2">
-                  <ProfileChecklistItem title="Basic profile" completed={true} onNavigate={() => router.push('/coach/onboarding/profile')} />
-                  <ProfileChecklistItem title="Sport & pricing" completed={false} onNavigate={() => router.push('/coach/onboarding/pricing')} />
-                  <ProfileChecklistItem title="Qualifications" completed={false} onNavigate={() => router.push('/coach/onboarding/qualifications')} />
-                  <ProfileChecklistItem title="Availability" completed={false} onNavigate={() => router.push('/coach/onboarding/availability')} />
-                  <ProfileChecklistItem title="Booking policy" completed={false} onNavigate={() => router.push('/coach/onboarding/policy')} />
-                  <ProfileChecklistItem title="Get paid (optional)" completed={false} onNavigate={() => router.push('/coach/onboarding/get-paid')} />
+              <div className="px-4 pb-4 pt-3 border-t border-gray-200/40 bg-gray-50">
+                {/* CF-D11a CHANGE 4: Progress bar */}
+                <div className="mb-4">
+                  <div className="w-full h-1 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="h-full bg-[#0077CC] rounded-full transition-all duration-500" style={{ width: `${completionPercentage}%` }}></div>
+                  </div>
+                  <p className="text-[10px] text-gray-400 mt-1.5">{completedCount} of {totalCount} steps complete</p>
+                </div>
+                <ul className="flex flex-col gap-2">
+                  {profileSteps.map((step, index) => (
+                    <ProfileChecklistItem 
+                      key={index}
+                      title={step.title} 
+                      completed={step.completed}
+                      guidance={step.guidance}
+                      isFirstIncomplete={index === firstIncompleteIndex}
+                      onNavigate={() => {
+                        const routes = [
+                          '/coach/onboarding/profile',
+                          '/coach/onboarding/pricing',
+                          '/coach/onboarding/qualifications',
+                          '/coach/onboarding/availability',
+                          '/coach/onboarding/policy',
+                          '/coach/onboarding/get-paid'
+                        ]
+                        router.push(routes[index])
+                      }} 
+                    />
+                  ))}
                 </ul>
               </div>
             )}
@@ -297,18 +326,48 @@ function TodayLineup({ isDesktop }: { isDesktop?: boolean }) {
   )
 }
 
-function ProfileChecklistItem({ title, completed, onNavigate }: { title: string; completed: boolean; onNavigate?: () => void }) {
+function ProfileChecklistItem({ title, completed, guidance, isFirstIncomplete, onNavigate }: { 
+  title: string; 
+  completed: boolean; 
+  guidance?: string;
+  isFirstIncomplete?: boolean;
+  onNavigate?: () => void 
+}) {
   return (
-    <li onClick={onNavigate} className="flex items-center justify-between group cursor-pointer hover:opacity-80 transition-opacity">
-      <div className="flex items-center gap-3 text-[14px]">
+    <li 
+      onClick={onNavigate} 
+      className={`flex items-start justify-between group cursor-pointer hover:opacity-80 transition-all px-3 py-2.5 rounded-lg ${
+        isFirstIncomplete ? 'bg-[#FFFBEB]' : ''
+      }`}
+    >
+      <div className="flex items-start gap-3 flex-1 min-w-0">
+        {/* CF-D11a CHANGE 2: Hierarchy between complete/incomplete */}
         {completed ? (
-          <div className="w-[18px] h-[18px] rounded-full bg-green-600 text-white flex items-center justify-center shrink-0"><Check size={12} strokeWidth={3} /></div>
+          <div className="w-2 h-2 rounded-full bg-[#22C55E] shrink-0 mt-1.5"></div>
         ) : (
-          <div className="w-[18px] h-[18px] rounded-full border-[2px] border-amber-400 group-hover:border-amber-500 transition-colors shrink-0"></div>
+          <div className="w-2 h-2 rounded-full bg-[#F59E0B] shrink-0 mt-1.5"></div>
         )}
-        <span className={`font-medium transition-colors ${completed ? 'text-gray-900' : 'text-gray-700'}`}>{title}</span>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className={`transition-colors ${
+              completed 
+                ? 'text-[12px] text-gray-400 font-normal' 
+                : 'text-[13px] text-gray-900 font-medium'
+            }`}>{title}</span>
+            {/* CF-D11a CHANGE 2: "Do next" badge for first incomplete */}
+            {isFirstIncomplete && (
+              <span className="bg-[#FEF3C7] text-[#92400E] text-[9px] font-medium px-1.5 py-0.5 rounded shrink-0">
+                Do next →
+              </span>
+            )}
+          </div>
+          {/* CF-D11a CHANGE 3: Guidance copy for incomplete items */}
+          {!completed && guidance && (
+            <p className="text-[10px] text-gray-400 mt-0.5 leading-relaxed">{guidance}</p>
+          )}
+        </div>
       </div>
-      {!completed && <ChevronRight size={14} className="text-amber-600/60 opacity-0 group-hover:opacity-100 transition-opacity" />}
+      {!completed && <ChevronRight size={14} className="text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 mt-1" />}
     </li>
   )
 }
