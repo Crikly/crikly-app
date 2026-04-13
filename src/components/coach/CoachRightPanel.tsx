@@ -7,12 +7,15 @@ import { ChevronRight, ChevronLeft, MapPin, Star, PoundSterling, Calendar } from
 
 export function CoachRightPanel() {
   const pathname = usePathname()
+  const router = useRouter()
   // CF-D02d BUG FIX 1: Route detection confirmed working
   const isScheduleRoute = pathname === '/coach/schedule' || pathname.includes('/schedule')
   // CF-D03 CHANGE 7: Detect bookings route
   const isBookingsRoute = pathname === '/coach/bookings' || pathname.includes('/bookings')
   // CF-D07 CHANGE 4: Detect profile route
   const isProfileRoute = pathname === '/coach/profile' || pathname.includes('/profile')
+  // CF-D08 CHANGE 5: Detect earnings route
+  const isEarningsRoute = pathname === '/coach/earnings' || pathname.includes('/earnings')
   const [selectedDate, setSelectedDate] = useState<number | null>(8) // Default to today (8th)
 
   return (
@@ -36,6 +39,12 @@ export function CoachRightPanel() {
           <ProfilePublicPreview />
           <ProfileCompletenessNotice />
         </>
+      ) : isEarningsRoute ? (
+        // CF-D08 CHANGE 5: Earnings-specific right panel
+        <>
+          <EarningsNextPayout router={router} />
+          <EarningsPeriodSummary />
+        </>
       ) : (
         <>
           <ThisWeekStrip isDesktop />
@@ -45,6 +54,57 @@ export function CoachRightPanel() {
         </>
       )}
     </aside>
+  )
+}
+
+// CF-D08 CHANGE 5: Earnings next payout card
+function EarningsNextPayout({ router }: { router: any }) {
+  return (
+    <div className="bg-[#E6F1FB] rounded-xl p-3.5">
+      <div className="text-[9px] font-medium text-[#0C447C] uppercase tracking-wider mb-1.5">NEXT PAYOUT</div>
+      <div className="text-[26px] font-medium text-[#0077CC] mb-1">£90.00</div>
+      <div className="text-[10px] text-[#378ADD] mb-2.5">Releases 10 Apr · in 2 days</div>
+      
+      {/* Processing info box */}
+      <div className="bg-white rounded-lg px-2.5 py-2 flex items-center gap-2 mb-2.5">
+        <span className="text-[15px] font-medium text-[#0077CC]">48h</span>
+        <span className="text-[10px] text-gray-400">standard processing delay</span>
+      </div>
+      
+      {/* Go to Get Paid button */}
+      <button 
+        onClick={() => {
+          // TODO CF-D08: wire to Get Paid route
+          router.push('/coach/get-paid')
+        }}
+        className="w-full bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-full py-2 text-[11px] font-medium transition-colors"
+      >
+        Go to Get Paid →
+      </button>
+    </div>
+  )
+}
+
+// CF-D08 CHANGE 5: Earnings period summary
+function EarningsPeriodSummary() {
+  const rows = [
+    { label: 'Total earned', value: '£1,240', color: 'text-[#166534]' },
+    { label: 'vs last month', value: '+12%', color: 'text-[#166534]' },
+    { label: 'Sessions', value: '18', color: 'text-gray-900' },
+    { label: 'Upcoming this week', value: '£320', color: 'text-gray-900' }
+  ]
+  
+  return (
+    <div className="bg-[#F8F9FA] rounded-[10px] p-3">
+      <div className="space-y-1">
+        {rows.map((row, i) => (
+          <div key={i} className="flex items-center justify-between">
+            <span className="text-[11px] text-gray-400">{row.label}</span>
+            <span className={`text-[11px] font-medium ${row.color}`}>{row.value}</span>
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }
 
