@@ -268,8 +268,8 @@ export function ProfileStep() {
 
         </div>
         
-        {/* CF-D12 FIX 0: Save bar with no border-top */}
-        <div className="sticky bottom-0 left-0 right-0 bg-white px-6 py-3 flex justify-end items-center z-10">
+        {/* CF-D12 FIX 0: Save bar - SAVE BAR PATTERN (step 1: right-aligned pill only) */}
+        <div className="flex justify-end items-center py-3 mt-6">
           <button
             onClick={handleSave}
             disabled={saving}

@@ -83,15 +83,7 @@ export function PricingStep() {
 
         {/* TOP */}
         <div className="mb-10">
-          {/* CF-D12 FIX 2: Back button */}
-          <button
-            onClick={() => router.push('/coach/onboarding/sport')}
-            className="text-[13px] text-gray-500 hover:text-gray-900 transition-colors mb-4 cursor-pointer"
-          >
-            ← Back
-          </button>
-          
-          {/* CF-D12 CHANGE 2A: Step indicator - Step 3 of 5 */}
+          {/* CF-D12 CHANGE 3A: Step indicator - Step 3 of 5 */}
           <div className="mb-4">
             <div className="flex items-center gap-1.5 mb-2">
               <div className="w-2 h-2 rounded-full bg-[#E2E8F0]"></div>
@@ -238,8 +230,14 @@ export function PricingStep() {
 
         </div>
 
-        {/* CF-D12 CHANGE 2F: Save bar - no border-top, pill only */}
-        <div className="sticky bottom-0 left-0 right-0 bg-white px-6 py-3 flex justify-end items-center z-10 mt-8">
+        {/* CF-D12 CHANGE 3B: Save bar - SAVE BAR PATTERN (step 2+: back left, save right) */}
+        <div className="flex justify-between items-center py-3 mt-6">
+          <button
+            onClick={() => router.push('/coach/onboarding/sport')}
+            className="text-[13px] text-gray-500 hover:text-gray-900 transition-colors"
+          >
+            ← Back
+          </button>
           <button
             onClick={handleSave}
             disabled={saving}
