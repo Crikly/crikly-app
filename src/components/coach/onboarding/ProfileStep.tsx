@@ -2,7 +2,7 @@
 
 import React, { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { Camera, MapPin, ChevronDown, Check } from 'lucide-react'
+import { Camera, MapPin, ChevronDown, Check, Calendar } from 'lucide-react'
 
 export function ProfileStep() {
   const router = useRouter()
@@ -286,47 +286,51 @@ export function ProfileStep() {
         <div className="sticky top-6">
           <p className="text-[9px] font-medium text-gray-400 uppercase tracking-wider mb-2" style={{ letterSpacing: '0.05em' }}>WHAT PARENTS SEE</p>
           
-          {/* Preview card */}
-          <div className="bg-white rounded-xl p-4" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
-            {/* Avatar */}
-            <div className="flex flex-col items-center mb-4">
-              <div className="w-14 h-14 rounded-full bg-[#E6F1FB] flex items-center justify-center text-[#0077CC] font-bold text-[20px] mb-2" style={{ boxShadow: '0 0 0 2px #E6F1FB' }}>
-                {displayName ? displayName.charAt(0).toUpperCase() : 'R'}
+          {/* CF-D11f: Preview card matching profile screen layout */}
+          <div className="bg-white rounded-xl p-4 shadow-sm">
+            {/* Avatar row - horizontal layout */}
+            <div className="flex items-start gap-3 mb-3">
+              <div className="w-12 h-12 bg-[#E6F1FB] rounded-full flex items-center justify-center text-[14px] font-medium text-[#0C447C] shrink-0" style={{ boxShadow: '0 0 0 2px #E6F1FB' }}>
+                {displayName ? displayName.substring(0, 2).toUpperCase() : 'AJ'}
               </div>
-              <h3 className="text-[15px] font-medium text-gray-900">
-                {displayName || <span className="text-gray-300">Your name</span>}
-              </h3>
-              <p className="text-[12px] text-gray-400">Cricket Coach</p>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-[15px] font-medium text-gray-900 truncate">
+                  {displayName || <span className="text-gray-300">Your name</span>}
+                </h3>
+                <p className="text-[12px] text-gray-400 mt-0.5">Cricket Coach</p>
+              </div>
             </div>
             
-            {/* Rating */}
-            <div className="flex items-center justify-center gap-1 mb-1">
+            {/* Stars + rating */}
+            <div className="flex items-center gap-1 mb-2">
               {[1,2,3,4,5].map(i => (
-                <span key={i} className="text-amber-400 text-[11px]">★</span>
+                <span key={i} className="text-amber-500 text-[11px]">★</span>
               ))}
+              <span className="text-[11px] text-gray-400 ml-0.5">New coach</span>
             </div>
-            <p className="text-[11px] text-gray-400 text-center mb-3">New coach</p>
             
-            {/* Details */}
-            <div className="flex flex-col gap-1 mb-3">
-              <p className="text-[11px] text-gray-500">📍 {baseLocation || 'London'}</p>
-              <p className="text-[11px] text-gray-500">📅 Mon, Wed, Fri</p>
+            {/* Meta rows */}
+            <div className="space-y-1.5 mb-2">
+              <div className="flex items-center gap-1.5 text-[11px] text-gray-500">
+                <MapPin size={12} className="shrink-0" />
+                <span>{baseLocation || 'London'}</span>
+              </div>
+              <div className="flex items-center gap-1.5 text-[11px] text-gray-500">
+                <Calendar size={12} className="shrink-0" />
+                <span>Mon, Wed, Fri</span>
+              </div>
             </div>
             
             {/* Price */}
-            <p className="text-[15px] font-medium text-gray-900 mb-2">from £50 / session</p>
+            <p className="text-[16px] font-medium text-gray-900 mb-2">from £50 / session</p>
             
             {/* DBS badge */}
-            <div className="inline-flex items-center gap-1 px-2 py-1 bg-[#E0F6F8] text-[#006677] text-[10px] font-medium rounded-full">
-              <Check size={10} />
-              DBS checked
+            <div className="inline-block px-2 py-0.5 bg-[#E0F6F8] text-[#006677] text-[10px] font-medium rounded-full mb-2.5">
+              ✓ DBS checked
             </div>
             
-            {/* Divider */}
-            <div className="border-t-[0.5px] border-gray-100 my-3"></div>
-            
             {/* Book button */}
-            <button className="w-full py-2.5 bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-full text-[12px] font-medium transition-colors">
+            <button className="w-full bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-full py-2.5 text-[12px] font-medium transition-colors">
               Book a session
             </button>
           </div>
