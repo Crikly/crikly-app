@@ -12,8 +12,10 @@ export function GetPaid() {
           <h1 className="text-[28px] md:text-[32px] font-bold text-gray-900 tracking-tight">Get Paid</h1>
         </div>
 
+        {/* CF-D09 CHANGE 1: Stripe hero card with next payout prominent */}
         <div className="bg-white border border-[#E2E8F0] rounded-[16px] p-6 shadow-sm flex flex-col gap-6">
-          <div className="flex flex-col gap-1">
+          {/* Top row: Stripe Connected status */}
+          <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-md bg-[#635BFF] flex items-center justify-center shrink-0 shadow-sm">
                 <svg viewBox="0 0 40 40" className="w-10 h-10" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -22,91 +24,165 @@ export function GetPaid() {
                 </svg>
               </div>
               <div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[#15803D] font-bold text-[16px]">Stripe Connected</span>
-                  <CheckCircle2 size={18} className="text-[#15803D]" />
+                {/* CF-D09 CHANGE 1: Green dot + Stripe Connected */}
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-[#22C55E]" />
+                  <span className="text-[13px] font-medium text-gray-900">Stripe Connected</span>
                 </div>
-                <div className="text-[14px] text-gray-500 mt-0.5">Payouts to ****4242 · Lloyds Bank</div>
+                <div className="text-[11px] text-gray-400 mt-0.5">Payouts to ****4242 · Lloyds Bank</div>
               </div>
             </div>
           </div>
 
-          <hr className="border-[#E2E8F0]" />
-
-          <div className="flex items-center gap-12 md:gap-16">
-            <div>
-              <div className="text-[24px] font-bold text-[#0077CC]">£1,240.00</div>
-              <div className="text-[13px] text-gray-500 mt-0.5">Total earned</div>
-            </div>
-            <div>
-              <div className="text-[24px] font-bold text-[#0077CC]">£90.00</div>
-              <div className="text-[13px] text-gray-500 mt-0.5">Next payout · 10 Apr</div>
+          {/* CF-D09 CHANGE 1: Main section with next payout prominent */}
+          <div className="border-t-[0.5px] border-gray-100 pt-3.5">
+            <div className="flex items-start gap-8 md:gap-12">
+              {/* Left: Next payout (primary) */}
+              <div className="flex-1">
+                <div className="text-[11px] text-gray-400 uppercase tracking-wider mb-1.5">Next payout</div>
+                <div className="text-[28px] font-medium text-[#0077CC] mb-1">£90.00</div>
+                <div className="text-[12px] text-gray-500">Releasing 10 Apr · in 2 days</div>
+              </div>
+              
+              {/* Right: Total earned (secondary) */}
+              <div className="flex-1">
+                <div className="text-[11px] text-gray-400 mb-1.5">Total earned</div>
+                <div className="text-[20px] font-medium text-gray-900">£1,240.00</div>
+              </div>
             </div>
           </div>
         </div>
+        
+        {/* CF-D09 CHANGE 2: Payout timeline card */}
+        <div className="bg-white rounded-xl shadow-sm p-4">
+          <div className="mb-3">
+            <h3 className="text-[13px] font-medium text-gray-900">How payouts work</h3>
+            <p className="text-[11px] text-gray-400 mt-0.5">Money moves automatically — here's the journey</p>
+          </div>
+          
+          {/* 3-step timeline */}
+          <div className="flex items-center w-full mb-3">
+            {/* Step 1: Done */}
+            <div className="flex flex-col items-center">
+              <div className="w-[26px] h-[26px] rounded-full bg-[#DCFCE7] text-[#166534] flex items-center justify-center text-[14px] font-medium">
+                ✓
+              </div>
+              <div className="text-[9px] text-gray-500 text-center mt-1.5 leading-tight" style={{ maxWidth: '70px' }}>
+                Session completed
+              </div>
+            </div>
+            
+            {/* Connecting line 1 */}
+            <div className="flex-1 h-[1.5px] bg-[#86EFAC] mx-2" />
+            
+            {/* Step 2: Active */}
+            <div className="flex flex-col items-center">
+              <div className="w-[26px] h-[26px] rounded-full bg-[#0077CC] text-white flex items-center justify-center text-[14px] font-medium">
+                ⟳
+              </div>
+              <div className="text-[9px] text-[#0077CC] font-medium text-center mt-1.5 leading-tight" style={{ maxWidth: '70px' }}>
+                48hr processing
+              </div>
+            </div>
+            
+            {/* Connecting line 2 */}
+            <div className="flex-1 h-[1.5px] bg-[#E2E8F0] mx-2" />
+            
+            {/* Step 3: Future */}
+            <div className="flex flex-col items-center">
+              <div className="w-[26px] h-[26px] rounded-full bg-[#F1F5F9] text-[#94A3B8] flex items-center justify-center text-[14px] font-medium">
+                £
+              </div>
+              <div className="text-[9px] text-gray-400 text-center mt-1.5 leading-tight" style={{ maxWidth: '70px' }}>
+                Released to bank
+              </div>
+            </div>
+          </div>
+          
+          {/* Reassurance note */}
+          <div className="bg-[#F0F7FF] rounded-lg px-3 py-2.5">
+            <p className="text-[11px] text-[#0C447C] leading-relaxed">
+              The 48-hour delay protects both coaches and parents — it gives time to resolve any issues before money moves.
+            </p>
+          </div>
+        </div>
 
+        {/* CF-D09 CHANGE 3: Upcoming payouts list with cleaner rows */}
         <div className="flex flex-col gap-4">
           <h2 className="text-[18px] font-bold text-gray-900">Upcoming payouts</h2>
           <div className="bg-white border border-[#E2E8F0] rounded-[16px] shadow-sm flex flex-col">
-            <div className="p-5 flex flex-col sm:flex-row sm:items-start justify-between gap-4 border-b border-[#E2E8F0]">
-              <div className="flex flex-col items-start">
-                <div className="text-[16px] font-bold text-gray-900">Thu 10 Apr</div>
-                <div className="text-[14px] text-gray-500 mt-0.5 mb-2">2 sessions · 48hr delay</div>
-                <div className="inline-flex items-center px-2.5 py-1 rounded-md bg-[#DCFCE7] text-[#15803D] text-[12px] font-bold tracking-wide">Scheduled</div>
+            <div className="px-4 py-3 flex items-center justify-between border-b-[0.5px] border-gray-100 hover:bg-gray-50 transition-all duration-100">
+              <div>
+                <div className="text-[13px] font-medium text-gray-900">Thu 10 Apr</div>
+                <div className="text-[11px] text-gray-400 mt-0.5">2 sessions · releasing in 2 days</div>
               </div>
-              <div className="text-[20px] font-bold text-[#0077CC] sm:text-right">£90.00</div>
+              <div className="flex flex-col items-end gap-1">
+                <div className="text-[14px] font-medium text-gray-900">£90.00</div>
+                <div className="px-2 py-0.5 bg-[#DCFCE7] text-[#166534] text-[10px] font-medium rounded-full">
+                  Scheduled
+                </div>
+              </div>
             </div>
-            <div className="p-5 flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-              <div className="flex flex-col items-start">
-                <div className="text-[16px] font-bold text-gray-900">Sat 12 Apr</div>
-                <div className="text-[14px] text-gray-500 mt-0.5 mb-2">1 session · 48hr delay</div>
-                <div className="inline-flex items-center px-2.5 py-1 rounded-md bg-[#F3F4F6] text-[#6B7280] text-[12px] font-bold tracking-wide">Pending</div>
+            <div className="px-4 py-3 flex items-center justify-between hover:bg-gray-50 transition-all duration-100">
+              <div>
+                <div className="text-[13px] font-medium text-gray-900">Sat 12 Apr</div>
+                <div className="text-[11px] text-gray-400 mt-0.5">1 session · releasing in 4 days</div>
               </div>
-              <div className="text-[20px] font-bold text-[#0077CC] sm:text-right">£45.00</div>
+              <div className="flex flex-col items-end gap-1">
+                <div className="text-[14px] font-medium text-gray-900">£45.00</div>
+                <div className="px-2 py-0.5 bg-[#FEF3C7] text-[#92400E] text-[10px] font-medium rounded-full">
+                  Pending
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
+        {/* CF-D09 CHANGE 4: Payout account card with balanced CTA */}
         <div className="flex flex-col gap-4">
           <h2 className="text-[18px] font-bold text-gray-900">Payout account</h2>
           <div className="bg-white border border-[#E2E8F0] rounded-[16px] p-5 shadow-sm">
-            <div className="flex items-center gap-4 mb-5">
-              <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center shrink-0 border border-gray-100">
-                <Building2 size={20} className="text-gray-600" />
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center shrink-0 border border-gray-100">
+                  <Building2 size={20} className="text-gray-600" />
+                </div>
+                <div>
+                  <div className="text-[16px] font-bold text-gray-900">Lloyds Bank</div>
+                  <div className="text-[14px] text-gray-500 mt-0.5">Account ending ****4242</div>
+                </div>
               </div>
-              <div>
-                <div className="text-[16px] font-bold text-gray-900">Lloyds Bank</div>
-                <div className="text-[14px] text-gray-500 mt-0.5">Account ending ****4242</div>
-              </div>
+              {/* CF-D09 CHANGE 4: Smaller, right-aligned secondary button */}
+              <button className="px-4 py-1.5 rounded-full border border-gray-200 bg-white text-gray-700 text-[12px] font-medium hover:bg-gray-50 transition-colors outline-none shrink-0">
+                Update bank account
+              </button>
             </div>
-            <button className="w-full py-3 rounded-full border-2 border-[#0077CC] text-[#0077CC] font-bold text-[15px] hover:bg-[#EFF6FF] transition-colors outline-none">
-              Update bank account
-            </button>
           </div>
         </div>
 
-        <div className="flex flex-col gap-4">
+        {/* CF-D09 CHANGE 5: Tax section with polish */}
+        <div className="flex flex-col gap-4 mt-6">
           <h2 className="text-[18px] font-bold text-gray-900">Tax</h2>
-          <div className="bg-white border border-[#E2E8F0] rounded-[16px] shadow-sm flex flex-col overflow-hidden">
-            <button className="w-full p-5 flex items-center gap-4 border-b border-[#E2E8F0] hover:bg-gray-50 transition-colors text-left group">
-              <div className="w-10 h-10 rounded-full bg-[#EFF6FF] flex items-center justify-center shrink-0">
-                <FileText size={20} className="text-[#0077CC]" />
+          <div className="bg-white rounded-xl shadow-sm flex flex-col overflow-hidden">
+            <button className="w-full px-4 py-3 flex items-center gap-3 border-b-[0.5px] border-gray-100 hover:bg-gray-50 transition-colors text-left group">
+              <div className="w-8 h-8 bg-gray-50 rounded-lg flex items-center justify-center shrink-0">
+                <FileText size={16} className="text-gray-600" />
               </div>
               <div className="flex-1">
-                <div className="text-[16px] font-bold text-gray-900">Annual earnings summary</div>
-                <div className="text-[13px] text-gray-500 mt-0.5">Download your tax summary for 2025–26</div>
+                <div className="text-[13px] font-medium text-gray-900">Annual earnings summary</div>
+                <div className="text-[11px] text-gray-400 mt-0.5">Download your tax summary for 2025–26</div>
               </div>
-              <ChevronRight size={20} className="text-gray-400 group-hover:text-gray-600 shrink-0" />
+              <ChevronRight size={18} className="text-gray-300 group-hover:text-gray-400 shrink-0" />
             </button>
-            <button className="w-full p-5 flex items-center gap-4 hover:bg-gray-50 transition-colors text-left group">
-              <div className="w-10 h-10 rounded-full bg-[#EFF6FF] flex items-center justify-center shrink-0">
-                <Info size={20} className="text-[#0077CC]" />
+            <button className="w-full px-4 py-3 flex items-center gap-3 hover:bg-gray-50 transition-colors text-left group">
+              <div className="w-8 h-8 bg-gray-50 rounded-lg flex items-center justify-center shrink-0">
+                <Info size={16} className="text-gray-600" />
               </div>
               <div className="flex-1">
-                <div className="text-[16px] font-bold text-gray-900">Self-assessment guidance</div>
-                <div className="text-[13px] text-gray-500 mt-0.5">HMRC resources for self-employed coaches</div>
+                <div className="text-[13px] font-medium text-gray-900">Self-assessment guidance</div>
+                <div className="text-[11px] text-gray-400 mt-0.5">HMRC resources for self-employed coaches</div>
               </div>
-              <ChevronRight size={20} className="text-gray-400 group-hover:text-gray-600 shrink-0" />
+              <ChevronRight size={18} className="text-gray-300 group-hover:text-gray-400 shrink-0" />
             </button>
           </div>
         </div>

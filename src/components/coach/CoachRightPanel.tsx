@@ -16,6 +16,8 @@ export function CoachRightPanel() {
   const isProfileRoute = pathname === '/coach/profile' || pathname.includes('/profile')
   // CF-D08 CHANGE 5: Detect earnings route
   const isEarningsRoute = pathname === '/coach/earnings' || pathname.includes('/earnings')
+  // CF-D09 CHANGE 6: Detect get-paid route
+  const isGetPaidRoute = pathname.includes('/get-paid')
   const [selectedDate, setSelectedDate] = useState<number | null>(8) // Default to today (8th)
 
   return (
@@ -45,6 +47,13 @@ export function CoachRightPanel() {
           <EarningsNextPayout router={router} />
           <EarningsPeriodSummary />
         </>
+      ) : isGetPaidRoute ? (
+        // CF-D09 CHANGE 6: Get Paid-specific right panel
+        <>
+          <GetPaidNextPayout router={router} />
+          <GetPaidReassurance />
+          <GetPaidHistoryLink router={router} />
+        </>
       ) : (
         <>
           <ThisWeekStrip isDesktop />
@@ -54,6 +63,64 @@ export function CoachRightPanel() {
         </>
       )}
     </aside>
+  )
+}
+
+// CF-D09 CHANGE 6: Get Paid next payout card
+function GetPaidNextPayout({ router }: { router: any }) {
+  return (
+    <div className="bg-[#E6F1FB] rounded-xl p-3.5">
+      <div className="text-[9px] font-medium text-[#0C447C] uppercase tracking-wider mb-1.5">NEXT PAYOUT</div>
+      <div className="text-[26px] font-medium text-[#0077CC] mb-1">£90.00</div>
+      <div className="text-[10px] text-[#378ADD] mb-2.5">Releases 10 Apr · in 2 days</div>
+      
+      {/* Processing info box */}
+      <div className="bg-white rounded-lg px-2.5 py-2 flex items-center gap-2 mb-2.5">
+        <span className="text-[15px] font-medium text-[#0077CC]">48h</span>
+        <span className="text-[10px] text-gray-400">standard processing delay</span>
+      </div>
+      
+      {/* View earnings link */}
+      <button 
+        onClick={() => {
+          // TODO CF-D09: wire to earnings
+          router.push('/coach/earnings')
+        }}
+        className="w-full text-center text-[11px] font-medium text-[#0077CC] hover:text-[#0066AA] transition-colors"
+      >
+        View earnings →
+      </button>
+    </div>
+  )
+}
+
+// CF-D09 CHANGE 6: Get Paid reassurance message
+function GetPaidReassurance() {
+  return (
+    <div className="bg-[#F0FDF4] rounded-[10px] p-3">
+      <div className="flex items-start gap-2 mb-1">
+        <div className="text-[#16A34A] text-[16px] shrink-0">✓</div>
+        <div className="text-[12px] font-medium text-[#166534]">Everything looks good</div>
+      </div>
+      <p className="text-[11px] text-[#166534] leading-relaxed">
+        Your Stripe account is connected and payouts are on schedule.
+      </p>
+    </div>
+  )
+}
+
+// CF-D09 CHANGE 6: Get Paid history link
+function GetPaidHistoryLink({ router }: { router: any }) {
+  return (
+    <button 
+      onClick={() => {
+        // TODO CF-D09: wire to payout history
+        router.push('/coach/earnings')
+      }}
+      className="w-full text-center text-[12px] font-medium text-[#0077CC] hover:text-[#0066AA] transition-colors"
+    >
+      View full payout history →
+    </button>
   )
 }
 
