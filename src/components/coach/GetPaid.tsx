@@ -5,7 +5,7 @@ import { CheckCircle2, Building2, FileText, Info, ExternalLink, ChevronRight } f
 
 export function GetPaid() {
   return (
-    <div className="min-h-screen bg-gray-50/50 flex justify-center font-sans p-6 lg:p-10" style={{ fontFamily: "'DM Sans', sans-serif" }}>
+    <div className="min-h-screen flex justify-center font-sans p-6 lg:p-10" style={{ fontFamily: "'DM Sans', sans-serif" }}>
       <div className="w-full max-w-3xl flex flex-col gap-8 pb-20">
         
         <div>

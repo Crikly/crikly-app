@@ -99,9 +99,9 @@ export function Earnings() {
   }, [period])
 
   return (
-    <div className="min-h-screen bg-gray-50 font-sans" style={{ fontFamily: "'DM Sans', sans-serif" }}>
-      <div className="w-full max-w-2xl mx-auto bg-gray-50 min-h-screen relative flex flex-col pb-12">
-        <div className="px-5 pt-8 pb-4 bg-gray-50 sticky top-0 z-10">
+    <div className="min-h-screen font-sans" style={{ fontFamily: "'DM Sans', sans-serif" }}>
+      <div className="w-full max-w-2xl mx-auto min-h-screen relative flex flex-col pb-12">
+        <div className="px-5 pt-8 pb-4 sticky top-0 z-10">
           <h1 className="text-[28px] font-bold text-gray-900 tracking-tight">Earnings</h1>
         </div>
         <div className="px-5 space-y-8">
