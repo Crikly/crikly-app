@@ -71,7 +71,7 @@ export function ProfileStep() {
   return (
     <div className="min-h-full bg-white font-sans text-gray-900 flex pb-32">
       <div className="flex-1 flex justify-center">
-        <div className="w-full max-w-[640px] px-6 pt-10">
+        <div className="w-full max-w-3xl px-8 pt-10">
 
         {/* TOP */}
         <div className="mb-10">
@@ -92,21 +92,18 @@ export function ProfileStep() {
         </div>
 
         {/* CONTENT */}
-        <div className="flex flex-col gap-3.5">
+        <div className="flex flex-col gap-3">
 
-          {/* CF-D11b CHANGE 2: Prominent photo upload */}
-          <div className="bg-white shadow-sm rounded-xl p-5">
-            <h2 className="text-[13px] font-medium text-gray-900 mb-4">
-              <span className="text-[11px] text-gray-400 mr-1.5">1 ·</span>
-              Profile photo
-            </h2>
+          {/* CF-D11e CHANGE 3: Prominent photo upload */}
+          <div className="bg-white rounded-xl p-5" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+            <h2 className="text-[13px] font-medium text-gray-900 mb-3.5">Profile photo</h2>
             <div className="flex items-center gap-4">
               <div 
                 onClick={() => fileInputRef.current?.click()}
-                className={`w-20 h-20 rounded-full flex items-center justify-center shrink-0 overflow-hidden cursor-pointer transition-colors ${
+                className={`w-20 h-20 rounded-full flex items-center justify-center shrink-0 overflow-hidden cursor-pointer transition-all ${
                   photoPreview 
                     ? '' 
-                    : 'border-2 border-dashed border-[#B5D4F4] bg-[#F0F7FF] hover:bg-[#E6F1FB]'
+                    : 'border-2 border-dashed border-[#B5D4F4] bg-[#F0F7FF] hover:bg-[#E6F1FB] hover:border-solid'
                 }`}
               >
                 {photoPreview
@@ -129,12 +126,9 @@ export function ProfileStep() {
             </div>
           </div>
 
-          {/* CF-D11b CHANGE 3: Basic info with section number */}
-          <div className="bg-white shadow-sm rounded-xl p-5">
-            <h2 className="text-[13px] font-medium text-gray-900 mb-4">
-              <span className="text-[11px] text-gray-400 mr-1.5">2 ·</span>
-              Basic info
-            </h2>
+          {/* CF-D11e CHANGE 2: Basic info without section number */}
+          <div className="bg-white rounded-xl p-5" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+            <h2 className="text-[13px] font-medium text-gray-900 mb-3.5">Basic info</h2>
             <div className="flex flex-col gap-5">
               <div className="flex flex-col gap-2">
                 <label className="text-[14px] font-bold text-gray-900">Display name</label>
@@ -162,12 +156,9 @@ export function ProfileStep() {
             </div>
           </div>
 
-          {/* CF-D11b CHANGE 3: Location with section number */}
-          <div className="bg-white shadow-sm rounded-xl p-5">
-            <h2 className="text-[13px] font-medium text-gray-900 mb-4">
-              <span className="text-[11px] text-gray-400 mr-1.5">3 ·</span>
-              Location
-            </h2>
+          {/* CF-D11e CHANGE 2: Location without section number */}
+          <div className="bg-white rounded-xl p-5" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+            <h2 className="text-[13px] font-medium text-gray-900 mb-3.5">Location</h2>
             <div className="flex flex-col gap-6">
               <div className="flex flex-col gap-2">
                 <label className="text-[14px] font-bold text-gray-900">Base location</label>
@@ -207,12 +198,9 @@ export function ProfileStep() {
             </div>
           </div>
 
-          {/* CF-D11b CHANGE 4: About you with lighter treatment */}
-          <div className="bg-[#FAFAFA] shadow-sm rounded-xl p-5">
-            <h2 className="text-[13px] font-medium text-gray-900 mb-4">
-              <span className="text-[11px] text-gray-400 mr-1.5">4 ·</span>
-              About you <span className="text-[11px] text-gray-400 font-normal">(optional)</span>
-            </h2>
+          {/* CF-D11e CHANGE 4: About you with subtle tint */}
+          <div className="bg-[#FAFAFA] rounded-xl p-5" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+            <h2 className="text-[13px] font-medium text-gray-900 mb-3.5">About you <span className="text-[11px] text-gray-400 font-normal">(optional)</span></h2>
             <div className="flex flex-col gap-8">
               <div className="flex flex-col gap-3">
                 <label className="text-[14px] font-bold text-gray-900">Years of experience</label>
@@ -280,8 +268,8 @@ export function ProfileStep() {
 
         </div>
         
-        {/* CF-D11b CHANGE 6: Right-aligned save bar - scoped to content column */}
-        <div className="sticky bottom-0 left-0 right-0 bg-white border-t-[0.5px] border-gray-100 px-6 py-3 flex justify-end z-10 mt-8" style={{ boxShadow: '0 -2px 8px rgba(0,0,0,0.04)' }}>
+        {/* CF-D11e CHANGE 6: Clean save bar with pill button */}
+        <div className="sticky bottom-0 left-0 right-0 bg-white border-t-[0.5px] border-gray-100 px-6 py-3 flex justify-end items-center z-10 mt-8" style={{ boxShadow: '0 -2px 8px rgba(0,0,0,0.04)' }}>
           <button
             onClick={handleSave}
             disabled={saving}
@@ -293,41 +281,49 @@ export function ProfileStep() {
         </div>
       </div>
 
-      {/* CF-D11b CHANGE 5: Right panel with parent preview */}
-      <aside className="hidden xl:flex w-96 shrink-0 flex-col gap-6 bg-white p-8 sticky top-0 h-screen overflow-y-auto border-l border-gray-100">
-        <div>
-          <p className="text-[9px] font-medium text-gray-400 uppercase tracking-wider mb-2">WHAT PARENTS SEE</p>
+      {/* CF-D11e CHANGE 5: Richer sticky preview panel */}
+      <aside className="hidden xl:flex w-80 shrink-0 flex-col bg-white p-6 h-screen overflow-y-auto border-l border-gray-100">
+        <div className="sticky top-6">
+          <p className="text-[9px] font-medium text-gray-400 uppercase tracking-wider mb-2" style={{ letterSpacing: '0.05em' }}>WHAT PARENTS SEE</p>
           
           {/* Preview card */}
-          <div className="bg-white rounded-xl shadow-sm p-4">
-            {/* Avatar with ring */}
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-12 h-12 rounded-full bg-[#E6F1FB] flex items-center justify-center text-[#0077CC] font-bold text-[18px]" style={{ boxShadow: '0 0 0 2px #E6F1FB' }}>
+          <div className="bg-white rounded-xl p-4" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+            {/* Avatar */}
+            <div className="flex flex-col items-center mb-4">
+              <div className="w-14 h-14 rounded-full bg-[#E6F1FB] flex items-center justify-center text-[#0077CC] font-bold text-[20px] mb-2" style={{ boxShadow: '0 0 0 2px #E6F1FB' }}>
                 {displayName ? displayName.charAt(0).toUpperCase() : 'R'}
               </div>
-              <div className="flex-1">
-                <h3 className="text-[15px] font-medium text-gray-900">
-                  {displayName || 'Your name'}
-                </h3>
-                <p className="text-[12px] text-gray-400">Cricket Coach</p>
-              </div>
+              <h3 className="text-[15px] font-medium text-gray-900">
+                {displayName || <span className="text-gray-300">Your name</span>}
+              </h3>
+              <p className="text-[12px] text-gray-400">Cricket Coach</p>
             </div>
             
             {/* Rating */}
-            <div className="flex items-center gap-1 mb-3">
+            <div className="flex items-center justify-center gap-1 mb-1">
               {[1,2,3,4,5].map(i => (
                 <span key={i} className="text-amber-400 text-[11px]">★</span>
               ))}
             </div>
+            <p className="text-[11px] text-gray-400 text-center mb-3">New coach</p>
+            
+            {/* Details */}
+            <div className="flex flex-col gap-1 mb-3">
+              <p className="text-[11px] text-gray-500">📍 {baseLocation || 'London'}</p>
+              <p className="text-[11px] text-gray-500">📅 Mon, Wed, Fri</p>
+            </div>
             
             {/* Price */}
-            <p className="text-[15px] font-medium text-gray-900 mb-3">from £50 / session</p>
+            <p className="text-[15px] font-medium text-gray-900 mb-2">from £50 / session</p>
             
             {/* DBS badge */}
-            <div className="inline-flex items-center gap-1 px-2 py-1 bg-[#E0F6F8] text-[#006677] text-[11px] font-medium rounded mb-3">
-              <Check size={12} />
+            <div className="inline-flex items-center gap-1 px-2 py-1 bg-[#E0F6F8] text-[#006677] text-[10px] font-medium rounded-full">
+              <Check size={10} />
               DBS checked
             </div>
+            
+            {/* Divider */}
+            <div className="border-t-[0.5px] border-gray-100 my-3"></div>
             
             {/* Book button */}
             <button className="w-full py-2.5 bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-full text-[12px] font-medium transition-colors">
@@ -337,8 +333,8 @@ export function ProfileStep() {
           
           {/* Completion notice */}
           {profileCompleteness < 100 && (
-            <div className="bg-[#FFFBEB] border-l-[3px] border-[#F59E0B] rounded-r-lg px-3 py-2.5 mt-4">
-              <p className="text-[11px] text-[#78350F]">Complete all steps to appear in search</p>
+            <div className="bg-[#FFFBEB] border-l-[3px] border-[#F59E0B] rounded-r-lg px-3 py-2.5 mt-2">
+              <p className="text-[11px] text-[#78350F] font-medium">Complete all steps to appear in search</p>
             </div>
           )}
         </div>
