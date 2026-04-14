@@ -1,8 +1,8 @@
 # Crikly — Comprehensive Build Plan
 
-**Version:** 2.4
+**Version:** 2.5
 **Last Updated:** April 2026
-**Changed:** Added Fix-10k (qualifications footer) and Fix-10l (qualification card spacing). CF-D10 onboarding polish complete.
+**Changed:** Added Fix-11a through Fix-11k (CD-01/CD-02 data wiring fixes). Added A-15b OAuth user_profiles test. Auth path rule added to working ethics.
 **This is the single source of truth for every task in the project.**
 
 ---
@@ -204,6 +204,7 @@ First working screens. Register, log in, select roles, switch roles.
 | A-13 | Unit tests — auth utility functions | @QAEngineer | 🟢 | feature/auth | ✅ |
 | A-14 | Integration tests — register, login, role assignment | @QAEngineer | 🟢 | feature/auth | ✅ |
 | A-15 | E2E test — sign up → role select → dashboard | @QAEngineer | 🟢 | feature/auth | ✅ |
+| A-15b | E2E test — OAuth sign-up → user_profiles row created | @QAEngineer | 🟢 | feature/auth | ⚪ |
 
 ---
 
@@ -284,6 +285,17 @@ C-05, C-06, C-07, C-08 are safe to proceed without M-015.
 | Fix-10j | Fix get-paid footer balance — three-slot pattern | @FrontendDeveloper | 🟢 | develop | ✅ |
 | Fix-10k | Remove skip from qualifications onboarding footer | @FrontendDeveloper | 🟢 | develop | ✅ |
 | Fix-10l | Fix spacing between qualification cards | @FrontendDeveloper | 🟢 | develop | ✅ |
+| Fix-11a | Diagnose and fix 404 on /coach route after CD-01 layout refactor | @FrontendDeveloper | 🟡 | feature/coach-data | ✅ |
+| Fix-11b | Remove stub data from dashboard client component | @FrontendDeveloper | 🟢 | feature/coach-data | ✅ |
+| Fix-11c | Clear remaining right panel stub data | @FrontendDeveloper | 🟢 | feature/coach-data | ✅ |
+| Fix-11d | Time-based greeting and real name in dashboard | @FrontendDeveloper | 🟢 | feature/coach-data | ✅ |
+| Fix-11e | Fix right panel stacking layout | @FrontendDeveloper | 🟢 | feature/coach-data | ✅ |
+| Fix-11f | Fix right panel height (h-screen) and remove console.error | @FrontendDeveloper | 🟢 | feature/coach-data | ✅ |
+| Fix-11g | Wire right panel data and fix initials extraction | @FrontendDeveloper | 🟡 | feature/coach-data | ✅ |
+| Fix-11h | Replace failing API call with direct Supabase query in layout | @FrontendDeveloper | 🟡 | feature/coach-data | ✅ |
+| Fix-11i | Create user_profiles on OAuth callback — critical auth bug fix | @BackendDeveloper | 🔴 | feature/coach-data | ✅ |
+| Fix-11j | Fix greeting name source and avatar display | @FrontendDeveloper | 🟢 | feature/coach-data | ✅ |
+| Fix-11k | Fix avatar display and remove fake booking badge | @FrontendDeveloper | 🟢 | feature/coach-data | ✅ |
 
 ### 3D — Screen Review & Polish (CF-D tasks)
 
