@@ -83,6 +83,28 @@ export async function POST(request: Request) {
       }
     }
 
+    // Fix-12: First get the user_profile_id
+    const { data: userProfile, error: profileFetchError } = await supabase
+      .from('user_profiles')
+      .select('id')
+      .eq('auth_user_id', user.id)
+      .single()
+
+    if (profileFetchError || !userProfile) {
+      console.error('Profile fetch error:', profileFetchError)
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: 'UNKNOWN_ERROR',
+            message: 'Could not find your profile. Please try again.',
+          },
+        },
+        { status: 500 }
+      )
+    }
+
+    // Fix-12: Update active_role in user_profiles
     const { error: profileError } = await supabase
       .from('user_profiles')
       .update({
@@ -92,7 +114,38 @@ export async function POST(request: Request) {
       .eq('auth_user_id', user.id)
 
     if (profileError) {
-      console.error('Profile upsert error:', profileError)
+      console.error('Profile update error:', profileError)
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: 'UNKNOWN_ERROR',
+            message: 'Could not save your role. Please try again.',
+          },
+        },
+        { status: 500 }
+      )
+    }
+
+    // Fix-12: Insert into user_roles table (critical for coach API access)
+    // Use upsert to handle case where row already exists
+    const { error: roleInsertError } = await supabase
+      .from('user_roles')
+      .upsert(
+        {
+          user_profile_id: userProfile.id,
+          role: role as Role,
+          is_active: true,
+          updated_at: new Date().toISOString(),
+        },
+        {
+          onConflict: 'user_profile_id,role',
+          ignoreDuplicates: true, // Don't error if row already exists
+        }
+      )
+
+    if (roleInsertError) {
+      console.error('Role insert error:', roleInsertError)
       return NextResponse.json(
         {
           success: false,

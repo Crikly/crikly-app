@@ -296,6 +296,7 @@ C-05, C-06, C-07, C-08 are safe to proceed without M-015.
 | Fix-11i | Create user_profiles on OAuth callback — critical auth bug fix | @BackendDeveloper | 🔴 | feature/coach-data | ✅ |
 | Fix-11j | Fix greeting name source and avatar display | @FrontendDeveloper | 🟢 | feature/coach-data | ✅ |
 | Fix-11k | Fix avatar display and remove fake booking badge | @FrontendDeveloper | 🟢 | feature/coach-data | ✅ |
+| Fix-12 | Insert user_roles row on role selection for OAuth and email users | @BackendDeveloper | 🔴 | feature/coach-data-2 | ✅ |
 
 ### 3D — Screen Review & Polish (CF-D tasks)
 
