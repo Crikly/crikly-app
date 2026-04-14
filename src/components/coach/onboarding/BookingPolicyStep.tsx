@@ -35,20 +35,6 @@ export function BookingPolicyStep() {
     }
   }
 
-  // Generate live policy summary
-  const policySummary = useMemo(() => {
-    const cancelLine = cancellationWindow === 'No cancellations'
-      ? 'Sessions are non-refundable once booked.'
-      : `Parents can cancel up to ${cancellationWindow} before a session for a full refund.`
-    
-    const bookingLine = `Sessions can be booked from ${earliestBooking} up to ${latestBooking} in advance.`
-    
-    const confirmLine = bookingApproval === 'Instant'
-      ? 'Bookings are confirmed instantly on payment.'
-      : 'Bookings are confirmed manually by you.'
-    
-    return { cancelLine, bookingLine, confirmLine }
-  }, [cancellationWindow, earliestBooking, latestBooking, bookingApproval])
 
   return (
     <div className="flex w-full">
@@ -81,11 +67,8 @@ export function BookingPolicyStep() {
               <p className="text-[14px] text-gray-500 font-medium mb-1">How much notice must parents give to receive a refund?</p>
               <div className="flex flex-wrap gap-2 mb-2">
                 {cancellationOptions.map((opt) => (
-                  <button key={opt} onClick={() => setCancellationWindow(opt)} className={`px-4 py-2 rounded-full text-[14px] font-bold transition-all border-2 relative ${cancellationWindow === opt ? 'bg-blue-50 border-[#0077CC] text-[#0077CC]' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'}`}>
+                  <button key={opt} onClick={() => setCancellationWindow(opt)} className={`px-4 py-2 rounded-full text-[14px] font-bold transition-all border-2 ${cancellationWindow === opt ? 'bg-blue-50 border-[#0077CC] text-[#0077CC]' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'}`}>
                     {opt}
-                    {opt === '48 hours' && (
-                      <span className="absolute -top-2 -right-2 px-1.5 py-0.5 bg-teal-500 text-white text-[9px] font-bold rounded-full">Recommended</span>
-                    )}
                   </button>
                 ))}
               </div>
@@ -108,11 +91,8 @@ export function BookingPolicyStep() {
                 <p className="text-[14px] text-gray-500 font-medium mb-1">How much notice you need before a session can start</p>
                 <div className="flex flex-wrap gap-2">
                   {earliestOptions.map((opt) => (
-                    <button key={opt} onClick={() => setEarliestBooking(opt)} className={`px-4 py-2 rounded-full text-[14px] font-bold transition-all border-2 relative ${earliestBooking === opt ? 'bg-blue-50 border-[#0077CC] text-[#0077CC]' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'}`}>
+                    <button key={opt} onClick={() => setEarliestBooking(opt)} className={`px-4 py-2 rounded-full text-[14px] font-bold transition-all border-2 ${earliestBooking === opt ? 'bg-blue-50 border-[#0077CC] text-[#0077CC]' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'}`}>
                       {opt}
-                      {opt === '24 hours' && (
-                        <span className="absolute -top-2 -right-2 px-1.5 py-0.5 bg-teal-500 text-white text-[9px] font-bold rounded-full">Recommended</span>
-                      )}
                     </button>
                   ))}
                 </div>
@@ -123,11 +103,8 @@ export function BookingPolicyStep() {
                 <p className="text-[14px] text-gray-500 font-medium mb-1">How far ahead parents can book sessions with you</p>
                 <div className="flex flex-wrap gap-2">
                   {latestOptions.map((opt) => (
-                    <button key={opt} onClick={() => setLatestBooking(opt)} className={`px-4 py-2 rounded-full text-[14px] font-bold transition-all border-2 relative ${latestBooking === opt ? 'bg-blue-50 border-[#0077CC] text-[#0077CC]' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'}`}>
+                    <button key={opt} onClick={() => setLatestBooking(opt)} className={`px-4 py-2 rounded-full text-[14px] font-bold transition-all border-2 ${latestBooking === opt ? 'bg-blue-50 border-[#0077CC] text-[#0077CC]' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'}`}>
                       {opt}
-                      {opt === '8 weeks' && (
-                        <span className="absolute -top-2 -right-2 px-1.5 py-0.5 bg-teal-500 text-white text-[9px] font-bold rounded-full">Recommended</span>
-                      )}
                     </button>
                   ))}
                 </div>
@@ -136,7 +113,7 @@ export function BookingPolicyStep() {
           </div>
 
           {/* Booking approval */}
-          <div className="bg-white border border-gray-100 shadow-sm rounded-[24px] p-8">
+          <div className="bg-white border border-gray-100 shadow-sm rounded-[24px] p-8 mb-6">
             <h2 className="text-[18px] font-bold text-gray-900 mb-6">Booking approval</h2>
             <div className="flex flex-col gap-3">
               <label className="text-[14px] font-bold text-gray-900 mb-2">How do you want to confirm bookings?</label>
@@ -163,16 +140,6 @@ export function BookingPolicyStep() {
             </div>
           </div>
         </div>
-
-          {/* Live policy summary */}
-          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-20">
-            <h3 className="text-[13px] font-medium text-gray-500 mb-3">Your booking policy</h3>
-            <div className="flex flex-col gap-2">
-              <p className="text-[14px] text-gray-700">{policySummary.cancelLine}</p>
-              <p className="text-[14px] text-gray-700">{policySummary.bookingLine}</p>
-              <p className="text-[14px] text-gray-700">{policySummary.confirmLine}</p>
-            </div>
-          </div>
 
           {/* Standard onboarding footer */}
           <div 
@@ -204,6 +171,12 @@ export function BookingPolicyStep() {
         availabilityDays={['Mon', 'Wed', 'Fri']}
         priceFromPence={5000}
         isDbs={true}
+        bookingPolicy={{
+          cancellationWindow: cancellationWindow,
+          minimumNotice: earliestBooking,
+          bookingHorizon: latestBooking,
+          approvalType: bookingApproval.toLowerCase() as 'instant' | 'manual'
+        }}
       />
     </div>
   )

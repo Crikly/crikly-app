@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { MapPin, Calendar } from 'lucide-react'
+import { MapPin, Calendar, XCircle, CalendarDays, CheckCircle } from 'lucide-react'
 
 interface OnboardingPreviewPanelProps {
   coachName: string
@@ -15,6 +15,12 @@ interface OnboardingPreviewPanelProps {
     message: string
     subMessage?: string
   }
+  bookingPolicy?: {
+    cancellationWindow: string
+    minimumNotice: string
+    bookingHorizon: string
+    approvalType: 'instant' | 'manual'
+  }
 }
 
 export function OnboardingPreviewPanel({
@@ -24,7 +30,8 @@ export function OnboardingPreviewPanel({
   availabilityDays,
   priceFromPence,
   isDbs = false,
-  infoBox
+  infoBox,
+  bookingPolicy
 }: OnboardingPreviewPanelProps) {
   // Extract initials from coach name
   const initials = coachName
@@ -133,6 +140,60 @@ export function OnboardingPreviewPanel({
                 {infoBox.subMessage}
               </p>
             )}
+          </div>
+        )}
+
+        {/* Booking policy summary */}
+        {bookingPolicy && (
+          <div className="bg-white border border-gray-100 rounded-lg p-5 mt-6">
+            <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-4" style={{ letterSpacing: '0.05em' }}>
+              BOOKING POLICY PREVIEW
+            </p>
+            
+            <div className="flex flex-col gap-3">
+              {/* Cancellation */}
+              <div className="flex items-start gap-3">
+                <XCircle size={14} className="text-gray-400 mt-0.5 shrink-0" />
+                <div className="flex-1">
+                  <p className="text-[12px] font-bold text-gray-900 mb-0.5">Cancellation</p>
+                  <p className={`text-[12px] ${
+                    bookingPolicy.cancellationWindow === 'No cancellations' 
+                      ? 'text-amber-600' 
+                      : 'text-gray-600'
+                  }`}>
+                    {bookingPolicy.cancellationWindow === 'No cancellations'
+                      ? 'Non-refundable once booked'
+                      : `${bookingPolicy.cancellationWindow} notice for a refund`
+                    }
+                  </p>
+                </div>
+              </div>
+
+              {/* Booking window */}
+              <div className="flex items-start gap-3">
+                <CalendarDays size={14} className="text-gray-400 mt-0.5 shrink-0" />
+                <div className="flex-1">
+                  <p className="text-[12px] font-bold text-gray-900 mb-0.5">Booking window</p>
+                  <p className="text-[12px] text-gray-600">
+                    {bookingPolicy.minimumNotice} to {bookingPolicy.bookingHorizon} in advance
+                  </p>
+                </div>
+              </div>
+
+              {/* Approval */}
+              <div className="flex items-start gap-3">
+                <CheckCircle size={14} className="text-gray-400 mt-0.5 shrink-0" />
+                <div className="flex-1">
+                  <p className="text-[12px] font-bold text-gray-900 mb-0.5">Approval</p>
+                  <p className="text-[12px] text-gray-600">
+                    {bookingPolicy.approvalType === 'instant' 
+                      ? 'Instant on payment' 
+                      : 'Manual review'
+                    }
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>
