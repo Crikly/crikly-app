@@ -42,7 +42,27 @@ interface ScheduleBlock {
   rawData: AvailabilityBlock
 }
 
-interface BlockedRange { id: number; start: Date; end: Date; label: string }
+// CD-05: Blocked dates API response type
+interface BlockedDateResponse {
+  id: string
+  blocked_date: string
+  blocked_date_end: string | null
+  label: string | null
+  reason: string | null
+  is_range: boolean
+  days_blocked: number
+  created_at: string
+}
+
+// CD-05: UI display type for blocked dates
+interface BlockedRange { 
+  id: string
+  start: Date
+  end: Date
+  label: string
+  rawData: BlockedDateResponse
+}
+
 interface CalDay { date: Date; type: 'prev' | 'current' | 'next' }
 
 function dateOnly(d: Date): number { return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() }
@@ -83,6 +103,12 @@ export function AvailabilityManagement() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
+  
+  // CD-05: Blocked dates real data state
+  const [blockedRanges, setBlockedRanges] = useState<BlockedRange[]>([])
+  const [blockedLoading, setBlockedLoading] = useState(false)
+  const [blockedError, setBlockedError] = useState<string | null>(null)
+  const [deletingBlocked, setDeletingBlocked] = useState<string | null>(null)
   const availableSports = useMemo(() => [...new Set(scheduleBlocks.map(b => b.sport))], [scheduleBlocks])
   const [showAddForm, setShowAddForm] = useState(false)
   // CF-D06b FIX 1: Add preselectedDay state
@@ -183,16 +209,51 @@ export function AvailabilityManagement() {
       setFormDays([preselectedDay])
     }
   }, [showAddForm, preselectedDay])
+  
+  // CD-05: Fetch blocked dates when switching to blocked tab
+  useEffect(() => {
+    if (activeTab === 'blocked') {
+      const fetchBlockedDates = async () => {
+        try {
+          setBlockedLoading(true)
+          setBlockedError(null)
+          
+          const response = await fetch('/api/coaches/blocked-dates')
+          if (!response.ok) {
+            throw new Error('Failed to fetch blocked dates')
+          }
+          
+          const data = await response.json()
+          
+          // Transform API data to UI format
+          const transformed: BlockedRange[] = (data.blocked_dates || []).map((block: BlockedDateResponse) => ({
+            id: block.id,
+            start: new Date(block.blocked_date),
+            end: new Date(block.blocked_date_end || block.blocked_date),
+            label: block.label || '',
+            rawData: block
+          }))
+          
+          setBlockedRanges(transformed)
+        } catch (err) {
+          console.error('Error fetching blocked dates:', err)
+          setBlockedError('Failed to load blocked dates. Please refresh the page.')
+        } finally {
+          setBlockedLoading(false)
+        }
+      }
+      
+      fetchBlockedDates()
+    }
+  }, [activeTab])
+  
+  // Blocked dates calendar state
   const [currentMonth, setCurrentMonth] = useState(3)
   const [currentYear, setCurrentYear] = useState(2026)
   const [rangeStart, setRangeStart] = useState<Date | null>(null)
   const [rangeEnd, setRangeEnd] = useState<Date | null>(null)
   const [hoverDate, setHoverDate] = useState<Date | null>(null)
   const [blockLabel, setBlockLabel] = useState('')
-  const [blockedRanges, setBlockedRanges] = useState<BlockedRange[]>([
-    { id: 1, start: new Date(2025, 11, 25), end: new Date(2026, 0, 1), label: 'Christmas & New Year' },
-    { id: 2, start: new Date(2026, 3, 15), end: new Date(2026, 3, 22), label: 'Easter holiday' },
-  ])
   const calendarDays = useMemo(() => buildCalendar(currentYear, currentMonth), [currentYear, currentMonth])
   const TODAY = new Date(2026, 3, 8)
   const navigatePrev = () => { if (currentMonth === 0) { setCurrentYear(y => y - 1); setCurrentMonth(11) } else setCurrentMonth(m => m - 1) }
@@ -203,11 +264,53 @@ export function AvailabilityManagement() {
     if (!rangeStart || rangeEnd) { setRangeStart(clicked); setRangeEnd(null) }
     else { if (sameDay(clicked, rangeStart)) { setRangeEnd(clicked) } else if (dateOnly(clicked) > dateOnly(rangeStart)) { setRangeEnd(clicked) } else { setRangeStart(clicked); setRangeEnd(null) } }
   }
-  const handleBlockDates = () => {
+  const handleBlockDates = async () => {
+    // CD-05: Wire to POST /api/coaches/blocked-dates
     if (!rangeStart) return
-    const end = rangeEnd ?? rangeStart
-    setBlockedRanges(prev => [...prev, { id: Date.now(), start: rangeStart, end, label: blockLabel.trim() }])
-    setRangeStart(null); setRangeEnd(null); setBlockLabel(''); setHoverDate(null)
+    
+    try {
+      const end = rangeEnd ?? rangeStart
+      
+      // Format dates as YYYY-MM-DD
+      const formatDate = (d: Date) => d.toISOString().split('T')[0]
+      
+      const response = await fetch('/api/coaches/blocked-dates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          blocked_date: formatDate(rangeStart),
+          blocked_date_end: sameDay(rangeStart, end) ? null : formatDate(end),
+          label: blockLabel.trim() || null,
+        })
+      })
+      
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.message || 'Failed to block dates')
+      }
+      
+      // Refresh the list
+      const refreshResponse = await fetch('/api/coaches/blocked-dates')
+      if (refreshResponse.ok) {
+        const data = await refreshResponse.json()
+        const transformed: BlockedRange[] = (data.blocked_dates || []).map((block: BlockedDateResponse) => ({
+          id: block.id,
+          start: new Date(block.blocked_date),
+          end: new Date(block.blocked_date_end || block.blocked_date),
+          label: block.label || '',
+          rawData: block
+        }))
+        setBlockedRanges(transformed)
+      }
+      
+      setRangeStart(null)
+      setRangeEnd(null)
+      setBlockLabel('')
+      setHoverDate(null)
+    } catch (err) {
+      console.error('Error blocking dates:', err)
+      alert('Failed to block dates. Please try again.')
+    }
   }
   const clearSelection = () => { setRangeStart(null); setRangeEnd(null); setBlockLabel(''); setHoverDate(null) }
   const previewEnd = (rangeStart && !rangeEnd && hoverDate && dateOnly(hoverDate) > dateOnly(rangeStart)) ? hoverDate : null
@@ -571,6 +674,22 @@ export function AvailabilityManagement() {
           <div className="flex flex-col">
             <h2 className="text-[18px] font-bold text-gray-900 mb-1">Blocked dates</h2>
             <p className="text-[14px] text-gray-500 font-medium mb-6 leading-relaxed">Block specific dates when you're not available — overrides your recurring schedule</p>
+            
+            {/* CD-05: Error state */}
+            {blockedError && (
+              <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
+                <p className="text-[14px] font-medium text-red-700">{blockedError}</p>
+              </div>
+            )}
+            
+            {/* CD-05: Loading state */}
+            {blockedLoading ? (
+              <div className="flex flex-col items-center justify-center py-20">
+                <div className="w-8 h-8 border-4 border-gray-200 border-t-[#0077CC] rounded-full animate-spin mb-4"></div>
+                <p className="text-[14px] text-gray-500">Loading blocked dates...</p>
+              </div>
+            ) : (
+              <>
             <div className="bg-white border border-gray-100 shadow-sm rounded-[24px] p-6 mb-4">
               <div className="flex justify-between items-center mb-5 px-1">
                 <span className="font-bold text-[16px] text-gray-900">{MONTH_NAMES[currentMonth]} {currentYear}</span>
@@ -651,12 +770,42 @@ export function AvailabilityManagement() {
                         <span className="text-[14px] font-bold text-gray-900 shrink-0 tabular-nums">{fmt(item.start)}{!sameDay(item.start, item.end) && <> – {fmt(item.end)}</>}</span>
                         {item.label ? <span className="text-[14px] text-gray-500 font-medium truncate">{item.label}</span> : <span className="text-[13px] text-gray-300 font-medium italic">No label</span>}
                       </div>
-                      <button onClick={() => setBlockedRanges(prev => prev.filter(r => r.id !== item.id))} className="ml-3 shrink-0 flex items-center gap-1 text-[13px] text-gray-400 hover:text-red-500 font-bold transition-colors"><X size={14} /> remove</button>
+                      <button 
+                        onClick={async () => {
+                          // CD-05: Wire to DELETE /api/coaches/blocked-dates/[id]
+                          if (!confirm('Remove this blocked date?')) return
+                          
+                          try {
+                            setDeletingBlocked(item.id)
+                            const response = await fetch(`/api/coaches/blocked-dates/${item.id}`, {
+                              method: 'DELETE'
+                            })
+                            
+                            if (!response.ok) {
+                              throw new Error('Failed to delete blocked date')
+                            }
+                            
+                            // Remove from local state
+                            setBlockedRanges(prev => prev.filter(r => r.id !== item.id))
+                          } catch (err) {
+                            console.error('Error deleting blocked date:', err)
+                            alert('Failed to remove blocked date. Please try again.')
+                          } finally {
+                            setDeletingBlocked(null)
+                          }
+                        }}
+                        disabled={deletingBlocked === item.id}
+                        className="ml-3 shrink-0 flex items-center gap-1 text-[13px] text-gray-400 hover:text-red-500 font-bold transition-colors disabled:opacity-50"
+                      >
+                        <X size={14} /> remove
+                      </button>
                     </div>
                   ))}
                 </div>
               )}
             </div>
+            </>
+            )}
           </div>
         )}
       </div>

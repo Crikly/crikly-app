@@ -332,7 +332,7 @@ Branch: feature/coach-data (open from develop before starting CD-01)
 | CD-03 | Onboarding — verify each step saves correctly to Supabase | All onboarding API routes | 🔴 High | ✅ |
 | CD-03b | Fix sport_id placeholder in PricingStep — real UUID lookup | GET /api/sports | 🔴 High | ✅ |
 | CD-04 | Availability management — real schedule blocks | GET/POST/DELETE /api/coaches/availability | 🟡 Medium | ✅ |
-| CD-05 | Availability management — real blocked dates | GET/POST/DELETE /api/coaches/blocked-dates | 🟡 Medium | ⚪ |
+| CD-05 | Availability management — real blocked dates | GET/POST/DELETE /api/coaches/blocked-dates | 🟡 Medium | ✅ |
 | CD-06 | Bookings list — real data | GET /api/bookings (needs B-12 first) | 🟡 Medium | ⚪ |
 | CD-07 | Booking detail — real data | GET /api/bookings/[id] (needs B-13 first) | 🟡 Medium | ⚪ |
 | CD-08 | Programmes list — real data | GET /api/coaches/programmes | 🟡 Medium | ⚪ |
