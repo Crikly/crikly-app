@@ -2,7 +2,7 @@
 
 import React, { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { Upload, FileText, X, Award, Shield, Heart, Users } from 'lucide-react'
+import { Upload, FileText, X } from 'lucide-react'
 import { PublicProfilePreview } from './PublicProfilePreview'
 
 interface Qualification {
@@ -14,11 +14,11 @@ interface Qualification {
   status: 'uploaded' | 'pending'
 }
 
-type CategoryType = 'coaching' | 'dbs' | 'firstaid' | 'safeguarding' | null
+type CategoryType = 'coaching' | 'dbs' | 'firstaid' | 'safeguarding' | 'other' | ''
 
 export function QualificationsStep() {
   const router = useRouter()
-  const [activeCategory, setActiveCategory] = useState<CategoryType>(null)
+  const [category, setCategory] = useState<CategoryType>('')
   const [qualTitle, setQualTitle] = useState('')
   const [provider, setProvider] = useState('')
   const [year, setYear] = useState('')
@@ -49,13 +49,6 @@ export function QualificationsStep() {
   
   const hasDBS = qualifications.some(q => q.category === 'dbs')
 
-  const categories = [
-    { id: 'coaching' as CategoryType, Icon: Award, name: 'Coaching qualification', desc: 'ECB, UEFA, LTA etc.' },
-    { id: 'dbs' as CategoryType, Icon: Shield, name: 'DBS check', desc: 'Background check' },
-    { id: 'firstaid' as CategoryType, Icon: Heart, name: 'First aid', desc: 'Valid certificate' },
-    { id: 'safeguarding' as CategoryType, Icon: Users, name: 'Safeguarding', desc: 'Child protection' }
-  ]
-
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) setFileName(file.name)
@@ -63,11 +56,11 @@ export function QualificationsStep() {
 
   const handleAddQualification = () => {
     // TODO CF-D13: wire form submission to save qualification
+    setCategory('')
     setQualTitle('')
     setProvider('')
     setYear('')
     setFileName(null)
-    setActiveCategory(null)
   }
 
   const handleSave = async () => {
@@ -112,89 +105,64 @@ export function QualificationsStep() {
           </div>
         </div>
 
-        {/* CF-D13 CHANGE 3: Category tiles (v1.1: white cards, NO border, shadow only) */}
-        <div className="flex flex-col gap-3">
-          <div className="grid grid-cols-2 gap-3">
-            {categories.map((cat) => (
-              <button
-                key={cat.id}
-                onClick={() => setActiveCategory(activeCategory === cat.id ? null : cat.id)}
-                className={`bg-white rounded-xl p-4 flex gap-3 items-start transition-all cursor-pointer ${
-                  activeCategory === cat.id
-                    ? 'border-[1.5px] border-[#0077CC]'
-                    : 'border-0 hover:scale-[1.005]'
-                }`}
-                style={{
-                  boxShadow: activeCategory === cat.id
-                    ? '0 2px 8px rgba(0,0,0,0.08)'
-                    : '0 1px 3px rgba(0,0,0,0.06)'
-                }}
-              >
-                <div className="w-8 h-8 bg-[#F1F5F9] rounded-lg flex items-center justify-center shrink-0">
-                  <cat.Icon size={16} className="text-[#64748B]" />
-                </div>
-                <div className="flex-1 text-left">
-                  <p className="text-[13px] font-medium text-[#0F172A]">{cat.name}</p>
-                  <p className="text-[11px] text-[#94A3B8] mt-0.5">{cat.desc}</p>
-                </div>
-              </button>
-            ))}
+        {/* CF-D13c: Simple form with dropdown (matches Sport & pricing pattern) */}
+        <div className="bg-white rounded-xl p-4 flex flex-col gap-4" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+          <div>
+            <label className="block text-[12px] font-medium text-[#0F172A] mb-1.5">Category</label>
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value as CategoryType)}
+              className="w-full px-3.5 py-2.5 rounded-lg border border-[#E2E8F0] text-[13px] text-[#0F172A] focus:border-[#0077CC] focus:ring-1 focus:ring-[#0077CC] outline-none transition-all"
+            >
+              <option value="">Select a category</option>
+              <option value="coaching">Coaching qualification</option>
+              <option value="dbs">DBS check</option>
+              <option value="firstaid">First aid</option>
+              <option value="safeguarding">Safeguarding</option>
+              <option value="other">Other</option>
+            </select>
           </div>
 
-          {/* CF-D13 CHANGE 3: Inline form when category selected */}
-          {activeCategory && (
-            <div className="bg-white rounded-xl p-4 flex flex-col gap-3 mt-3" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
-                <input
-                  type="text"
-                  value={qualTitle}
-                  onChange={(e) => setQualTitle(e.target.value)}
-                  placeholder={`${categories.find(c => c.id === activeCategory)?.name} title`}
-                  className="w-full px-3 py-2.5 rounded-lg border border-[#E2E8F0] text-[13px] text-gray-900 placeholder:text-gray-400 focus:border-[#0077CC] focus:ring-1 focus:ring-[#0077CC] outline-none transition-all"
-                />
-                <input
-                  type="text"
-                  value={provider}
-                  onChange={(e) => setProvider(e.target.value)}
-                  placeholder="Provider/Issuer (optional)"
-                  className="w-full px-3 py-2.5 rounded-lg border border-[#E2E8F0] text-[13px] text-gray-900 placeholder:text-gray-400 focus:border-[#0077CC] focus:ring-1 focus:ring-[#0077CC] outline-none transition-all"
-                />
-                <input
-                  type="text"
-                  value={year}
-                  onChange={(e) => setYear(e.target.value)}
-                  placeholder="Year (optional)"
-                  className="w-full px-3 py-2.5 rounded-lg border border-[#E2E8F0] text-[13px] text-gray-900 placeholder:text-gray-400 focus:border-[#0077CC] focus:ring-1 focus:ring-[#0077CC] outline-none transition-all"
-                />
-                
-                <input ref={fileInputRef} type="file" accept=".pdf,.jpg,.png" onChange={handleFileSelect} className="hidden" />
-                {fileName ? (
-                  <div className="flex items-center justify-between p-2.5 rounded-lg border border-[#E2E8F0] bg-gray-50">
-                    <div className="flex items-center gap-2">
-                      <FileText size={14} className="text-[#0077CC]" />
-                      <span className="text-[12px] font-medium text-gray-900">{fileName}</span>
-                    </div>
-                    <button onClick={() => setFileName(null)} className="text-gray-400 hover:text-red-500 transition-colors">
-                      <X size={14} />
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="w-full px-3 py-2.5 rounded-lg border-2 border-dashed border-[#E2E8F0] text-[10px] text-gray-400 hover:border-gray-300 transition-colors flex items-center justify-center gap-1.5"
-                  >
-                    <Upload size={12} />
-                    Upload certificate (optional)
-                  </button>
-                )}
-                
-              <button
-                onClick={handleAddQualification}
-                className="px-5 py-2 bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-full text-[12px] font-medium transition-colors w-fit"
-              >
-                Add qualification
-              </button>
-            </div>
-          )}
+          <div>
+            <label className="block text-[12px] font-medium text-[#0F172A] mb-1.5">Title</label>
+            <input
+              type="text"
+              value={qualTitle}
+              onChange={(e) => setQualTitle(e.target.value)}
+              placeholder="e.g. ECB Level 2 Coaching"
+              className="w-full px-3.5 py-2.5 rounded-lg border border-[#E2E8F0] text-[13px] text-[#0F172A] placeholder:text-gray-400 focus:border-[#0077CC] focus:ring-1 focus:ring-[#0077CC] outline-none transition-all"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[12px] text-[#94A3B8] mb-1.5">Issuer / Provider (optional)</label>
+            <input
+              type="text"
+              value={provider}
+              onChange={(e) => setProvider(e.target.value)}
+              placeholder="e.g. England & Wales Cricket Board"
+              className="w-full px-3.5 py-2.5 rounded-lg border border-[#E2E8F0] text-[13px] text-[#0F172A] placeholder:text-gray-400 focus:border-[#0077CC] focus:ring-1 focus:ring-[#0077CC] outline-none transition-all"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[12px] text-[#94A3B8] mb-1.5">Year (optional)</label>
+            <input
+              type="text"
+              value={year}
+              onChange={(e) => setYear(e.target.value)}
+              placeholder="e.g. 2022"
+              className="w-full px-3.5 py-2.5 rounded-lg border border-[#E2E8F0] text-[13px] text-[#0F172A] placeholder:text-gray-400 focus:border-[#0077CC] focus:ring-1 focus:ring-[#0077CC] outline-none transition-all"
+            />
+          </div>
+
+          <button
+            onClick={handleAddQualification}
+            className="px-5 py-2 bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-full text-[12px] font-medium transition-colors w-fit ml-auto"
+          >
+            Add qualification
+          </button>
+        </div>
 
           {/* CF-D13 CHANGE 4: Qualification cards (v1.1: shadow, no border) */}
           {qualifications.length > 0 && (
@@ -231,7 +199,6 @@ export function QualificationsStep() {
               <p className="text-[11px] text-[#94A3B8]">You can add credentials later from your profile</p>
             </div>
           )}
-        </div>
 
         {/* CF-D13 CHANGE 7: Save bar (v1.1: per onboarding patterns) */}
         <div className="flex justify-between items-center py-4 mt-4">
