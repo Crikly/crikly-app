@@ -89,55 +89,61 @@ export function QualificationsStep() {
 
         {/* TOP */}
         <div className="mb-10">
-          {/* CF-D13 CHANGE 1: Step indicator - Step 4 of 5 */}
+          {/* CF-D13 CHANGE 1: Step indicator - Step 4 of 5 (v1.1: all non-active dots grey) */}
           <div className="mb-4">
             <div className="flex items-center gap-1.5 mb-2">
-              <div className="w-2 h-2 rounded-full bg-[#22C55E]"></div>
-              <div className="w-2 h-2 rounded-full bg-[#22C55E]"></div>
-              <div className="w-2 h-2 rounded-full bg-[#22C55E]"></div>
+              <div className="w-2 h-2 rounded-full bg-[#E2E8F0]"></div>
+              <div className="w-2 h-2 rounded-full bg-[#E2E8F0]"></div>
+              <div className="w-2 h-2 rounded-full bg-[#E2E8F0]"></div>
               <div className="w-6 h-2 rounded-full bg-[#0077CC]"></div>
               <div className="w-2 h-2 rounded-full bg-[#E2E8F0]"></div>
             </div>
             <p className="text-[11px] text-[#94A3B8]">Step 4 of 5</p>
           </div>
           
-          <h1 className="text-[32px] font-bold text-gray-900 leading-tight mb-2">Your qualifications</h1>
-          <p className="text-[16px] text-gray-500 font-medium mb-4">Add your coaching qualifications and certificates</p>
+          <h1 className="text-[20px] font-medium text-[#0F172A] mb-2">Your qualifications</h1>
+          <p className="text-[13px] text-[#64748B] mb-4">Add credentials that build parent trust and increase your bookings</p>
           
           {/* CF-D13 CHANGE 2: Trust motivator banner */}
           <div className="bg-[#E6F1FB] rounded-lg px-3.5 py-2.5">
             <p className="text-[12px] text-[#0C447C] font-medium">
-              Coaches with a DBS check and qualification get 2× more parent enquiries
+              Coaches with a DBS check get 2× more parent enquiries
             </p>
           </div>
         </div>
 
-        {/* CF-D13 CHANGE 3: Category tiles */}
+        {/* CF-D13 CHANGE 3: Category tiles (v1.1: white cards, NO border, shadow only) */}
         <div className="flex flex-col gap-3">
-          <div className="bg-white rounded-xl p-5" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
-            <div className="grid grid-cols-2 gap-3 mb-4">
-              {categories.map((cat) => (
-                <button
-                  key={cat.id}
-                  onClick={() => setActiveCategory(activeCategory === cat.id ? null : cat.id)}
-                  className={`flex flex-col items-start p-3.5 rounded-[10px] transition-all cursor-pointer ${
-                    activeCategory === cat.id
-                      ? 'border-[1.5px] border-[#0077CC] bg-[#F0F7FF]'
-                      : 'border border-[#E2E8F0] bg-white hover:border-[#0077CC] hover:bg-[#F8FBFF]'
-                  }`}
-                >
-                  <div className="w-7 h-7 bg-[#F1F5F9] rounded-[7px] flex items-center justify-center mb-2 text-[16px]">
-                    {cat.icon}
-                  </div>
-                  <p className="text-[12px] font-medium text-[#0F172A]">{cat.name}</p>
-                  <p className="text-[10px] text-[#94A3B8] mt-0.5">{cat.desc}</p>
-                </button>
-              ))}
-            </div>
+          <div className="grid grid-cols-2 gap-3">
+            {categories.map((cat) => (
+              <button
+                key={cat.id}
+                onClick={() => setActiveCategory(activeCategory === cat.id ? null : cat.id)}
+                className={`bg-white rounded-xl p-4 flex gap-3 items-start transition-all cursor-pointer ${
+                  activeCategory === cat.id
+                    ? 'border-[1.5px] border-[#0077CC]'
+                    : 'border-0 hover:scale-[1.005]'
+                }`}
+                style={{
+                  boxShadow: activeCategory === cat.id
+                    ? '0 2px 8px rgba(0,0,0,0.08)'
+                    : '0 1px 3px rgba(0,0,0,0.06)'
+                }}
+              >
+                <div className="w-8 h-8 bg-[#F1F5F9] rounded-lg flex items-center justify-center shrink-0 text-[16px]">
+                  {cat.icon}
+                </div>
+                <div className="flex-1 text-left">
+                  <p className="text-[13px] font-medium text-[#0F172A]">{cat.name}</p>
+                  <p className="text-[11px] text-[#94A3B8] mt-0.5">{cat.desc}</p>
+                </div>
+              </button>
+            ))}
+          </div>
 
-            {/* CF-D13 CHANGE 3: Inline form when category selected */}
-            {activeCategory && (
-              <div className="border-t border-gray-100 pt-4 flex flex-col gap-3">
+          {/* CF-D13 CHANGE 3: Inline form when category selected */}
+          {activeCategory && (
+            <div className="bg-white rounded-xl p-4 flex flex-col gap-3 mt-3" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
                 <input
                   type="text"
                   value={qualTitle}
@@ -181,21 +187,20 @@ export function QualificationsStep() {
                   </button>
                 )}
                 
-                <button
-                  onClick={handleAddQualification}
-                  className="px-4 py-1.5 bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-full text-[12px] font-medium transition-colors w-fit"
-                >
-                  Add qualification
-                </button>
-              </div>
-            )}
-          </div>
+              <button
+                onClick={handleAddQualification}
+                className="px-5 py-2 bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-full text-[12px] font-medium transition-colors w-fit"
+              >
+                Add qualification
+              </button>
+            </div>
+          )}
 
-          {/* CF-D13 CHANGE 4: Qualification cards (stub data) */}
+          {/* CF-D13 CHANGE 4: Qualification cards (v1.1: shadow, no border) */}
           {qualifications.length > 0 && (
             <div className="flex flex-col gap-2">
               {qualifications.map((qual) => (
-                <div key={qual.id} className="bg-white rounded-[10px] border border-[#E2E8F0] p-3.5 flex gap-2.5 items-start">
+                <div key={qual.id} className="bg-white rounded-xl p-4 flex gap-3 items-start" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
                   <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 text-[14px] ${
                     qual.status === 'uploaded' ? 'bg-[#DCFCE7] text-[#166534]' : 'bg-[#FEF3C7] text-[#92400E]'
                   }`}>
@@ -219,22 +224,16 @@ export function QualificationsStep() {
             </div>
           )}
 
-          {/* CF-D13 CHANGE 5: Empty state (hidden when qualifications exist) */}
+          {/* CF-D13 CHANGE 5: Empty state (v1.1: no Skip link inside, only in save bar) */}
           {qualifications.length === 0 && (
-            <div className="border-[1.5px] border-dashed border-[#E2E8F0] rounded-[10px] px-4 py-7 text-center">
-              <div className="w-9 h-9 bg-[#F1F5F9] rounded-full flex items-center justify-center mx-auto mb-2.5 text-[18px]">
-                📋
-              </div>
+            <div className="border-[1.5px] border-dashed border-[#E2E8F0] rounded-xl px-4 py-7 text-center">
               <p className="text-[13px] font-medium text-[#0F172A] mb-1">No qualifications added yet</p>
-              <p className="text-[11px] text-[#94A3B8] mb-3">You can skip this step and add credentials later</p>
-              <button onClick={handleSkip} className="text-[11px] text-[#0077CC] font-medium hover:text-blue-800 transition-colors">
-                Skip for now →
-              </button>
+              <p className="text-[11px] text-[#94A3B8]">You can add credentials later from your profile</p>
             </div>
           )}
         </div>
 
-        {/* CF-D13 CHANGE 7: Save bar - three items, no border-top */}
+        {/* CF-D13 CHANGE 7: Save bar (v1.1: per onboarding patterns) */}
         <div className="flex justify-between items-center py-4 mt-4">
           <button
             onClick={() => router.push('/coach/onboarding/pricing')}
@@ -244,14 +243,14 @@ export function QualificationsStep() {
           </button>
           <button
             onClick={handleSkip}
-            className="text-[13px] text-[#94A3B8] hover:text-gray-900 transition-colors"
+            className="text-[13px] text-[#94A3B8] hover:text-gray-900 transition-colors font-normal"
           >
             Skip for now
           </button>
           <button
             onClick={handleSave}
             disabled={saving}
-            className="px-5.5 py-2.5 bg-[#0077CC] hover:bg-[#0066AA] disabled:opacity-60 text-white rounded-full text-[12px] font-medium transition-colors"
+            className="px-5.5 py-2.5 bg-[#0077CC] hover:bg-[#0066AA] disabled:opacity-60 text-white rounded-full text-[13px] font-medium transition-colors"
           >
             {saving ? 'Saving...' : 'Save & continue →'}
           </button>
