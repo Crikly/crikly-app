@@ -166,7 +166,7 @@ export function QualificationsStep() {
 
           {/* CF-D13 CHANGE 4: Qualification cards (v1.1: shadow, no border) */}
           {qualifications.length > 0 && (
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-4">
               {qualifications.map((qual) => (
                 <div key={qual.id} className="bg-white rounded-xl p-4 flex gap-3 items-start" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
                   <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 text-[14px] ${
