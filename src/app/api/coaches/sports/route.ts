@@ -312,20 +312,19 @@ export async function POST(
       insertData.session_duration_minutes = body.session_duration_minutes
     }
 
-    // Fix-15c: Insert without join - joins not supported on insert
-    const { data: newSport, error: insertError } = await supabase
+    // Fix-16a: Upsert instead of insert to allow repeat saves
+    const { data: newSport, error: upsertError } = await supabase
       .from('coach_sports')
-      .insert(insertData)
+      .upsert(insertData, {
+        onConflict: 'coach_profile_id,sport_id',
+        ignoreDuplicates: false
+      })
       .select()
       .single()
 
-    if (insertError) {
-      // Check for unique constraint violation
-      if (insertError.code === '23505') {
-        return NextResponse.json({ error: 'You have already added this sport' }, { status: 409 })
-      }
-      console.error('[POST /api/coaches/sports] insert error:', insertError)
-      return NextResponse.json({ error: 'Failed to add sport' }, { status: 500 })
+    if (upsertError) {
+      console.error('[POST /api/coaches/sports] upsert error:', upsertError)
+      return NextResponse.json({ error: 'Failed to save sport' }, { status: 500 })
     }
 
     // 7. Fetch sport name and slug separately

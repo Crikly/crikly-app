@@ -322,23 +322,11 @@ export async function POST(
       insertData.notes = body.notes
     }
 
+    // Fix-16a: Insert without join - joins not supported on insert
     const { data: newQual, error: insertError } = await supabase
       .from('coach_qualifications')
       .insert(insertData)
-      .select(`
-        id,
-        qualification_type_id,
-        custom_name,
-        issuing_body,
-        issued_date,
-        expiry_date,
-        notes,
-        created_at,
-        qualification_types (
-          name,
-          issuing_body
-        )
-      `)
+      .select()
       .single()
 
     if (insertError) {
@@ -346,10 +334,16 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to add qualification' }, { status: 500 })
     }
 
-    // 7. Build response
-    const typeData = newQual.qualification_types
-      ? (Array.isArray(newQual.qualification_types) ? newQual.qualification_types[0] : newQual.qualification_types)
-      : null
+    // 7. Fetch qualification type data separately if needed
+    let typeData = null
+    if (newQual.qualification_type_id) {
+      const { data: qualType } = await supabase
+        .from('qualification_types')
+        .select('name, issuing_body')
+        .eq('id', newQual.qualification_type_id)
+        .single()
+      typeData = qualType
+    }
 
     const response: QualificationResponse = {
       id: newQual.id,

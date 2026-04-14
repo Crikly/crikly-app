@@ -419,26 +419,11 @@ export async function POST(
       insertData.session_type_id = body.session_type_id
     }
 
+    // Fix-16a: Insert without joins - joins not supported on insert
     const { data: newBlock, error: insertError } = await supabase
       .from('availability_templates')
       .insert(insertData)
-      .select(`
-        id,
-        sport_id,
-        day_of_week,
-        start_time,
-        end_time,
-        is_active,
-        price_override_pence,
-        session_type_id,
-        created_at,
-        sports (
-          name
-        ),
-        coach_session_types (
-          duration_minutes
-        )
-      `)
+      .select()
       .single()
 
     if (insertError) {
@@ -446,14 +431,26 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to add availability block' }, { status: 500 })
     }
 
-    // 9. Build response
-    const sportData = newBlock.sports
-      ? (Array.isArray(newBlock.sports) ? newBlock.sports[0] : newBlock.sports)
-      : null
+    // 9. Fetch sport and session type data separately if needed
+    let sportData = null
+    if (newBlock.sport_id) {
+      const { data: sport } = await supabase
+        .from('sports')
+        .select('name')
+        .eq('id', newBlock.sport_id)
+        .single()
+      sportData = sport
+    }
 
-    const sessionTypeData = newBlock.coach_session_types
-      ? (Array.isArray(newBlock.coach_session_types) ? newBlock.coach_session_types[0] : newBlock.coach_session_types)
-      : null
+    let sessionTypeData = null
+    if (newBlock.session_type_id) {
+      const { data: sessionType } = await supabase
+        .from('coach_session_types')
+        .select('duration_minutes')
+        .eq('id', newBlock.session_type_id)
+        .single()
+      sessionTypeData = sessionType
+    }
 
     const response: AvailabilityResponse = {
       id: newBlock.id,
