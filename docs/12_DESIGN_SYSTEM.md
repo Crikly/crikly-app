@@ -2,6 +2,7 @@
 
 **Version:** 1.1
 **Last Updated:** April 2026
+**Changed:** Card rules, layout backgrounds, interaction patterns, onboarding patterns, PublicProfilePreview spec
 **Applies to:** Web PWA (Tailwind/Next.js) + Flutter Mobile (Phase 2)
 
 Single source of truth for all visual decisions. Every colour, font,
@@ -176,65 +177,104 @@ Read this file before building any UI component.
 
 **Standard card (all screens):**
 - Background: white (#FFFFFF) — always explicit white
-- Border: none — no outer border on any card
-- Border radius: 14px (radius-lg)
-- Padding: 12px–16px depending on density
+- Border: NONE — no outer border on any card
+- Border radius: 12px (radius-lg)
+- Padding: 12px–16px
 - Shadow resting: 0 1px 3px rgba(0,0,0,0.06)
 - Shadow hover: 0 2px 8px rgba(0,0,0,0.08)
 
 **Card interaction states:**
-- Resting: box-shadow 0 1px 3px rgba(0,0,0,0.06), transform scale(1)
-- Hover (clickable cards): box-shadow 0 2px 8px rgba(0,0,0,0.08),
-  transform scale(1.005), cursor pointer
-- Active/pressed: transform scale(0.998)
-- Transition: all 150ms ease on all states
-- Background does NOT change on hover — shadow + scale only
-- Action rows inside cards do NOT inherit card hover state
+- Resting: box-shadow 0 1px 3px rgba(0,0,0,0.06), scale(1)
+- Hover (clickable): box-shadow 0 2px 8px rgba(0,0,0,0.08),
+  scale(1.005), cursor pointer
+- Active: scale(0.998)
+- Transition: all 150ms ease
+- Background does NOT change on hover
+- Action rows inside cards do NOT inherit card hover
 
-**Rules — non-negotiable:**
+**Rules (non-negotiable):**
 - No border on any card (not even 0.5px)
-- No background colour change on card hover
-- No left border accents for status — use badges instead
-- Status communicated via badges (top-right) and subtle bg tints
-- Starting soon / urgent tint: #FFFDF5 (barely visible warm tint)
+- No background colour change on hover
+- No left border accents — use status badges instead
+- Starting soon / urgent tint: #FFFDF5 only
 
 ### Layout — Page Backgrounds
 
 **Coach desktop shell:**
-- Page background (behind all columns): #F8F9FA (neutral-50 warm)
 - Main content column: white (#FFFFFF)
 - Right panel column: white (#FFFFFF)
 - Left sidebar: white (#FFFFFF) with border-right 0.5px neutral-100
-- Background is set ONCE in the layout — never overridden by
-  individual screen components
+- Page background (behind columns): #F8F9FA
 
-**Rule:** Individual screen component outer wrappers must have NO
-background class. The layout provides the page background.
-Setting background in a screen component creates inconsistency.
+**Rule:** background is set ONCE in layout.tsx.
+Individual screen component outer wrappers must have NO
+background class. Setting bg on a screen component overrides
+the layout and creates inconsistency.
 
 ---
 
 ## Interaction Patterns
 
-**Quick action buttons inside cards:**
-- Secondary: white bg, 1px solid #E2E8F0 border, #475569 text, 11px
-  Hover: #F9FAFB bg, #CBD5E1 border — transition 150ms ease
+**Quick action buttons (inside cards):**
+- Secondary: white bg, 1px solid #E2E8F0, #475569 text, 11px
+  Hover: #F9FAFB bg, #CBD5E1 border — 150ms ease
 - Primary: #0077CC bg, white text, 11px, font-weight 500
-  Hover: #0066AA bg — transition 150ms ease
+  Hover: #0066AA — 150ms ease
 - Border-radius: 6px. Padding: 6px 0. Flex: 1.
 
-**Approve / Decline pattern:**
-- Approve: #0077CC bg (brand-600) — always blue, never green
-- Decline: white bg, red-200 border, red-600 text — quiet destructive
+**Approve/Decline:** Approve = brand-600 (#0077CC) always.
+Decline = white bg, red-200 border, red-600 text.
 
-**Booking card action rows by state:**
-- Pattern A (normal upcoming): [Message] [View details] — both secondary
-- Pattern B (starting soon): [Message] secondary + [Mark complete] primary
-- Pattern C (group): [Message group] [View details] — both secondary
+**Booking action row patterns:**
+- Pattern A (normal): [Message] [View details] — both secondary
+- Pattern B (starting soon): [Message] secondary +
+  [Mark complete] primary
+- Pattern C (group): [Message group] [View details] — secondary
 
-**Card ordering:**
-- Starting soon / today cards always first in any booking list
-- Then sort by date ascending
+**Card ordering:** Starting soon / today cards always first.
+
+---
+
+## Onboarding Patterns
+
+**Step indicator (all onboarding screens):**
+- 5 dots in a flex row, gap 5px
+- Active step: width 22px, radius 999px, #0077CC — pill shape
+- Completed steps: 8px circle, #E2E8F0 (grey, NOT green)
+  Note: completed steps use the SAME grey as inactive dots.
+  Never use green for completed dots — keeps it calm.
+- Upcoming steps: 8px circle, #E2E8F0
+- "Step X of 5" label below dots: 11px, #94A3B8
+
+**Save bar pattern (all onboarding screens from step 2+):**
+- display: flex, justify-content: space-between,
+  align-items: center
+- padding: 16px 0, margin-top: 16px
+- NO border-top, NO sticky, NO background card/wrapper
+- Left: "← Back" ghost button (13px, #64748B, hover #0F172A)
+  navigates to previous step
+- Right: "Save & continue →" pill (brand-600, radius-999px,
+  padding 10px 22px, 13px font-weight 500)
+- Step 1 only: right-aligned pill only, NO back button
+- Qualifications step only: three items —
+  [← Back] [Skip for now] [Save & continue →]
+  Skip for now: 13px, #94A3B8, centre position
+
+No "Save & go back to dashboard" on any onboarding screen.
+No "← Dashboard" back link at top of any onboarding screen.
+
+**PublicProfilePreview component (all onboarding right panels):**
+- ALWAYS use horizontal layout — avatar LEFT, name RIGHT
+- Never centred/stacked layout
+- Avatar: 44–56px circle, brand-50 bg, initials, brand-800 text
+  box-shadow: 0 0 0 2px #E6F1FB
+- Name: 14–15px, font-weight 500, neutral-900 (updates live)
+  Empty: "Your name" in neutral-300
+- Role: 12px, neutral-400
+- Below: stars (amber), rating, location, days, price,
+  DBS badge, "Book a session" pill button
+- Reuse this component on ALL onboarding steps
+- Never build a new version for a different step
 
 ---
 
@@ -304,4 +344,4 @@ shadow-{none|sm|md|focus}
 ---
 
 *Crikly Design System v1.1 — April 2026*
-*v1.1: Card interaction rules, layout backgrounds, action patterns*
+*v1.1: Card rules, layout backgrounds, interaction patterns, onboarding patterns, PublicProfilePreview spec*
