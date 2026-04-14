@@ -1,22 +1,124 @@
 'use client'
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { ChevronRight, Calendar, Users, Tag, Plus, BookOpen } from 'lucide-react'
 
 type Tab = 'Active' | 'Draft'
-interface Programme { id: string; name: string; schedule: string; spotsFilled: number; spotsTotal: number; price: string; status: 'Active' | 'Full' | 'Draft' }
+
+// CD-08: API response types
+interface ProgrammeResponse {
+  id: string
+  sport_id: string
+  sport_name: string
+  title: string
+  description: string | null
+  schedule_type: string
+  day_of_week: number | null
+  day_name: string | null
+  start_time: string | null
+  duration_minutes: number
+  max_spots: number
+  current_spots: number
+  spots_remaining: number
+  payment_type: string
+  price_per_session_pence: number
+  block_price_pence: number | null
+  block_session_count: number | null
+  currency: string
+  status: string
+  created_at: string
+}
+
+// UI Programme type
+interface Programme { 
+  id: string
+  name: string
+  schedule: string
+  spotsFilled: number
+  spotsTotal: number
+  price: string
+  status: 'Active' | 'Full' | 'Draft'
+}
 
 export function ProgrammesManagement() {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<Tab>('Active')
-  const activeProgrammes: Programme[] = [
-    { id: '1', name: 'Junior Cricket Foundations', schedule: 'Every Sat · 10:00 – 11:30', spotsFilled: 4, spotsTotal: 6, price: '£25 per session', status: 'Active' },
-    { id: '2', name: 'Advanced Batting Masterclass', schedule: 'Every Sun · 09:00 – 10:30', spotsFilled: 6, spotsTotal: 6, price: '£240 for 6 sessions', status: 'Full' },
-    { id: '3', name: 'Open Net Session', schedule: 'Every Wed · 18:00 – 19:00', spotsFilled: 2, spotsTotal: 8, price: '£15 per session', status: 'Active' }
-  ]
-  const draftProgrammes: Programme[] = [
-    { id: '4', name: 'Holiday Cricket Camp', schedule: 'Mon–Fri · 09:00 – 12:00 (5 days)', spotsFilled: 0, spotsTotal: 12, price: '£60 per day', status: 'Draft' }
-  ]
+  
+  // CD-08: Real data state
+  const [programmes, setProgrammes] = useState<Programme[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  // CD-08: Fetch programmes on mount
+  useEffect(() => {
+    const fetchProgrammes = async () => {
+      try {
+        setLoading(true)
+        setError(null)
+        
+        const response = await fetch('/api/coaches/programmes')
+        if (!response.ok) {
+          throw new Error('Failed to fetch programmes')
+        }
+        
+        const data = await response.json()
+        
+        // Transform API data to UI format
+        const transformed: Programme[] = (data.programmes || []).map((prog: ProgrammeResponse) => {
+          // Format schedule
+          const dayName = prog.day_name || 'Day'
+          const startTime = prog.start_time ? prog.start_time.substring(0, 5) : '00:00'
+          const endMinutes = prog.duration_minutes
+          const endTime = calculateEndTime(startTime, endMinutes)
+          const schedule = `Every ${dayName.substring(0, 3)} · ${startTime} – ${endTime}`
+          
+          // Format price
+          let price = ''
+          if (prog.payment_type === 'per_session') {
+            price = `£${(prog.price_per_session_pence / 100).toFixed(0)} per session`
+          } else if (prog.payment_type === 'block_upfront' && prog.block_price_pence && prog.block_session_count) {
+            price = `£${(prog.block_price_pence / 100).toFixed(0)} for ${prog.block_session_count} sessions`
+          }
+          
+          // Determine status
+          let status: 'Active' | 'Full' | 'Draft' = 'Draft'
+          if (prog.status === 'active') {
+            status = prog.current_spots >= prog.max_spots ? 'Full' : 'Active'
+          } else if (prog.status === 'draft') {
+            status = 'Draft'
+          }
+          
+          return {
+            id: prog.id,
+            name: prog.title,
+            schedule,
+            spotsFilled: prog.current_spots,
+            spotsTotal: prog.max_spots,
+            price,
+            status
+          }
+        })
+        
+        setProgrammes(transformed)
+      } catch (err) {
+        console.error('Failed to fetch programmes:', err)
+        setError('Failed to load programmes. Please try again.')
+      } finally {
+        setLoading(false)
+      }
+    }
+    
+    fetchProgrammes()
+  }, [])
+  
+  // Helper to calculate end time
+  const calculateEndTime = (startTime: string, durationMinutes: number): string => {
+    const [hours, minutes] = startTime.split(':').map(Number)
+    const totalMinutes = hours * 60 + minutes + durationMinutes
+    const endHours = Math.floor(totalMinutes / 60) % 24
+    const endMinutes = totalMinutes % 60
+    return `${String(endHours).padStart(2, '0')}:${String(endMinutes).padStart(2, '0')}`
+  }
   const getStatusStyles = (status: Programme['status']) => {
     switch (status) {
       case 'Active': return 'bg-[#DCFCE7] text-[#15803D]'
@@ -25,6 +127,10 @@ export function ProgrammesManagement() {
       default: return 'bg-gray-100 text-gray-800'
     }
   }
+  
+  // CD-08: Filter programmes by tab
+  const activeProgrammes = programmes.filter(p => p.status === 'Active' || p.status === 'Full')
+  const draftProgrammes = programmes.filter(p => p.status === 'Draft')
   const currentProgrammes = activeTab === 'Active' ? activeProgrammes : draftProgrammes
   
   // CF-D05 CHANGE 1: Calculate subtitle stats
@@ -57,7 +163,28 @@ export function ProgrammesManagement() {
           </div>
         </div>
         <div className="flex-1 px-5 py-5 space-y-3" style={{ background: 'transparent' }}>
-          {currentProgrammes.length > 0 ? currentProgrammes.map(programme => {
+          {/* CD-08: Loading state */}
+          {loading ? (
+            <div className="py-16 flex flex-col items-center justify-center">
+              <div className="w-8 h-8 border-3 border-gray-200 border-t-[#0077CC] rounded-full animate-spin mb-3" />
+              <p className="text-[14px] text-gray-500">Loading programmes...</p>
+            </div>
+          ) : error ? (
+            // CD-08: Error state
+            <div className="py-16 flex flex-col items-center justify-center text-center px-4">
+              <div className="w-16 h-16 bg-red-50 text-red-600 rounded-full flex items-center justify-center mb-4">
+                <span className="text-2xl">⚠</span>
+              </div>
+              <h3 className="text-[18px] font-bold text-gray-900 mb-2">Failed to load programmes</h3>
+              <p className="text-[14px] text-gray-500 mb-6">{error}</p>
+              <button 
+                onClick={() => window.location.reload()}
+                className="bg-[#0077CC] hover:bg-[#0066AA] text-white px-6 py-3 rounded-xl text-[15px] font-bold transition-colors"
+              >
+                Try Again
+              </button>
+            </div>
+          ) : currentProgrammes.length > 0 ? currentProgrammes.map(programme => {
             const fillPercentage = (programme.spotsFilled / programme.spotsTotal) * 100
             const isDraft = programme.status === 'Draft'
             const isFull = programme.status === 'Full'

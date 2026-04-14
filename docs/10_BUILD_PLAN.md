@@ -336,7 +336,7 @@ Branch: feature/coach-data (open from develop before starting CD-01)
 | CD-05 | Availability management — real blocked dates | GET/POST/DELETE /api/coaches/blocked-dates | 🟡 Medium | ✅ |
 | CD-06 | Bookings list — real data | GET /api/bookings (needs B-12 first) | 🟡 Medium | ⚪ |
 | CD-07 | Booking detail — real data | GET /api/bookings/[id] (needs B-13 first) | 🟡 Medium | ⚪ |
-| CD-08 | Programmes list — real data | GET /api/coaches/programmes | 🟡 Medium | ⚪ |
+| CD-08 | Programmes list — real data | GET /api/coaches/programmes | 🟡 Medium | ✅ |
 | CD-09 | Earnings summary — real data | GET /api/coaches/earnings (needs building) | 🟡 Medium | ⚪ |
 | CD-10 | Profile edit — load and save real data | GET/POST /api/coaches/profile | 🟡 Medium | ⚪ |
 | CD-11 | Get Paid — real Stripe connection status + payout data | GET /api/coaches/stripe-status | 🟡 Medium | ⚪ |
