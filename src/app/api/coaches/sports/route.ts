@@ -312,25 +312,11 @@ export async function POST(
       insertData.session_duration_minutes = body.session_duration_minutes
     }
 
+    // Fix-15c: Insert without join - joins not supported on insert
     const { data: newSport, error: insertError } = await supabase
       .from('coach_sports')
       .insert(insertData)
-      .select(`
-        id,
-        sport_id,
-        session_types,
-        skill_levels,
-        price_individual_pence,
-        price_group_pence,
-        max_group_size,
-        session_duration_minutes,
-        currency,
-        is_active,
-        sports!inner (
-          name,
-          slug
-        )
-      `)
+      .select()
       .single()
 
     if (insertError) {
@@ -342,14 +328,18 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to add sport' }, { status: 500 })
     }
 
-    // 7. Build response
-    const sportData = Array.isArray(newSport.sports) ? newSport.sports[0] : newSport.sports
+    // 7. Fetch sport name and slug separately
+    const { data: sportData } = await supabase
+      .from('sports')
+      .select('name, slug')
+      .eq('id', newSport.sport_id)
+      .single()
 
     const response: CoachSportResponse = {
       id: newSport.id,
       sport_id: newSport.sport_id,
-      sport_name: sportData.name,
-      sport_slug: sportData.slug,
+      sport_name: sportData?.name || '',
+      sport_slug: sportData?.slug || '',
       session_types: newSport.session_types,
       skill_levels: newSport.skill_levels,
       price_individual_pence: newSport.price_individual_pence,

@@ -344,6 +344,7 @@ Branch: feature/coach-data (open from develop before starting CD-01)
 | CD-12 | Schedule grid — real bookings + availability | GET /api/coaches/availability | 🔵 Low | ✅ |
 | Fix-14 | Data wiring fixes: onboarding pre-population, dashboard completion %, right panel real data | Multiple | 🟡 Medium | ✅ |
 | Fix-15b | POST /api/coaches/sports validation fixes: add elite skill level, make group fields optional | POST /api/coaches/sports | 🟢 Low | ✅ |
+| Fix-15c | POST /api/coaches/sports 500 error: remove sports join from insert query | POST /api/coaches/sports | 🟢 Low | ✅ |
 
 ### 3F — Coach Go-Live Gaps (CG tasks)
 
