@@ -657,7 +657,33 @@ Only THEN start the next feature branch.
 □ Commit message follows convention
 □ RLS policies in place for any new DB tables
 □ No secrets or keys in code
+□ If this task adds or modifies an auth path (email, OAuth, magic link,
+  SSO) — verify that user_profiles row is created for the new user
+  before marking complete. Auth path is not complete until
+  user_profiles creation is confirmed in the database.
 ```
+
+## Auth Path Rule — Non-Negotiable
+
+Every authentication path must create a user_profiles row on
+first sign-in. No exceptions.
+
+Paths that must create user_profiles:
+- Email + password registration → /api/auth/register
+- Google OAuth → /auth/callback
+- Apple OAuth → /auth/callback
+- Magic link (future) → /auth/callback
+- SSO (future) → /auth/callback
+
+How to verify:
+1. Sign up via the auth path being tested
+2. Open Supabase → Table Editor → user_profiles
+3. Confirm row exists with correct auth_user_id and full_name
+4. If row missing → task is NOT complete
+
+This rule exists because in April 2026, OAuth users had no
+user_profiles rows created, causing all data queries to fail
+silently and showing fallback data throughout the app.
 
 ## Security Gate — Payments & Child Data
 

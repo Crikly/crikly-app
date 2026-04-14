@@ -7,6 +7,7 @@ import {
   Clock, MapPin, Star, TrendingUp, AlertCircle, 
   ChevronRight, PoundSterling, Check, Calendar, Plus
 } from 'lucide-react'
+import { CoachRightPanel } from '@/components/coach/CoachRightPanel'
 
 const avatarUrl = "https://images.unsplash.com/photo-1741363863033-2d68f0bd9fde?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxpbmRpYW4lMjBtYW4lMjBzbWlsaW5nJTIwcG9ydHJhaXR8ZW58MXx8fHwxNzc1NDg3OTc5fDA&ixlib=rb-4.1.0&q=80&w=1080"
 const upNextUrl = "https://images.unsplash.com/photo-1771909713672-4e351f1f8b62?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjcmlja2V0JTIwdHJhaW5pbmclMjBzcG9ydHN8ZW58MXx8fHwxNzc1NDg3OTc5fDA&ixlib=rb-4.1.0&q=80&w=1080"
@@ -14,30 +15,69 @@ const group1Url = "https://images.unsplash.com/photo-1761039807856-9f412d0e0a3d?
 const group2Url = "https://images.unsplash.com/photo-1609422644211-a85c36ee36a7?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxraWRzJTIwcGxheWluZyUyMHNwb3J0c3xlbnwxfHx8fDE3NzU0ODc5Nzl8MA&ixlib=rb-4.1.0&q=80&w=1080"
 const fallbackAvatarUrl = "https://images.unsplash.com/photo-1609422644211-a85c36ee36a7?w=100&q=80"
 
-export function CoachHome() {
+interface DashboardData {
+  coachName: string
+  profileCompletion: {
+    percentage: number
+    completedSteps: boolean[]
+  }
+  pendingApprovalsCount: number
+  upNextSession: {
+    title: string
+    startTime: string
+    endTime: string
+    venue: string
+    startsInMinutes: number
+  } | null
+  weeklyStats: {
+    sessionsThisWeek: number
+    bookingsPending: number
+    revenueThisWeek: number
+    completionRate: number
+  }
+  todaySessions: Array<{
+    time: string
+    duration: string
+    title: string
+    location: string
+    isActive: boolean
+    type?: string
+  }>
+  rating: {
+    average: number
+    count: number
+  }
+}
+
+interface CoachHomeClientProps {
+  data: DashboardData
+}
+
+export function CoachHomeClient({ data }: CoachHomeClientProps) {
   const router = useRouter()
   const [profileExpanded, setProfileExpanded] = React.useState(false)
   
-  // CF-D11a: Profile completion tracking
+  // Time-based greeting
+  const hour = new Date().getHours()
+  const greeting = hour < 12 ? 'Good morning' :
+                   hour < 18 ? 'Good afternoon' : 'Good evening'
+  
+  // CF-D11a: Profile completion tracking - now from real data
   const profileSteps = [
-    { title: 'Basic profile', completed: true, guidance: '' },
-    { title: 'Sport & pricing', completed: false, guidance: '' },
+    { title: 'Basic profile', completed: data.profileCompletion.completedSteps[0] || false, guidance: '' },
+    { title: 'Sport & pricing', completed: data.profileCompletion.completedSteps[3] || false, guidance: '' },
     { title: 'Qualifications', completed: false, guidance: 'Add your coaching badge to boost trust' },
-    { title: 'Availability', completed: false, guidance: 'Set when you coach so parents can book you' },
-    { title: 'Booking policy', completed: false, guidance: 'Tell parents how you handle cancellations' },
-    { title: 'Get paid (optional)', completed: false, guidance: 'Connect Stripe to receive payouts' },
+    { title: 'Availability', completed: data.profileCompletion.completedSteps[4] || false, guidance: 'Set when you coach so parents can book you' },
+    { title: 'Booking policy', completed: data.profileCompletion.completedSteps[5] || false, guidance: 'Tell parents how you handle cancellations' },
+    { title: 'Get paid (optional)', completed: data.profileCompletion.completedSteps[6] || false, guidance: 'Connect Stripe to receive payouts' },
   ]
   const completedCount = profileSteps.filter(s => s.completed).length
   const totalCount = profileSteps.length
-  const completionPercentage = Math.round((completedCount / totalCount) * 100)
+  const completionPercentage = data.profileCompletion.percentage
   const firstIncompleteIndex = profileSteps.findIndex(s => !s.completed)
   
-  // CHANGE 1: Derive session count from Today's lineup data
-  const todaySessions = [
-    { time: '14:00', duration: '90m', title: 'U14 Fast Bowling Masterclass', location: "Lord's Indoor Centre", active: true },
-    { time: '16:00', duration: '60m', title: '1-on-1 with James T.', location: 'The Oval Nets', type: 'Private' },
-    { time: '18:00', duration: '120m', title: "Senior Men's Net Session", location: 'Wandsworth CC' },
-  ]
+  // Today's sessions from real data
+  const todaySessions = data.todaySessions
   const sessionCount = todaySessions.length
   const getSessionSubtitle = () => {
     if (sessionCount === 0) return "No sessions today. A good day to plan ahead."
@@ -67,14 +107,14 @@ export function CoachHome() {
         <div className="hidden md:flex justify-between items-end">
           <div>
             <p className="text-gray-500 text-sm mb-1.5 font-medium">Tuesday, 14 May</p>
-            <h1 className="text-4xl font-bold tracking-tight text-gray-900">Good morning, Ravi 👋</h1>
+            <h1 className="text-4xl font-bold tracking-tight text-gray-900">{greeting}, {data.coachName.split(' ')[0] || 'Coach'} 👋</h1>
             <p className="text-sm text-gray-500 mt-1">{getSessionSubtitle()}</p>
           </div>
         </div>
 
         {/* Mobile Greeting - CHANGE 1: emoji + subtitle */}
         <div className="md:hidden">
-          <h1 className="text-[28px] font-bold tracking-tight text-gray-900 leading-tight">Good morning, Ravi 👋</h1>
+          <h1 className="text-[28px] font-bold tracking-tight text-gray-900 leading-tight">{greeting}, {data.coachName.split(' ')[0] || 'Coach'} 👋</h1>
           <p className="text-sm text-gray-500 mt-1">{getSessionSubtitle()}</p>
         </div>
 
@@ -130,16 +170,18 @@ export function CoachHome() {
             )}
           </div>
           
-          <div
-            onClick={() => router.push('/coach/bookings')}
-            className="bg-amber-50 border-l-4 border-amber-400 rounded-r-lg p-3.5 flex items-center justify-between gap-2 text-amber-900 cursor-pointer hover:bg-amber-100/50 transition-colors"
-          >
-            <div className="flex items-center gap-2.5 md:gap-3 min-w-0">
-              <div className="w-5 h-5 rounded-full bg-amber-100 flex items-center justify-center text-xs font-bold text-amber-700 shrink-0">2</div>
-              <span className="text-[14px] md:text-[15px] font-medium truncate">Bookings need approval</span>
+          {data.pendingApprovalsCount > 0 && (
+            <div
+              onClick={() => router.push('/coach/bookings')}
+              className="bg-amber-50 border-l-4 border-amber-400 rounded-r-lg p-3.5 flex items-center justify-between gap-2 text-amber-900 cursor-pointer hover:bg-amber-100/50 transition-colors"
+            >
+              <div className="flex items-center gap-2.5 md:gap-3 min-w-0">
+                <div className="w-5 h-5 rounded-full bg-amber-100 flex items-center justify-center text-xs font-bold text-amber-700 shrink-0">{data.pendingApprovalsCount}</div>
+                <span className="text-[14px] md:text-[15px] font-medium truncate">Bookings need approval</span>
+              </div>
+              <span className="text-amber-700 text-sm font-bold cursor-pointer hover:underline">Review →</span>
             </div>
-            <span className="text-amber-700 text-sm font-bold cursor-pointer hover:underline">Review →</span>
-          </div>
+          )}
         </div>
 
         {/* CHANGE 3: CTA button row */}
@@ -173,27 +215,41 @@ export function CoachHome() {
             <h2 className="text-[19px] font-bold text-gray-900">Up next</h2>
             <span onClick={() => router.push('/coach/schedule')} className="text-[#0077CC] text-sm font-bold cursor-pointer md:hidden hover:underline">View schedule</span>
           </div>
-          <div className="relative h-64 md:h-[340px] w-full rounded-2xl md:rounded-[24px] overflow-hidden shadow-sm group cursor-pointer isolate">
-            <img src={upNextUrl} alt="Cricket Training" className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105 -z-10" />
-            {/* CHANGE 4: gradient overlay for text readability */}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-transparent" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0) 55%)' }}></div>
-            <div className="absolute top-4 left-4 md:top-6 md:left-6 bg-white/20 backdrop-blur-md border border-white/20 text-white text-[13px] font-bold px-3.5 py-1.5 rounded-full shadow-sm">
-              Starts in 45m
-            </div>
-            <div className="absolute bottom-0 left-0 w-full p-5 md:p-8 flex flex-col gap-2.5 z-10">
-              <h3 className="text-white text-[26px] md:text-3xl font-bold leading-tight drop-shadow-sm">U14 Fast Bowling Masterclass</h3>
-              <div className="flex flex-wrap items-center gap-4 text-gray-100 text-[15px] font-medium mt-1">
-                <div className="flex items-center gap-1.5"><Clock size={16} className="text-gray-300" /><span>14:00 - 15:30</span></div>
-                <div className="flex items-center gap-1.5"><MapPin size={16} className="text-gray-300" /><span>Lord's Indoor Centre</span></div>
+          {data.upNextSession ? (
+            <div className="relative h-64 md:h-[340px] w-full rounded-2xl md:rounded-[24px] overflow-hidden shadow-sm group cursor-pointer isolate">
+              <img src={upNextUrl} alt="Cricket Training" className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105 -z-10" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-transparent" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0) 55%)' }}></div>
+              <div className="absolute top-4 left-4 md:top-6 md:left-6 bg-white/20 backdrop-blur-md border border-white/20 text-white text-[13px] font-bold px-3.5 py-1.5 rounded-full shadow-sm">
+                Starts in {data.upNextSession.startsInMinutes > 0 ? `${data.upNextSession.startsInMinutes}m` : 'now'}
+              </div>
+              <div className="absolute bottom-0 left-0 w-full p-5 md:p-8 flex flex-col gap-2.5 z-10">
+                <h3 className="text-white text-[26px] md:text-3xl font-bold leading-tight drop-shadow-sm">{data.upNextSession.title}</h3>
+                <div className="flex flex-wrap items-center gap-4 text-gray-100 text-[15px] font-medium mt-1">
+                  <div className="flex items-center gap-1.5"><Clock size={16} className="text-gray-300" /><span>{data.upNextSession.startTime} - {data.upNextSession.endTime}</span></div>
+                  <div className="flex items-center gap-1.5"><MapPin size={16} className="text-gray-300" /><span>{data.upNextSession.venue}</span></div>
+                </div>
               </div>
             </div>
-          </div>
+          ) : (
+            <div className="relative h-64 md:h-[340px] w-full rounded-2xl md:rounded-[24px] overflow-hidden shadow-sm border-2 border-dashed border-gray-200 bg-gray-50 flex flex-col items-center justify-center p-8 text-center">
+              <Calendar size={48} className="text-gray-300 mb-4" />
+              <h3 className="text-xl font-bold text-gray-900 mb-2">No upcoming sessions</h3>
+              <p className="text-sm text-gray-500 mb-6 max-w-md">Add your availability to start getting bookings.</p>
+              <button
+                onClick={() => router.push('/coach/availability')}
+                className="bg-[#0077CC] text-white px-6 py-2.5 rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-[#0066AA] transition-colors"
+              >
+                <Plus size={16} />
+                Add Availability
+              </button>
+            </div>
+          )}
         </section>
 
         {/* Mobile Only */}
         <div className="md:hidden flex flex-col gap-8 mt-2">
           <ThisWeekStrip />
-          <TodayLineup />
+          <TodayLineup sessions={todaySessions} />
         </div>
 
         {/* CHANGE 7: Removed Earnings and Rating cards - now in right panel */}
@@ -205,49 +261,38 @@ export function CoachHome() {
             <Link href="/coach/schedule" className="bg-white border border-gray-100 rounded-[10px] p-4 flex flex-col gap-1 cursor-pointer hover:border-gray-300 hover:scale-[1.01] transition-all duration-150">
               <Calendar size={16} className="text-[#0077CC] mb-1" />
               <p className="text-xs text-gray-500">Sessions this week</p>
-              <p className="text-2xl font-medium text-gray-900">12</p>
+              <p className="text-2xl font-medium text-gray-900">{data.weeklyStats.sessionsThisWeek}</p>
             </Link>
             <Link href="/coach/bookings?tab=pending" className="bg-white border border-gray-100 rounded-[10px] p-4 flex flex-col gap-1 cursor-pointer hover:border-gray-300 hover:scale-[1.01] transition-all duration-150">
               <Clock size={16} className="text-amber-600 mb-1" />
               <p className="text-xs text-gray-500">Bookings pending</p>
-              <div className="flex items-baseline gap-2">
-                <p className="text-2xl font-medium text-gray-900">3</p>
-                <span className="text-[11px] font-medium text-amber-600">+2 new</span>
-              </div>
+              <p className="text-2xl font-medium text-gray-900">{data.weeklyStats.bookingsPending}</p>
             </Link>
             <Link href="/coach/earnings" className="bg-white border border-gray-100 rounded-[10px] p-4 flex flex-col gap-1 cursor-pointer hover:border-gray-300 hover:scale-[1.01] transition-all duration-150">
               <PoundSterling size={16} className="text-green-600 mb-1" />
               <p className="text-xs text-gray-500">Revenue this week</p>
-              <div className="flex items-baseline gap-2">
-                <p className="text-2xl font-medium text-gray-900">£520</p>
-                <span className="text-[11px] font-medium text-green-600">+15%</span>
-              </div>
+              <p className="text-2xl font-medium text-gray-900">£{data.weeklyStats.revenueThisWeek.toFixed(0)}</p>
             </Link>
             <Link href="/coach/bookings?tab=past" className="bg-white border border-gray-100 rounded-[10px] p-4 flex flex-col gap-1 cursor-pointer hover:border-gray-300 hover:scale-[1.01] transition-all duration-150">
               <Check size={16} className="text-[#0077CC] mb-1" />
               <p className="text-xs text-gray-500">Completion rate</p>
-              <p className="text-2xl font-medium text-gray-900">98%</p>
+              <p className="text-2xl font-medium text-gray-900">{data.weeklyStats.completionRate}%</p>
             </Link>
           </div>
         </section>
 
-        {/* Group Programmes */}
-        <section className="flex flex-col gap-4 mt-2">
-          <div className="flex justify-between items-end">
-            <h2 className="text-[19px] font-bold text-gray-900">Group programmes</h2>
-            <span onClick={() => router.push('/coach/programmes')} className="text-[#0077CC] text-sm font-bold cursor-pointer hover:underline">Manage</span>
-          </div>
-          {/* CHANGE 9: Responsive grid for group programmes */}
-          <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 md:gap-4">
-            <GroupCard title="Summer Youth Camp" spots="12/15 spots filled" image={group1Url} active />
-            <GroupCard title="Elite Spin Bowling" spots="4/8 spots filled" image={group2Url} />
-            <GroupCard title="Weekend Warriors" spots="20/20 spots filled" image={fallbackAvatarUrl} />
-          </div>
-        </section>
+        {/* Group Programmes - STUB: No data source yet - hidden until wired */}
         </div>
       </div>
 
-      {/* CHANGE 5: Removed duplicate right panel - now handled in layout.tsx */}
+      {/* Right Panel with dashboard data */}
+      <CoachRightPanel dashboardData={{
+        todaySessions: data.todaySessions,
+        rating: data.rating,
+        weeklyStats: {
+          revenueThisWeek: data.weeklyStats.revenueThisWeek
+        }
+      }} />
     </div>
   )
 }
@@ -287,41 +332,39 @@ function ThisWeekStrip({ isDesktop }: { isDesktop?: boolean }) {
   )
 }
 
-function TodayLineup({ isDesktop }: { isDesktop?: boolean }) {
-  // Using same session data as defined at component top
-  const sessions = [
-    { time: '14:00', duration: '90m', title: 'U14 Fast Bowling Masterclass', location: "Lord's Indoor Centre", active: true },
-    { time: '16:00', duration: '60m', title: '1-on-1 with James T.', location: 'The Oval Nets', type: 'Private' },
-    { time: '18:00', duration: '120m', title: "Senior Men's Net Session", location: 'Wandsworth CC' },
-  ]
+function TodayLineup({ isDesktop, sessions }: { isDesktop?: boolean; sessions: Array<{time: string; duration: string; title: string; location: string; isActive: boolean; type?: string}> }) {
   return (
     <div className="flex flex-col gap-6 flex-1">
       <div className="flex justify-between items-center">
         <h3 className={`${isDesktop ? 'text-[22px]' : 'text-[19px]'} font-bold text-gray-900`}>Today's lineup</h3>
         {isDesktop && <span className="text-[#0077CC] text-sm font-bold cursor-pointer hover:underline">View all</span>}
       </div>
-      <div className="flex flex-col relative">
-        <div className="absolute left-[60px] top-4 bottom-8 w-[1.5px] bg-gray-100 -translate-x-1/2"></div>
-        {sessions.map((session, i) => (
-          <div key={i} className="flex gap-6 mb-7 relative group cursor-pointer">
-            <div className="flex flex-col items-center pt-3.5 z-10 w-12 shrink-0">
-              <span className={`text-[15px] font-bold ${session.active ? 'text-[#0077CC]' : 'text-gray-600'}`}>{session.time}</span>
-              <span className="text-[11px] text-gray-400 font-bold mt-1 uppercase tracking-wider">{session.duration}</span>
-            </div>
-            <div className={`absolute left-[60px] top-[26px] w-3.5 h-3.5 rounded-full border-[3px] bg-white z-20 transition-all -translate-x-1/2 -translate-y-1/2 ${session.active ? 'border-[#0077CC] shadow-[0_0_0_4px_rgba(0,119,204,0.1)] scale-110' : 'border-gray-300 group-hover:border-gray-400'}`}></div>
-            <div className={`flex-1 p-4 md:p-5 rounded-[20px] border transition-all ${session.active ? 'bg-[#0077CC]/[0.03] border-[#0077CC]/20 shadow-sm' : 'bg-white border-gray-100 shadow-[0_2px_12px_rgba(0,0,0,0.02)] hover:border-gray-200 hover:shadow-md'}`}>
-              <div className="flex justify-between items-start mb-2">
-                <h4 className={`font-bold text-[16px] md:text-[17px] ${session.active ? 'text-[#0077CC]' : 'text-gray-900'} leading-tight pr-2`}>{session.title}</h4>
-                {session.type === 'Private' && <span className="text-[10px] font-bold uppercase tracking-wider text-purple-600 bg-purple-50 px-2.5 py-1 rounded-full shrink-0 border border-purple-100/50">1:1</span>}
+      {sessions.length === 0 ? (
+        <p className="text-gray-400 text-sm">No sessions today</p>
+      ) : (
+        <div className="flex flex-col relative">
+          <div className="absolute left-[60px] top-4 bottom-8 w-[1.5px] bg-gray-100 -translate-x-1/2"></div>
+          {sessions.map((session, i) => (
+            <div key={i} className="flex gap-6 mb-7 relative group cursor-pointer">
+              <div className="flex flex-col items-center pt-3.5 z-10 w-12 shrink-0">
+                <span className={`text-[15px] font-bold ${session.isActive ? 'text-[#0077CC]' : 'text-gray-600'}`}>{session.time}</span>
+                <span className="text-[11px] text-gray-400 font-bold mt-1 uppercase tracking-wider">{session.duration}</span>
               </div>
-              <div className="flex items-center gap-2 text-gray-500 text-[13px] font-medium">
-                <MapPin size={14} className={session.active ? 'text-[#0077CC]/70' : ''} />
-                <span className="truncate">{session.location}</span>
+              <div className={`absolute left-[60px] top-[26px] w-3.5 h-3.5 rounded-full border-[3px] bg-white z-20 transition-all -translate-x-1/2 -translate-y-1/2 ${session.isActive ? 'border-[#0077CC] shadow-[0_0_0_4px_rgba(0,119,204,0.1)] scale-110' : 'border-gray-300 group-hover:border-gray-400'}`}></div>
+              <div className={`flex-1 p-4 md:p-5 rounded-[20px] border transition-all ${session.isActive ? 'bg-[#0077CC]/[0.03] border-[#0077CC]/20 shadow-sm' : 'bg-white border-gray-100 shadow-[0_2px_12px_rgba(0,0,0,0.02)] hover:border-gray-200 hover:shadow-md'}`}>
+                <div className="flex justify-between items-start mb-2">
+                  <h4 className={`font-bold text-[16px] md:text-[17px] ${session.isActive ? 'text-[#0077CC]' : 'text-gray-900'} leading-tight pr-2`}>{session.title}</h4>
+                  {session.type === 'Private' && <span className="text-[10px] font-bold uppercase tracking-wider text-purple-600 bg-purple-50 px-2.5 py-1 rounded-full shrink-0 border border-purple-100/50">1:1</span>}
+                </div>
+                <div className="flex items-center gap-2 text-gray-500 text-[13px] font-medium">
+                  <MapPin size={14} className={session.isActive ? 'text-[#0077CC]/70' : ''} />
+                  <span className="truncate">{session.location}</span>
+                </div>
               </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
