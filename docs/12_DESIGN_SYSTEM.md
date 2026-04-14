@@ -2,7 +2,7 @@
 
 **Version:** 1.1
 **Last Updated:** April 2026
-**Changed:** Card rules, layout backgrounds, interaction patterns, onboarding patterns, PublicProfilePreview spec
+**Changed:** Card rules, layout backgrounds, interaction patterns, onboarding patterns, no-emoji rule
 **Applies to:** Web PWA (Tailwind/Next.js) + Flutter Mobile (Phase 2)
 
 Single source of truth for all visual decisions. Every colour, font,
@@ -178,103 +178,117 @@ Read this file before building any UI component.
 **Standard card (all screens):**
 - Background: white (#FFFFFF) — always explicit white
 - Border: NONE — no outer border on any card
-- Border radius: 12px (radius-lg)
-- Padding: 12px–16px
+- Border radius: 12px
+- Padding: 12px–16px depending on screen density
 - Shadow resting: 0 1px 3px rgba(0,0,0,0.06)
 - Shadow hover: 0 2px 8px rgba(0,0,0,0.08)
 
 **Card interaction states:**
 - Resting: box-shadow 0 1px 3px rgba(0,0,0,0.06), scale(1)
-- Hover (clickable): box-shadow 0 2px 8px rgba(0,0,0,0.08),
-  scale(1.005), cursor pointer
+- Hover: box-shadow 0 2px 8px rgba(0,0,0,0.08), scale(1.005)
 - Active: scale(0.998)
 - Transition: all 150ms ease
-- Background does NOT change on hover
-- Action rows inside cards do NOT inherit card hover
+- Background does NOT change on hover — shadow + scale only
+- Action rows inside cards do NOT inherit card hover state
 
-**Rules (non-negotiable):**
-- No border on any card (not even 0.5px)
-- No background colour change on hover
-- No left border accents — use status badges instead
-- Starting soon / urgent tint: #FFFDF5 only
+**Non-negotiable rules:**
+- NO border on any card — not even 0.5px
+- NO background colour change on card hover
+- NO left border accents on cards
+- Selected state exception: 1.5px solid #0077CC border ONLY
+  for selectable option cards (sport chips, category tiles)
 
 ### Layout — Page Backgrounds
 
-**Coach desktop shell:**
+**Coach desktop shell columns:**
 - Main content column: white (#FFFFFF)
 - Right panel column: white (#FFFFFF)
-- Left sidebar: white (#FFFFFF) with border-right 0.5px neutral-100
-- Page background (behind columns): #F8F9FA
+- Left sidebar: white (#FFFFFF) with border-right 0.5px #F1F5F9
+- Page background (behind everything): #F8F9FA
 
-**Rule:** background is set ONCE in layout.tsx.
-Individual screen component outer wrappers must have NO
-background class. Setting bg on a screen component overrides
-the layout and creates inconsistency.
+**Non-negotiable rules:**
+- Background is set ONCE in src/app/coach/layout.tsx
+- Individual screen component outer wrappers must have
+  NO background class — bg-transparent or omit entirely
+- Setting bg-white or bg-gray-50 on a screen component
+  overrides the layout and creates visual inconsistency
+
+### Icons and Emoji — Non-Negotiable Rule
+
+**NO emoji characters anywhere in the coach UI.**
+This includes: 🏅 🛡 ❤️ 👶 📍 📅 ★ and all others.
+
+**Use instead:**
+- Lucide React icons (already installed)
+- Simple coloured icon containers (32px square,
+  neutral-50 bg, radius 8px, text character or SVG)
+- Text labels only
+
+**The only exception:** the 👋 wave emoji on the Dashboard
+greeting — approved and already implemented.
 
 ---
 
 ## Interaction Patterns
 
 **Quick action buttons (inside cards):**
-- Secondary: white bg, 1px solid #E2E8F0, #475569 text, 11px
-  Hover: #F9FAFB bg, #CBD5E1 border — 150ms ease
-- Primary: #0077CC bg, white text, 11px, font-weight 500
-  Hover: #0066AA — 150ms ease
+- Secondary: bg-white, border 1px solid #E2E8F0,
+  text #475569, 11px
+  Hover: bg-#F9FAFB, border #CBD5E1 — 150ms ease
+- Primary: bg-#0077CC, text white, 11px, font-weight 500
+  Hover: bg-#0066AA — 150ms ease
 - Border-radius: 6px. Padding: 6px 0. Flex: 1.
 
-**Approve/Decline:** Approve = brand-600 (#0077CC) always.
+**Approve/Decline:** Approve = #0077CC always — never green.
 Decline = white bg, red-200 border, red-600 text.
-
-**Booking action row patterns:**
-- Pattern A (normal): [Message] [View details] — both secondary
-- Pattern B (starting soon): [Message] secondary +
-  [Mark complete] primary
-- Pattern C (group): [Message group] [View details] — secondary
-
-**Card ordering:** Starting soon / today cards always first.
 
 ---
 
 ## Onboarding Patterns
 
-**Step indicator (all onboarding screens):**
+**Step indicator (ALL onboarding screens — non-negotiable):**
 - 5 dots in a flex row, gap 5px
-- Active step: width 22px, radius 999px, #0077CC — pill shape
-- Completed steps: 8px circle, #E2E8F0 (grey, NOT green)
-  Note: completed steps use the SAME grey as inactive dots.
-  Never use green for completed dots — keeps it calm.
-- Upcoming steps: 8px circle, #E2E8F0
-- "Step X of 5" label below dots: 11px, #94A3B8
+- Active step: width 22px, radius 999px, bg #0077CC (pill)
+- All other dots (past AND future): 8px circle, bg #E2E8F0
+- NEVER use green (#22C55E) for completed steps
+- NEVER change dot colour to indicate completion
+- "Step X of 5" label: 11px, #94A3B8, below the dots
 
-**Save bar pattern (all onboarding screens from step 2+):**
-- display: flex, justify-content: space-between,
-  align-items: center
+**Save bar pattern (steps 2–5):**
+- display flex, justify-content space-between,
+  align-items center
 - padding: 16px 0, margin-top: 16px
-- NO border-top, NO sticky, NO background card/wrapper
-- Left: "← Back" ghost button (13px, #64748B, hover #0F172A)
-  navigates to previous step
-- Right: "Save & continue →" pill (brand-600, radius-999px,
-  padding 10px 22px, 13px font-weight 500)
-- Step 1 only: right-aligned pill only, NO back button
-- Qualifications step only: three items —
-  [← Back] [Skip for now] [Save & continue →]
-  Skip for now: 13px, #94A3B8, centre position
+- NO border-top on save bar
+- NO sticky positioning on save bar
+- NO background card or wrapper around the buttons
+- Left: "← Back" ghost link (13px, #64748B)
+  Navigates to previous step
+- Right: "Save & continue →" pill
+  bg-#0077CC, text white, radius 999px, padding 10px 22px,
+  13px, font-weight 500
+
+**Step 1 only:** right-aligned pill only — no back button.
+
+**Qualifications step only (optional step):**
+Three items: [← Back] [Skip for now] [Save & continue →]
+Skip for now: 13px, #94A3B8, ghost, centred position.
 
 No "Save & go back to dashboard" on any onboarding screen.
-No "← Dashboard" back link at top of any onboarding screen.
+No "← Dashboard" link at top of any onboarding screen.
 
-**PublicProfilePreview component (all onboarding right panels):**
-- ALWAYS use horizontal layout — avatar LEFT, name RIGHT
-- Never centred/stacked layout
-- Avatar: 44–56px circle, brand-50 bg, initials, brand-800 text
-  box-shadow: 0 0 0 2px #E6F1FB
-- Name: 14–15px, font-weight 500, neutral-900 (updates live)
-  Empty: "Your name" in neutral-300
-- Role: 12px, neutral-400
-- Below: stars (amber), rating, location, days, price,
-  DBS badge, "Book a session" pill button
-- Reuse this component on ALL onboarding steps
-- Never build a new version for a different step
+**PublicProfilePreview (right panel — ALL onboarding steps):**
+- ALWAYS horizontal layout: avatar LEFT, name+role RIGHT
+- NEVER centred or stacked layout
+- Avatar: 44–56px circle, bg #E6F1FB, initials, text #0C447C
+  ring: box-shadow 0 0 0 2px #E6F1FB
+- Name: 14–15px, font-weight 500, #0F172A (updates live)
+  Empty: "Your name" in #CBD5E1
+- Role: 12px, #94A3B8, below name
+- Below avatar row: stars (amber text chars, not emoji),
+  rating text, location, days, price, DBS badge,
+  "Book a session" pill button
+- Extract into shared component PublicProfilePreview.tsx
+- Reuse on ALL onboarding steps — never create new version
 
 ---
 
@@ -344,4 +358,6 @@ shadow-{none|sm|md|focus}
 ---
 
 *Crikly Design System v1.1 — April 2026*
-*v1.1: Card rules, layout backgrounds, interaction patterns, onboarding patterns, PublicProfilePreview spec*
+*READ THIS FILE IN FULL before building any UI component.*
+*Every decision in this file is non-negotiable.*
+*v1.1: Card rules, layout backgrounds, interaction patterns, onboarding patterns, no-emoji rule, PublicProfilePreview spec*
