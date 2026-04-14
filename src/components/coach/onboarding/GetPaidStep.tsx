@@ -99,7 +99,11 @@ export function GetPaidStep() {
               </button>
               <p className="text-[10px] text-gray-400 mt-0.5">You can complete this from your dashboard</p>
             </div>
-            <div className="w-[140px]"></div>
+            <button 
+              className="bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-full px-7 py-2.5 text-[13px] font-medium transition-colors"
+            >
+              Connect with Stripe →
+            </button>
           </div>
         </div>
       </div>
