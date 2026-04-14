@@ -1,0 +1,141 @@
+'use client'
+
+import React from 'react'
+import { MapPin, Calendar } from 'lucide-react'
+
+interface OnboardingPreviewPanelProps {
+  coachName: string
+  sport?: string
+  location?: string
+  availabilityDays?: string[]
+  priceFromPence?: number
+  isDbs?: boolean
+  infoBox?: {
+    type: 'success' | 'neutral'
+    message: string
+    subMessage?: string
+  }
+}
+
+export function OnboardingPreviewPanel({
+  coachName,
+  sport,
+  location,
+  availabilityDays,
+  priceFromPence,
+  isDbs = false,
+  infoBox
+}: OnboardingPreviewPanelProps) {
+  // Extract initials from coach name
+  const initials = coachName
+    .split(' ')
+    .map(n => n[0])
+    .join('')
+    .toUpperCase()
+    .substring(0, 2) || 'AJ'
+
+  // Format price from pence to pounds
+  const formattedPrice = priceFromPence 
+    ? `£${(priceFromPence / 100).toFixed(0)}` 
+    : '£--'
+
+  // Format availability days
+  const availabilityText = availabilityDays && availabilityDays.length > 0
+    ? availabilityDays.join(', ')
+    : 'No availability set yet'
+
+  // Format sport label
+  const sportLabel = sport ? `${sport} Coach` : 'Cricket Coach'
+
+  return (
+    <aside className="hidden xl:flex w-80 shrink-0 flex-col bg-white p-6 h-screen overflow-y-auto border-l border-gray-100">
+      <div className="sticky top-6">
+        <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-4" style={{ letterSpacing: '0.05em' }}>
+          WHAT PARENTS SEE
+        </p>
+        
+        {/* Coach preview card */}
+        <div className="bg-white border border-gray-100 shadow-sm rounded-xl p-5 mb-4">
+          {/* Avatar + Name */}
+          <div className="flex items-start gap-3 mb-4">
+            <div className="w-16 h-16 bg-[#E6F1FB] rounded-full flex items-center justify-center shrink-0">
+              <span className="text-[#0C447C] text-[20px] font-bold">{initials}</span>
+            </div>
+            <div className="flex-1">
+              <h3 className="text-[16px] font-bold text-gray-900 mb-0.5">
+                {coachName || <span className="text-gray-300">Your name</span>}
+              </h3>
+              <p className="text-[13px] text-gray-500">{sportLabel}</p>
+            </div>
+          </div>
+          
+          {/* Star rating */}
+          <div className="flex items-center gap-1 mb-3">
+            <span className="text-amber-400 text-[15px]">★★★★★</span>
+            <span className="text-[12px] text-gray-500 ml-1">New coach</span>
+          </div>
+          
+          {/* Location & Availability */}
+          <div className="flex flex-col gap-2 mb-4">
+            {location && (
+              <div className="flex items-center gap-2 text-[13px] text-gray-600">
+                <MapPin size={14} className="text-gray-400" />
+                <span>{location}</span>
+              </div>
+            )}
+            {availabilityDays && (
+              <div className="flex items-center gap-2 text-[13px] text-gray-600">
+                <Calendar size={14} className="text-gray-400" />
+                <span>{availabilityText}</span>
+              </div>
+            )}
+          </div>
+          
+          {/* Price */}
+          <div className={`text-[15px] font-bold mb-4 ${priceFromPence ? 'text-gray-900' : 'text-gray-400'}`}>
+            from {formattedPrice} / session
+          </div>
+          
+          {/* DBS badge */}
+          {isDbs && (
+            <div className="flex items-center gap-2 mb-4">
+              <div className="px-2.5 py-1 bg-[#E0F6F8] rounded-md text-[11px] font-bold text-[#006677]">
+                ✓ DBS checked
+              </div>
+            </div>
+          )}
+          
+          {/* Book button */}
+          <button 
+            className="w-full bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-full py-3 text-[14px] font-bold transition-colors pointer-events-none"
+            disabled
+          >
+            Book a session
+          </button>
+        </div>
+
+        {/* Info box */}
+        {infoBox && (
+          <div className={`rounded-lg p-3 ${
+            infoBox.type === 'success' 
+              ? 'bg-[#F0FDF4] border border-[#86EFAC]' 
+              : 'bg-gray-50 border border-gray-200'
+          }`}>
+            <p className={`text-[11px] font-bold mb-1 ${
+              infoBox.type === 'success' ? 'text-[#166534]' : 'text-gray-600'
+            }`}>
+              {infoBox.message}
+            </p>
+            {infoBox.subMessage && (
+              <p className={`text-[10px] ${
+                infoBox.type === 'success' ? 'text-[#166534]' : 'text-gray-500'
+              }`}>
+                {infoBox.subMessage}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    </aside>
+  )
+}

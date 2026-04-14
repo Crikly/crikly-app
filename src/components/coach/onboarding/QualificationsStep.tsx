@@ -3,7 +3,7 @@
 import React, { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { Upload, FileText, X } from 'lucide-react'
-import { PublicProfilePreview } from './PublicProfilePreview'
+import { OnboardingPreviewPanel } from '../OnboardingPreviewPanel'
 
 interface Qualification {
   id: string
@@ -225,33 +225,20 @@ export function QualificationsStep() {
         </div>
       </div>
 
-      {/* CF-D13 CHANGE 8: Right panel - PublicProfilePreview + DBS notice */}
-      <aside className="hidden xl:flex w-80 shrink-0 flex-col bg-white p-6 h-screen overflow-y-auto border-l border-gray-100">
-        <div className="sticky top-6">
-          <p className="text-[9px] font-medium text-[#94A3B8] uppercase tracking-wider mb-2" style={{ letterSpacing: '0.05em' }}>WHAT PARENTS SEE</p>
-          
-          <PublicProfilePreview
-            displayName="Alex Johnson"
-            role="Cricket Coach"
-            baseLocation="London"
-            availability="Mon, Wed, Fri"
-            price="50"
-            hasDBS={hasDBS}
-          />
-          
-          {/* CF-D13 CHANGE 8: DBS notice */}
-          {hasDBS ? (
-            <div className="bg-[#F0FDF4] rounded-lg px-3 py-2.5 mt-2">
-              <p className="text-[11px] font-medium text-[#166534] mb-0.5">✓ DBS badge now visible to parents</p>
-              <p className="text-[10px] text-[#166534]">Parents can see your credentials in search results</p>
-            </div>
-          ) : (
-            <div className="bg-[#FFFBEB] border-l-[3px] border-[#F59E0B] rounded-r-lg px-3 py-2.5 mt-2">
-              <p className="text-[11px] text-[#78350F]">Add a DBS check to build more trust</p>
-            </div>
-          )}
-        </div>
-      </aside>
+      {/* Right panel - What parents see */}
+      <OnboardingPreviewPanel
+        coachName="Alex Johnson"
+        sport="Cricket"
+        location="London"
+        availabilityDays={['Mon', 'Wed', 'Fri']}
+        priceFromPence={5000}
+        isDbs={hasDBS}
+        infoBox={hasDBS ? {
+          type: 'success',
+          message: '✓ DBS badge now visible to parents',
+          subMessage: 'Parents can see your credentials in search results'
+        } : undefined}
+      />
     </div>
   )
 }

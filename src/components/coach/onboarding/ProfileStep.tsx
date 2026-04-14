@@ -3,7 +3,7 @@
 import React, { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { Camera, MapPin, Calendar, ChevronDown, Check } from 'lucide-react'
-import { PublicProfilePreview } from './PublicProfilePreview'
+import { OnboardingPreviewPanel } from '../OnboardingPreviewPanel'
 
 export function ProfileStep() {
   const router = useRouter()
@@ -282,28 +282,15 @@ export function ProfileStep() {
         </div>
       </div>
 
-      {/* CF-D13 CHANGE 0: Right panel with shared PublicProfilePreview */}
-      <aside className="hidden xl:flex w-80 shrink-0 flex-col bg-white p-6 h-screen overflow-y-auto border-l border-gray-100">
-        <div className="sticky top-6">
-          <p className="text-[9px] font-medium text-gray-400 uppercase tracking-wider mb-2" style={{ letterSpacing: '0.05em' }}>WHAT PARENTS SEE</p>
-          
-          <PublicProfilePreview
-            displayName={displayName}
-            role="Cricket Coach"
-            baseLocation={baseLocation || 'London'}
-            availability="Mon, Wed, Fri"
-            price="50"
-            hasDBS={true}
-          />
-          
-          {/* Completion notice */}
-          {profileCompleteness < 100 && (
-            <div className="bg-[#FFFBEB] border-l-[3px] border-[#F59E0B] rounded-r-lg px-3 py-2.5 mt-2">
-              <p className="text-[11px] text-[#78350F] font-medium">Complete all steps to appear in search</p>
-            </div>
-          )}
-        </div>
-      </aside>
+      {/* Right panel - What parents see */}
+      <OnboardingPreviewPanel
+        coachName={displayName || 'Your name'}
+        sport="Cricket"
+        location={baseLocation || undefined}
+        availabilityDays={['Mon', 'Wed', 'Fri']}
+        priceFromPence={5000}
+        isDbs={true}
+      />
     </div>
   )
 }
