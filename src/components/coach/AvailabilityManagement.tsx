@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useMemo, useRef } from 'react'
+import React, { useState, useMemo, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Pencil, X, ChevronLeft, ChevronRight, Plus, ChevronDown, AlertTriangle } from 'lucide-react'
 
@@ -16,7 +16,32 @@ for (let h = 6; h <= 22; h++) {
   if (h < 22) TIME_OPTIONS.push(`${String(h).padStart(2, '0')}:30`)
 }
 
-interface ScheduleBlock { id: number; day: string; sport: string; time: string; location: string; price: string }
+// CD-04: API response types
+interface AvailabilityBlock {
+  id: string
+  sport_id: string | null
+  sport_name: string | null
+  day_of_week: number
+  start_time: string
+  end_time: string
+  is_active: boolean
+  price_override_pence: number | null
+  session_type_id: string | null
+  session_type_name: string | null
+  created_at: string
+}
+
+// CD-04: UI display type (transformed from API)
+interface ScheduleBlock { 
+  id: string
+  day: string
+  sport: string
+  time: string
+  location: string
+  price: string
+  rawData: AvailabilityBlock
+}
+
 interface BlockedRange { id: number; start: Date; end: Date; label: string }
 interface CalDay { date: Date; type: 'prev' | 'current' | 'next' }
 
@@ -43,16 +68,21 @@ function buildCalendar(year: number, month: number): CalDay[] {
   return days
 }
 
+// CD-04: Day mapping helper
+const DAY_MAP: Record<number, string> = {
+  0: 'Sun', 1: 'Mon', 2: 'Tue', 3: 'Wed', 4: 'Thu', 5: 'Fri', 6: 'Sat'
+}
+
 export function AvailabilityManagement() {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<'schedule' | 'blocked'>('schedule')
-  // CF-D06c: Ref for auto-scrolling to add form
   const addFormRef = useRef<HTMLDivElement>(null)
-  const [scheduleBlocks] = useState<ScheduleBlock[]>([
-    { id: 1, day: 'Mon', sport: 'Cricket', time: '09:00 – 12:00', location: 'Oval Cricket Ground', price: '£50/60min' },
-    { id: 2, day: 'Wed', sport: 'Cricket', time: '14:00 – 17:00', location: 'Kennington Park', price: '£60/60min' },
-    { id: 3, day: 'Sat', sport: 'Tennis', time: '09:00 – 13:00', location: "Queen's Club", price: '£45/60min' },
-  ])
+  
+  // CD-04: Real data state
+  const [scheduleBlocks, setScheduleBlocks] = useState<ScheduleBlock[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState<string | null>(null)
   const availableSports = useMemo(() => [...new Set(scheduleBlocks.map(b => b.sport))], [scheduleBlocks])
   const [showAddForm, setShowAddForm] = useState(false)
   // CF-D06b FIX 1: Add preselectedDay state
@@ -65,6 +95,49 @@ export function AvailabilityManagement() {
   const [formVenue, setFormVenue] = useState('')
   const [formPrice, setFormPrice] = useState('')
   const toggleDay = (day: string) => setFormDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day])
+  
+  // CD-04: Fetch availability data on mount
+  useEffect(() => {
+    const fetchAvailability = async () => {
+      try {
+        setLoading(true)
+        setError(null)
+        
+        const response = await fetch('/api/coaches/availability')
+        if (!response.ok) {
+          throw new Error('Failed to fetch availability')
+        }
+        
+        const data = await response.json()
+        
+        // Transform API data to UI format
+        const transformed: ScheduleBlock[] = (data.availability || []).map((block: AvailabilityBlock) => {
+          const priceDisplay = block.price_override_pence 
+            ? `£${(block.price_override_pence / 100).toFixed(0)}/${block.session_type_name || '60min'}`
+            : 'Default price'
+          
+          return {
+            id: block.id,
+            day: DAY_MAP[block.day_of_week] || 'Mon',
+            sport: block.sport_name || 'Sport',
+            time: `${block.start_time.substring(0, 5)} – ${block.end_time.substring(0, 5)}`,
+            location: 'Location TBC',
+            price: priceDisplay,
+            rawData: block
+          }
+        })
+        
+        setScheduleBlocks(transformed)
+      } catch (err) {
+        console.error('Error fetching availability:', err)
+        setError('Failed to load availability. Please refresh the page.')
+      } finally {
+        setLoading(false)
+      }
+    }
+    
+    fetchAvailability()
+  }, [])
   
   // CF-D06b FIX 2: Replace same-day check with time overlap validation
   const timeToMinutes = (time: string) => {
@@ -145,10 +218,9 @@ export function AvailabilityManagement() {
       <div className="w-full max-w-[640px] px-6">
         <div className="mb-8">
           <h1 className="text-[32px] font-bold text-gray-900 leading-tight mb-2">Availability</h1>
-          {/* CF-D06 CHANGE 1: State-aware subtitle */}
+          {/* CD-04: Real data-driven subtitle */}
           <p className="text-[13px] text-gray-500 mt-1">
-            3 recurring blocks · Mon, Wed & Sat
-            {/* TODO CF-D06: derive from real availability data */}
+            {loading ? 'Loading...' : scheduleBlocks.length === 0 ? 'No availability blocks yet' : `${scheduleBlocks.length} recurring ${scheduleBlocks.length === 1 ? 'block' : 'blocks'}`}
           </p>
         </div>
         <div className="flex border-b border-gray-100 mb-8">
@@ -161,6 +233,21 @@ export function AvailabilityManagement() {
 
         {activeTab === 'schedule' && (
           <div className="flex flex-col pb-20">
+            {/* CD-04: Error state */}
+            {error && (
+              <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
+                <p className="text-[14px] font-medium text-red-700">{error}</p>
+              </div>
+            )}
+            
+            {/* CD-04: Loading state */}
+            {loading ? (
+              <div className="flex flex-col items-center justify-center py-20">
+                <div className="w-8 h-8 border-4 border-gray-200 border-t-[#0077CC] rounded-full animate-spin mb-4"></div>
+                <p className="text-[14px] text-gray-500">Loading availability...</p>
+              </div>
+            ) : (
+              <>
             {/* CF-D06 CHANGE 2: Mon-Sun day structure */}
             <div className="flex flex-col gap-6 mb-6">
               {DAY_ABBR.map((dayAbbr) => {
@@ -223,11 +310,32 @@ export function AvailabilityManagement() {
                                   <Pencil size={12} className="text-gray-400" />
                                 </button>
                                 <button 
-                                  onClick={(e) => {
+                                  onClick={async (e) => {
                                     e.stopPropagation()
-                                    // TODO CF-D06: wire delete action
+                                    // CD-04: Wire delete action
+                                    if (!confirm('Delete this availability block?')) return
+                                    
+                                    try {
+                                      setDeleting(blockForDay.id)
+                                      const response = await fetch(`/api/coaches/availability/${blockForDay.id}`, {
+                                        method: 'DELETE'
+                                      })
+                                      
+                                      if (!response.ok) {
+                                        throw new Error('Failed to delete block')
+                                      }
+                                      
+                                      // Remove from local state
+                                      setScheduleBlocks(prev => prev.filter(b => b.id !== blockForDay.id))
+                                    } catch (err) {
+                                      console.error('Error deleting block:', err)
+                                      alert('Failed to delete block. Please try again.')
+                                    } finally {
+                                      setDeleting(null)
+                                    }
                                   }}
-                                  className="w-7 h-7 flex items-center justify-center border-[0.5px] border-gray-100 bg-white rounded-md hover:bg-gray-50 transition-colors"
+                                  disabled={deleting === blockForDay.id}
+                                  className="w-7 h-7 flex items-center justify-center border-[0.5px] border-gray-100 bg-white rounded-md hover:bg-gray-50 transition-colors disabled:opacity-50"
                                 >
                                   <X size={12} className="text-gray-400" />
                                 </button>
@@ -350,7 +458,67 @@ export function AvailabilityManagement() {
                 )}
                 <div className="flex items-center justify-between">
                   <button onClick={resetForm} className="text-[14px] font-bold text-gray-400 hover:text-gray-700 transition-colors">Cancel</button>
-                  <button disabled={!!conflict || formDays.length === 0} className={`px-6 py-3 rounded-xl text-[14px] font-bold transition-colors flex items-center gap-2 ${conflict || formDays.length === 0 ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-[#0077CC] text-white hover:bg-[#0066AA]'}`}>
+                  <button 
+                    onClick={async () => {
+                      // CD-04: Wire add block to POST /api/coaches/availability
+                      if (conflict || formDays.length === 0) return
+                      
+                      try {
+                        // Convert day abbreviations to day_of_week numbers
+                        const dayMap: Record<string, number> = {
+                          'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6
+                        }
+                        
+                        // Add each selected day as a separate block
+                        for (const dayAbbr of formDays) {
+                          const response = await fetch('/api/coaches/availability', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              sport_id: null,
+                              day_of_week: dayMap[dayAbbr],
+                              start_time: formStartTime,
+                              end_time: formEndTime,
+                              price_override_pence: formPrice ? Math.round(parseFloat(formPrice) * 100) : null,
+                            })
+                          })
+                          
+                          if (!response.ok) {
+                            throw new Error('Failed to add availability block')
+                          }
+                        }
+                        
+                        // Refresh the list
+                        const refreshResponse = await fetch('/api/coaches/availability')
+                        if (refreshResponse.ok) {
+                          const data = await refreshResponse.json()
+                          const transformed: ScheduleBlock[] = (data.availability || []).map((block: AvailabilityBlock) => {
+                            const priceDisplay = block.price_override_pence 
+                              ? `£${(block.price_override_pence / 100).toFixed(0)}/${block.session_type_name || '60min'}`
+                              : 'Default price'
+                            
+                            return {
+                              id: block.id,
+                              day: DAY_MAP[block.day_of_week] || 'Mon',
+                              sport: block.sport_name || 'Sport',
+                              time: `${block.start_time.substring(0, 5)} – ${block.end_time.substring(0, 5)}`,
+                              location: 'Location TBC',
+                              price: priceDisplay,
+                              rawData: block
+                            }
+                          })
+                          setScheduleBlocks(transformed)
+                        }
+                        
+                        resetForm()
+                      } catch (err) {
+                        console.error('Error adding block:', err)
+                        alert('Failed to add availability block. Please try again.')
+                      }
+                    }}
+                    disabled={!!conflict || formDays.length === 0} 
+                    className={`px-6 py-3 rounded-xl text-[14px] font-bold transition-colors flex items-center gap-2 ${conflict || formDays.length === 0 ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-[#0077CC] text-white hover:bg-[#0066AA]'}`}
+                  >
                     <Plus size={16} />Add this block
                   </button>
                 </div>
@@ -394,6 +562,8 @@ export function AvailabilityManagement() {
                 Save changes
               </button>
             </div>
+            </>
+            )}
           </div>
         )}
 
