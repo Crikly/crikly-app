@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { Pencil, X, Plus, ChevronDown, AlertTriangle } from 'lucide-react'
+import { Pencil, X, Plus, ChevronDown, AlertTriangle, MapPin, Calendar } from 'lucide-react'
 
 const DAY_ABBR = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
 const DAY_FULL: Record<string, string> = { Mon: 'Monday', Tue: 'Tuesday', Wed: 'Wednesday', Thu: 'Thursday', Fri: 'Friday', Sat: 'Saturday', Sun: 'Sunday' }
@@ -89,9 +89,9 @@ export function AvailabilityStep() {
   }, [scheduleBlocks])
 
   return (
-    <div className="min-h-full bg-white font-sans text-gray-900 flex" style={{ fontFamily: "'DM Sans', sans-serif" }}>
+    <div className="flex w-full">
       {/* Main content */}
-      <div className="flex-1 flex flex-col items-center pt-10 pb-32">
+      <div className="flex-1 flex flex-col items-center pt-10 pb-32 min-h-screen bg-white">
         <div className="w-full max-w-[640px] px-6">
           <div className="mb-8">
             <h1 className="text-[32px] font-bold text-gray-900 leading-tight mb-2">Your availability</h1>
@@ -333,44 +333,44 @@ export function AvailabilityStep() {
           <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-4" style={{ letterSpacing: '0.05em' }}>WHAT PARENTS SEE</p>
           
           {/* Coach preview card */}
-          <div className="bg-white border border-gray-100 shadow-sm rounded-xl p-4 mb-4">
-            <div className="flex items-start gap-3 mb-3">
-              <div className="w-14 h-14 bg-[#E6F1FB] rounded-full flex items-center justify-center shrink-0">
-                <span className="text-[#0C447C] text-[18px] font-bold">AJ</span>
+          <div className="bg-white border border-gray-100 shadow-sm rounded-xl p-5 mb-4">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-16 h-16 bg-[#E6F1FB] rounded-full flex items-center justify-center shrink-0">
+                <span className="text-[#0C447C] text-[20px] font-bold">AJ</span>
               </div>
               <div className="flex-1">
-                <h3 className="text-[15px] font-bold text-gray-900">Alex Johnson</h3>
-                <p className="text-[12px] text-gray-500">Cricket Coach</p>
+                <h3 className="text-[16px] font-bold text-gray-900 mb-0.5">Alex Johnson</h3>
+                <p className="text-[13px] text-gray-500">Cricket Coach</p>
               </div>
             </div>
             
-            <div className="flex items-center gap-1 mb-2">
-              <span className="text-amber-400 text-[14px]">★★★★★</span>
+            <div className="flex items-center gap-1 mb-3">
+              <span className="text-amber-400 text-[15px]">★★★★★</span>
               <span className="text-[12px] text-gray-500 ml-1">New coach</span>
             </div>
             
-            <div className="flex flex-col gap-1.5 mb-3">
-              <div className="flex items-center gap-1.5 text-[12px] text-gray-600">
-                <span>📍</span>
+            <div className="flex flex-col gap-2 mb-4">
+              <div className="flex items-center gap-2 text-[13px] text-gray-600">
+                <MapPin size={14} className="text-gray-400" />
                 <span>London</span>
               </div>
-              <div className="flex items-center gap-1.5 text-[12px] text-gray-600">
-                <span>📅</span>
+              <div className="flex items-center gap-2 text-[13px] text-gray-600">
+                <Calendar size={14} className="text-gray-400" />
                 <span>{activeDays.length > 0 ? activeDays.join(', ') : 'No availability set yet'}</span>
               </div>
             </div>
             
-            <div className="text-[13px] font-bold text-gray-900 mb-3">
+            <div className="text-[15px] font-bold text-gray-900 mb-4">
               from {lowestPrice ? `£${lowestPrice}` : '£--'} / session
             </div>
             
-            <div className="flex items-center gap-2 mb-3">
-              <div className="px-2 py-1 bg-[#E0F6F8] rounded text-[10px] font-bold text-[#006677]">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="px-2.5 py-1 bg-[#E0F6F8] rounded-md text-[11px] font-bold text-[#006677]">
                 ✓ DBS checked
               </div>
             </div>
             
-            <button className="w-full bg-[#0077CC] text-white rounded-lg py-2.5 text-[13px] font-bold">
+            <button className="w-full bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-full py-3 text-[14px] font-bold transition-colors">
               Book a session
             </button>
           </div>
