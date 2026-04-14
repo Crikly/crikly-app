@@ -209,12 +209,6 @@ export function QualificationsStep() {
             ← Back
           </button>
           <button
-            onClick={handleSkip}
-            className="text-[13px] text-[#94A3B8] hover:text-gray-900 transition-colors font-normal"
-          >
-            Skip for now
-          </button>
-          <button
             onClick={handleSave}
             disabled={saving}
             className="px-5.5 py-2.5 bg-[#0077CC] hover:bg-[#0066AA] disabled:opacity-60 text-white rounded-full text-[13px] font-medium transition-colors"
