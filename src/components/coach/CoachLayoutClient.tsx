@@ -96,7 +96,9 @@ export function CoachLayoutClient({
           <div className="flex items-center gap-3 p-2 -mx-2 rounded-xl hover:bg-gray-50 cursor-pointer transition-colors border border-transparent hover:border-gray-100">
             <div className="relative">
               {initialAvatarUrl ? (
-                <img src={initialAvatarUrl} alt={initialCoachName} className="w-10 h-10 rounded-full object-cover shadow-sm" />
+                <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 shadow-sm">
+                  <img src={initialAvatarUrl} alt={initialCoachName} className="w-full h-full object-cover" />
+                </div>
               ) : (
                 <div className="w-10 h-10 bg-[#E6F1FB] rounded-full flex items-center justify-center shrink-0">
                   <span className="text-[#0C447C] text-[14px] font-bold">{initials}</span>

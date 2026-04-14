@@ -74,6 +74,9 @@ export default async function CoachDashboardPage() {
 
     if (!userProfile) return <CoachHomeClient data={dashboardData} />
 
+    // 1. Coach name - set immediately after userProfile fetch
+    dashboardData.coachName = userProfile.full_name || ''
+
     // Get coach profile
     const { data: coachProfile } = await supabase
       .from('coach_profiles')
@@ -82,9 +85,6 @@ export default async function CoachDashboardPage() {
       .single()
 
     if (!coachProfile) return <CoachHomeClient data={dashboardData} />
-
-    // 1. Coach name
-    dashboardData.coachName = userProfile.full_name
 
     // 2. Profile completion calculation
     const completionChecks = await Promise.all([
