@@ -29,7 +29,7 @@ export function GetPaidStep() {
             <h1 className="text-[32px] font-bold text-gray-900 leading-tight mb-2">Get paid</h1>
             <p className="text-[16px] text-gray-500 font-medium mb-6">Set up payments to start accepting bookings</p>
             <div className="p-3 bg-blue-50 rounded-lg border-l-4 border-[#0077CC]">
-              <p className="text-[14px] text-gray-600 font-medium leading-relaxed">You can skip this for now and complete it later from your dashboard. Payouts must be set up before you can receive paid bookings.</p>
+              <p className="text-[14px] text-gray-600 font-medium leading-relaxed">Payouts must be set up before you can receive paid bookings.</p>
             </div>
           </div>
 
@@ -99,11 +99,7 @@ export function GetPaidStep() {
               </button>
               <p className="text-[10px] text-gray-400 mt-0.5">You can complete this from your dashboard</p>
             </div>
-            <button 
-              className="bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-full px-7 py-2.5 text-[13px] font-medium transition-colors"
-            >
-              Connect with Stripe →
-            </button>
+            <div className="w-[140px]"></div>
           </div>
         </div>
       </div>
