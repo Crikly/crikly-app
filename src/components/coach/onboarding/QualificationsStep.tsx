@@ -2,7 +2,7 @@
 
 import React, { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { Upload, FileText, X } from 'lucide-react'
+import { Upload, FileText, X, Award, Shield, Heart, Users } from 'lucide-react'
 import { PublicProfilePreview } from './PublicProfilePreview'
 
 interface Qualification {
@@ -50,10 +50,10 @@ export function QualificationsStep() {
   const hasDBS = qualifications.some(q => q.category === 'dbs')
 
   const categories = [
-    { id: 'coaching' as CategoryType, icon: '🏅', name: 'Coaching qualification', desc: 'ECB, UEFA, LTA etc.' },
-    { id: 'dbs' as CategoryType, icon: '🛡', name: 'DBS check', desc: 'Background check' },
-    { id: 'firstaid' as CategoryType, icon: '❤️', name: 'First aid', desc: 'Valid certificate' },
-    { id: 'safeguarding' as CategoryType, icon: '👶', name: 'Safeguarding', desc: 'Child protection' }
+    { id: 'coaching' as CategoryType, Icon: Award, name: 'Coaching qualification', desc: 'ECB, UEFA, LTA etc.' },
+    { id: 'dbs' as CategoryType, Icon: Shield, name: 'DBS check', desc: 'Background check' },
+    { id: 'firstaid' as CategoryType, Icon: Heart, name: 'First aid', desc: 'Valid certificate' },
+    { id: 'safeguarding' as CategoryType, Icon: Users, name: 'Safeguarding', desc: 'Child protection' }
   ]
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -130,8 +130,8 @@ export function QualificationsStep() {
                     : '0 1px 3px rgba(0,0,0,0.06)'
                 }}
               >
-                <div className="w-8 h-8 bg-[#F1F5F9] rounded-lg flex items-center justify-center shrink-0 text-[16px]">
-                  {cat.icon}
+                <div className="w-8 h-8 bg-[#F1F5F9] rounded-lg flex items-center justify-center shrink-0">
+                  <cat.Icon size={16} className="text-[#64748B]" />
                 </div>
                 <div className="flex-1 text-left">
                   <p className="text-[13px] font-medium text-[#0F172A]">{cat.name}</p>
