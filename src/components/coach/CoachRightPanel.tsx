@@ -43,7 +43,7 @@ export function CoachRightPanel({ dashboardData }: CoachRightPanelProps = {}) {
   const [selectedDate, setSelectedDate] = useState<number | null>(8) // Default to today (8th)
 
   return (
-    <aside className="hidden xl:flex w-96 shrink-0 flex-col gap-10 bg-white p-8 sticky top-0 h-screen overflow-y-auto border-l border-gray-100">
+    <aside className="hidden xl:flex w-96 shrink-0 flex-col gap-6 bg-white p-8 sticky top-0 h-screen overflow-y-auto border-l border-gray-100">
       {isScheduleRoute ? (
         <>
           <MiniCalendar selectedDate={selectedDate} onDateSelect={setSelectedDate} />
