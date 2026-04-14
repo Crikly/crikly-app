@@ -1,8 +1,8 @@
 # Crikly — Comprehensive Build Plan
 
-**Version:** 2.2
+**Version:** 2.3
 **Last Updated:** April 2026
-**Changed:** Step 3C coach frontend complete (CF-SHELL through CF-14 + Fix-08, Fix-09, Fix-10a). Added 3D screen review phase (CF-D01 to CF-D10).
+**Changed:** Added Fix-10b through Fix-10j (onboarding polish). Added shared OnboardingPreviewPanel component. Added Step 3D data wiring (CD tasks) and Step 3F go-live gaps (CG tasks). CF-D10 marked in progress.
 **This is the single source of truth for every task in the project.**
 
 ---
@@ -241,7 +241,7 @@ schedule (command centre + 4 event popovers), get paid standalone.
 | C-06 | Create CRUD /api/coaches/sports | @BackendDeveloper | 🟡 | feature/coach | ✅ |
 | C-06b | CRUD /api/coaches/session-types — standalone routes | @BackendDeveloper | 🟢 | feature/coach | ✅ |
 | C-06c | CRUD /api/coaches/venues | @BackendDeveloper | 🟢 | feature/coach | ✅ |
-| C-06d | CRUD /api/coaches/programmes | @BackendDeveloper | 🟡 | feature/coach | ⚪ |
+| C-06d | CRUD /api/coaches/programmes | @BackendDeveloper | 🟡 | feature/coach | ✅ |
 | C-07 | Create CRUD /api/coaches/qualifications | @BackendDeveloper | 🟢 | feature/coach | ✅ |
 | C-08 | Create CRUD /api/coaches/photos | @BackendDeveloper | 🟢 | feature/coach | ✅ |
 | C-09 | Create CRUD /api/coaches/availability — template blocks | @BackendDeveloper | 🟡 | feature/coach | ✅ |
@@ -274,6 +274,14 @@ C-05, C-06, C-07, C-08 are safe to proceed without M-015.
 | Fix-08 | Remove dashboard max-width cap | @FrontendDeveloper | 🟢 | feature/coach-frontend | ✅ |
 | Fix-09 | Wider columns, 5-option share modal, removed back buttons, right panel on all screens | @FrontendDeveloper | 🟢 | feature/coach-frontend | ✅ |
 | Fix-10a | Right panel visibility rules (hidden on Schedule) + sticky save bar full-bleed right | @FrontendDeveloper | 🟢 | develop | ✅ |
+| Fix-10b | Align onboarding availability screen with dashboard availability UI | @FrontendDeveloper | 🟢 | develop | ✅ |
+| Fix-10c | Fix sidebar, card styling and pence display bug on onboarding availability | @FrontendDeveloper | 🟢 | develop | ✅ |
+| Fix-10d | Extract shared OnboardingPreviewPanel component — used across all onboarding screens | @FrontendDeveloper | 🟢 | develop | ✅ |
+| Fix-10e | Refine booking policy screen — copy, microcopy, layout, right panel | @FrontendDeveloper | 🟢 | develop | ✅ |
+| Fix-10g | Move live policy summary to right panel — reactive booking policy simulator | @FrontendDeveloper | 🟢 | develop | ✅ |
+| Fix-10h | Refine get-paid onboarding screen — copy, cards, footer, right panel | @FrontendDeveloper | 🟢 | develop | ✅ |
+| Fix-10i | Fix get-paid duplicate CTA and banner copy | @FrontendDeveloper | 🟢 | develop | ✅ |
+| Fix-10j | Fix get-paid footer balance — three-slot pattern | @FrontendDeveloper | 🟢 | develop | ✅ |
 
 ### 3D — Screen Review & Polish (CF-D tasks)
 
@@ -295,9 +303,44 @@ other screens within the same task.
 | CF-D07 | Profile Hub screen adjustments | @FrontendDeveloper | 🟢 | develop | ⚪ |
 | CF-D08 | Earnings screen adjustments | @FrontendDeveloper | 🟢 | develop | ⚪ |
 | CF-D09 | Get Paid screen adjustments | @FrontendDeveloper | � | develop | ⚪ |
-| CF-D10 | Onboarding screens adjustments — all 6 steps + You're Live | @FrontendDeveloper | � | develop | ⚪ |
+| CF-D10 | Onboarding screens adjustments — all 6 steps + You're Live | @FrontendDeveloper | 🟢 | develop | 🟡 |
 
-### 3E — Coach Tests
+### 3E — Data Wiring (CD tasks)
+
+All screens currently show hardcoded stub data.
+These tasks connect each screen to real Supabase data via existing API routes.
+Branch: feature/coach-data (open from develop before starting CD-01)
+
+| ID | Task | API Route | Priority | Status |
+|---|---|---|---|---|
+| CD-01 | Wire sidebar — real coach name, avatar, notification count | GET /api/coaches/profile | 🔴 High | ⚪ |
+| CD-02 | Wire dashboard — profile completion %, next session, stats | GET /api/coaches/profile + bookings | 🔴 High | ⚪ |
+| CD-03 | Onboarding — verify each step saves correctly to Supabase | All onboarding API routes | 🔴 High | ⚪ |
+| CD-04 | Availability management — real schedule blocks | GET/POST/DELETE /api/coaches/availability | 🟡 Medium | ⚪ |
+| CD-05 | Availability management — real blocked dates | GET/POST/DELETE /api/coaches/blocked-dates | 🟡 Medium | ⚪ |
+| CD-06 | Bookings list — real data | GET /api/bookings (needs B-12 first) | 🟡 Medium | ⚪ |
+| CD-07 | Booking detail — real data | GET /api/bookings/[id] (needs B-13 first) | 🟡 Medium | ⚪ |
+| CD-08 | Programmes list — real data | GET /api/coaches/programmes | 🟡 Medium | ⚪ |
+| CD-09 | Earnings summary — real data | GET /api/coaches/earnings (needs building) | 🟡 Medium | ⚪ |
+| CD-10 | Profile edit — load and save real data | GET/POST /api/coaches/profile | 🟡 Medium | ⚪ |
+| CD-11 | Get Paid — real Stripe connection status + payout data | GET /api/coaches/stripe-status | 🟡 Medium | ⚪ |
+| CD-12 | Schedule grid — real bookings + availability | GET /api/coaches/bookings + availability | 🔵 Low | ⚪ |
+
+### 3F — Coach Go-Live Gaps (CG tasks)
+
+Critical tasks required before any coach can go live on the platform.
+
+| ID | Task | Risk | Depends On | Status |
+|---|---|---|---|---|
+| CG-01 | Coach search API — coach appears in search results (P-09, P-10, P-11) | 🔴 High | CD-03 | ⚪ |
+| CG-02 | Coach public profile page — what parents see | 🔴 High | CD-03 | ⚪ |
+| CG-03 | Stripe Connect onboarding — real redirect (C-11, C-19) | 🔴 High | CD-03 | ⚪ |
+| CG-04 | Email notifications — booking received, confirmed (B-17) | 🟡 Medium | CG-01 | ⚪ |
+| CG-05 | Push notifications via OneSignal (B-18) | 🟡 Medium | CG-01 | ⚪ |
+| CG-06 | Integration tests — all coach API routes (C-23) | 🟡 Medium | CD-03 | ⚪ |
+| CG-07 | E2E test — full coach onboarding to profile live (C-24) | 🟡 Medium | CG-01, CG-02 | ⚪ |
+
+### 3G — Coach Tests
 
 | ID | Task | Agent | Risk | Branch | Status |
 |---|---|---|---|---|---|
@@ -583,18 +626,18 @@ Three-sided marketplace — coaches, parents, and venues.
 | Step | Product Phase | Task Count | Complete | Remaining |
 |---|---|---|---|---|
 | Step 0 — Foundation | All | 22 | 22 ✅ | 0 |
-| Step 1A — DevOps | Phase 1 | 8 | 8 | 0 |
-| Step 1B — Migrations | Phase 1 | 14 | 13 | 1 |
-| Step 1C — Design Foundation | Phase 1 | 6 | 6 | 0 |
-| Step 2 — Auth | Phase 1 | 15 | 15 | 0 |
-| Step 3 — Coach | Phase 1 | 42 | 4 | 38 |
+| Step 1A — DevOps | Phase 1 | 8 | 8 ✅ | 0 |
+| Step 1B — Migrations | Phase 1 | 17 | 17 ✅ | 0 |
+| Step 1C — Design Foundation | Phase 1 | 6 | 6 ✅ | 0 |
+| Step 2 — Auth | Phase 1 | 15 | 15 ✅ | 0 |
+| Step 3 — Coach | Phase 1 | 58 | 35 ✅ | 23 |
 | Step 4 — Parent & Player | Phase 1 | 21 | 0 | 21 |
 | Step 5 — Booking & Payments | Phase 1 | 42 | 0 | 42 |
 | Step 6 — Admin | Phase 1 | 24 | 0 | 24 |
 | Step 7 — Pre-Launch | Phase 1 | 13 | 0 | 13 |
 | Step 8 — Mobile App | **Product Phase 2** | 20 | 0 | 20 |
 | Step 9 — Venues | **Product Phase 3** | 11 | 0 | 11 |
-| **Total** | | **220** | **64** | **156** |
+| **Total** | | **257** | **103** | **154** |
 
 ---
 
