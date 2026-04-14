@@ -66,8 +66,8 @@ export function CoachLayoutClient({
           .eq('is_read', false)
 
         setNotificationCount(count || 0)
-      } catch (error) {
-        console.error('Error fetching notification count:', error)
+      } catch {
+        // Fail silently
       }
     }
 
@@ -131,7 +131,7 @@ export function CoachLayoutClient({
           <div className="flex flex-col gap-1.5">
             <SidebarItem icon={<Home size={20} />} label="Home" active={isActive('/coach/dashboard')} onClick={() => nav('/coach/dashboard')} />
             <SidebarItem icon={<Calendar size={20} />} label="Schedule" active={isActive('/coach/schedule')} onClick={() => nav('/coach/schedule')} />
-            <SidebarItem icon={<Inbox size={20} />} label="Bookings" badge={2} active={isActive('/coach/bookings')} onClick={() => nav('/coach/bookings')} />
+            <SidebarItem icon={<Inbox size={20} />} label="Bookings" active={isActive('/coach/bookings')} onClick={() => nav('/coach/bookings')} />
             <SidebarItem icon={<Users size={20} />} label="Programmes" active={isActive('/coach/programmes')} onClick={() => nav('/coach/programmes')} />
           </div>
           <div className="flex flex-col gap-1.5">
@@ -163,7 +163,7 @@ export function CoachLayoutClient({
       <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 pb-6 pt-3 px-6 flex justify-between items-center z-50 shadow-[0_-10px_40px_rgba(0,0,0,0.04)]">
         <MobileNavItem icon={<Home size={24} />} label="Home" active={isActive('/coach/dashboard')} onClick={() => nav('/coach/dashboard')} />
         <MobileNavItem icon={<Calendar size={24} />} label="Schedule" active={isActive('/coach/schedule')} onClick={() => nav('/coach/schedule')} />
-        <MobileNavItem icon={<Inbox size={24} />} label="Bookings" badge={2} active={isActive('/coach/bookings')} onClick={() => nav('/coach/bookings')} />
+        <MobileNavItem icon={<Inbox size={24} />} label="Bookings" active={isActive('/coach/bookings')} onClick={() => nav('/coach/bookings')} />
         <MobileNavItem icon={<Users size={24} />} label="Programmes" active={isActive('/coach/programmes')} onClick={() => nav('/coach/programmes')} />
         <MobileNavItem icon={<MoreHorizontal size={24} />} label="More" active={false} onClick={() => {}} />
       </div>
