@@ -1,9 +1,33 @@
 'use client'
 
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Camera, MapPin, Calendar, ChevronDown, Check } from 'lucide-react'
 import { OnboardingPreviewPanel } from '../OnboardingPreviewPanel'
+
+// CD-10: API response type
+interface CoachProfileResponse {
+  id: string
+  user_profile_id: string
+  full_name: string
+  avatar_url: string | null
+  location_city: string | null
+  location_postcode: string | null
+  bio: string | null
+  years_experience: number | null
+  dbs_status: 'none' | 'pending' | 'verified' | 'expired'
+  is_profile_live: boolean
+  stripe_onboarding_complete: boolean
+  cancellation_window_hours: number
+  min_advance_hours: number
+  max_advance_days: number
+  rating_avg: number | null
+  rating_count: number
+  sessions_completed: number
+  gender: string | null
+  created_at: string
+  updated_at: string
+}
 
 export function ProfileStep() {
   const router = useRouter()
@@ -17,11 +41,69 @@ export function ProfileStep() {
   const [gender, setGender] = useState('')
   const [selectedLanguages, setSelectedLanguages] = useState<string[]>(['English'])
   const [saving, setSaving] = useState(false)
+  
+  // CD-10: Loading and error states
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [saveSuccess, setSaveSuccess] = useState(false)
 
   const languages = [
     'English', 'Sinhala', 'Tamil', 'Urdu', 'Hindi',
     'Punjabi', 'Bengali', 'Arabic', 'French', 'Spanish'
   ]
+
+  // CD-10: Fetch profile data on mount
+  useEffect(() => {
+    const fetchProfile = async () => {
+      try {
+        setLoading(true)
+        setError(null)
+        
+        const response = await fetch('/api/coaches/profile')
+        if (!response.ok) {
+          throw new Error('Failed to fetch profile')
+        }
+        
+        const data: CoachProfileResponse = await response.json()
+        
+        // Populate form fields with real data
+        setDisplayName(data.full_name || '')
+        setBio(data.bio || '')
+        setBaseLocation(data.location_city || '')
+        
+        // Map years_experience to experience range
+        if (data.years_experience !== null) {
+          if (data.years_experience <= 2) setSelectedExperience('0–2 yrs')
+          else if (data.years_experience <= 5) setSelectedExperience('3–5 yrs')
+          else if (data.years_experience <= 10) setSelectedExperience('6–10 yrs')
+          else setSelectedExperience('10+ yrs')
+        }
+        
+        // Map gender
+        if (data.gender) {
+          const genderMap: Record<string, string> = {
+            'male': 'Male',
+            'female': 'Female',
+            'other': 'Other',
+            'prefer_not_to_say': 'Prefer not to say'
+          }
+          setGender(genderMap[data.gender] || '')
+        }
+        
+        // Set avatar preview if exists
+        if (data.avatar_url) {
+          setPhotoPreview(data.avatar_url)
+        }
+      } catch (err) {
+        console.error('Failed to fetch profile:', err)
+        setError('Failed to load profile. Please try again.')
+      } finally {
+        setLoading(false)
+      }
+    }
+    
+    fetchProfile()
+  }, [])
 
   const toggleLanguage = (lang: string) => {
     if (selectedLanguages.includes(lang)) {
@@ -47,27 +129,41 @@ export function ProfileStep() {
 
   const handleSave = async () => {
     setSaving(true)
+    setSaveSuccess(false)
+    setError(null)
+    
     try {
-      // CD-03: verified - ProfileStep saves to user_profiles + coach_profiles
-      // Maps to: full_name (user_profiles), bio, years_experience, gender (coach_profiles)
-      // location_city (user_profiles) extracted from baseLocation
+      // CD-10: Map form values to API format
       const yearsExp = selectedExperience.includes('0–2') ? 1 : 
                        selectedExperience.includes('3–5') ? 4 :
                        selectedExperience.includes('6–10') ? 8 : 10
       
-      await fetch('/api/coaches/profile', {
+      const response = await fetch('/api/coaches/profile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          full_name: displayName, // CD-03: user_profiles.full_name
-          bio, // CD-03: coach_profiles.bio
-          location_city: baseLocation, // CD-03: user_profiles.location_city
-          years_experience: yearsExp, // CD-03: coach_profiles.years_experience (integer)
-          gender: gender.toLowerCase().replace(' ', '_'), // CD-03: coach_profiles.gender
-          // Note: travel_radius and languages not in current schema - skipped
+          full_name: displayName,
+          bio,
+          location_city: baseLocation,
+          years_experience: yearsExp,
+          gender: gender.toLowerCase().replace(' ', '_'),
         })
       })
-      router.push('/coach/onboarding/sport')
+      
+      if (!response.ok) {
+        throw new Error('Failed to save profile')
+      }
+      
+      // CD-10: Show success state
+      setSaveSuccess(true)
+      
+      // Navigate after short delay to show success message
+      setTimeout(() => {
+        router.push('/coach/onboarding/sport')
+      }, 1000)
+    } catch (err) {
+      console.error('Failed to save profile:', err)
+      setError('Failed to save profile. Please try again.')
     } finally {
       setSaving(false)
     }
@@ -79,6 +175,30 @@ export function ProfileStep() {
     <div className="min-h-full bg-transparent font-sans text-gray-900 flex">
       <div className="flex-1 flex justify-center">
         <div className="w-full max-w-3xl px-8 pt-10">
+        
+        {/* CD-10: Loading state */}
+        {loading ? (
+          <div className="py-16 flex flex-col items-center justify-center">
+            <div className="w-8 h-8 border-3 border-gray-200 border-t-[#0077CC] rounded-full animate-spin mb-3" />
+            <p className="text-[14px] text-gray-500">Loading profile...</p>
+          </div>
+        ) : error ? (
+          // CD-10: Error state
+          <div className="py-16 flex flex-col items-center justify-center text-center px-4">
+            <div className="w-16 h-16 bg-red-50 text-red-600 rounded-full flex items-center justify-center mb-4">
+              <span className="text-2xl">⚠</span>
+            </div>
+            <h3 className="text-[18px] font-bold text-gray-900 mb-2">Failed to load profile</h3>
+            <p className="text-[14px] text-gray-500 mb-6">{error}</p>
+            <button 
+              onClick={() => window.location.reload()}
+              className="bg-[#0077CC] hover:bg-[#0066AA] text-white px-6 py-3 rounded-xl text-[15px] font-bold transition-colors"
+            >
+              Try Again
+            </button>
+          </div>
+        ) : (
+          <>
 
         {/* TOP */}
         <div className="mb-10">
@@ -275,16 +395,33 @@ export function ProfileStep() {
 
         </div>
         
-        {/* CF-D12 FIX 0: Save bar - SAVE BAR PATTERN (step 1: right-aligned pill only) */}
+        {/* CD-10: Save bar with success/error states */}
         <div className="flex justify-end items-center py-3 mt-6">
+          {/* CD-10: Success message */}
+          {saveSuccess && (
+            <div className="flex items-center gap-2 mr-4 text-green-700 text-[13px] font-medium">
+              <Check size={16} />
+              Profile saved successfully!
+            </div>
+          )}
+          
+          {/* CD-10: Error message */}
+          {error && !loading && (
+            <div className="flex items-center gap-2 mr-4 text-red-600 text-[13px] font-medium">
+              ⚠ {error}
+            </div>
+          )}
+          
           <button
             onClick={handleSave}
-            disabled={saving}
+            disabled={saving || loading}
             className="px-7 py-2.5 bg-[#0077CC] hover:bg-[#0066AA] disabled:opacity-60 text-white rounded-full text-[13px] font-medium transition-colors"
           >
             {saving ? 'Saving...' : 'Save & continue →'}
           </button>
         </div>
+        </>
+        )}
         </div>
       </div>
 
