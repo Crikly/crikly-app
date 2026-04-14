@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useMemo, useRef } from 'react'
+import React, { useState, useMemo, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Pencil, X, Plus, ChevronDown, AlertTriangle } from 'lucide-react'
 import { OnboardingPreviewPanel } from '../OnboardingPreviewPanel'
@@ -17,11 +17,26 @@ for (let h = 6; h <= 22; h++) {
 
 interface ScheduleBlock { id: number; day: string; sport: string; time: string; location: string; price: string }
 
+interface AvailabilityResponse {
+  id: string
+  sport_id: string | null
+  sport_name: string | null
+  day_of_week: number
+  start_time: string
+  end_time: string
+  is_active: boolean
+  price_override_pence: number | null
+  session_type_id: string | null
+  session_type_name: string | null
+  created_at: string
+}
+
 export function AvailabilityStep() {
   const router = useRouter()
   const addFormRef = useRef<HTMLDivElement>(null)
-  // Fix-16b: Start with empty blocks - real data will come from API fetch (Fix-16c)
-  const [scheduleBlocks] = useState<ScheduleBlock[]>([])
+  // Fix-16c: Fetch saved availability on mount
+  const [scheduleBlocks, setScheduleBlocks] = useState<ScheduleBlock[]>([])
+  const [loading, setLoading] = useState(true)
   const availableSports = useMemo(() => [...new Set(scheduleBlocks.map(b => b.sport))], [scheduleBlocks])
   const [showAddForm, setShowAddForm] = useState(false)
   const [preselectedDay, setPreselectedDay] = useState<string | null>(null)
@@ -33,6 +48,33 @@ export function AvailabilityStep() {
   const [formVenue, setFormVenue] = useState('')
   const [formPrice, setFormPrice] = useState('')
   const toggleDay = (day: string) => setFormDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day])
+  
+  // Fix-16c: Fetch saved availability on mount
+  useEffect(() => {
+    const fetchAvailability = async () => {
+      try {
+        const response = await fetch('/api/coaches/availability')
+        if (response.ok) {
+          const data = await response.json()
+          const savedBlocks = data.availability.map((block: AvailabilityResponse, index: number) => ({
+            id: index + 1,
+            day: DAY_ABBR[block.day_of_week],
+            sport: block.sport_name || 'Sport',
+            time: `${block.start_time} – ${block.end_time}`,
+            location: 'Venue',
+            price: block.price_override_pence ? `£${(block.price_override_pence / 100).toFixed(0)}/${block.session_type_name || '60min'}` : '£--/60min'
+          }))
+          setScheduleBlocks(savedBlocks)
+        }
+      } catch (error) {
+        console.error('[AvailabilityStep] Failed to fetch availability:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchAvailability()
+  }, [])
   
   const timeToMinutes = (time: string) => {
     const [h, m] = time.split(':').map(Number)
@@ -97,6 +139,13 @@ export function AvailabilityStep() {
           </div>
 
           <div className="flex flex-col pb-20">
+            {loading ? (
+              <div className="bg-white rounded-xl p-5" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+                <div className="flex items-center justify-center py-12">
+                  <div className="text-[14px] text-gray-400">Loading your availability...</div>
+                </div>
+              </div>
+            ) : (
             <div className="flex flex-col gap-6 mb-6">
               {DAY_ABBR.map((dayAbbr) => {
                 const dayFull = DAY_FULL[dayAbbr]
@@ -207,6 +256,7 @@ export function AvailabilityStep() {
                 )
               })}
             </div>
+            )}
 
             {showAddForm ? (
               <div ref={addFormRef} className="border border-gray-200 rounded-xl p-5 bg-white shadow-sm">

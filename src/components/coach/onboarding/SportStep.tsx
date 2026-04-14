@@ -1,14 +1,30 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Target, Trophy, Circle, Waves, Medal, Feather, Activity, Flag, Dumbbell, Check } from 'lucide-react'
 import { OnboardingPreviewPanel } from '../OnboardingPreviewPanel'
+
+interface CoachSportResponse {
+  id: string
+  sport_id: string
+  sport_name: string
+  sport_slug: string
+  session_types: string[]
+  skill_levels: string[]
+  price_individual_pence: number | null
+  price_group_pence: number | null
+  max_group_size: number | null
+  session_duration_minutes: number
+  currency: string
+  is_active: boolean
+}
 
 export function SportStep() {
   const router = useRouter()
   const [selectedSports, setSelectedSports] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
+  const [loading, setLoading] = useState(true)
 
   const sports = [
     { name: 'Cricket', Icon: Target },
@@ -24,6 +40,26 @@ export function SportStep() {
     { name: 'Golf', Icon: Flag },
     { name: 'Boxing', Icon: Dumbbell },
   ]
+
+  // Fix-16c: Fetch saved sports on mount
+  useEffect(() => {
+    const fetchSavedSports = async () => {
+      try {
+        const response = await fetch('/api/coaches/sports')
+        if (response.ok) {
+          const data = await response.json()
+          const savedSportNames = data.sports.map((s: CoachSportResponse) => s.sport_name)
+          setSelectedSports(savedSportNames)
+        }
+      } catch (error) {
+        console.error('[SportStep] Failed to fetch saved sports:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchSavedSports()
+  }, [])
 
   const toggleSport = (sport: string) => {
     if (selectedSports.includes(sport)) {
@@ -68,6 +104,13 @@ export function SportStep() {
 
         {/* CONTENT */}
         <div className="flex flex-col gap-3">
+          {loading ? (
+            <div className="bg-white rounded-xl p-5" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+              <div className="flex items-center justify-center py-12">
+                <div className="text-[14px] text-gray-400">Loading your sports...</div>
+              </div>
+            </div>
+          ) : (
           <div className="bg-white rounded-xl p-5" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               {sports.map((sport) => {
@@ -106,6 +149,7 @@ export function SportStep() {
               </p>
             </div>
           </div>
+          )}
         </div>
 
         {/* CF-D12 CHANGE 2B: Save bar - SAVE BAR PATTERN (step 2+: back left, save right) */}

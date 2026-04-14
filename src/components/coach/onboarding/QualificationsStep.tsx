@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Upload, FileText, X } from 'lucide-react'
 import { OnboardingPreviewPanel } from '../OnboardingPreviewPanel'
@@ -14,6 +14,19 @@ interface Qualification {
   status: 'uploaded' | 'pending'
 }
 
+interface QualificationResponse {
+  id: string
+  qualification_type_id: string | null
+  type_name: string | null
+  issuing_body: string | null
+  custom_name: string | null
+  issued_date: string | null
+  expiry_date: string | null
+  notes: string | null
+  is_custom: boolean
+  created_at: string
+}
+
 type CategoryType = 'coaching' | 'dbs' | 'firstaid' | 'safeguarding' | 'other' | ''
 
 export function QualificationsStep() {
@@ -24,12 +37,40 @@ export function QualificationsStep() {
   const [year, setYear] = useState('')
   const [fileName, setFileName] = useState<string | null>(null)
   
-  // Fix-16b: Start with empty qualifications - real data will come from API fetch (Fix-16c)
-  const [qualifications] = useState<Qualification[]>([])
+  // Fix-16c: Fetch saved qualifications on mount
+  const [qualifications, setQualifications] = useState<Qualification[]>([])
+  const [loading, setLoading] = useState(true)
   
   const [saving, setSaving] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   
+  // Fix-16c: Fetch saved qualifications on mount
+  useEffect(() => {
+    const fetchQualifications = async () => {
+      try {
+        const response = await fetch('/api/coaches/qualifications')
+        if (response.ok) {
+          const data = await response.json()
+          const savedQuals = data.qualifications.map((q: QualificationResponse) => ({
+            id: q.id,
+            category: q.is_custom ? 'other' : 'coaching',
+            name: q.custom_name || q.type_name || '',
+            provider: q.issuing_body || '',
+            year: q.issued_date ? new Date(q.issued_date).getFullYear().toString() : '',
+            status: 'uploaded' as const
+          }))
+          setQualifications(savedQuals)
+        }
+      } catch (error) {
+        console.error('[QualificationsStep] Failed to fetch qualifications:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchQualifications()
+  }, [])
+
   const hasDBS = qualifications.some(q => q.category === 'dbs')
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -167,6 +208,15 @@ export function QualificationsStep() {
           </button>
         </div>
 
+          {/* Fix-16c: Loading state */}
+          {loading ? (
+            <div className="bg-white rounded-xl p-5" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+              <div className="flex items-center justify-center py-8">
+                <div className="text-[14px] text-gray-400">Loading your qualifications...</div>
+              </div>
+            </div>
+          ) : (
+          <>
           {/* CF-D13 CHANGE 4: Qualification cards (v1.1: shadow, no border) */}
           {qualifications.length > 0 && (
             <div className="flex flex-col gap-4">
@@ -201,6 +251,8 @@ export function QualificationsStep() {
               <p className="text-[13px] font-medium text-[#0F172A] mb-1">No qualifications added yet</p>
               <p className="text-[11px] text-[#94A3B8]">You can add credentials later from your profile</p>
             </div>
+          )}
+          </>
           )}
 
         {/* CF-D13 CHANGE 7: Save bar (v1.1: per onboarding patterns) */}
