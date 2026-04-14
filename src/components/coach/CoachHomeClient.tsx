@@ -14,30 +14,64 @@ const group1Url = "https://images.unsplash.com/photo-1761039807856-9f412d0e0a3d?
 const group2Url = "https://images.unsplash.com/photo-1609422644211-a85c36ee36a7?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxraWRzJTIwcGxheWluZyUyMHNwb3J0c3xlbnwxfHx8fDE3NzU0ODc5Nzl8MA&ixlib=rb-4.1.0&q=80&w=1080"
 const fallbackAvatarUrl = "https://images.unsplash.com/photo-1609422644211-a85c36ee36a7?w=100&q=80"
 
-export function CoachHome() {
+interface DashboardData {
+  coachName: string
+  profileCompletion: {
+    percentage: number
+    completedSteps: boolean[]
+  }
+  pendingApprovalsCount: number
+  upNextSession: {
+    title: string
+    startTime: string
+    endTime: string
+    venue: string
+    startsInMinutes: number
+  } | null
+  weeklyStats: {
+    sessionsThisWeek: number
+    bookingsPending: number
+    revenueThisWeek: number
+    completionRate: number
+  }
+  todaySessions: Array<{
+    time: string
+    duration: string
+    title: string
+    location: string
+    isActive: boolean
+    type?: string
+  }>
+  rating: {
+    average: number
+    count: number
+  }
+}
+
+interface CoachHomeClientProps {
+  data: DashboardData
+}
+
+export function CoachHomeClient({ data }: CoachHomeClientProps) {
   const router = useRouter()
   const [profileExpanded, setProfileExpanded] = React.useState(false)
   
-  // CF-D11a: Profile completion tracking
+  // CF-D11a: Profile completion tracking - now from real data
   const profileSteps = [
-    { title: 'Basic profile', completed: true, guidance: '' },
-    { title: 'Sport & pricing', completed: false, guidance: '' },
+    { title: 'Basic profile', completed: data.profileCompletion.completedSteps[0] || false, guidance: '' },
+    { title: 'Sport & pricing', completed: data.profileCompletion.completedSteps[3] || false, guidance: '' },
     { title: 'Qualifications', completed: false, guidance: 'Add your coaching badge to boost trust' },
-    { title: 'Availability', completed: false, guidance: 'Set when you coach so parents can book you' },
-    { title: 'Booking policy', completed: false, guidance: 'Tell parents how you handle cancellations' },
-    { title: 'Get paid (optional)', completed: false, guidance: 'Connect Stripe to receive payouts' },
+    { title: 'Availability', completed: data.profileCompletion.completedSteps[4] || false, guidance: 'Set when you coach so parents can book you' },
+    { title: 'Booking policy', completed: data.profileCompletion.completedSteps[5] || false, guidance: 'Tell parents how you handle cancellations' },
+    { title: 'Get paid (optional)', completed: data.profileCompletion.completedSteps[6] || false, guidance: 'Connect Stripe to receive payouts' },
   ]
   const completedCount = profileSteps.filter(s => s.completed).length
   const totalCount = profileSteps.length
-  const completionPercentage = Math.round((completedCount / totalCount) * 100)
+  const completionPercentage = data.profileCompletion.percentage
   const firstIncompleteIndex = profileSteps.findIndex(s => !s.completed)
   
-  // CHANGE 1: Derive session count from Today's lineup data
-  const todaySessions = [
-    { time: '14:00', duration: '90m', title: 'U14 Fast Bowling Masterclass', location: "Lord's Indoor Centre", active: true },
-    { time: '16:00', duration: '60m', title: '1-on-1 with James T.', location: 'The Oval Nets', type: 'Private' },
-    { time: '18:00', duration: '120m', title: "Senior Men's Net Session", location: 'Wandsworth CC' },
-  ]
+  // Today's sessions from real data
+  const todaySessions = data.todaySessions
   const sessionCount = todaySessions.length
   const getSessionSubtitle = () => {
     if (sessionCount === 0) return "No sessions today. A good day to plan ahead."
@@ -67,14 +101,14 @@ export function CoachHome() {
         <div className="hidden md:flex justify-between items-end">
           <div>
             <p className="text-gray-500 text-sm mb-1.5 font-medium">Tuesday, 14 May</p>
-            <h1 className="text-4xl font-bold tracking-tight text-gray-900">Good morning, Ravi 👋</h1>
+            <h1 className="text-4xl font-bold tracking-tight text-gray-900">Good morning, {data.coachName.split(' ')[0] || 'Coach'} 👋</h1>
             <p className="text-sm text-gray-500 mt-1">{getSessionSubtitle()}</p>
           </div>
         </div>
 
         {/* Mobile Greeting - CHANGE 1: emoji + subtitle */}
         <div className="md:hidden">
-          <h1 className="text-[28px] font-bold tracking-tight text-gray-900 leading-tight">Good morning, Ravi 👋</h1>
+          <h1 className="text-[28px] font-bold tracking-tight text-gray-900 leading-tight">Good morning, {data.coachName.split(' ')[0] || 'Coach'} 👋</h1>
           <p className="text-sm text-gray-500 mt-1">{getSessionSubtitle()}</p>
         </div>
 

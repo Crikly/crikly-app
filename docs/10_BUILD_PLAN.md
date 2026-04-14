@@ -316,7 +316,7 @@ Branch: feature/coach-data (open from develop before starting CD-01)
 | ID | Task | API Route | Priority | Status |
 |---|---|---|---|---|
 | CD-01 | Wire sidebar — real coach name, avatar, notification count | GET /api/coaches/profile | 🔴 High | ✅ |
-| CD-02 | Wire dashboard — profile completion %, next session, stats | GET /api/coaches/profile + bookings | 🔴 High | ⚪ |
+| CD-02 | Wire dashboard — profile completion %, next session, stats | GET /api/coaches/profile + bookings | 🔴 High | ✅ |
 | CD-03 | Onboarding — verify each step saves correctly to Supabase | All onboarding API routes | 🔴 High | ⚪ |
 | CD-04 | Availability management — real schedule blocks | GET/POST/DELETE /api/coaches/availability | 🟡 Medium | ⚪ |
 | CD-05 | Availability management — real blocked dates | GET/POST/DELETE /api/coaches/blocked-dates | 🟡 Medium | ⚪ |
