@@ -146,7 +146,7 @@ export function ProfileStep() {
           bio,
           location_city: baseLocation,
           years_experience: yearsExp,
-          gender: gender.toLowerCase().replace(' ', '_'),
+          gender: gender.toLowerCase().replace(/\s+/g, '_'),
         })
       })
       
