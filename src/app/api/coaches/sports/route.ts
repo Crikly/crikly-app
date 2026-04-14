@@ -229,10 +229,10 @@ export async function POST(
     if (!Array.isArray(body.skill_levels) || body.skill_levels.length === 0) {
       validationErrors.push('skill_levels is required and must be a non-empty array')
     } else {
-      const validSkillLevels = ['beginner', 'intermediate', 'advanced']
+      const validSkillLevels = ['beginner', 'intermediate', 'advanced', 'elite']
       const invalidLevels = body.skill_levels.filter((l: unknown) => !validSkillLevels.includes(l as string))
       if (invalidLevels.length > 0) {
-        validationErrors.push('skill_levels must only contain: beginner, intermediate, advanced')
+        validationErrors.push('skill_levels must only contain: beginner, intermediate, advanced, elite')
       }
     }
 
@@ -245,16 +245,15 @@ export async function POST(
       }
     }
 
-    if (body.session_types && (body.session_types.includes('group') || body.session_types.includes('both'))) {
-      if (body.price_group_pence === undefined || body.price_group_pence === null) {
-        validationErrors.push('price_group_pence is required when offering group sessions')
-      } else if (typeof body.price_group_pence !== 'number' || body.price_group_pence < 100) {
+    // Fix-15b: Make group pricing optional - can be set later
+    if (body.price_group_pence !== undefined && body.price_group_pence !== null) {
+      if (typeof body.price_group_pence !== 'number' || body.price_group_pence < 100) {
         validationErrors.push('price_group_pence must be a number >= 100 (£1.00)')
       }
+    }
 
-      if (body.max_group_size === undefined || body.max_group_size === null) {
-        validationErrors.push('max_group_size is required when offering group sessions')
-      } else if (typeof body.max_group_size !== 'number' || body.max_group_size < 2 || body.max_group_size > 50) {
+    if (body.max_group_size !== undefined && body.max_group_size !== null) {
+      if (typeof body.max_group_size !== 'number' || body.max_group_size < 2 || body.max_group_size > 50) {
         validationErrors.push('max_group_size must be a number between 2 and 50')
       }
     }

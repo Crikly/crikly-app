@@ -342,6 +342,8 @@ Branch: feature/coach-data (open from develop before starting CD-01)
 | CD-10b | Profile Hub — wire to real data | GET /api/coaches/profile | 🟡 Medium | ✅ |
 | CD-11 | Get Paid — real Stripe connection status + payout data | GET /api/coaches/profile | 🟡 Medium | ✅ |
 | CD-12 | Schedule grid — real bookings + availability | GET /api/coaches/availability | 🔵 Low | ✅ |
+| Fix-14 | Data wiring fixes: onboarding pre-population, dashboard completion %, right panel real data | Multiple | 🟡 Medium | ✅ |
+| Fix-15b | POST /api/coaches/sports validation fixes: add elite skill level, make group fields optional | POST /api/coaches/sports | 🟢 Low | ✅ |
 
 ### 3F — Coach Go-Live Gaps (CG tasks)
 

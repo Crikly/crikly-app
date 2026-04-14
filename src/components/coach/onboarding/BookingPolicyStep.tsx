@@ -1,5 +1,5 @@
 'use client'
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { CheckCircle2, Circle, AlertTriangle } from 'lucide-react'
 import { OnboardingPreviewPanel } from '../OnboardingPreviewPanel'
@@ -11,6 +11,54 @@ export function BookingPolicyStep() {
   const [latestBooking, setLatestBooking] = useState('8 weeks')
   const [bookingApproval, setBookingApproval] = useState('Instant')
   const [saving, setSaving] = useState(false)
+  const [loading, setLoading] = useState(true)
+  
+  // Fix-14A: Fetch and pre-populate saved booking policy
+  useEffect(() => {
+    const fetchPolicy = async () => {
+      try {
+        setLoading(true)
+        const response = await fetch('/api/coaches/profile')
+        if (!response.ok) throw new Error('Failed to fetch profile')
+        
+        const data = await response.json()
+        
+        // Map cancellation_window_hours to UI string
+        if (data.cancellation_window_hours !== undefined) {
+          const hours = data.cancellation_window_hours
+          if (hours === 0) setCancellationWindow('No cancellations')
+          else if (hours === 24) setCancellationWindow('24 hours')
+          else if (hours === 48) setCancellationWindow('48 hours')
+          else if (hours === 72) setCancellationWindow('72 hours')
+          else if (hours === 168) setCancellationWindow('1 week')
+        }
+        
+        // Map min_advance_hours to UI string
+        if (data.min_advance_hours !== undefined) {
+          const hours = data.min_advance_hours
+          if (hours === 12) setEarliestBooking('12 hours')
+          else if (hours === 24) setEarliestBooking('24 hours')
+          else if (hours === 48) setEarliestBooking('48 hours')
+          else if (hours === 168) setEarliestBooking('1 week')
+        }
+        
+        // Map max_advance_days to UI string
+        if (data.max_advance_days !== undefined) {
+          const days = data.max_advance_days
+          if (days === 14) setLatestBooking('2 weeks')
+          else if (days === 28) setLatestBooking('4 weeks')
+          else if (days === 56) setLatestBooking('8 weeks')
+          else if (days === 84) setLatestBooking('12 weeks')
+        }
+      } catch (err) {
+        console.error('Failed to fetch booking policy:', err)
+      } finally {
+        setLoading(false)
+      }
+    }
+    
+    fetchPolicy()
+  }, [])
 
   const cancellationOptions = ['No cancellations', '24 hours', '48 hours', '72 hours', '1 week']
   const earliestOptions = ['12 hours', '24 hours', '48 hours', '1 week']
@@ -61,6 +109,16 @@ export function BookingPolicyStep() {
       {/* Main content */}
       <div className="flex-1 flex flex-col items-center pt-10 pb-32 min-h-screen bg-white">
         <div className="w-full max-w-[640px] px-6">
+          {/* Fix-14A: Loading state */}
+          {loading && (
+            <div className="py-16 flex flex-col items-center justify-center">
+              <div className="w-8 h-8 border-3 border-gray-200 border-t-[#0077CC] rounded-full animate-spin mb-3" />
+              <p className="text-[14px] text-gray-500">Loading policy...</p>
+            </div>
+          )}
+          
+          {!loading && (
+          <>
           <div className="mb-10">
             {/* Step indicator - Step 5 of 5 */}
             <div className="mb-4">
@@ -180,6 +238,8 @@ export function BookingPolicyStep() {
               {saving ? 'Saving...' : 'Save & continue →'}
             </button>
           </div>
+          </>
+          )}
         </div>
       </div>
 
