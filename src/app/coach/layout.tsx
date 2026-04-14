@@ -16,22 +16,20 @@ export default async function CoachLayout({
     const { data: { user } } = await supabase.auth.getUser()
 
     if (user) {
-      // Fetch coach profile
-      const response = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL}/api/coaches/profile`, {
-        headers: {
-          'Cookie': `sb-access-token=${(await supabase.auth.getSession()).data.session?.access_token}`,
-        },
-      })
+      // Fetch user profile directly from Supabase
+      const { data: userProfile } = await supabase
+        .from('user_profiles')
+        .select('full_name, avatar_url')
+        .eq('auth_user_id', user.id)
+        .single()
 
-      if (response.ok) {
-        const profile = await response.json()
-        coachName = profile.full_name || ''
-        avatarUrl = profile.avatar_url
+      if (userProfile) {
+        coachName = userProfile.full_name || ''
+        avatarUrl = userProfile.avatar_url || null
       }
     }
   } catch (error) {
     // Fail silently - use empty defaults
-    console.error('Error fetching coach profile:', error)
   }
 
   return (

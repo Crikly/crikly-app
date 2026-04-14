@@ -319,7 +319,7 @@ function ThisWeekStrip({ isDesktop }: { isDesktop?: boolean }) {
 
 function TodayLineup({ isDesktop, sessions }: { isDesktop?: boolean; sessions: Array<{time: string; duration: string; title: string; location: string; isActive: boolean; type?: string}> }) {
   return (
-    <div className="flex flex-col gap-6 flex-1">
+    <div className="flex flex-col gap-6">
       <div className="flex justify-between items-center">
         <h3 className={`${isDesktop ? 'text-[22px]' : 'text-[19px]'} font-bold text-gray-900`}>Today's lineup</h3>
         {isDesktop && <span className="text-[#0077CC] text-sm font-bold cursor-pointer hover:underline">View all</span>}
