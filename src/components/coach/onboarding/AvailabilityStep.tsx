@@ -307,20 +307,20 @@ export function AvailabilityStep() {
             
             {/* Onboarding footer CTA */}
             <div 
-              className="sticky bottom-0 bg-white border-t-[0.5px] border-gray-100 px-6 py-4 flex flex-col gap-3"
+              className="sticky bottom-0 bg-white border-t-[0.5px] border-gray-100 px-6 py-3 flex justify-between items-center"
               style={{ boxShadow: '0 -2px 8px rgba(0,0,0,0.04)' }}
             >
-              <button 
-                onClick={() => router.push('/coach/onboarding/policy')}
-                className="w-full bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-xl px-7 py-3.5 text-[15px] font-bold transition-colors"
-              >
-                Save & continue →
-              </button>
               <button 
                 onClick={() => router.push('/coach/onboarding/qualifications')}
                 className="text-[13px] text-gray-500 hover:text-gray-900 font-medium transition-colors"
               >
                 ← Back
+              </button>
+              <button 
+                onClick={() => router.push('/coach/onboarding/policy')}
+                className="bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-full px-7 py-2.5 text-[13px] font-medium transition-colors"
+              >
+                Save & continue →
               </button>
             </div>
           </div>
