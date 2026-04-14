@@ -56,6 +56,11 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
   const router = useRouter()
   const [profileExpanded, setProfileExpanded] = React.useState(false)
   
+  // Time-based greeting
+  const hour = new Date().getHours()
+  const greeting = hour < 12 ? 'Good morning' :
+                   hour < 18 ? 'Good afternoon' : 'Good evening'
+  
   // CF-D11a: Profile completion tracking - now from real data
   const profileSteps = [
     { title: 'Basic profile', completed: data.profileCompletion.completedSteps[0] || false, guidance: '' },
@@ -101,14 +106,14 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
         <div className="hidden md:flex justify-between items-end">
           <div>
             <p className="text-gray-500 text-sm mb-1.5 font-medium">Tuesday, 14 May</p>
-            <h1 className="text-4xl font-bold tracking-tight text-gray-900">Good morning, {data.coachName.split(' ')[0] || 'Coach'} 👋</h1>
+            <h1 className="text-4xl font-bold tracking-tight text-gray-900">{greeting}, {data.coachName.split(' ')[0] || 'Coach'} 👋</h1>
             <p className="text-sm text-gray-500 mt-1">{getSessionSubtitle()}</p>
           </div>
         </div>
 
         {/* Mobile Greeting - CHANGE 1: emoji + subtitle */}
         <div className="md:hidden">
-          <h1 className="text-[28px] font-bold tracking-tight text-gray-900 leading-tight">Good morning, {data.coachName.split(' ')[0] || 'Coach'} 👋</h1>
+          <h1 className="text-[28px] font-bold tracking-tight text-gray-900 leading-tight">{greeting}, {data.coachName.split(' ')[0] || 'Coach'} 👋</h1>
           <p className="text-sm text-gray-500 mt-1">{getSessionSubtitle()}</p>
         </div>
 
