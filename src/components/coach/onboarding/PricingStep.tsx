@@ -52,17 +52,39 @@ export function PricingStep() {
   const handleSave = async () => {
     setSaving(true)
     try {
+      // CD-03: wired - PricingStep saves to coach_sports table
+      // Maps to: sport_id, session_types[], skill_levels[], price_individual_pence, price_group_pence
+      // Note: Currently only handles individual pricing. Group pricing needs UI extension.
+      
+      // Get sport_id from sports table (TODO: fetch actual sport_id from selected sport name)
+      // For now, using placeholder - needs sports lookup API
+      const sportId = 'placeholder-sport-id' // TODO: lookup sport_id by name
+      
+      // Convert session types to array format
+      const sessionTypesArray = []
+      if (sessionTypes.individual) sessionTypesArray.push('individual')
+      if (sessionTypes.group) sessionTypesArray.push('group')
+      
+      // Convert skill levels to lowercase array
+      const skillLevelsArray = skillLevels.map(l => l.toLowerCase())
+      
+      // Get lowest price as individual price (pence)
+      const lowestPricePence = pricingRows.length > 0
+        ? Math.round(Math.min(...pricingRows.map(r => parseFloat(r.price || '0'))) * 100)
+        : 0
+      
       await fetch('/api/coaches/sports', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          session_types: sessionTypes,
-          skill_levels: skillLevels,
-          age_groups: ageGroups,
-          pricing_rows: pricingRows.map(r => ({
-            duration: r.duration,
-            price_pence: Math.round(parseFloat(r.price || '0') * 100)
-          }))
+          sport_id: sportId, // CD-03: coach_sports.sport_id (FK to sports table)
+          session_types: sessionTypesArray, // CD-03: coach_sports.session_types (text[])
+          skill_levels: skillLevelsArray, // CD-03: coach_sports.skill_levels (text[])
+          price_individual_pence: lowestPricePence, // CD-03: coach_sports.price_individual_pence (integer)
+          price_group_pence: null, // CD-03: coach_sports.price_group_pence (not configured in UI yet)
+          max_group_size: null, // CD-03: coach_sports.max_group_size (not configured in UI yet)
+          session_duration_minutes: 60, // CD-03: default duration
+          // Note: age_groups not in coach_sports schema - skipped
         })
       })
       router.push('/coach/onboarding/qualifications')

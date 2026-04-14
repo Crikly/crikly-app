@@ -36,6 +36,9 @@ export function SportStep() {
 
   const handleSave = async () => {
     setSaving(true)
+    // CD-03: verified - SportStep stores to sessionStorage only
+    // Actual coach_sports rows created in PricingStep after user configures pricing/skill levels
+    // This is intentional - sport selection alone doesn't create DB rows
     sessionStorage.setItem('selectedSports', JSON.stringify(selectedSports))
     router.push('/coach/onboarding/pricing')
     setSaving(false)

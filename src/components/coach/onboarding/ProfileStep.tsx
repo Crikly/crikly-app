@@ -48,17 +48,23 @@ export function ProfileStep() {
   const handleSave = async () => {
     setSaving(true)
     try {
+      // CD-03: verified - ProfileStep saves to user_profiles + coach_profiles
+      // Maps to: full_name (user_profiles), bio, years_experience, gender (coach_profiles)
+      // location_city (user_profiles) extracted from baseLocation
+      const yearsExp = selectedExperience.includes('0–2') ? 1 : 
+                       selectedExperience.includes('3–5') ? 4 :
+                       selectedExperience.includes('6–10') ? 8 : 10
+      
       await fetch('/api/coaches/profile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          display_name: displayName,
-          bio,
-          base_location: baseLocation,
-          travel_radius: travelRadius,
-          years_experience: selectedExperience,
-          gender,
-          languages: selectedLanguages,
+          full_name: displayName, // CD-03: user_profiles.full_name
+          bio, // CD-03: coach_profiles.bio
+          location_city: baseLocation, // CD-03: user_profiles.location_city
+          years_experience: yearsExp, // CD-03: coach_profiles.years_experience (integer)
+          gender: gender.toLowerCase().replace(' ', '_'), // CD-03: coach_profiles.gender
+          // Note: travel_radius and languages not in current schema - skipped
         })
       })
       router.push('/coach/onboarding/sport')

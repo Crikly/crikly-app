@@ -272,7 +272,41 @@ export function AvailabilityStep() {
                 )}
                 <div className="flex items-center justify-between">
                   <button onClick={resetForm} className="text-[14px] font-bold text-gray-400 hover:text-gray-700 transition-colors">Cancel</button>
-                  <button disabled={!!conflict || formDays.length === 0} className={`px-6 py-3 rounded-xl text-[14px] font-bold transition-colors flex items-center gap-2 ${conflict || formDays.length === 0 ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-[#0077CC] text-white hover:bg-[#0066AA]'}`}>
+                  <button 
+                    onClick={async () => {
+                      // CD-03: wired - Save availability block to availability_templates table
+                      // Maps to: sport_id, day_of_week, start_time, end_time, price_override_pence
+                      if (conflict || formDays.length === 0) return
+                      
+                      try {
+                        // Convert day abbreviations to day_of_week numbers (0=Sunday, 1=Monday, etc.)
+                        const dayMap: Record<string, number> = {
+                          'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6
+                        }
+                        
+                        // Save each selected day as a separate availability block
+                        for (const dayAbbr of formDays) {
+                          await fetch('/api/coaches/availability', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              sport_id: null, // CD-03: availability_templates.sport_id (null = all sports)
+                              day_of_week: dayMap[dayAbbr], // CD-03: availability_templates.day_of_week (0-6)
+                              start_time: formStartTime, // CD-03: availability_templates.start_time (HH:MM)
+                              end_time: formEndTime, // CD-03: availability_templates.end_time (HH:MM)
+                              price_override_pence: formPrice ? Math.round(parseFloat(formPrice) * 100) : null, // CD-03: availability_templates.price_override_pence (integer)
+                              // Note: session_type_id not configured in UI yet - skipped
+                            })
+                          })
+                        }
+                        resetForm()
+                      } catch (error) {
+                        console.error('Failed to add availability block:', error)
+                      }
+                    }}
+                    disabled={!!conflict || formDays.length === 0} 
+                    className={`px-6 py-3 rounded-xl text-[14px] font-bold transition-colors flex items-center gap-2 ${conflict || formDays.length === 0 ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-[#0077CC] text-white hover:bg-[#0066AA]'}`}
+                  >
                     <Plus size={16} />Add this block
                   </button>
                 </div>
