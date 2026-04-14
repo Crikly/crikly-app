@@ -19,14 +19,34 @@ export function BookingPolicyStep() {
   const handleSave = async () => {
     setSaving(true)
     try {
+      // CD-03: verified - BookingPolicyStep saves to coach_profiles table
+      // Maps to: cancellation_window_hours, min_advance_hours, max_advance_days
+      
+      // Convert UI strings to hours/days integers
+      const cancellationHours = cancellationWindow === 'No cancellations' ? 0 :
+                                cancellationWindow === '24 hours' ? 24 :
+                                cancellationWindow === '48 hours' ? 48 :
+                                cancellationWindow === '72 hours' ? 72 :
+                                cancellationWindow === '1 week' ? 168 : 48
+      
+      const minAdvanceHours = earliestBooking === '12 hours' ? 12 :
+                             earliestBooking === '24 hours' ? 24 :
+                             earliestBooking === '48 hours' ? 48 :
+                             earliestBooking === '1 week' ? 168 : 24
+      
+      const maxAdvanceDays = latestBooking === '2 weeks' ? 14 :
+                            latestBooking === '4 weeks' ? 28 :
+                            latestBooking === '8 weeks' ? 56 :
+                            latestBooking === '12 weeks' ? 84 : 56
+      
       await fetch('/api/coaches/profile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          cancellation_window: cancellationWindow,
-          earliest_booking: earliestBooking,
-          latest_booking: latestBooking,
-          booking_approval: bookingApproval.toLowerCase(),
+          cancellation_window_hours: cancellationHours, // CD-03: coach_profiles.cancellation_window_hours (integer)
+          min_advance_hours: minAdvanceHours, // CD-03: coach_profiles.min_advance_hours (integer)
+          max_advance_days: maxAdvanceDays, // CD-03: coach_profiles.max_advance_days (integer)
+          // Note: booking_approval not in current schema - skipped
         })
       })
       router.push('/coach/onboarding/get-paid')

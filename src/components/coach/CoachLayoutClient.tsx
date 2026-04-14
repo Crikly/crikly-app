@@ -95,7 +95,7 @@ export function CoachLayoutClient({
         <div className="flex flex-col gap-4 mb-8">
           <div className="flex items-center gap-3 p-2 -mx-2 rounded-xl hover:bg-gray-50 cursor-pointer transition-colors border border-transparent hover:border-gray-100">
             <div className="relative">
-              {initialAvatarUrl ? (
+              {initialAvatarUrl && initialAvatarUrl.trim() !== '' ? (
                 <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 shadow-sm">
                   <img src={initialAvatarUrl} alt={initialCoachName} className="w-full h-full object-cover" />
                 </div>

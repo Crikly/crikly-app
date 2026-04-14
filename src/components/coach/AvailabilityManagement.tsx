@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useMemo, useRef } from 'react'
+import React, { useState, useMemo, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Pencil, X, ChevronLeft, ChevronRight, Plus, ChevronDown, AlertTriangle } from 'lucide-react'
 
@@ -16,8 +16,53 @@ for (let h = 6; h <= 22; h++) {
   if (h < 22) TIME_OPTIONS.push(`${String(h).padStart(2, '0')}:30`)
 }
 
-interface ScheduleBlock { id: number; day: string; sport: string; time: string; location: string; price: string }
-interface BlockedRange { id: number; start: Date; end: Date; label: string }
+// CD-04: API response types
+interface AvailabilityBlock {
+  id: string
+  sport_id: string | null
+  sport_name: string | null
+  day_of_week: number
+  start_time: string
+  end_time: string
+  is_active: boolean
+  price_override_pence: number | null
+  session_type_id: string | null
+  session_type_name: string | null
+  created_at: string
+}
+
+// CD-04: UI display type (transformed from API)
+interface ScheduleBlock { 
+  id: string
+  day: string
+  sport: string
+  time: string
+  location: string
+  price: string
+  rawData: AvailabilityBlock
+}
+
+// CD-05: Blocked dates API response type
+interface BlockedDateResponse {
+  id: string
+  blocked_date: string
+  blocked_date_end: string | null
+  label: string | null
+  reason: string | null
+  is_range: boolean
+  days_blocked: number
+  created_at: string
+}
+
+// CD-05: UI display type for blocked dates
+interface BlockedRange { 
+  id: string
+  start: Date
+  end: Date
+  label: string
+  rawData: BlockedDateResponse
+}
+
 interface CalDay { date: Date; type: 'prev' | 'current' | 'next' }
 
 function dateOnly(d: Date): number { return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() }
@@ -43,16 +88,27 @@ function buildCalendar(year: number, month: number): CalDay[] {
   return days
 }
 
+// CD-04: Day mapping helper
+const DAY_MAP: Record<number, string> = {
+  0: 'Sun', 1: 'Mon', 2: 'Tue', 3: 'Wed', 4: 'Thu', 5: 'Fri', 6: 'Sat'
+}
+
 export function AvailabilityManagement() {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<'schedule' | 'blocked'>('schedule')
-  // CF-D06c: Ref for auto-scrolling to add form
   const addFormRef = useRef<HTMLDivElement>(null)
-  const [scheduleBlocks] = useState<ScheduleBlock[]>([
-    { id: 1, day: 'Mon', sport: 'Cricket', time: '09:00 – 12:00', location: 'Oval Cricket Ground', price: '£50/60min' },
-    { id: 2, day: 'Wed', sport: 'Cricket', time: '14:00 – 17:00', location: 'Kennington Park', price: '£60/60min' },
-    { id: 3, day: 'Sat', sport: 'Tennis', time: '09:00 – 13:00', location: "Queen's Club", price: '£45/60min' },
-  ])
+  
+  // CD-04: Real data state
+  const [scheduleBlocks, setScheduleBlocks] = useState<ScheduleBlock[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState<string | null>(null)
+  
+  // CD-05: Blocked dates real data state
+  const [blockedRanges, setBlockedRanges] = useState<BlockedRange[]>([])
+  const [blockedLoading, setBlockedLoading] = useState(false)
+  const [blockedError, setBlockedError] = useState<string | null>(null)
+  const [deletingBlocked, setDeletingBlocked] = useState<string | null>(null)
   const availableSports = useMemo(() => [...new Set(scheduleBlocks.map(b => b.sport))], [scheduleBlocks])
   const [showAddForm, setShowAddForm] = useState(false)
   // CF-D06b FIX 1: Add preselectedDay state
@@ -65,6 +121,49 @@ export function AvailabilityManagement() {
   const [formVenue, setFormVenue] = useState('')
   const [formPrice, setFormPrice] = useState('')
   const toggleDay = (day: string) => setFormDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day])
+  
+  // CD-04: Fetch availability data on mount
+  useEffect(() => {
+    const fetchAvailability = async () => {
+      try {
+        setLoading(true)
+        setError(null)
+        
+        const response = await fetch('/api/coaches/availability')
+        if (!response.ok) {
+          throw new Error('Failed to fetch availability')
+        }
+        
+        const data = await response.json()
+        
+        // Transform API data to UI format
+        const transformed: ScheduleBlock[] = (data.availability || []).map((block: AvailabilityBlock) => {
+          const priceDisplay = block.price_override_pence 
+            ? `£${(block.price_override_pence / 100).toFixed(0)}/${block.session_type_name || '60min'}`
+            : 'Default price'
+          
+          return {
+            id: block.id,
+            day: DAY_MAP[block.day_of_week] || 'Mon',
+            sport: block.sport_name || 'Sport',
+            time: `${block.start_time.substring(0, 5)} – ${block.end_time.substring(0, 5)}`,
+            location: 'Location TBC',
+            price: priceDisplay,
+            rawData: block
+          }
+        })
+        
+        setScheduleBlocks(transformed)
+      } catch (err) {
+        console.error('Error fetching availability:', err)
+        setError('Failed to load availability. Please refresh the page.')
+      } finally {
+        setLoading(false)
+      }
+    }
+    
+    fetchAvailability()
+  }, [])
   
   // CF-D06b FIX 2: Replace same-day check with time overlap validation
   const timeToMinutes = (time: string) => {
@@ -110,16 +209,51 @@ export function AvailabilityManagement() {
       setFormDays([preselectedDay])
     }
   }, [showAddForm, preselectedDay])
+  
+  // CD-05: Fetch blocked dates when switching to blocked tab
+  useEffect(() => {
+    if (activeTab === 'blocked') {
+      const fetchBlockedDates = async () => {
+        try {
+          setBlockedLoading(true)
+          setBlockedError(null)
+          
+          const response = await fetch('/api/coaches/blocked-dates')
+          if (!response.ok) {
+            throw new Error('Failed to fetch blocked dates')
+          }
+          
+          const data = await response.json()
+          
+          // Transform API data to UI format
+          const transformed: BlockedRange[] = (data.blocked_dates || []).map((block: BlockedDateResponse) => ({
+            id: block.id,
+            start: new Date(block.blocked_date),
+            end: new Date(block.blocked_date_end || block.blocked_date),
+            label: block.label || '',
+            rawData: block
+          }))
+          
+          setBlockedRanges(transformed)
+        } catch (err) {
+          console.error('Error fetching blocked dates:', err)
+          setBlockedError('Failed to load blocked dates. Please refresh the page.')
+        } finally {
+          setBlockedLoading(false)
+        }
+      }
+      
+      fetchBlockedDates()
+    }
+  }, [activeTab])
+  
+  // Blocked dates calendar state
   const [currentMonth, setCurrentMonth] = useState(3)
   const [currentYear, setCurrentYear] = useState(2026)
   const [rangeStart, setRangeStart] = useState<Date | null>(null)
   const [rangeEnd, setRangeEnd] = useState<Date | null>(null)
   const [hoverDate, setHoverDate] = useState<Date | null>(null)
   const [blockLabel, setBlockLabel] = useState('')
-  const [blockedRanges, setBlockedRanges] = useState<BlockedRange[]>([
-    { id: 1, start: new Date(2025, 11, 25), end: new Date(2026, 0, 1), label: 'Christmas & New Year' },
-    { id: 2, start: new Date(2026, 3, 15), end: new Date(2026, 3, 22), label: 'Easter holiday' },
-  ])
   const calendarDays = useMemo(() => buildCalendar(currentYear, currentMonth), [currentYear, currentMonth])
   const TODAY = new Date(2026, 3, 8)
   const navigatePrev = () => { if (currentMonth === 0) { setCurrentYear(y => y - 1); setCurrentMonth(11) } else setCurrentMonth(m => m - 1) }
@@ -130,11 +264,53 @@ export function AvailabilityManagement() {
     if (!rangeStart || rangeEnd) { setRangeStart(clicked); setRangeEnd(null) }
     else { if (sameDay(clicked, rangeStart)) { setRangeEnd(clicked) } else if (dateOnly(clicked) > dateOnly(rangeStart)) { setRangeEnd(clicked) } else { setRangeStart(clicked); setRangeEnd(null) } }
   }
-  const handleBlockDates = () => {
+  const handleBlockDates = async () => {
+    // CD-05: Wire to POST /api/coaches/blocked-dates
     if (!rangeStart) return
-    const end = rangeEnd ?? rangeStart
-    setBlockedRanges(prev => [...prev, { id: Date.now(), start: rangeStart, end, label: blockLabel.trim() }])
-    setRangeStart(null); setRangeEnd(null); setBlockLabel(''); setHoverDate(null)
+    
+    try {
+      const end = rangeEnd ?? rangeStart
+      
+      // Format dates as YYYY-MM-DD
+      const formatDate = (d: Date) => d.toISOString().split('T')[0]
+      
+      const response = await fetch('/api/coaches/blocked-dates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          blocked_date: formatDate(rangeStart),
+          blocked_date_end: sameDay(rangeStart, end) ? null : formatDate(end),
+          label: blockLabel.trim() || null,
+        })
+      })
+      
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.message || 'Failed to block dates')
+      }
+      
+      // Refresh the list
+      const refreshResponse = await fetch('/api/coaches/blocked-dates')
+      if (refreshResponse.ok) {
+        const data = await refreshResponse.json()
+        const transformed: BlockedRange[] = (data.blocked_dates || []).map((block: BlockedDateResponse) => ({
+          id: block.id,
+          start: new Date(block.blocked_date),
+          end: new Date(block.blocked_date_end || block.blocked_date),
+          label: block.label || '',
+          rawData: block
+        }))
+        setBlockedRanges(transformed)
+      }
+      
+      setRangeStart(null)
+      setRangeEnd(null)
+      setBlockLabel('')
+      setHoverDate(null)
+    } catch (err) {
+      console.error('Error blocking dates:', err)
+      alert('Failed to block dates. Please try again.')
+    }
   }
   const clearSelection = () => { setRangeStart(null); setRangeEnd(null); setBlockLabel(''); setHoverDate(null) }
   const previewEnd = (rangeStart && !rangeEnd && hoverDate && dateOnly(hoverDate) > dateOnly(rangeStart)) ? hoverDate : null
@@ -145,10 +321,9 @@ export function AvailabilityManagement() {
       <div className="w-full max-w-[640px] px-6">
         <div className="mb-8">
           <h1 className="text-[32px] font-bold text-gray-900 leading-tight mb-2">Availability</h1>
-          {/* CF-D06 CHANGE 1: State-aware subtitle */}
+          {/* CD-04: Real data-driven subtitle */}
           <p className="text-[13px] text-gray-500 mt-1">
-            3 recurring blocks · Mon, Wed & Sat
-            {/* TODO CF-D06: derive from real availability data */}
+            {loading ? 'Loading...' : scheduleBlocks.length === 0 ? 'No availability blocks yet' : `${scheduleBlocks.length} recurring ${scheduleBlocks.length === 1 ? 'block' : 'blocks'}`}
           </p>
         </div>
         <div className="flex border-b border-gray-100 mb-8">
@@ -161,6 +336,21 @@ export function AvailabilityManagement() {
 
         {activeTab === 'schedule' && (
           <div className="flex flex-col pb-20">
+            {/* CD-04: Error state */}
+            {error && (
+              <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
+                <p className="text-[14px] font-medium text-red-700">{error}</p>
+              </div>
+            )}
+            
+            {/* CD-04: Loading state */}
+            {loading ? (
+              <div className="flex flex-col items-center justify-center py-20">
+                <div className="w-8 h-8 border-4 border-gray-200 border-t-[#0077CC] rounded-full animate-spin mb-4"></div>
+                <p className="text-[14px] text-gray-500">Loading availability...</p>
+              </div>
+            ) : (
+              <>
             {/* CF-D06 CHANGE 2: Mon-Sun day structure */}
             <div className="flex flex-col gap-6 mb-6">
               {DAY_ABBR.map((dayAbbr) => {
@@ -223,11 +413,32 @@ export function AvailabilityManagement() {
                                   <Pencil size={12} className="text-gray-400" />
                                 </button>
                                 <button 
-                                  onClick={(e) => {
+                                  onClick={async (e) => {
                                     e.stopPropagation()
-                                    // TODO CF-D06: wire delete action
+                                    // CD-04: Wire delete action
+                                    if (!confirm('Delete this availability block?')) return
+                                    
+                                    try {
+                                      setDeleting(blockForDay.id)
+                                      const response = await fetch(`/api/coaches/availability/${blockForDay.id}`, {
+                                        method: 'DELETE'
+                                      })
+                                      
+                                      if (!response.ok) {
+                                        throw new Error('Failed to delete block')
+                                      }
+                                      
+                                      // Remove from local state
+                                      setScheduleBlocks(prev => prev.filter(b => b.id !== blockForDay.id))
+                                    } catch (err) {
+                                      console.error('Error deleting block:', err)
+                                      alert('Failed to delete block. Please try again.')
+                                    } finally {
+                                      setDeleting(null)
+                                    }
                                   }}
-                                  className="w-7 h-7 flex items-center justify-center border-[0.5px] border-gray-100 bg-white rounded-md hover:bg-gray-50 transition-colors"
+                                  disabled={deleting === blockForDay.id}
+                                  className="w-7 h-7 flex items-center justify-center border-[0.5px] border-gray-100 bg-white rounded-md hover:bg-gray-50 transition-colors disabled:opacity-50"
                                 >
                                   <X size={12} className="text-gray-400" />
                                 </button>
@@ -350,7 +561,67 @@ export function AvailabilityManagement() {
                 )}
                 <div className="flex items-center justify-between">
                   <button onClick={resetForm} className="text-[14px] font-bold text-gray-400 hover:text-gray-700 transition-colors">Cancel</button>
-                  <button disabled={!!conflict || formDays.length === 0} className={`px-6 py-3 rounded-xl text-[14px] font-bold transition-colors flex items-center gap-2 ${conflict || formDays.length === 0 ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-[#0077CC] text-white hover:bg-[#0066AA]'}`}>
+                  <button 
+                    onClick={async () => {
+                      // CD-04: Wire add block to POST /api/coaches/availability
+                      if (conflict || formDays.length === 0) return
+                      
+                      try {
+                        // Convert day abbreviations to day_of_week numbers
+                        const dayMap: Record<string, number> = {
+                          'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6
+                        }
+                        
+                        // Add each selected day as a separate block
+                        for (const dayAbbr of formDays) {
+                          const response = await fetch('/api/coaches/availability', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              sport_id: null,
+                              day_of_week: dayMap[dayAbbr],
+                              start_time: formStartTime,
+                              end_time: formEndTime,
+                              price_override_pence: formPrice ? Math.round(parseFloat(formPrice) * 100) : null,
+                            })
+                          })
+                          
+                          if (!response.ok) {
+                            throw new Error('Failed to add availability block')
+                          }
+                        }
+                        
+                        // Refresh the list
+                        const refreshResponse = await fetch('/api/coaches/availability')
+                        if (refreshResponse.ok) {
+                          const data = await refreshResponse.json()
+                          const transformed: ScheduleBlock[] = (data.availability || []).map((block: AvailabilityBlock) => {
+                            const priceDisplay = block.price_override_pence 
+                              ? `£${(block.price_override_pence / 100).toFixed(0)}/${block.session_type_name || '60min'}`
+                              : 'Default price'
+                            
+                            return {
+                              id: block.id,
+                              day: DAY_MAP[block.day_of_week] || 'Mon',
+                              sport: block.sport_name || 'Sport',
+                              time: `${block.start_time.substring(0, 5)} – ${block.end_time.substring(0, 5)}`,
+                              location: 'Location TBC',
+                              price: priceDisplay,
+                              rawData: block
+                            }
+                          })
+                          setScheduleBlocks(transformed)
+                        }
+                        
+                        resetForm()
+                      } catch (err) {
+                        console.error('Error adding block:', err)
+                        alert('Failed to add availability block. Please try again.')
+                      }
+                    }}
+                    disabled={!!conflict || formDays.length === 0} 
+                    className={`px-6 py-3 rounded-xl text-[14px] font-bold transition-colors flex items-center gap-2 ${conflict || formDays.length === 0 ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-[#0077CC] text-white hover:bg-[#0066AA]'}`}
+                  >
                     <Plus size={16} />Add this block
                   </button>
                 </div>
@@ -394,6 +665,8 @@ export function AvailabilityManagement() {
                 Save changes
               </button>
             </div>
+            </>
+            )}
           </div>
         )}
 
@@ -401,6 +674,22 @@ export function AvailabilityManagement() {
           <div className="flex flex-col">
             <h2 className="text-[18px] font-bold text-gray-900 mb-1">Blocked dates</h2>
             <p className="text-[14px] text-gray-500 font-medium mb-6 leading-relaxed">Block specific dates when you're not available — overrides your recurring schedule</p>
+            
+            {/* CD-05: Error state */}
+            {blockedError && (
+              <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
+                <p className="text-[14px] font-medium text-red-700">{blockedError}</p>
+              </div>
+            )}
+            
+            {/* CD-05: Loading state */}
+            {blockedLoading ? (
+              <div className="flex flex-col items-center justify-center py-20">
+                <div className="w-8 h-8 border-4 border-gray-200 border-t-[#0077CC] rounded-full animate-spin mb-4"></div>
+                <p className="text-[14px] text-gray-500">Loading blocked dates...</p>
+              </div>
+            ) : (
+              <>
             <div className="bg-white border border-gray-100 shadow-sm rounded-[24px] p-6 mb-4">
               <div className="flex justify-between items-center mb-5 px-1">
                 <span className="font-bold text-[16px] text-gray-900">{MONTH_NAMES[currentMonth]} {currentYear}</span>
@@ -481,12 +770,42 @@ export function AvailabilityManagement() {
                         <span className="text-[14px] font-bold text-gray-900 shrink-0 tabular-nums">{fmt(item.start)}{!sameDay(item.start, item.end) && <> – {fmt(item.end)}</>}</span>
                         {item.label ? <span className="text-[14px] text-gray-500 font-medium truncate">{item.label}</span> : <span className="text-[13px] text-gray-300 font-medium italic">No label</span>}
                       </div>
-                      <button onClick={() => setBlockedRanges(prev => prev.filter(r => r.id !== item.id))} className="ml-3 shrink-0 flex items-center gap-1 text-[13px] text-gray-400 hover:text-red-500 font-bold transition-colors"><X size={14} /> remove</button>
+                      <button 
+                        onClick={async () => {
+                          // CD-05: Wire to DELETE /api/coaches/blocked-dates/[id]
+                          if (!confirm('Remove this blocked date?')) return
+                          
+                          try {
+                            setDeletingBlocked(item.id)
+                            const response = await fetch(`/api/coaches/blocked-dates/${item.id}`, {
+                              method: 'DELETE'
+                            })
+                            
+                            if (!response.ok) {
+                              throw new Error('Failed to delete blocked date')
+                            }
+                            
+                            // Remove from local state
+                            setBlockedRanges(prev => prev.filter(r => r.id !== item.id))
+                          } catch (err) {
+                            console.error('Error deleting blocked date:', err)
+                            alert('Failed to remove blocked date. Please try again.')
+                          } finally {
+                            setDeletingBlocked(null)
+                          }
+                        }}
+                        disabled={deletingBlocked === item.id}
+                        className="ml-3 shrink-0 flex items-center gap-1 text-[13px] text-gray-400 hover:text-red-500 font-bold transition-colors disabled:opacity-50"
+                      >
+                        <X size={14} /> remove
+                      </button>
                     </div>
                   ))}
                 </div>
               )}
             </div>
+            </>
+            )}
           </div>
         )}
       </div>

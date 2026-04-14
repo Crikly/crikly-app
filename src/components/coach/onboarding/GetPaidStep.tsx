@@ -6,6 +6,10 @@ import { OnboardingPreviewPanel } from '../OnboardingPreviewPanel'
 
 export function GetPaidStep() {
   const router = useRouter()
+  
+  // CD-03: verified - GetPaidStep initiates Stripe Connect onboarding flow
+  // No direct Supabase save - stripe_onboarding_complete flag set by Stripe webhook
+  // coach_profiles.stripe_account_id populated after successful Stripe Connect
 
   return (
     <div className="flex w-full">

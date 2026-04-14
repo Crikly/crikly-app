@@ -4,6 +4,12 @@ import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Check, X, Plus } from 'lucide-react'
 
+interface Sport {
+  id: string
+  name: string
+  slug: string
+}
+
 export function PricingStep() {
   const router = useRouter()
   const [selectedSports, setSelectedSports] = useState<string[]>([])
@@ -16,8 +22,27 @@ export function PricingStep() {
     { id: '3', duration: '90 min', price: '100' },
   ])
   const [saving, setSaving] = useState(false)
+  const [sports, setSports] = useState<Sport[]>([])
+  const [loadingError, setLoadingError] = useState<string | null>(null)
 
   useEffect(() => {
+    // CD-04: Fetch sports list and selected sports from sessionStorage
+    const fetchSports = async () => {
+      try {
+        const response = await fetch('/api/sports')
+        if (!response.ok) {
+          throw new Error('Failed to fetch sports')
+        }
+        const data = await response.json()
+        setSports(data.sports || [])
+      } catch (error) {
+        console.error('Error fetching sports:', error)
+        setLoadingError('Failed to load sports. Please refresh the page.')
+      }
+    }
+
+    fetchSports()
+
     // Get selected sports from sessionStorage
     const stored = sessionStorage.getItem('selectedSports')
     if (stored) {
@@ -52,17 +77,53 @@ export function PricingStep() {
   const handleSave = async () => {
     setSaving(true)
     try {
+      // CD-04: wired - PricingStep saves to coach_sports table with real sport_id lookup
+      // Maps to: sport_id, session_types[], skill_levels[], price_individual_pence, price_group_pence
+      
+      // CD-04: Lookup sport_id by matching selected sport name from sessionStorage
+      if (selectedSports.length === 0) {
+        setLoadingError('No sport selected. Please go back and select a sport.')
+        setSaving(false)
+        return
+      }
+
+      // Get the first selected sport (assuming single sport for now)
+      const selectedSportName = selectedSports[0]
+      const matchedSport = sports.find(s => s.name === selectedSportName)
+      
+      if (!matchedSport) {
+        setLoadingError(`Sport "${selectedSportName}" not found. Please go back and select a valid sport.`)
+        setSaving(false)
+        return
+      }
+
+      const sportId = matchedSport.id // CD-04: Real UUID from sports table
+      
+      // Convert session types to array format
+      const sessionTypesArray = []
+      if (sessionTypes.individual) sessionTypesArray.push('individual')
+      if (sessionTypes.group) sessionTypesArray.push('group')
+      
+      // Convert skill levels to lowercase array
+      const skillLevelsArray = skillLevels.map(l => l.toLowerCase())
+      
+      // Get lowest price as individual price (pence)
+      const lowestPricePence = pricingRows.length > 0
+        ? Math.round(Math.min(...pricingRows.map(r => parseFloat(r.price || '0'))) * 100)
+        : 0
+      
       await fetch('/api/coaches/sports', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          session_types: sessionTypes,
-          skill_levels: skillLevels,
-          age_groups: ageGroups,
-          pricing_rows: pricingRows.map(r => ({
-            duration: r.duration,
-            price_pence: Math.round(parseFloat(r.price || '0') * 100)
-          }))
+          sport_id: sportId, // CD-04: coach_sports.sport_id (real UUID FK to sports table)
+          session_types: sessionTypesArray, // CD-03: coach_sports.session_types (text[])
+          skill_levels: skillLevelsArray, // CD-03: coach_sports.skill_levels (text[])
+          price_individual_pence: lowestPricePence, // CD-03: coach_sports.price_individual_pence (integer)
+          price_group_pence: null, // CD-03: coach_sports.price_group_pence (not configured in UI yet)
+          max_group_size: null, // CD-03: coach_sports.max_group_size (not configured in UI yet)
+          session_duration_minutes: 60, // CD-03: default duration
+          // Note: age_groups not in coach_sports schema - skipped
         })
       })
       router.push('/coach/onboarding/qualifications')
@@ -98,6 +159,13 @@ export function PricingStep() {
           <h1 className="text-[32px] font-bold text-gray-900 leading-tight mb-2">Sport & pricing</h1>
           <p className="text-[16px] text-gray-500 font-medium">Set up your session types and pricing</p>
         </div>
+
+        {/* CD-04: Error display for sport lookup failures */}
+        {loadingError && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
+            <p className="text-[14px] font-medium text-red-700">{loadingError}</p>
+          </div>
+        )}
 
         <div className="flex flex-col gap-3">
 
@@ -240,7 +308,7 @@ export function PricingStep() {
           </button>
           <button
             onClick={handleSave}
-            disabled={saving}
+            disabled={saving || !!loadingError}
             className="px-7 py-2.5 bg-[#0077CC] hover:bg-[#0066AA] disabled:opacity-60 text-white rounded-full text-[13px] font-medium transition-colors"
           >
             {saving ? 'Saving...' : 'Save & continue →'}

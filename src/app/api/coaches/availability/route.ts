@@ -79,15 +79,27 @@ export async function GET(
       return NextResponse.json({ error: 'Forbidden — coach role required' }, { status: 403 })
     }
 
-    // 3. Get coach profile
+    // 3. Get or create coach profile
+    // Fix-CD-04b: Upsert coach_profiles on first access instead of returning 404
+    // This supports dashboard-first onboarding where coach_profiles is created progressively
     const { data: coachProfile, error: coachError } = await supabase
       .from('coach_profiles')
+      .upsert(
+        {
+          user_profile_id: userProfile.id,
+          updated_at: new Date().toISOString(),
+        },
+        {
+          onConflict: 'user_profile_id',
+          ignoreDuplicates: false, // Return existing row if present
+        }
+      )
       .select('id')
-      .eq('user_profile_id', userProfile.id)
       .single()
 
     if (coachError || !coachProfile) {
-      return NextResponse.json({ error: 'Coach profile not found' }, { status: 404 })
+      console.error('[GET /api/coaches/availability] coach profile upsert error:', coachError)
+      return NextResponse.json({ error: 'Failed to create coach profile' }, { status: 500 })
     }
 
     // 4. Build query
@@ -199,15 +211,26 @@ export async function POST(
       return NextResponse.json({ error: 'Forbidden — coach role required' }, { status: 403 })
     }
 
-    // 3. Get coach profile
+    // 3. Get or create coach profile
+    // Fix-CD-04b: Upsert coach_profiles on first access instead of returning 404
     const { data: coachProfile, error: coachError } = await supabase
       .from('coach_profiles')
+      .upsert(
+        {
+          user_profile_id: userProfile.id,
+          updated_at: new Date().toISOString(),
+        },
+        {
+          onConflict: 'user_profile_id',
+          ignoreDuplicates: false,
+        }
+      )
       .select('id')
-      .eq('user_profile_id', userProfile.id)
       .single()
 
     if (coachError || !coachProfile) {
-      return NextResponse.json({ error: 'Coach profile not found' }, { status: 404 })
+      console.error('[POST /api/coaches/availability] coach profile upsert error:', coachError)
+      return NextResponse.json({ error: 'Failed to create coach profile' }, { status: 500 })
     }
 
     // 4. Parse and validate body

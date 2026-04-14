@@ -296,6 +296,7 @@ C-05, C-06, C-07, C-08 are safe to proceed without M-015.
 | Fix-11i | Create user_profiles on OAuth callback — critical auth bug fix | @BackendDeveloper | 🔴 | feature/coach-data | ✅ |
 | Fix-11j | Fix greeting name source and avatar display | @FrontendDeveloper | 🟢 | feature/coach-data | ✅ |
 | Fix-11k | Fix avatar display and remove fake booking badge | @FrontendDeveloper | 🟢 | feature/coach-data | ✅ |
+| Fix-12 | Insert user_roles row on role selection for OAuth and email users | @BackendDeveloper | 🔴 | feature/coach-data-2 | ✅ |
 
 ### 3D — Screen Review & Polish (CF-D tasks)
 
@@ -329,13 +330,14 @@ Branch: feature/coach-data (open from develop before starting CD-01)
 |---|---|---|---|---|
 | CD-01 | Wire sidebar — real coach name, avatar, notification count | GET /api/coaches/profile | 🔴 High | ✅ |
 | CD-02 | Wire dashboard — profile completion %, next session, stats | GET /api/coaches/profile + bookings | 🔴 High | ✅ |
-| CD-03 | Onboarding — verify each step saves correctly to Supabase | All onboarding API routes | 🔴 High | ⚪ |
-| CD-04 | Availability management — real schedule blocks | GET/POST/DELETE /api/coaches/availability | 🟡 Medium | ⚪ |
-| CD-05 | Availability management — real blocked dates | GET/POST/DELETE /api/coaches/blocked-dates | 🟡 Medium | ⚪ |
-| CD-06 | Bookings list — real data | GET /api/bookings (needs B-12 first) | 🟡 Medium | ⚪ |
-| CD-07 | Booking detail — real data | GET /api/bookings/[id] (needs B-13 first) | 🟡 Medium | ⚪ |
-| CD-08 | Programmes list — real data | GET /api/coaches/programmes | 🟡 Medium | ⚪ |
-| CD-09 | Earnings summary — real data | GET /api/coaches/earnings (needs building) | 🟡 Medium | ⚪ |
+| CD-03 | Onboarding — verify each step saves correctly to Supabase | All onboarding API routes | 🔴 High | ✅ |
+| CD-03b | Fix sport_id placeholder in PricingStep — real UUID lookup | GET /api/sports | 🔴 High | ✅ |
+| CD-04 | Availability management — real schedule blocks | GET/POST/DELETE /api/coaches/availability | 🟡 Medium | ✅ |
+| CD-05 | Availability management — real blocked dates | GET/POST/DELETE /api/coaches/blocked-dates | 🟡 Medium | ✅ |
+| CD-06 | Bookings list — real data — Blocked: depends on B-12 (GET /api/bookings) — Step 5 | GET /api/bookings (needs B-12 first) | 🟡 Medium | 🔴 |
+| CD-07 | Booking detail — real data — Blocked: depends on B-13 (GET /api/bookings/[id]) — Step 5 | GET /api/bookings/[id] (needs B-13 first) | 🟡 Medium | 🔴 |
+| CD-08 | Programmes list — real data | GET /api/coaches/programmes | 🟡 Medium | ✅ |
+| CD-09 | Earnings summary — real data — Blocked: GET /api/coaches/earnings route does not exist yet — needs building before wiring | GET /api/coaches/earnings (needs building) | 🟡 Medium | 🔴 |
 | CD-10 | Profile edit — load and save real data | GET/POST /api/coaches/profile | 🟡 Medium | ⚪ |
 | CD-11 | Get Paid — real Stripe connection status + payout data | GET /api/coaches/stripe-status | 🟡 Medium | ⚪ |
 | CD-12 | Schedule grid — real bookings + availability | GET /api/coaches/bookings + availability | 🔵 Low | ⚪ |
