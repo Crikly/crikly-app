@@ -278,8 +278,7 @@ export default async function CoachDashboardPage() {
     }
 
   } catch (error) {
-    console.error('Error fetching dashboard data:', error)
-    // Return with empty defaults
+    // Return with empty defaults on error
   }
 
   return <CoachHomeClient data={dashboardData} />
