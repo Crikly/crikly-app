@@ -7,6 +7,7 @@ import {
   Clock, MapPin, Star, TrendingUp, AlertCircle, 
   ChevronRight, PoundSterling, Check, Calendar, Plus
 } from 'lucide-react'
+import { CoachRightPanel } from '@/components/coach/CoachRightPanel'
 
 const avatarUrl = "https://images.unsplash.com/photo-1741363863033-2d68f0bd9fde?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxpbmRpYW4lMjBtYW4lMjBzbWlsaW5nJTIwcG9ydHJhaXR8ZW58MXx8fHwxNzc1NDg3OTc5fDA&ixlib=rb-4.1.0&q=80&w=1080"
 const upNextUrl = "https://images.unsplash.com/photo-1771909713672-4e351f1f8b62?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjcmlja2V0JTIwdHJhaW5pbmclMjBzcG9ydHN8ZW58MXx8fHwxNzc1NDg3OTc5fDA&ixlib=rb-4.1.0&q=80&w=1080"
@@ -284,7 +285,14 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
         </div>
       </div>
 
-      {/* CHANGE 5: Removed duplicate right panel - now handled in layout.tsx */}
+      {/* Right Panel with dashboard data */}
+      <CoachRightPanel dashboardData={{
+        todaySessions: data.todaySessions,
+        rating: data.rating,
+        weeklyStats: {
+          revenueThisWeek: data.weeklyStats.revenueThisWeek
+        }
+      }} />
     </div>
   )
 }

@@ -31,7 +31,8 @@ export function CoachLayoutClient({
 
   const nav = (path: string) => router.push(path)
 
-  const showRightPanel = !pathname.includes('/onboarding')
+  // Hide right panel on onboarding AND dashboard (dashboard renders its own with data)
+  const showRightPanel = !pathname.includes('/onboarding') && pathname !== '/coach/dashboard'
 
   // Extract initials from coach name (same logic as OnboardingPreviewPanel)
   const initials = initialCoachName
@@ -39,7 +40,7 @@ export function CoachLayoutClient({
     .map(n => n[0])
     .join('')
     .toUpperCase()
-    .substring(0, 2) || 'AJ'
+    .substring(0, 2) || initialCoachName.charAt(0).toUpperCase() || 'C'
 
   // Fetch notification count
   useEffect(() => {
