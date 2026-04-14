@@ -334,8 +334,8 @@ Branch: feature/coach-data (open from develop before starting CD-01)
 | CD-03b | Fix sport_id placeholder in PricingStep — real UUID lookup | GET /api/sports | 🔴 High | ✅ |
 | CD-04 | Availability management — real schedule blocks | GET/POST/DELETE /api/coaches/availability | 🟡 Medium | ✅ |
 | CD-05 | Availability management — real blocked dates | GET/POST/DELETE /api/coaches/blocked-dates | 🟡 Medium | ✅ |
-| CD-06 | Bookings list — real data | GET /api/bookings (needs B-12 first) | 🟡 Medium | ⚪ |
-| CD-07 | Booking detail — real data | GET /api/bookings/[id] (needs B-13 first) | 🟡 Medium | ⚪ |
+| CD-06 | Bookings list — real data — Blocked: depends on B-12 (GET /api/bookings) — Step 5 | GET /api/bookings (needs B-12 first) | 🟡 Medium | 🔴 |
+| CD-07 | Booking detail — real data — Blocked: depends on B-13 (GET /api/bookings/[id]) — Step 5 | GET /api/bookings/[id] (needs B-13 first) | 🟡 Medium | 🔴 |
 | CD-08 | Programmes list — real data | GET /api/coaches/programmes | 🟡 Medium | ✅ |
 | CD-09 | Earnings summary — real data | GET /api/coaches/earnings (needs building) | 🟡 Medium | ⚪ |
 | CD-10 | Profile edit — load and save real data | GET/POST /api/coaches/profile | 🟡 Medium | ⚪ |
