@@ -40,6 +40,33 @@ export async function GET(request: Request) {
     return NextResponse.redirect(new URL('/login', origin))
   }
 
+  // Create user_profiles row for OAuth users if it doesn't exist
+  try {
+    const fullName = user.user_metadata?.full_name
+      || user.user_metadata?.name
+      || ''
+    const avatarUrl = user.user_metadata?.avatar_url
+      || user.user_metadata?.picture
+      || null
+
+    await supabase
+      .from('user_profiles')
+      .upsert(
+        {
+          auth_user_id: user.id,
+          full_name: fullName,
+          avatar_url: avatarUrl,
+        },
+        {
+          onConflict: 'auth_user_id',
+          ignoreDuplicates: true
+        }
+      )
+  } catch {
+    // Never block auth flow for profile creation failure
+    // User can complete profile later
+  }
+
   const hasRole = user.user_metadata?.primary_role
   const redirectTo = hasRole ? '/dashboard' : '/onboarding/role'
 
