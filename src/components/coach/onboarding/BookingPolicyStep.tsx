@@ -245,12 +245,12 @@ export function BookingPolicyStep() {
 
       {/* Right panel - What parents see */}
       <OnboardingPreviewPanel
-        coachName="Alex Johnson"
-        sport="Cricket"
-        location="London"
-        availabilityDays={['Mon', 'Wed', 'Fri']}
-        priceFromPence={5000}
-        isDbs={true}
+        coachName="Your name"
+        sport={undefined}
+        location={undefined}
+        availabilityDays={undefined}
+        priceFromPence={undefined}
+        isDbs={false}
         bookingPolicy={{
           cancellationWindow: cancellationWindow,
           minimumNotice: earliestBooking,

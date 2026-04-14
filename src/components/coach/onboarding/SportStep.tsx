@@ -9,7 +9,6 @@ export function SportStep() {
   const router = useRouter()
   const [selectedSports, setSelectedSports] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
-  const [displayName] = useState('Alex Johnson') // TODO: Get from profile state
 
   const sports = [
     { name: 'Cricket', Icon: Target },
@@ -130,12 +129,12 @@ export function SportStep() {
 
       {/* Right panel - What parents see */}
       <OnboardingPreviewPanel
-        coachName={displayName || 'Your name'}
-        sport="Cricket"
-        location="London"
-        availabilityDays={['Mon', 'Wed', 'Fri']}
-        priceFromPence={5000}
-        isDbs={true}
+        coachName="Your name"
+        sport={selectedSports[0] || undefined}
+        location={undefined}
+        availabilityDays={undefined}
+        priceFromPence={undefined}
+        isDbs={false}
       />
     </div>
   )

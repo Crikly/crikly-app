@@ -24,25 +24,8 @@ export function QualificationsStep() {
   const [year, setYear] = useState('')
   const [fileName, setFileName] = useState<string | null>(null)
   
-  // CF-D13 CHANGE 4: Stub qualification cards to show pattern
-  const [qualifications] = useState<Qualification[]>([
-    {
-      id: '1',
-      category: 'coaching',
-      name: 'ECB Level 2 Coaching',
-      provider: 'England & Wales Cricket Board',
-      year: '2022',
-      status: 'uploaded'
-    },
-    {
-      id: '2',
-      category: 'dbs',
-      name: 'DBS Enhanced Check',
-      provider: 'Disclosure & Barring Service',
-      year: '2023',
-      status: 'pending'
-    }
-  ])
+  // Fix-16b: Start with empty qualifications - real data will come from API fetch (Fix-16c)
+  const [qualifications] = useState<Qualification[]>([])
   
   const [saving, setSaving] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -241,11 +224,11 @@ export function QualificationsStep() {
 
       {/* Right panel - What parents see */}
       <OnboardingPreviewPanel
-        coachName="Alex Johnson"
-        sport="Cricket"
-        location="London"
-        availabilityDays={['Mon', 'Wed', 'Fri']}
-        priceFromPence={5000}
+        coachName="Your name"
+        sport={undefined}
+        location={undefined}
+        availabilityDays={undefined}
+        priceFromPence={undefined}
         isDbs={hasDBS}
         infoBox={hasDBS ? {
           type: 'success',

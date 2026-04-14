@@ -428,11 +428,11 @@ export function ProfileStep() {
       {/* Right panel - What parents see */}
       <OnboardingPreviewPanel
         coachName={displayName || 'Your name'}
-        sport="Cricket"
+        sport={undefined}
         location={baseLocation || undefined}
-        availabilityDays={['Mon', 'Wed', 'Fri']}
-        priceFromPence={5000}
-        isDbs={true}
+        availabilityDays={undefined}
+        priceFromPence={undefined}
+        isDbs={false}
       />
     </div>
   )

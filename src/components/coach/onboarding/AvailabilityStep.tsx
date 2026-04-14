@@ -20,11 +20,8 @@ interface ScheduleBlock { id: number; day: string; sport: string; time: string; 
 export function AvailabilityStep() {
   const router = useRouter()
   const addFormRef = useRef<HTMLDivElement>(null)
-  const [scheduleBlocks] = useState<ScheduleBlock[]>([
-    { id: 1, day: 'Mon', sport: 'Cricket', time: '09:00 – 12:00', location: 'Oval Cricket Ground', price: '£50/60min' },
-    { id: 2, day: 'Wed', sport: 'Cricket', time: '14:00 – 17:00', location: 'Kennington Park', price: '£60/60min' },
-    { id: 3, day: 'Sat', sport: 'Tennis', time: '09:00 – 13:00', location: "Queen's Club", price: '£45/60min' },
-  ])
+  // Fix-16b: Start with empty blocks - real data will come from API fetch (Fix-16c)
+  const [scheduleBlocks] = useState<ScheduleBlock[]>([])
   const availableSports = useMemo(() => [...new Set(scheduleBlocks.map(b => b.sport))], [scheduleBlocks])
   const [showAddForm, setShowAddForm] = useState(false)
   const [preselectedDay, setPreselectedDay] = useState<string | null>(null)
@@ -364,12 +361,12 @@ export function AvailabilityStep() {
 
       {/* Right panel - What parents see */}
       <OnboardingPreviewPanel
-        coachName="Alex Johnson"
-        sport="Cricket"
-        location="London"
-        availabilityDays={activeDays}
+        coachName="Your name"
+        sport={undefined}
+        location={undefined}
+        availabilityDays={activeDays.length > 0 ? activeDays : undefined}
         priceFromPence={lowestPrice ? lowestPrice * 100 : undefined}
-        isDbs={true}
+        isDbs={false}
         infoBox={scheduleBlocks.length > 0 ? {
           type: 'success',
           message: '✓ Your availability is visible to parents',
