@@ -1,8 +1,8 @@
 # Crikly — Comprehensive Build Plan
 
-**Version:** 2.3
+**Version:** 2.4
 **Last Updated:** April 2026
-**Changed:** Added Fix-10b through Fix-10j (onboarding polish). Added shared OnboardingPreviewPanel component. Added Step 3D data wiring (CD tasks) and Step 3F go-live gaps (CG tasks). CF-D10 marked in progress.
+**Changed:** Added Fix-10k (qualifications footer) and Fix-10l (qualification card spacing). CF-D10 onboarding polish complete.
 **This is the single source of truth for every task in the project.**
 
 ---
@@ -282,6 +282,8 @@ C-05, C-06, C-07, C-08 are safe to proceed without M-015.
 | Fix-10h | Refine get-paid onboarding screen — copy, cards, footer, right panel | @FrontendDeveloper | 🟢 | develop | ✅ |
 | Fix-10i | Fix get-paid duplicate CTA and banner copy | @FrontendDeveloper | 🟢 | develop | ✅ |
 | Fix-10j | Fix get-paid footer balance — three-slot pattern | @FrontendDeveloper | 🟢 | develop | ✅ |
+| Fix-10k | Remove skip from qualifications onboarding footer | @FrontendDeveloper | 🟢 | develop | ✅ |
+| Fix-10l | Fix spacing between qualification cards | @FrontendDeveloper | 🟢 | develop | ✅ |
 
 ### 3D — Screen Review & Polish (CF-D tasks)
 
@@ -303,7 +305,7 @@ other screens within the same task.
 | CF-D07 | Profile Hub screen adjustments | @FrontendDeveloper | 🟢 | develop | ⚪ |
 | CF-D08 | Earnings screen adjustments | @FrontendDeveloper | 🟢 | develop | ⚪ |
 | CF-D09 | Get Paid screen adjustments | @FrontendDeveloper | � | develop | ⚪ |
-| CF-D10 | Onboarding screens adjustments — all 6 steps + You're Live | @FrontendDeveloper | 🟢 | develop | 🟡 |
+| CF-D10 | Onboarding screens adjustments — all 6 steps + You're Live | @FrontendDeveloper | 🟢 | develop | ✅ |
 
 ### 3E — Data Wiring (CD tasks)
 
