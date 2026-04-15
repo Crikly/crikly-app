@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Pencil, X, Plus, ChevronDown, AlertTriangle } from 'lucide-react'
 import { OnboardingPreviewPanel } from '../OnboardingPreviewPanel'
 
-const DAY_ABBR = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
+const DAY_ABBR = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 const DAY_FULL: Record<string, string> = { Mon: 'Monday', Tue: 'Tuesday', Wed: 'Wednesday', Thu: 'Thursday', Fri: 'Friday', Sat: 'Saturday', Sun: 'Sunday' }
 const REPEAT_OPTIONS = ['Weekly', 'Fortnightly', 'Monthly', 'One-off']
 
@@ -50,24 +50,33 @@ export function AvailabilityStep() {
   const [formPrice, setFormPrice] = useState('')
   const toggleDay = (day: string) => setFormDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day])
   
+  // Fix-17e: Extract fetchAvailability into reusable function
+  const fetchAvailability = async () => {
+    try {
+      const availResponse = await fetch('/api/coaches/availability')
+      if (availResponse.ok) {
+        const data = await availResponse.json()
+        const savedBlocks = data.availability.map((block: AvailabilityResponse) => ({
+          id: block.id,
+          day: DAY_ABBR[block.day_of_week],
+          sport: block.sport_name || 'Sport',
+          time: `${block.start_time.substring(0, 5)} – ${block.end_time.substring(0, 5)}`, // Fix-16f: Remove seconds from display
+          location: 'Venue',
+          price: block.price_override_pence ? `£${(block.price_override_pence / 100).toFixed(0)}/${block.session_type_name || '60min'}` : '£--/60min'
+        }))
+        setScheduleBlocks(savedBlocks)
+      }
+    } catch (error) {
+      console.error('[AvailabilityStep] Failed to fetch availability:', error)
+    }
+  }
+  
   // Fix-16c: Fetch saved availability on mount
   useEffect(() => {
     const fetchData = async () => {
       try {
         // Fetch availability
-        const availResponse = await fetch('/api/coaches/availability')
-        if (availResponse.ok) {
-          const data = await availResponse.json()
-          const savedBlocks = data.availability.map((block: AvailabilityResponse) => ({
-            id: block.id,
-            day: DAY_ABBR[block.day_of_week],
-            sport: block.sport_name || 'Sport',
-            time: `${block.start_time.substring(0, 5)} – ${block.end_time.substring(0, 5)}`, // Fix-16f: Remove seconds from display
-            location: 'Venue',
-            price: block.price_override_pence ? `£${(block.price_override_pence / 100).toFixed(0)}/${block.session_type_name || '60min'}` : '£--/60min'
-          }))
-          setScheduleBlocks(savedBlocks)
-        }
+        await fetchAvailability()
         
         // Fix-16e: Fetch coach profile for name
         const profileResponse = await fetch('/api/coaches/profile')
@@ -372,6 +381,9 @@ export function AvailabilityStep() {
                             })
                           })
                         }
+                        
+                        // Fix-17e: Refetch availability to update scheduleBlocks
+                        await fetchAvailability()
                         resetForm()
                       } catch (error) {
                         console.error('Failed to add availability block:', error)

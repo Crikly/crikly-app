@@ -42,24 +42,33 @@ export function QualificationsStep() {
   const [saving, setSaving] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   
+  // Fix-17e: Extract fetchQualifications into reusable function
+  const fetchQualifications = async () => {
+    try {
+      const qualsResponse = await fetch('/api/coaches/qualifications')
+      if (qualsResponse.ok) {
+        const data = await qualsResponse.json()
+        const savedQuals = data.qualifications.map((q: QualificationResponse) => ({
+          id: q.id,
+          category: q.is_custom ? 'other' : 'coaching',
+          name: q.custom_name || q.type_name || '',
+          provider: q.issuing_body || '',
+          year: q.issued_date ? new Date(q.issued_date).getFullYear().toString() : '',
+          status: 'uploaded' as const
+        }))
+        setQualifications(savedQuals)
+      }
+    } catch (error) {
+      console.error('[QualificationsStep] Failed to fetch qualifications:', error)
+    }
+  }
+  
   // Fix-16c: Fetch saved qualifications on mount
   useEffect(() => {
     const fetchData = async () => {
       try {
         // Fetch qualifications
-        const qualsResponse = await fetch('/api/coaches/qualifications')
-        if (qualsResponse.ok) {
-          const data = await qualsResponse.json()
-          const savedQuals = data.qualifications.map((q: QualificationResponse) => ({
-            id: q.id,
-            category: q.is_custom ? 'other' : 'coaching',
-            name: q.custom_name || q.type_name || '',
-            provider: q.issuing_body || '',
-            year: q.issued_date ? new Date(q.issued_date).getFullYear().toString() : '',
-            status: 'uploaded' as const
-          }))
-          setQualifications(savedQuals)
-        }
+        await fetchQualifications()
         
         // Fix-16e: Fetch coach profile for name
         const profileResponse = await fetch('/api/coaches/profile')
@@ -101,17 +110,9 @@ export function QualificationsStep() {
         })
       })
       
-      // Fix-16e: Add new qualification to local state immediately
+      // Fix-17e: Refetch qualifications to update state
       if (response.ok) {
-        const newQual = await response.json()
-        setQualifications(prev => [...prev, {
-          id: newQual.id,
-          category: 'other',
-          name: newQual.custom_name || newQual.type_name || '',
-          provider: newQual.issuing_body || '',
-          year: newQual.issued_date ? new Date(newQual.issued_date).getFullYear().toString() : '',
-          status: 'uploaded' as const
-        }])
+        await fetchQualifications()
       }
       
       // Reset form
