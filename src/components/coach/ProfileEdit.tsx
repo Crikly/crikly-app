@@ -37,6 +37,8 @@ export function ProfileEdit() {
   const [profile, setProfile] = useState<CoachProfileResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [hasSports, setHasSports] = useState(false)
+  const [hasQualifications, setHasQualifications] = useState(false)
   // CD-10b: Fetch profile data on mount
   useEffect(() => {
     const fetchProfile = async () => {
@@ -51,6 +53,20 @@ export function ProfileEdit() {
         
         const data: CoachProfileResponse = await response.json()
         setProfile(data)
+        
+        // Fix-17m: Fetch sports count
+        const sportsRes = await fetch('/api/coaches/sports')
+        if (sportsRes.ok) {
+          const sportsData = await sportsRes.json()
+          setHasSports(sportsData.sports && sportsData.sports.length > 0)
+        }
+        
+        // Fix-17m: Fetch qualifications count
+        const qualsRes = await fetch('/api/coaches/qualifications')
+        if (qualsRes.ok) {
+          const qualsData = await qualsRes.json()
+          setHasQualifications(qualsData.qualifications && qualsData.qualifications.length > 0)
+        }
       } catch (err) {
         console.error('Failed to fetch profile:', err)
         setError('Failed to load profile. Please try again.')
@@ -72,11 +88,11 @@ export function ProfileEdit() {
     // Personal Info (full_name, bio, location_city)
     if (profile.full_name && profile.bio && profile.location_city) completed++
     
-    // Sports & Pricing (assume complete if years_experience exists)
-    if (profile.years_experience !== null) completed++
+    // Sports & Pricing (has at least one sport)
+    if (hasSports) completed++
     
-    // Qualifications (DBS status)
-    if (profile.dbs_status === 'verified') completed++
+    // Qualifications (has at least one qualification)
+    if (hasQualifications) completed++
     
     // Availability (assume complete - would need availability API check)
     completed++ // TODO: Check actual availability data
@@ -97,8 +113,8 @@ export function ProfileEdit() {
     if (!profile) return []
     
     const personalComplete = !!(profile.full_name && profile.bio && profile.location_city)
-    const sportsComplete = profile.years_experience !== null
-    const qualificationsComplete = profile.dbs_status === 'verified'
+    const sportsComplete = hasSports
+    const qualificationsComplete = hasQualifications
     const availabilityComplete = true // TODO: Check actual availability
     const policyComplete = profile.cancellation_window_hours > 0
     const paymentComplete = profile.stripe_onboarding_complete
@@ -164,7 +180,7 @@ export function ProfileEdit() {
   const sections = getSections()
   const sectionRoutes: Record<string, string> = {
     personal: '/coach/onboarding/profile',
-    sports: '/coach/onboarding/pricing',
+    sports: '/coach/onboarding/sport',
     qualifications: '/coach/onboarding/qualifications',
     availability: '/coach/availability',
     policy: '/coach/onboarding/policy',
