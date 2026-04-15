@@ -66,23 +66,10 @@ export async function GET(): Promise<NextResponse<{ qualifications: Qualificatio
       return NextResponse.json({ error: 'Coach profile not found' }, { status: 404 })
     }
 
-    // 4. Fetch qualifications with optional qualification_types join
+    // 4. Fix-16d: Fetch qualifications WITHOUT joins (no qualification_types syntax)
     const { data: qualifications, error: qualError } = await supabase
       .from('coach_qualifications')
-      .select(`
-        id,
-        qualification_type_id,
-        custom_name,
-        issuing_body,
-        issued_date,
-        expiry_date,
-        notes,
-        created_at,
-        qualification_types (
-          name,
-          issuing_body
-        )
-      `)
+      .select('*')
       .eq('coach_profile_id', coachProfile.id)
       .order('created_at', { ascending: false })
 
@@ -91,11 +78,26 @@ export async function GET(): Promise<NextResponse<{ qualifications: Qualificatio
       return NextResponse.json({ error: 'Failed to fetch qualifications' }, { status: 500 })
     }
 
-    // 5. Build response
+    // 5. Fix-16d: Fetch qualification type data separately for non-custom qualifications
+    const typeIds = [...new Set((qualifications || [])
+      .map(q => q.qualification_type_id)
+      .filter((id): id is string => id !== null))]
+    
+    const { data: qualTypes, error: typesError } = typeIds.length > 0
+      ? await supabase
+          .from('qualification_types')
+          .select('id, name, issuing_body')
+          .in('id', typeIds)
+      : { data: [], error: null }
+
+    if (typesError) {
+      console.error('[GET /api/coaches/qualifications] types error:', typesError)
+      return NextResponse.json({ error: 'Failed to fetch qualification types' }, { status: 500 })
+    }
+
+    // 6. Build response by merging qualification type data in application code
     const response: QualificationResponse[] = (qualifications || []).map((q) => {
-      const typeData = q.qualification_types
-        ? (Array.isArray(q.qualification_types) ? q.qualification_types[0] : q.qualification_types)
-        : null
+      const typeData = (qualTypes || []).find(t => t.id === q.qualification_type_id)
 
       return {
         id: q.id,

@@ -102,26 +102,10 @@ export async function GET(
       return NextResponse.json({ error: 'Failed to create coach profile' }, { status: 500 })
     }
 
-    // 4. Build query
+    // 4. Fix-16d: Fetch availability blocks WITHOUT joins
     let query = supabase
       .from('availability_templates')
-      .select(`
-        id,
-        sport_id,
-        day_of_week,
-        start_time,
-        end_time,
-        is_active,
-        price_override_pence,
-        session_type_id,
-        created_at,
-        sports (
-          name
-        ),
-        coach_session_types (
-          duration_minutes
-        )
-      `)
+      .select('*')
       .eq('coach_profile_id', coachProfile.id)
       .order('day_of_week', { ascending: true })
       .order('start_time', { ascending: true })
@@ -138,15 +122,44 @@ export async function GET(
       return NextResponse.json({ error: 'Failed to fetch availability' }, { status: 500 })
     }
 
-    // 5. Build response
-    const response: AvailabilityResponse[] = (blocks || []).map((block) => {
-      const sportData = block.sports
-        ? (Array.isArray(block.sports) ? block.sports[0] : block.sports)
-        : null
+    // 5. Fix-16d: Fetch sport data separately
+    const sportIds = [...new Set((blocks || [])
+      .map(b => b.sport_id)
+      .filter((id): id is string => id !== null))]
+    
+    const { data: sportsData, error: sportsError } = sportIds.length > 0
+      ? await supabase
+          .from('sports')
+          .select('id, name')
+          .in('id', sportIds)
+      : { data: [], error: null }
 
-      const sessionTypeData = block.coach_session_types
-        ? (Array.isArray(block.coach_session_types) ? block.coach_session_types[0] : block.coach_session_types)
-        : null
+    if (sportsError) {
+      console.error('[GET /api/coaches/availability] sports error:', sportsError)
+      return NextResponse.json({ error: 'Failed to fetch sports data' }, { status: 500 })
+    }
+
+    // 6. Fix-16d: Fetch session type data separately
+    const sessionTypeIds = [...new Set((blocks || [])
+      .map(b => b.session_type_id)
+      .filter((id): id is string => id !== null))]
+    
+    const { data: sessionTypesData, error: sessionTypesError } = sessionTypeIds.length > 0
+      ? await supabase
+          .from('coach_session_types')
+          .select('id, duration_minutes')
+          .in('id', sessionTypeIds)
+      : { data: [], error: null }
+
+    if (sessionTypesError) {
+      console.error('[GET /api/coaches/availability] session types error:', sessionTypesError)
+      return NextResponse.json({ error: 'Failed to fetch session types data' }, { status: 500 })
+    }
+
+    // 7. Build response by merging data in application code
+    const response: AvailabilityResponse[] = (blocks || []).map((block) => {
+      const sportData = (sportsData || []).find(s => s.id === block.sport_id)
+      const sessionTypeData = (sessionTypesData || []).find(st => st.id === block.session_type_id)
 
       return {
         id: block.id,
@@ -419,15 +432,18 @@ export async function POST(
       insertData.session_type_id = body.session_type_id
     }
 
-    // Fix-16a: Insert without joins - joins not supported on insert
+    // Fix-16d: Upsert instead of insert to handle conflicts on (coach_profile_id, day_of_week, start_time)
     const { data: newBlock, error: insertError } = await supabase
       .from('availability_templates')
-      .insert(insertData)
+      .upsert(insertData, {
+        onConflict: 'coach_profile_id,day_of_week,start_time',
+        ignoreDuplicates: false
+      })
       .select()
       .single()
 
     if (insertError) {
-      console.error('[POST /api/coaches/availability] insert error:', insertError)
+      console.error('[POST /api/coaches/availability] upsert error:', insertError)
       return NextResponse.json({ error: 'Failed to add availability block' }, { status: 500 })
     }
 

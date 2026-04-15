@@ -348,6 +348,7 @@ Branch: feature/coach-data (open from develop before starting CD-01)
 | Fix-16a | Onboarding data persistence: upsert sports, fix qualifications/availability joins | Multiple POST routes | 🟡 Medium | ✅ |
 | Fix-16b | Remove hardcoded stub data from onboarding: empty blocks/qualifications, placeholder right panel data | Onboarding components | 🟡 Medium | ✅ |
 | Fix-16c | Add data pre-population to all onboarding steps: fetch and display saved data on mount | Onboarding components | 🟡 Medium | ✅ |
+| Fix-16d | Remove all joins from coach API routes: fetch related data separately to avoid PGRST200 errors, add upsert to availability | Coach API routes | 🟡 Medium | ✅ |
 
 ### 3F — Coach Go-Live Gaps (CG tasks)
 
