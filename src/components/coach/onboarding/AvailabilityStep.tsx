@@ -735,8 +735,6 @@ export function AvailabilityStep() {
                         </div>
                         <button 
                           onClick={async () => {
-                            if (!confirm('Remove this blocked date?')) return
-                            
                             try {
                               setDeletingBlocked(item.id)
                               const response = await fetch(`/api/coaches/blocked-dates/${item.id}`, {
@@ -750,7 +748,7 @@ export function AvailabilityStep() {
                               setBlockedRanges(prev => prev.filter(r => r.id !== item.id))
                             } catch (err) {
                               console.error('Error deleting blocked date:', err)
-                              alert('Failed to remove blocked date. Please try again.')
+                              setBlockedError('Failed to remove blocked date. Please try again.')
                             } finally {
                               setDeletingBlocked(null)
                             }
