@@ -152,20 +152,25 @@ export function PricingStep() {
         return
       }
 
-      // Get the first selected sport (assuming single sport for now)
-      const selectedSportName = selectedSports[0]
-      const matchedSport = sports.find(s => s.name === selectedSportName)
-      
-      if (!matchedSport) {
-        setLoadingError(`Sport "${selectedSportName}" not found. Please go back and select a valid sport.`)
-        setSaving(false)
+      // Fix-17b: Loop through ALL selected sports and save each one
+      // First, validate all sports exist
+      const sportMatches = selectedSports.map(sportName => {
+        const matchedSport = sports.find(s => s.name === sportName)
+        if (!matchedSport) {
+          setLoadingError(`Sport "${sportName}" not found. Please go back and select a valid sport.`)
+          setSaving(false)
+          return null
+        }
+        return { name: sportName, id: matchedSport.id }
+      })
+
+      // If any sport not found, stop
+      if (sportMatches.some(match => match === null)) {
         return
       }
-
-      const sportId = matchedSport.id // CD-04: Real UUID from sports table
       
       // Convert session types to array format
-      const sessionTypesArray = []
+      const sessionTypesArray: string[] = []
       if (sessionTypes.individual) sessionTypesArray.push('individual')
       if (sessionTypes.group) sessionTypesArray.push('group')
       
@@ -190,20 +195,27 @@ export function PricingStep() {
         ? Math.round(Math.min(...pricingRows.map(r => parseFloat(r.price || '0'))) * 100)
         : 0
       
-      await fetch('/api/coaches/sports', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sport_id: sportId, // CD-04: coach_sports.sport_id (real UUID FK to sports table)
-          session_types: sessionTypesArray, // CD-03: coach_sports.session_types (text[])
-          skill_levels: skillLevelsArray, // CD-03: coach_sports.skill_levels (text[])
-          age_groups: ageGroupsArray, // Fix-16f: coach_sports.age_groups (text[])
-          price_individual_pence: lowestPricePence, // CD-03: coach_sports.price_individual_pence (integer)
-          price_group_pence: null, // CD-03: coach_sports.price_group_pence (not configured in UI yet)
-          max_group_size: null, // CD-03: coach_sports.max_group_size (not configured in UI yet)
-          session_duration_minutes: 60, // CD-03: default duration
+      // Fix-17b: Save all sports using Promise.all
+      const savePromises = sportMatches.map(match => 
+        fetch('/api/coaches/sports', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sport_id: match!.id, // CD-04: coach_sports.sport_id (real UUID FK to sports table)
+            session_types: sessionTypesArray, // CD-03: coach_sports.session_types (text[])
+            skill_levels: skillLevelsArray, // CD-03: coach_sports.skill_levels (text[])
+            age_groups: ageGroupsArray, // Fix-16f: coach_sports.age_groups (text[])
+            price_individual_pence: lowestPricePence, // CD-03: coach_sports.price_individual_pence (integer)
+            price_group_pence: null, // CD-03: coach_sports.price_group_pence (not configured in UI yet)
+            max_group_size: null, // CD-03: coach_sports.max_group_size (not configured in UI yet)
+            session_duration_minutes: 60, // CD-03: default duration
+          })
         })
-      })
+      )
+
+      // Wait for all saves to complete
+      await Promise.all(savePromises)
+      
       router.push('/coach/onboarding/qualifications')
     } finally {
       setSaving(false)

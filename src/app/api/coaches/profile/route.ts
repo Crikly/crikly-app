@@ -23,6 +23,7 @@ interface CoachProfileResponse {
   rating_count: number
   sessions_completed: number
   gender: string | null
+  languages?: string[]
   created_at: string
   updated_at: string
 }
@@ -84,6 +85,7 @@ export async function GET(): Promise<NextResponse<CoachProfileResponse | { error
         rating_count,
         sessions_completed,
         gender,
+        languages,
         created_at,
         updated_at,
         user_profiles!inner (
@@ -124,6 +126,7 @@ export async function GET(): Promise<NextResponse<CoachProfileResponse | { error
       rating_count: coachProfile.rating_count,
       sessions_completed: coachProfile.sessions_completed,
       gender: coachProfile.gender,
+      languages: coachProfile.languages || [],
       created_at: coachProfile.created_at,
       updated_at: coachProfile.updated_at,
     }
@@ -349,6 +352,7 @@ export async function POST(
         rating_count,
         sessions_completed,
         gender,
+        languages,
         created_at,
         updated_at,
         user_profiles!inner (
@@ -390,6 +394,7 @@ export async function POST(
       rating_count: updatedProfile.rating_count,
       sessions_completed: updatedProfile.sessions_completed,
       gender: updatedProfile.gender,
+      languages: updatedProfile.languages || [],
       created_at: updatedProfile.created_at,
       updated_at: updatedProfile.updated_at,
     }
