@@ -12,6 +12,7 @@ interface CoachSportResponse {
   sport_slug: string
   session_types: string[]
   skill_levels: string[]
+  age_groups: string[]
   price_individual_pence: number | null
   price_group_pence: number | null
   max_group_size: number | null
@@ -138,6 +139,7 @@ export async function GET(): Promise<NextResponse<{ sports: CoachSportResponse[]
         sport_slug: sportData?.slug || 'unknown',
         session_types: cs.session_types,
         skill_levels: cs.skill_levels,
+        age_groups: cs.age_groups || [],
         price_individual_pence: cs.price_individual_pence,
         price_group_pence: cs.price_group_pence,
         max_group_size: cs.max_group_size,
@@ -359,6 +361,7 @@ export async function POST(
       sport_slug: sportData?.slug || '',
       session_types: newSport.session_types,
       skill_levels: newSport.skill_levels,
+      age_groups: newSport.age_groups || [],
       price_individual_pence: newSport.price_individual_pence,
       price_group_pence: newSport.price_group_pence,
       max_group_size: newSport.max_group_size,
