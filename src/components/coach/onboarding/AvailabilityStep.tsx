@@ -62,7 +62,7 @@ export function AvailabilityStep() {
             id: block.id,
             day: DAY_ABBR[block.day_of_week],
             sport: block.sport_name || 'Sport',
-            time: `${block.start_time} – ${block.end_time}`,
+            time: `${block.start_time.substring(0, 5)} – ${block.end_time.substring(0, 5)}`, // Fix-16f: Remove seconds from display
             location: 'Venue',
             price: block.price_override_pence ? `£${(block.price_override_pence / 100).toFixed(0)}/${block.session_type_name || '60min'}` : '£--/60min'
           }))

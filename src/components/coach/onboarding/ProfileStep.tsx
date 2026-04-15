@@ -25,6 +25,7 @@ interface CoachProfileResponse {
   rating_count: number
   sessions_completed: number
   gender: string | null
+  languages?: string[]
   created_at: string
   updated_at: string
 }
@@ -94,6 +95,11 @@ export function ProfileStep() {
         if (data.avatar_url) {
           setPhotoPreview(data.avatar_url)
         }
+        
+        // Fix-16f: Pre-populate languages
+        if (data.languages && data.languages.length > 0) {
+          setSelectedLanguages(data.languages)
+        }
       } catch (err) {
         console.error('Failed to fetch profile:', err)
         setError('Failed to load profile. Please try again.')
@@ -147,6 +153,7 @@ export function ProfileStep() {
           location_city: baseLocation,
           years_experience: yearsExp,
           gender: gender.toLowerCase().replace(/\s+/g, '_'),
+          languages: selectedLanguages, // Fix-16f: Include languages in save payload
         })
       })
       

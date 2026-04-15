@@ -17,6 +17,7 @@ interface CoachSportResponse {
   sport_slug: string
   session_types: string[]
   skill_levels: string[]
+  age_groups?: string[]
   price_individual_pence: number | null
   price_group_pence: number | null
   max_group_size: number | null
@@ -84,6 +85,22 @@ export function PricingStep() {
                 duration: `${savedSport.session_duration_minutes} min`,
                 price: priceInPounds
               }])
+            }
+            
+            // Fix-16f: Pre-populate age_groups (convert API format to UI format)
+            if (savedSport.age_groups && savedSport.age_groups.length > 0) {
+              const uiAgeGroups = savedSport.age_groups.map((group: string) => {
+                const mapping: Record<string, string> = {
+                  'under_8': 'Under 8',
+                  'under_10': 'Under 10',
+                  'under_12': 'Under 12',
+                  'under_14': 'Under 14',
+                  'under_16': 'Under 16',
+                  'adults': 'Adults (17+)'
+                }
+                return mapping[group] || group
+              })
+              setAgeGroups(uiAgeGroups)
             }
           }
         }
@@ -155,6 +172,19 @@ export function PricingStep() {
       // Convert skill levels to lowercase array
       const skillLevelsArray = skillLevels.map(l => l.toLowerCase())
       
+      // Fix-16f: Convert age_groups from UI format to API format
+      const ageGroupsArray = ageGroups.map(group => {
+        const mapping: Record<string, string> = {
+          'Under 8': 'under_8',
+          'Under 10': 'under_10',
+          'Under 12': 'under_12',
+          'Under 14': 'under_14',
+          'Under 16': 'under_16',
+          'Adults (17+)': 'adults'
+        }
+        return mapping[group] || group.toLowerCase().replace(' ', '_')
+      })
+      
       // Get lowest price as individual price (pence)
       const lowestPricePence = pricingRows.length > 0
         ? Math.round(Math.min(...pricingRows.map(r => parseFloat(r.price || '0'))) * 100)
@@ -167,11 +197,11 @@ export function PricingStep() {
           sport_id: sportId, // CD-04: coach_sports.sport_id (real UUID FK to sports table)
           session_types: sessionTypesArray, // CD-03: coach_sports.session_types (text[])
           skill_levels: skillLevelsArray, // CD-03: coach_sports.skill_levels (text[])
+          age_groups: ageGroupsArray, // Fix-16f: coach_sports.age_groups (text[])
           price_individual_pence: lowestPricePence, // CD-03: coach_sports.price_individual_pence (integer)
           price_group_pence: null, // CD-03: coach_sports.price_group_pence (not configured in UI yet)
           max_group_size: null, // CD-03: coach_sports.max_group_size (not configured in UI yet)
           session_duration_minutes: 60, // CD-03: default duration
-          // Note: age_groups not in coach_sports schema - skipped
         })
       })
       router.push('/coach/onboarding/qualifications')

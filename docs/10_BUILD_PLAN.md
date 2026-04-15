@@ -350,6 +350,7 @@ Branch: feature/coach-data (open from develop before starting CD-01)
 | Fix-16c | Add data pre-population to all onboarding steps: fetch and display saved data on mount | Onboarding components | 🟡 Medium | ✅ |
 | Fix-16d | Remove all joins from coach API routes: fetch related data separately to avoid PGRST200 errors, add upsert to availability | Coach API routes | 🟡 Medium | ✅ |
 | Fix-16e | Six fixes: availability unique constraint, age_groups/languages fields, qualification/availability remove UI, right panel coach name | Multiple | 🟡 Medium | ✅ |
+| Fix-16f | Three data mapping fixes: age_groups saving/loading, languages saving/loading, time display without seconds | Onboarding components | 🟢 Low | ✅ |
 
 ### 3F — Coach Go-Live Gaps (CG tasks)
 
