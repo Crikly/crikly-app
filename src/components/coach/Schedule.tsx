@@ -5,6 +5,21 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ChevronLeft, ChevronRight, Plus, Check, User, RefreshCw, Users, Ban, X, Calendar, MapPin, PoundSterling, AlertCircle, Info } from 'lucide-react'
 
+// CD-12: API response types
+interface AvailabilityResponse {
+  id: string
+  sport_id: string | null
+  sport_name: string | null
+  day_of_week: number
+  start_time: string
+  end_time: string
+  is_active: boolean
+  price_override_pence: number | null
+  session_type_id: string | null
+  session_type_name: string | null
+  created_at: string
+}
+
 interface EventBlockProps {
   top: number
   height: number
@@ -106,7 +121,37 @@ export function Schedule() {
   // CF-D02i: Layout dimensions for popover positioning
   const SIDEBAR_WIDTH = 288 // w-72 from layout.tsx
   const RIGHT_PANEL_WIDTH = 384 // w-96 from CoachRightPanel.tsx
+  
+  // CD-12: State for availability data
+  const [availability, setAvailability] = useState<AvailabilityResponse[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
+  // CD-12: Fetch availability data on mount
+  useEffect(() => {
+    const fetchAvailability = async () => {
+      try {
+        setLoading(true)
+        setError(null)
+        
+        const response = await fetch('/api/coaches/availability')
+        if (!response.ok) {
+          throw new Error('Failed to fetch availability')
+        }
+        
+        const data = await response.json()
+        setAvailability(data.availability || [])
+      } catch (err) {
+        console.error('Failed to fetch availability:', err)
+        setError('Failed to load schedule. Please try again.')
+      } finally {
+        setLoading(false)
+      }
+    }
+    
+    fetchAvailability()
+  }, [])
+  
   useEffect(() => {
     if (gridRef.current) {
       gridRef.current.scrollTop = 128
@@ -178,14 +223,27 @@ export function Schedule() {
   const hours = Array.from({ length: 17 }, (_, i) => i + 6)
 
   const days = [
-    { name: 'Mon', date: '6' },
-    { name: 'Tue', date: '7' },
-    { name: 'Wed', date: '8', isToday: true },
-    { name: 'Thu', date: '9' },
-    { name: 'Fri', date: '10' },
-    { name: 'Sat', date: '11' },
-    { name: 'Sun', date: '12' },
+    { name: 'Mon', date: '6', dayOfWeek: 1 },
+    { name: 'Tue', date: '7', dayOfWeek: 2 },
+    { name: 'Wed', date: '8', isToday: true, dayOfWeek: 3 },
+    { name: 'Thu', date: '9', dayOfWeek: 4 },
+    { name: 'Fri', date: '10', dayOfWeek: 5 },
+    { name: 'Sat', date: '11', dayOfWeek: 6 },
+    { name: 'Sun', date: '12', dayOfWeek: 0 },
   ]
+  
+  // CD-12: Helper to convert time string to grid position
+  const timeToPosition = (time: string): number => {
+    const [hours, minutes] = time.split(':').map(Number)
+    return (hours - 6) + (minutes / 60)
+  }
+  
+  // CD-12: Helper to calculate block height in grid units
+  const calculateDuration = (startTime: string, endTime: string): number => {
+    const start = timeToPosition(startTime)
+    const end = timeToPosition(endTime)
+    return end - start
+  }
 
   return (
     <div className="min-h-screen bg-white flex justify-center font-sans p-6" style={{ fontFamily: "'DM Sans', sans-serif" }}>
@@ -238,6 +296,34 @@ export function Schedule() {
 
           {/* Week Grid */}
           <div className="border border-gray-200 rounded-xl overflow-hidden flex flex-col bg-white shadow-sm relative h-[700px] shrink-0">
+            {/* CD-12: Loading state */}
+            {loading && (
+              <div className="absolute inset-0 bg-white/80 z-50 flex items-center justify-center">
+                <div className="flex flex-col items-center">
+                  <div className="w-8 h-8 border-3 border-gray-200 border-t-[#0077CC] rounded-full animate-spin mb-3" />
+                  <p className="text-[14px] text-gray-500">Loading schedule...</p>
+                </div>
+              </div>
+            )}
+            
+            {/* CD-12: Error state */}
+            {error && !loading && (
+              <div className="absolute inset-0 bg-white z-50 flex items-center justify-center">
+                <div className="flex flex-col items-center text-center px-4">
+                  <div className="w-16 h-16 bg-red-50 text-red-600 rounded-full flex items-center justify-center mb-4">
+                    <span className="text-2xl">⚠</span>
+                  </div>
+                  <h3 className="text-[18px] font-bold text-gray-900 mb-2">Failed to load schedule</h3>
+                  <p className="text-[14px] text-gray-500 mb-6">{error}</p>
+                  <button 
+                    onClick={() => window.location.reload()}
+                    className="bg-[#0077CC] hover:bg-[#0066AA] text-white px-6 py-3 rounded-xl text-[15px] font-bold transition-colors"
+                  >
+                    Try Again
+                  </button>
+                </div>
+              </div>
+            )}
             {/* CHANGE 2: Today column treatment */}
             <div className="flex border-b border-gray-200 bg-gray-50/50 relative z-20">
               <div className="w-16 shrink-0 border-r border-gray-200" />
@@ -279,39 +365,61 @@ export function Schedule() {
                   ))}
                 </div>
 
+                {/* CD-12: Real availability blocks */}
                 <div className="absolute inset-0 flex pointer-events-auto z-10">
                   <div className="w-16 shrink-0" />
-                  {/* Mon */}
-                  <div className="flex-1 relative border-r border-transparent">
-                    <EventBlock top={(9 - 6) * 64} height={1 * 64} type="confirmed" title="James Okafor" subtitle="🏏 Cricket · 1-on-1" sessionId="session-1" onCardClick={handleCardClick} />
-                    <EventBlock top={(14 - 6) * 64} height={1.5 * 64} type="programme" title="Junior Cricket Foundations" subtitle="🏏 4/6 spots" sessionId="session-2" onCardClick={handleCardClick} />
-                  </div>
-                  {/* Tue */}
-                  <div className="flex-1 relative border-r border-transparent">
-                    <EventBlock top={(10 - 6) * 64} height={1.5 * 64} type="available" title="Available" sessionId="slot-tue-10" onCardClick={(e) => handleSlotClick(e, 'Tue 7 Apr', '10:00')} />
-                  </div>
-                  {/* Wed Today */}
-                  <div className="flex-1 relative border-r border-transparent">
-                    <EventBlock top={(10 - 6) * 64} height={1 * 64} type="confirmed" title="Marcus Trent" subtitle="⚽ Football · 1-on-1" sessionId="session-3" onCardClick={handleCardClick} />
-                    <EventBlock top={(13 - 6) * 64} height={1 * 64} type="pending" title="David Chen" subtitle="🏏 Awaiting approval" sessionId="session-4" onCardClick={handleCardClick} />
-                  </div>
-                  {/* Thu */}
-                  <div className="flex-1 relative border-r border-transparent">
-                    <EventBlock top={(9 - 6) * 64} height={1.5 * 64} type="programme" title="Advanced Batting Masterclass" subtitle="🏏 6/6 FULL" sessionId="session-5" onCardClick={handleCardClick} />
-                  </div>
-                  {/* Fri */}
-                  <div className="flex-1 relative border-r border-transparent">
-                    <EventBlock top={(15 - 6) * 64} height={2 * 64} type="available" title="Available" sessionId="slot-fri-15" onCardClick={(e) => handleSlotClick(e, 'Fri 10 Apr', '15:00')} />
-                  </div>
-                  {/* Sat */}
-                  <div className="flex-1 relative border-r border-transparent">
-                    <EventBlock top={(8 - 6) * 64} height={5 * 64} type="blocked" title="Blocked — Family Holiday" sessionId="block-1" onCardClick={handleCardClick} />
-                  </div>
-                  {/* Sun */}
-                  <div className="flex-1 relative border-r border-transparent">
-                    <EventBlock top={(10 - 6) * 64} height={1.5 * 64} type="programme" title="Open Net Session" subtitle="⚽ 2/8 spots" sessionId="session-6" onCardClick={handleCardClick} />
-                  </div>
+                  {days.map((day, dayIdx) => {
+                    // Filter availability for this day
+                    const dayBlocks = availability.filter(block => 
+                      block.is_active && block.day_of_week === day.dayOfWeek
+                    )
+                    
+                    return (
+                      <div key={dayIdx} className="flex-1 relative border-r border-transparent">
+                        {dayBlocks.map((block) => {
+                          const topPosition = timeToPosition(block.start_time) * 64
+                          const duration = calculateDuration(block.start_time, block.end_time)
+                          const heightPx = duration * 64
+                          const timeStr = block.start_time.substring(0, 5)
+                          const dateStr = `${day.name} ${day.date} Apr`
+                          
+                          return (
+                            <EventBlock
+                              key={block.id}
+                              top={topPosition}
+                              height={heightPx}
+                              type="available"
+                              title="Available"
+                              sessionId={`slot-${day.name.toLowerCase()}-${block.id}`}
+                              onCardClick={(e) => handleSlotClick(e, dateStr, timeStr)}
+                            />
+                          )
+                        })}
+                      </div>
+                    )
+                  })}
                 </div>
+                
+                {/* CD-12: Empty state */}
+                {!loading && !error && availability.length === 0 && (
+                  <div className="absolute inset-0 flex items-center justify-center z-20">
+                    <div className="text-center px-4">
+                      <div className="w-16 h-16 bg-[#F0F7FF] rounded-full flex items-center justify-center mx-auto mb-4">
+                        <Calendar size={32} className="text-[#0077CC]" />
+                      </div>
+                      <h3 className="text-[18px] font-bold text-gray-900 mb-2">No availability set</h3>
+                      <p className="text-[14px] text-gray-500 mb-6 max-w-sm">
+                        Add your weekly availability to show when you're free for sessions.
+                      </p>
+                      <button 
+                        onClick={() => router.push('/coach/availability')}
+                        className="bg-[#0077CC] hover:bg-[#0066AA] text-white px-6 py-3 rounded-xl text-[15px] font-bold transition-colors"
+                      >
+                        Set Availability
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 

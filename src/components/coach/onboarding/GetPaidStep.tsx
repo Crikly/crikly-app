@@ -1,11 +1,28 @@
 'use client'
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, Check, CheckCircle } from 'lucide-react'
 import { OnboardingPreviewPanel } from '../OnboardingPreviewPanel'
 
 export function GetPaidStep() {
   const router = useRouter()
+  const [coachName, setCoachName] = useState<string>('Your name')
+  
+  // Fix-16e: Fetch coach profile for name
+  useEffect(() => {
+    const fetchProfile = async () => {
+      try {
+        const response = await fetch('/api/coaches/profile')
+        if (response.ok) {
+          const data = await response.json()
+          setCoachName(data.full_name || 'Your name')
+        }
+      } catch (error) {
+        console.error('[GetPaidStep] Failed to fetch profile:', error)
+      }
+    }
+    fetchProfile()
+  }, [])
   
   // CD-03: verified - GetPaidStep initiates Stripe Connect onboarding flow
   // No direct Supabase save - stripe_onboarding_complete flag set by Stripe webhook
@@ -114,12 +131,12 @@ export function GetPaidStep() {
 
       {/* Right panel - What parents see */}
       <OnboardingPreviewPanel
-        coachName="Alex Johnson"
-        sport="Cricket"
-        location="London"
-        availabilityDays={['Mon', 'Wed', 'Fri']}
-        priceFromPence={5000}
-        isDbs={true}
+        coachName={coachName}
+        sport={undefined}
+        location={undefined}
+        availabilityDays={undefined}
+        priceFromPence={undefined}
+        isDbs={false}
       />
     </div>
   )

@@ -338,9 +338,19 @@ Branch: feature/coach-data (open from develop before starting CD-01)
 | CD-07 | Booking detail — real data — Blocked: depends on B-13 (GET /api/bookings/[id]) — Step 5 | GET /api/bookings/[id] (needs B-13 first) | 🟡 Medium | 🔴 |
 | CD-08 | Programmes list — real data | GET /api/coaches/programmes | 🟡 Medium | ✅ |
 | CD-09 | Earnings summary — real data — Blocked: GET /api/coaches/earnings route does not exist yet — needs building before wiring | GET /api/coaches/earnings (needs building) | 🟡 Medium | 🔴 |
-| CD-10 | Profile edit — load and save real data | GET/POST /api/coaches/profile | 🟡 Medium | ⚪ |
-| CD-11 | Get Paid — real Stripe connection status + payout data | GET /api/coaches/stripe-status | 🟡 Medium | ⚪ |
-| CD-12 | Schedule grid — real bookings + availability | GET /api/coaches/bookings + availability | 🔵 Low | ⚪ |
+| CD-10 | Profile edit — load and save real data | GET/POST /api/coaches/profile | 🟡 Medium | ✅  |
+| CD-10b | Profile Hub — wire to real data | GET /api/coaches/profile | 🟡 Medium | ✅ |
+| CD-11 | Get Paid — real Stripe connection status + payout data | GET /api/coaches/profile | 🟡 Medium | ✅ |
+| CD-12 | Schedule grid — real bookings + availability | GET /api/coaches/availability | 🔵 Low | ✅ |
+| Fix-14 | Data wiring fixes: onboarding pre-population, dashboard completion %, right panel real data | Multiple | 🟡 Medium | ✅ |
+| Fix-15b | POST /api/coaches/sports validation fixes: add elite skill level, make group fields optional | POST /api/coaches/sports | 🟢 Low | ✅ |
+| Fix-15c | POST /api/coaches/sports 500 error: remove sports join from insert query | POST /api/coaches/sports | 🟢 Low | ✅ |
+| Fix-16a | Onboarding data persistence: upsert sports, fix qualifications/availability joins | Multiple POST routes | 🟡 Medium | ✅ |
+| Fix-16b | Remove hardcoded stub data from onboarding: empty blocks/qualifications, placeholder right panel data | Onboarding components | 🟡 Medium | ✅ |
+| Fix-16c | Add data pre-population to all onboarding steps: fetch and display saved data on mount | Onboarding components | 🟡 Medium | ✅ |
+| Fix-16d | Remove all joins from coach API routes: fetch related data separately to avoid PGRST200 errors, add upsert to availability | Coach API routes | 🟡 Medium | ✅ |
+| Fix-16e | Six fixes: availability unique constraint, age_groups/languages fields, qualification/availability remove UI, right panel coach name | Multiple | 🟡 Medium | ✅ |
+| Fix-16f | Three data mapping fixes: age_groups saving/loading, languages saving/loading, time display without seconds | Onboarding components | 🟢 Low | ✅ |
 
 ### 3F — Coach Go-Live Gaps (CG tasks)
 

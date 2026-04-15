@@ -80,60 +80,56 @@ export default async function CoachDashboardPage() {
     // Get coach profile
     const { data: coachProfile } = await supabase
       .from('coach_profiles')
-      .select('id, bio, cancellation_window_hours, stripe_account_id, rating_avg, rating_count')
+      .select('id, bio, cancellation_window_hours, stripe_account_id, rating_avg, rating_count, dbs_status')
       .eq('user_profile_id', userProfile.id)
       .single()
 
     if (!coachProfile) return <CoachHomeClient data={dashboardData} />
 
     // 2. Profile completion calculation
+    // Fix-14B: Match Profile Hub logic (6 checks, not 7)
+    // Get location_city for personal info check
+    const { data: userProfileData } = await supabase
+      .from('user_profiles')
+      .select('location_city, full_name')
+      .eq('id', userProfile.id)
+      .single()
+    
     const completionChecks = await Promise.all([
-      // Profile photo
-      supabase
-        .from('coach_photos')
-        .select('id')
-        .eq('coach_profile_id', coachProfile.id)
-        .limit(1)
-        .then(({ data }) => !!(data && data.length > 0)),
+      // Personal Info (full_name, bio, location_city)
+      Promise.resolve(!!(userProfileData?.full_name && coachProfile.bio && userProfileData?.location_city)),
       
-      // Bio
-      Promise.resolve(!!coachProfile.bio && coachProfile.bio.trim().length > 0),
-      
-      // Base location - check user_profiles for location_city
-      supabase
-        .from('user_profiles')
-        .select('location_city')
-        .eq('id', userProfile.id)
-        .single()
-        .then(({ data }) => !!data?.location_city),
-      
-      // Sport configured
+      // Sports & Pricing (has at least one sport configured)
       supabase
         .from('coach_sports')
-        .select('id')
+        .select('id', { count: 'exact', head: true })
         .eq('coach_profile_id', coachProfile.id)
-        .eq('is_active', true)
-        .limit(1)
-        .then(({ data }) => !!(data && data.length > 0)),
+        .then(({ count }) => (count ?? 0) > 0),
       
-      // Availability set
+      // Qualifications (has at least one qualification)
+      supabase
+        .from('coach_qualifications')
+        .select('id', { count: 'exact', head: true })
+        .eq('coach_profile_id', coachProfile.id)
+        .then(({ count }) => (count ?? 0) > 0),
+      
+      // Availability (has at least one availability template)
       supabase
         .from('availability_templates')
-        .select('id')
+        .select('id', { count: 'exact', head: true })
         .eq('coach_profile_id', coachProfile.id)
-        .limit(1)
-        .then(({ data }) => !!(data && data.length > 0)),
+        .then(({ count }) => (count ?? 0) > 0),
       
-      // Booking policy
-      Promise.resolve(coachProfile.cancellation_window_hours !== null),
+      // Booking Policy (cancellation_window_hours > 0)
+      Promise.resolve(coachProfile.cancellation_window_hours > 0),
       
-      // Stripe connected
+      // Payment Setup (Stripe connected)
       Promise.resolve(!!coachProfile.stripe_account_id)
     ])
 
     const filledCount = completionChecks.filter(Boolean).length
     dashboardData.profileCompletion = {
-      percentage: Math.round((filledCount / 7) * 100),
+      percentage: Math.round((filledCount / 6) * 100),
       completedSteps: completionChecks
     }
 

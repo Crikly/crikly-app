@@ -1,32 +1,200 @@
 'use client'
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Pencil, ChevronRight, User, Tag, Award, Calendar, ShieldCheck, CreditCard, CheckCircle2, Star, Share2, ExternalLink, Circle } from 'lucide-react'
+
+// CD-10b: API response type
+interface CoachProfileResponse {
+  id: string
+  user_profile_id: string
+  full_name: string
+  avatar_url: string | null
+  location_city: string | null
+  location_postcode: string | null
+  bio: string | null
+  years_experience: number | null
+  dbs_status: 'none' | 'pending' | 'verified' | 'expired'
+  is_profile_live: boolean
+  stripe_onboarding_complete: boolean
+  cancellation_window_hours: number
+  min_advance_hours: number
+  max_advance_days: number
+  rating_avg: number | null
+  rating_count: number
+  sessions_completed: number
+  gender: string | null
+  created_at: string
+  updated_at: string
+}
 
 interface ProfileSection { id: string; icon: React.ReactNode; title: string; subtitle: string; isComplete: boolean }
 
 export function ProfileEdit() {
   const router = useRouter()
   const [isPaused, setIsPaused] = useState(false)
-  // CF-D07 CHANGE 2: Mark Qualifications as incomplete to demonstrate pattern
-  const sections: ProfileSection[] = [
-    { id: 'personal', icon: <User size={18} className="text-[#0077CC]" />, title: 'Personal Info', subtitle: 'Name, bio, location, profile photo', isComplete: true },
-    { id: 'sports', icon: <Tag size={18} className="text-[#0077CC]" />, title: 'Sports & Pricing', subtitle: 'Cricket · £50/hr 1-on-1', isComplete: true },
-    { id: 'qualifications', icon: <Award size={18} className="text-[#F59E0B]" />, title: 'Qualifications', subtitle: 'Add your coaching badge and DBS certificate', isComplete: false },
-    { id: 'availability', icon: <Calendar size={18} className="text-[#0077CC]" />, title: 'Availability', subtitle: 'Mon, Wed, Fri · 09:00–18:00', isComplete: true },
-    { id: 'policy', icon: <ShieldCheck size={18} className="text-[#0077CC]" />, title: 'Booking Policy', subtitle: 'Instant booking · 24hr cancellation', isComplete: true },
-    { id: 'payment', icon: <CreditCard size={18} className="text-[#0077CC]" />, title: 'Payment Setup', subtitle: 'Stripe connected · ****4242', isComplete: true }
-  ]
+  
+  // CD-10b: State for profile data
+  const [profile, setProfile] = useState<CoachProfileResponse | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [hasSports, setHasSports] = useState(false)
+  const [hasQualifications, setHasQualifications] = useState(false)
+  // CD-10b: Fetch profile data on mount
+  useEffect(() => {
+    const fetchProfile = async () => {
+      try {
+        setLoading(true)
+        setError(null)
+        
+        const response = await fetch('/api/coaches/profile')
+        if (!response.ok) {
+          throw new Error('Failed to fetch profile')
+        }
+        
+        const data: CoachProfileResponse = await response.json()
+        setProfile(data)
+        
+        // Fix-17m: Fetch sports count
+        const sportsRes = await fetch('/api/coaches/sports')
+        if (sportsRes.ok) {
+          const sportsData = await sportsRes.json()
+          setHasSports(sportsData.sports && sportsData.sports.length > 0)
+        }
+        
+        // Fix-17m: Fetch qualifications count
+        const qualsRes = await fetch('/api/coaches/qualifications')
+        if (qualsRes.ok) {
+          const qualsData = await qualsRes.json()
+          setHasQualifications(qualsData.qualifications && qualsData.qualifications.length > 0)
+        }
+      } catch (err) {
+        console.error('Failed to fetch profile:', err)
+        setError('Failed to load profile. Please try again.')
+      } finally {
+        setLoading(false)
+      }
+    }
+    
+    fetchProfile()
+  }, [])
+  
+  // CD-10b: Calculate profile completeness
+  const calculateCompleteness = (): number => {
+    if (!profile) return 0
+    
+    let completed = 0
+    const total = 6
+    
+    // Personal Info (full_name, bio, location_city)
+    if (profile.full_name && profile.bio && profile.location_city) completed++
+    
+    // Sports & Pricing (has at least one sport)
+    if (hasSports) completed++
+    
+    // Qualifications (has at least one qualification)
+    if (hasQualifications) completed++
+    
+    // Availability (assume complete - would need availability API check)
+    completed++ // TODO: Check actual availability data
+    
+    // Booking Policy (cancellation_window_hours set)
+    if (profile.cancellation_window_hours > 0) completed++
+    
+    // Payment Setup (Stripe connected)
+    if (profile.stripe_onboarding_complete) completed++
+    
+    return Math.round((completed / total) * 100)
+  }
+  
+  const profileCompleteness = calculateCompleteness()
+  
+  // CD-10b: Generate section data from profile
+  const getSections = (): ProfileSection[] => {
+    if (!profile) return []
+    
+    const personalComplete = !!(profile.full_name && profile.bio && profile.location_city)
+    const sportsComplete = hasSports
+    const qualificationsComplete = hasQualifications
+    const availabilityComplete = true // TODO: Check actual availability
+    const policyComplete = profile.cancellation_window_hours > 0
+    const paymentComplete = profile.stripe_onboarding_complete
+    
+    return [
+      { 
+        id: 'personal', 
+        icon: <User size={18} className={personalComplete ? "text-[#0077CC]" : "text-[#F59E0B]"} />, 
+        title: 'Personal Info', 
+        subtitle: personalComplete 
+          ? `${profile.full_name}${profile.location_city ? ' · ' + profile.location_city : ''}` 
+          : 'Add your name, bio, and location', 
+        isComplete: personalComplete 
+      },
+      { 
+        id: 'sports', 
+        icon: <Tag size={18} className={sportsComplete ? "text-[#0077CC]" : "text-[#F59E0B]"} />, 
+        title: 'Sports & Pricing', 
+        subtitle: sportsComplete 
+          ? `${profile.years_experience} years experience` 
+          : 'Add your sports and pricing', 
+        isComplete: sportsComplete 
+      },
+      { 
+        id: 'qualifications', 
+        icon: <Award size={18} className={qualificationsComplete ? "text-[#0077CC]" : "text-[#F59E0B]"} />, 
+        title: 'Qualifications', 
+        subtitle: qualificationsComplete 
+          ? 'DBS verified' 
+          : 'Add your coaching badge and DBS certificate', 
+        isComplete: qualificationsComplete 
+      },
+      { 
+        id: 'availability', 
+        icon: <Calendar size={18} className={availabilityComplete ? "text-[#0077CC]" : "text-[#F59E0B]"} />, 
+        title: 'Availability', 
+        subtitle: availabilityComplete 
+          ? 'Weekly schedule set' 
+          : 'Set your weekly availability', 
+        isComplete: availabilityComplete 
+      },
+      { 
+        id: 'policy', 
+        icon: <ShieldCheck size={18} className={policyComplete ? "text-[#0077CC]" : "text-[#F59E0B]"} />, 
+        title: 'Booking Policy', 
+        subtitle: policyComplete 
+          ? `${profile.cancellation_window_hours}hr cancellation window` 
+          : 'Set your booking policy', 
+        isComplete: policyComplete 
+      },
+      { 
+        id: 'payment', 
+        icon: <CreditCard size={18} className={paymentComplete ? "text-[#0077CC]" : "text-[#F59E0B]"} />, 
+        title: 'Payment Setup', 
+        subtitle: paymentComplete 
+          ? 'Stripe connected' 
+          : 'Connect your bank account', 
+        isComplete: paymentComplete 
+      }
+    ]
+  }
+  
+  const sections = getSections()
   const sectionRoutes: Record<string, string> = {
     personal: '/coach/onboarding/profile',
-    sports: '/coach/onboarding/pricing',
+    sports: '/coach/onboarding/sport',
     qualifications: '/coach/onboarding/qualifications',
     availability: '/coach/availability',
     policy: '/coach/onboarding/policy',
     payment: '/coach/get-paid'
   }
 
-  const profileCompleteness = 85
+  // CD-10b: Get initials from full name
+  const getInitials = (name: string): string => {
+    const parts = name.trim().split(' ')
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+    }
+    return name.substring(0, 2).toUpperCase()
+  }
   
   return (
     <div className="min-h-screen bg-white font-sans" style={{ fontFamily: "'DM Sans', sans-serif" }}>
@@ -35,6 +203,34 @@ export function ProfileEdit() {
           <h1 className="text-[28px] font-bold text-gray-900 tracking-tight">Profile</h1>
         </div>
         <div className="px-5 space-y-4">
+          {/* CD-10b: Loading state */}
+          {loading && (
+            <div className="py-16 flex flex-col items-center justify-center">
+              <div className="w-8 h-8 border-3 border-gray-200 border-t-[#0077CC] rounded-full animate-spin mb-3" />
+              <p className="text-[14px] text-gray-500">Loading profile...</p>
+            </div>
+          )}
+          
+          {/* CD-10b: Error state */}
+          {error && !loading && (
+            <div className="py-16 flex flex-col items-center justify-center text-center px-4">
+              <div className="w-16 h-16 bg-red-50 text-red-600 rounded-full flex items-center justify-center mb-4">
+                <span className="text-2xl">⚠</span>
+              </div>
+              <h3 className="text-[18px] font-bold text-gray-900 mb-2">Failed to load profile</h3>
+              <p className="text-[14px] text-gray-500 mb-6">{error}</p>
+              <button 
+                onClick={() => window.location.reload()}
+                className="bg-[#0077CC] hover:bg-[#0066AA] text-white px-6 py-3 rounded-xl text-[15px] font-bold transition-colors"
+              >
+                Try Again
+              </button>
+            </div>
+          )}
+          
+          {/* CD-10b: Profile content */}
+          {!loading && !error && profile && (
+          <>
           {/* CF-D07 CHANGE 1: Identity hero with stronger presence */}
           {/* CF-D07b POLISH 1: Increased padding to 24px */}
           <div className="bg-white rounded-[14px] p-6 shadow-sm">
@@ -43,7 +239,13 @@ export function ProfileEdit() {
             <div className="flex gap-4 items-start mb-3.5">
               {/* Avatar with edit overlay */}
               <div className="relative shrink-0">
-                <div className="w-16 h-16 bg-[#E6F1FB] rounded-full flex items-center justify-center text-[20px] font-medium text-[#0C447C]">AJ</div>
+                {profile.avatar_url ? (
+                  <img src={profile.avatar_url} alt={profile.full_name} className="w-16 h-16 rounded-full object-cover" />
+                ) : (
+                  <div className="w-16 h-16 bg-[#E6F1FB] rounded-full flex items-center justify-center text-[20px] font-medium text-[#0C447C]">
+                    {getInitials(profile.full_name)}
+                  </div>
+                )}
                 <button 
                   onClick={() => {
                     // TODO CF-D07: wire avatar upload
@@ -56,21 +258,29 @@ export function ProfileEdit() {
               
               {/* Coach info */}
               <div className="flex-1 min-w-0">
-                {/* CF-D07b POLISH 1: Increased name to 20px */}
-                <h2 className="text-[20px] font-medium text-gray-900 truncate">Alex Johnson</h2>
-                <div className="text-[13px] text-gray-500 mt-0.5 truncate">Cricket Coach · London</div>
+                {/* CD-10b: Real coach name */}
+                <h2 className="text-[20px] font-medium text-gray-900 truncate">{profile.full_name}</h2>
+                <div className="text-[13px] text-gray-500 mt-0.5 truncate">
+                  {profile.years_experience ? `${profile.years_experience} years experience` : 'Coach'}
+                  {profile.location_city && ` · ${profile.location_city}`}
+                </div>
                 
                 {/* Trust row */}
-                {/* CF-D07b POLISH 1: Increased gap to 12px between rating and DBS */}
                 <div className="flex items-center gap-3 mt-1.5">
-                  <div className="flex items-center gap-1">
-                    <Star size={13} className="text-amber-500 fill-amber-500" />
-                    <span className="text-[13px] font-medium text-gray-900">4.8</span>
-                    <span className="text-[11px] text-gray-400">(42 reviews)</span>
-                  </div>
-                  <div className="px-2 py-0.5 bg-[#E0F6F8] text-[#006677] text-[10px] font-medium rounded-full">
-                    ✓ DBS checked
-                  </div>
+                  {/* CD-10b: Real rating data */}
+                  {profile.rating_avg !== null && profile.rating_count > 0 && (
+                    <div className="flex items-center gap-1">
+                      <Star size={13} className="text-amber-500 fill-amber-500" />
+                      <span className="text-[13px] font-medium text-gray-900">{profile.rating_avg.toFixed(1)}</span>
+                      <span className="text-[11px] text-gray-400">({profile.rating_count} {profile.rating_count === 1 ? 'review' : 'reviews'})</span>
+                    </div>
+                  )}
+                  {/* CD-10b: Real DBS status */}
+                  {profile.dbs_status === 'verified' && (
+                    <div className="px-2 py-0.5 bg-[#E0F6F8] text-[#006677] text-[10px] font-medium rounded-full">
+                      ✓ DBS checked
+                    </div>
+                  )}
                 </div>
               </div>
               
@@ -205,6 +415,8 @@ export function ProfileEdit() {
               <ChevronRight size={18} className="text-red-300" />
             </button>
           </div>
+          </>
+          )}
         </div>
       </div>
     </div>

@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Upload, FileText, X } from 'lucide-react'
 import { OnboardingPreviewPanel } from '../OnboardingPreviewPanel'
@@ -14,6 +14,19 @@ interface Qualification {
   status: 'uploaded' | 'pending'
 }
 
+interface QualificationResponse {
+  id: string
+  qualification_type_id: string | null
+  type_name: string | null
+  issuing_body: string | null
+  custom_name: string | null
+  issued_date: string | null
+  expiry_date: string | null
+  notes: string | null
+  is_custom: boolean
+  created_at: string
+}
+
 type CategoryType = 'coaching' | 'dbs' | 'firstaid' | 'safeguarding' | 'other' | ''
 
 export function QualificationsStep() {
@@ -23,35 +36,76 @@ export function QualificationsStep() {
   const [provider, setProvider] = useState('')
   const [year, setYear] = useState('')
   const [fileName, setFileName] = useState<string | null>(null)
-  
-  // CF-D13 CHANGE 4: Stub qualification cards to show pattern
-  const [qualifications] = useState<Qualification[]>([
-    {
-      id: '1',
-      category: 'coaching',
-      name: 'ECB Level 2 Coaching',
-      provider: 'England & Wales Cricket Board',
-      year: '2022',
-      status: 'uploaded'
-    },
-    {
-      id: '2',
-      category: 'dbs',
-      name: 'DBS Enhanced Check',
-      provider: 'Disclosure & Barring Service',
-      year: '2023',
-      status: 'pending'
-    }
-  ])
-  
+  const [qualifications, setQualifications] = useState<Qualification[]>([])
+  const [loading, setLoading] = useState(true)
+  const [coachName, setCoachName] = useState<string>('Your name')
   const [saving, setSaving] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   
+  // Fix-17e: Extract fetchQualifications into reusable function
+  const fetchQualifications = async () => {
+    try {
+      const qualsResponse = await fetch('/api/coaches/qualifications')
+      if (qualsResponse.ok) {
+        const data = await qualsResponse.json()
+        const savedQuals = data.qualifications.map((q: QualificationResponse) => ({
+          id: q.id,
+          category: q.is_custom ? 'other' : 'coaching',
+          name: q.custom_name || q.type_name || '',
+          provider: q.issuing_body || '',
+          year: q.issued_date ? new Date(q.issued_date).getFullYear().toString() : '',
+          status: 'uploaded' as const
+        }))
+        setQualifications(savedQuals)
+      }
+    } catch (error) {
+      console.error('[QualificationsStep] Failed to fetch qualifications:', error)
+    }
+  }
+  
+  // Fix-16c: Fetch saved qualifications on mount
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        // Fetch qualifications
+        await fetchQualifications()
+        
+        // Fix-16e: Fetch coach profile for name
+        const profileResponse = await fetch('/api/coaches/profile')
+        if (profileResponse.ok) {
+          const profileData = await profileResponse.json()
+          setCoachName(profileData.full_name || 'Your name')
+        }
+      } catch (error) {
+        console.error('[QualificationsStep] Failed to fetch data:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchData()
+  }, [])
+
   const hasDBS = qualifications.some(q => q.category === 'dbs')
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) setFileName(file.name)
+  }
+
+  const handleEdit = (qual: Qualification) => {
+    setQualTitle(qual.name)
+    setProvider(qual.provider || '')
+    setYear(qual.year || '')
+    setEditingId(qual.id)
+  }
+
+  const handleCancelEdit = () => {
+    setEditingId(null)
+    setQualTitle('')
+    setProvider('')
+    setYear('')
+    setFileName(null)
   }
 
   const handleAddQualification = async () => {
@@ -60,25 +114,69 @@ export function QualificationsStep() {
     if (!qualTitle.trim()) return
     
     try {
-      await fetch('/api/coaches/qualifications', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          custom_name: qualTitle, // CD-03: coach_qualifications.custom_name
-          issuing_body: provider || null, // CD-03: coach_qualifications.issuing_body
-          issued_date: year ? `${year}-01-01` : null, // CD-03: coach_qualifications.issued_date (ISO date)
-          // Note: qualification_type_id null for custom qualifications
-          // Note: file upload not implemented yet - skipped
+      if (editingId) {
+        // Fix-17g: Update existing qualification (DELETE + POST since PATCH doesn't allow custom_name change)
+        await fetch(`/api/coaches/qualifications/${editingId}`, {
+          method: 'DELETE',
         })
-      })
-      // Reset form after successful add
-      setCategory('')
+        
+        const response = await fetch('/api/coaches/qualifications', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            custom_name: qualTitle,
+            issuing_body: provider || null,
+            issued_date: year ? `${year}-01-01` : null,
+          })
+        })
+        
+        if (response.ok) {
+          await fetchQualifications()
+          setEditingId(null)
+        }
+      } else {
+        // Add new qualification
+        const response = await fetch('/api/coaches/qualifications', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            custom_name: qualTitle, // CD-03: coach_qualifications.custom_name
+            issuing_body: provider || null, // CD-03: coach_qualifications.issuing_body
+            issued_date: year ? `${year}-01-01` : null, // CD-03: coach_qualifications.issued_date (ISO date)
+            // Note: qualification_type_id null for custom qualifications
+            // Note: file upload not implemented yet - skipped
+          })
+        })
+        
+        // Fix-17e: Refetch qualifications to update state
+        if (response.ok) {
+          await fetchQualifications()
+        }
+      }
+      
+      // Reset form
       setQualTitle('')
       setProvider('')
       setYear('')
       setFileName(null)
     } catch (error) {
       console.error('Failed to add qualification:', error)
+    }
+  }
+
+  // Fix-16e: Add handleRemove function to delete qualification and update local state
+  const handleRemove = async (qualId: string) => {
+    try {
+      const response = await fetch(`/api/coaches/qualifications/${qualId}`, {
+        method: 'DELETE',
+      })
+      
+      // Fix-16e: Remove from local state immediately after successful deletion
+      if (response.ok) {
+        setQualifications(prev => prev.filter(q => q.id !== qualId))
+      }
+    } catch (error) {
+      console.error('[QualificationsStep] Failed to remove qualification:', error)
     }
   }
 
@@ -176,14 +274,33 @@ export function QualificationsStep() {
             />
           </div>
 
-          <button
-            onClick={handleAddQualification}
-            className="px-5 py-2 bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-full text-[12px] font-medium transition-colors w-fit ml-auto"
-          >
-            Add qualification
-          </button>
+          <div className="flex gap-2 ml-auto">
+            {editingId && (
+              <button
+                onClick={handleCancelEdit}
+                className="px-5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-full text-[12px] font-medium transition-colors"
+              >
+                Cancel
+              </button>
+            )}
+            <button
+              onClick={handleAddQualification}
+              className="px-5 py-2 bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-full text-[12px] font-medium transition-colors"
+            >
+              {editingId ? 'Update qualification' : 'Add qualification'}
+            </button>
+          </div>
         </div>
 
+          {/* Fix-16c: Loading state */}
+          {loading ? (
+            <div className="bg-white rounded-xl p-5" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+              <div className="flex items-center justify-center py-8">
+                <div className="text-[14px] text-gray-400">Loading your qualifications...</div>
+              </div>
+            </div>
+          ) : (
+          <>
           {/* CF-D13 CHANGE 4: Qualification cards (v1.1: shadow, no border) */}
           {qualifications.length > 0 && (
             <div className="flex flex-col gap-4">
@@ -204,8 +321,18 @@ export function QualificationsStep() {
                     </div>
                   </div>
                   <div className="flex gap-2 items-start shrink-0">
-                    <button className="text-[10px] text-[#94A3B8] hover:text-gray-900 transition-colors">Edit</button>
-                    <button className="text-[10px] text-[#E24B4A] hover:text-red-700 transition-colors">Remove</button>
+                    <button 
+                      onClick={() => handleEdit(qual)}
+                      className="text-[10px] text-[#94A3B8] hover:text-gray-900 transition-colors"
+                    >
+                      Edit
+                    </button>
+                    <button 
+                      onClick={() => handleRemove(qual.id)}
+                      className="text-[10px] text-[#E24B4A] hover:text-red-700 transition-colors"
+                    >
+                      Remove
+                    </button>
                   </div>
                 </div>
               ))}
@@ -218,6 +345,8 @@ export function QualificationsStep() {
               <p className="text-[13px] font-medium text-[#0F172A] mb-1">No qualifications added yet</p>
               <p className="text-[11px] text-[#94A3B8]">You can add credentials later from your profile</p>
             </div>
+          )}
+          </>
           )}
 
         {/* CF-D13 CHANGE 7: Save bar (v1.1: per onboarding patterns) */}
@@ -241,11 +370,11 @@ export function QualificationsStep() {
 
       {/* Right panel - What parents see */}
       <OnboardingPreviewPanel
-        coachName="Alex Johnson"
-        sport="Cricket"
-        location="London"
-        availabilityDays={['Mon', 'Wed', 'Fri']}
-        priceFromPence={5000}
+        coachName={coachName}
+        sport={undefined}
+        location={undefined}
+        availabilityDays={undefined}
+        priceFromPence={undefined}
         isDbs={hasDBS}
         infoBox={hasDBS ? {
           type: 'success',

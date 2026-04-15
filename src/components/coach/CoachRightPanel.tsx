@@ -1,9 +1,33 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { ChevronRight, ChevronLeft, MapPin, Star, PoundSterling, Calendar } from 'lucide-react'
+
+// Fix-14C: API response type
+interface CoachProfileResponse {
+  id: string
+  user_profile_id: string
+  full_name: string
+  avatar_url: string | null
+  location_city: string | null
+  location_postcode: string | null
+  bio: string | null
+  years_experience: number | null
+  dbs_status: 'none' | 'pending' | 'verified' | 'expired'
+  is_profile_live: boolean
+  stripe_onboarding_complete: boolean
+  cancellation_window_hours: number
+  min_advance_hours: number
+  max_advance_days: number
+  rating_avg: number | null
+  rating_count: number
+  sessions_completed: number
+  gender: string | null
+  created_at: string
+  updated_at: string
+}
 
 interface DashboardData {
   todaySessions: Array<{
@@ -59,9 +83,9 @@ export function CoachRightPanel({ dashboardData }: CoachRightPanelProps = {}) {
         </>
       ) : isProfileRoute ? (
         // CF-D07 CHANGE 4: Profile-specific right panel
+        // Fix-14C: Pass real profile data
         <>
-          <ProfilePublicPreview />
-          <ProfileCompletenessNotice />
+          <ProfilePublicPreviewWrapper />
         </>
       ) : isEarningsRoute ? (
         // CF-D08 CHANGE 5: Earnings-specific right panel
@@ -197,9 +221,66 @@ function EarningsPeriodSummary() {
   )
 }
 
+// Fix-14C: Wrapper component that fetches and passes profile data
+function ProfilePublicPreviewWrapper() {
+  const [profile, setProfile] = useState<CoachProfileResponse | null>(null)
+  const [loading, setLoading] = useState(true)
+  
+  useEffect(() => {
+    const fetchProfile = async () => {
+      try {
+        setLoading(true)
+        const response = await fetch('/api/coaches/profile')
+        if (!response.ok) throw new Error('Failed to fetch profile')
+        const data: CoachProfileResponse = await response.json()
+        setProfile(data)
+      } catch (err) {
+        console.error('Failed to fetch profile:', err)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchProfile()
+  }, [])
+  
+  if (loading || !profile) {
+    return (
+      <div className="animate-pulse">
+        <div className="h-4 bg-gray-200 rounded w-24 mb-2" />
+        <div className="bg-white rounded-xl p-4 shadow-sm">
+          <div className="flex items-start gap-3 mb-3">
+            <div className="w-12 h-12 bg-gray-200 rounded-full" />
+            <div className="flex-1">
+              <div className="h-4 bg-gray-200 rounded w-32 mb-2" />
+              <div className="h-3 bg-gray-200 rounded w-24" />
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+  
+  return (
+    <>
+      <ProfilePublicPreview profile={profile} />
+      <ProfileCompletenessNotice profile={profile} />
+    </>
+  )
+}
+
 // CF-D07 CHANGE 4: Profile public preview component
 // CF-D07b POLISH 4: More polished and realistic preview card
-function ProfilePublicPreview() {
+// Fix-14C: Now accepts real profile data
+function ProfilePublicPreview({ profile }: { profile: CoachProfileResponse }) {
+  // Fix-14C: Get initials from real name
+  const getInitials = (name: string): string => {
+    const parts = name.trim().split(' ')
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+    }
+    return name.substring(0, 2).toUpperCase()
+  }
+  
   return (
     <div>
       <div className="text-[9px] font-medium text-gray-400 uppercase tracking-wider mb-2">WHAT PARENTS SEE</div>
@@ -208,47 +289,65 @@ function ProfilePublicPreview() {
       <div className="bg-white rounded-xl p-4 shadow-sm">
         {/* Avatar */}
         <div className="flex items-start gap-3 mb-3">
-          {/* CF-D07b POLISH 4: Added subtle ring around avatar */}
-          <div className="w-12 h-12 bg-[#E6F1FB] rounded-full flex items-center justify-center text-[14px] font-medium text-[#0C447C] shrink-0" style={{ boxShadow: '0 0 0 2px #E6F1FB' }}>
-            AJ
-          </div>
+          {/* Fix-14C: Real avatar or initials */}
+          {profile.avatar_url ? (
+            <img 
+              src={profile.avatar_url} 
+              alt={profile.full_name} 
+              className="w-12 h-12 rounded-full object-cover shrink-0" 
+              style={{ boxShadow: '0 0 0 2px #E6F1FB' }}
+            />
+          ) : (
+            <div className="w-12 h-12 bg-[#E6F1FB] rounded-full flex items-center justify-center text-[14px] font-medium text-[#0C447C] shrink-0" style={{ boxShadow: '0 0 0 2px #E6F1FB' }}>
+              {getInitials(profile.full_name)}
+            </div>
+          )}
           <div className="flex-1 min-w-0">
-            {/* CF-D07b POLISH 4: Increased name to 15px */}
-            <h3 className="text-[15px] font-medium text-gray-900 truncate">Alex Johnson</h3>
-            {/* CF-D07b POLISH 4: Role text to 12px, neutral-400 */}
-            <p className="text-[12px] text-gray-400 mt-0.5">Cricket Coach</p>
+            {/* Fix-14C: Real coach name */}
+            <h3 className="text-[15px] font-medium text-gray-900 truncate">{profile.full_name}</h3>
+            {/* Fix-14C: Real experience */}
+            <p className="text-[12px] text-gray-400 mt-0.5">
+              {profile.years_experience ? `${profile.years_experience} years experience` : 'Coach'}
+            </p>
           </div>
         </div>
         
-        {/* CF-D07b POLISH 4: Stars + rating in flex row with gap */}
-        <div className="flex items-center gap-1 mb-2">
-          {[1,2,3,4,5].map(i => (
-            <Star key={i} size={11} className="text-amber-500 fill-amber-500" />
-          ))}
-          <span className="text-[13px] font-medium text-gray-900 ml-0.5">4.8</span>
-          <span className="text-[11px] text-gray-400">· 42 reviews</span>
-        </div>
+        {/* Fix-14C: Real rating data */}
+        {profile.rating_avg !== null && profile.rating_count > 0 && (
+          <div className="flex items-center gap-1 mb-2">
+            {[1,2,3,4,5].map(i => (
+              <Star key={i} size={11} className={i <= Math.round(profile.rating_avg!) ? "text-amber-500 fill-amber-500" : "text-gray-300"} />
+            ))}
+            <span className="text-[13px] font-medium text-gray-900 ml-0.5">{profile.rating_avg.toFixed(1)}</span>
+            <span className="text-[11px] text-gray-400">· {profile.rating_count} {profile.rating_count === 1 ? 'review' : 'reviews'}</span>
+          </div>
+        )}
         
         {/* Meta rows */}
         <div className="space-y-1.5 mb-2">
-          {/* CF-D07b POLISH 4: Icons at 12px */}
-          <div className="flex items-center gap-1.5 text-[11px] text-gray-500">
-            <MapPin size={12} className="shrink-0" />
-            <span>Oval Cricket Ground</span>
-          </div>
+          {/* Fix-14C: Real location */}
+          {profile.location_city && (
+            <div className="flex items-center gap-1.5 text-[11px] text-gray-500">
+              <MapPin size={12} className="shrink-0" />
+              <span>{profile.location_city}</span>
+            </div>
+          )}
+          {/* TODO: Get real availability days from API */}
           <div className="flex items-center gap-1.5 text-[11px] text-gray-500">
             <Calendar size={12} className="shrink-0" />
-            <span>Mon, Wed, Fri</span>
+            <span>See availability</span>
           </div>
         </div>
         
-        {/* CF-D07b POLISH 4: Price increased to 16px */}
-        <p className="text-[16px] font-medium text-gray-900 mb-2">from £50 / session</p>
+        {/* Fix-14C: Price placeholder - would need coach_sports data */}
+        <p className="text-[16px] font-medium text-gray-900 mb-2">View pricing</p>
         
-        {/* DBS badge */}
-        <div className="inline-block px-2 py-0.5 bg-[#E0F6F8] text-[#006677] text-[10px] font-medium rounded-full mb-2.5">
-          ✓ DBS checked
-        </div>
+        {/* Fix-14C: Real DBS status */}
+        {profile.dbs_status === 'verified' && (
+          <div className="inline-block px-2 py-0.5 bg-[#E0F6F8] text-[#006677] text-[10px] font-medium rounded-full mb-2.5">
+            ✓ DBS checked
+          </div>
+        )}
         
         {/* CF-D07b POLISH 4: Book button with pill shape (radius-999px), padding 10px */}
         <button 
@@ -265,12 +364,46 @@ function ProfilePublicPreview() {
 }
 
 // CF-D07 CHANGE 4: Profile completeness notice
-function ProfileCompletenessNotice() {
+// Fix-14C: Now calculates real completion percentage
+function ProfileCompletenessNotice({ profile }: { profile: CoachProfileResponse }) {
+  // Fix-14C: Calculate real completion percentage (matches Profile Hub logic)
+  const calculateCompleteness = (): number => {
+    let completed = 0
+    const total = 6
+    
+    if (profile.full_name && profile.bio && profile.location_city) completed++
+    if (profile.years_experience !== null) completed++
+    if (profile.dbs_status === 'verified') completed++
+    completed++ // Availability (assumed complete)
+    if (profile.cancellation_window_hours > 0) completed++
+    if (profile.stripe_onboarding_complete) completed++
+    
+    return Math.round((completed / total) * 100)
+  }
+  
+  const completeness = calculateCompleteness()
+  const isComplete = completeness === 100
+  
+  if (isComplete) {
+    return (
+      <div className="bg-[#F0FDF4] rounded-lg p-3 border-l-[3px] border-[#16A34A]">
+        <h4 className="text-[11px] font-medium text-[#166534] mb-1">Profile complete</h4>
+        <p className="text-[10px] text-[#166534] leading-relaxed">
+          Your profile is live and visible to parents
+        </p>
+      </div>
+    )
+  }
+  
   return (
     <div className="bg-[#FFFBEB] rounded-lg p-3 border-l-[3px] border-[#F59E0B]">
-      <h4 className="text-[11px] font-medium text-[#78350F] mb-1">85% complete</h4>
+      <h4 className="text-[11px] font-medium text-[#78350F] mb-1">{completeness}% complete</h4>
       <p className="text-[10px] text-[#92400E] leading-relaxed">
-        Add qualifications to unlock full search visibility
+        {profile.dbs_status !== 'verified' 
+          ? 'Add qualifications to unlock full search visibility'
+          : !profile.stripe_onboarding_complete
+          ? 'Connect Stripe to start accepting bookings'
+          : 'Complete your profile to go live'}
       </p>
     </div>
   )

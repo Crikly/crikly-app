@@ -1,9 +1,63 @@
 'use client'
 
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import { CheckCircle2, Building2, FileText, Info, ExternalLink, ChevronRight } from 'lucide-react'
 
+// CD-11: API response type
+interface CoachProfileResponse {
+  id: string
+  user_profile_id: string
+  full_name: string
+  avatar_url: string | null
+  location_city: string | null
+  location_postcode: string | null
+  bio: string | null
+  years_experience: number | null
+  dbs_status: 'none' | 'pending' | 'verified' | 'expired'
+  is_profile_live: boolean
+  stripe_onboarding_complete: boolean
+  stripe_account_id?: string | null
+  cancellation_window_hours: number
+  min_advance_hours: number
+  max_advance_days: number
+  rating_avg: number | null
+  rating_count: number
+  sessions_completed: number
+  gender: string | null
+  created_at: string
+  updated_at: string
+}
+
 export function GetPaid() {
+  // CD-11: State for Stripe connection status
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [stripeConnected, setStripeConnected] = useState(false)
+  
+  // CD-11: Fetch Stripe connection status on mount
+  useEffect(() => {
+    const fetchStripeStatus = async () => {
+      try {
+        setLoading(true)
+        setError(null)
+        
+        const response = await fetch('/api/coaches/profile')
+        if (!response.ok) {
+          throw new Error('Failed to fetch profile')
+        }
+        
+        const data: CoachProfileResponse = await response.json()
+        setStripeConnected(data.stripe_onboarding_complete)
+      } catch (err) {
+        console.error('Failed to fetch Stripe status:', err)
+        setError('Failed to load payment information. Please try again.')
+      } finally {
+        setLoading(false)
+      }
+    }
+    
+    fetchStripeStatus()
+  }, [])
   return (
     <div className="min-h-screen flex justify-center font-sans p-6 lg:p-10" style={{ fontFamily: "'DM Sans', sans-serif" }}>
       <div className="w-full max-w-3xl flex flex-col gap-8 pb-20">
@@ -11,6 +65,58 @@ export function GetPaid() {
         <div>
           <h1 className="text-[28px] md:text-[32px] font-bold text-gray-900 tracking-tight">Get Paid</h1>
         </div>
+        
+        {/* CD-11: Loading state */}
+        {loading ? (
+          <div className="py-16 flex flex-col items-center justify-center">
+            <div className="w-8 h-8 border-3 border-gray-200 border-t-[#0077CC] rounded-full animate-spin mb-3" />
+            <p className="text-[14px] text-gray-500">Loading payment information...</p>
+          </div>
+        ) : error ? (
+          // CD-11: Error state
+          <div className="py-16 flex flex-col items-center justify-center text-center px-4">
+            <div className="w-16 h-16 bg-red-50 text-red-600 rounded-full flex items-center justify-center mb-4">
+              <span className="text-2xl">⚠</span>
+            </div>
+            <h3 className="text-[18px] font-bold text-gray-900 mb-2">Failed to load payment information</h3>
+            <p className="text-[14px] text-gray-500 mb-6">{error}</p>
+            <button 
+              onClick={() => window.location.reload()}
+              className="bg-[#0077CC] hover:bg-[#0066AA] text-white px-6 py-3 rounded-xl text-[15px] font-bold transition-colors"
+            >
+              Try Again
+            </button>
+          </div>
+        ) : !stripeConnected ? (
+          // CD-11: Not connected state
+          <div className="bg-white border border-[#E2E8F0] rounded-[16px] p-8 shadow-sm flex flex-col items-center text-center gap-6">
+            <div className="w-16 h-16 rounded-full bg-[#F0F7FF] flex items-center justify-center">
+              <Building2 size={32} className="text-[#0077CC]" />
+            </div>
+            <div>
+              <h2 className="text-[20px] font-bold text-gray-900 mb-2">Connect your bank account</h2>
+              <p className="text-[14px] text-gray-500 max-w-md">
+                Set up Stripe to receive payments from parents. It takes 2 minutes and payouts are automatic.
+              </p>
+            </div>
+            <button 
+              onClick={() => {
+                // CD-11: CTA placeholder - actual Stripe Connect flow is CG-03
+                alert('Stripe Connect onboarding will be implemented in CG-03')
+              }}
+              className="bg-[#0077CC] hover:bg-[#0066AA] text-white px-8 py-3.5 rounded-xl text-[15px] font-bold transition-colors"
+            >
+              Connect with Stripe
+            </button>
+            <div className="bg-[#F0F7FF] rounded-lg px-4 py-3 max-w-md">
+              <p className="text-[12px] text-[#0C447C] leading-relaxed">
+                🔒 Stripe is trusted by millions of businesses worldwide. Your bank details are encrypted and never stored on Crikly.
+              </p>
+            </div>
+          </div>
+        ) : (
+          // CD-11: Connected state (existing UI)
+          <>
 
         {/* CF-D09 CHANGE 1: Stripe hero card with next payout prominent */}
         <div className="bg-white border border-[#E2E8F0] rounded-[16px] p-6 shadow-sm flex flex-col gap-6">
@@ -196,6 +302,8 @@ export function GetPaid() {
             </div>
           </button>
         </div>
+        </>
+        )}
 
       </div>
     </div>

@@ -10,44 +10,109 @@ interface Sport {
   slug: string
 }
 
+interface CoachSportResponse {
+  id: string
+  sport_id: string
+  sport_name: string
+  sport_slug: string
+  session_types: string[]
+  skill_levels: string[]
+  age_groups?: string[]
+  price_individual_pence: number | null
+  price_group_pence: number | null
+  max_group_size: number | null
+  session_duration_minutes: number
+  currency: string
+  is_active: boolean
+}
+
 export function PricingStep() {
   const router = useRouter()
   const [selectedSports, setSelectedSports] = useState<string[]>([])
   const [sessionTypes, setSessionTypes] = useState({ individual: true, group: false })
-  const [skillLevels, setSkillLevels] = useState<string[]>(['Beginner', 'Intermediate'])
+  const [skillLevels, setSkillLevels] = useState<string[]>([])
   const [ageGroups, setAgeGroups] = useState<string[]>([])
   const [pricingRows, setPricingRows] = useState([
-    { id: '1', duration: '30 min', price: '45' },
-    { id: '2', duration: '60 min', price: '75' },
-    { id: '3', duration: '90 min', price: '100' },
+    { id: '1', duration: '60 min', price: '' },
   ])
   const [saving, setSaving] = useState(false)
   const [sports, setSports] = useState<Sport[]>([])
   const [loadingError, setLoadingError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // CD-04: Fetch sports list and selected sports from sessionStorage
-    const fetchSports = async () => {
+    // Fix-16c: Fetch sports list, selected sports, and saved pricing data
+    const fetchData = async () => {
       try {
-        const response = await fetch('/api/sports')
-        if (!response.ok) {
+        // Fetch sports list
+        const sportsResponse = await fetch('/api/sports')
+        if (!sportsResponse.ok) {
           throw new Error('Failed to fetch sports')
         }
-        const data = await response.json()
-        setSports(data.sports || [])
+        const sportsData = await sportsResponse.json()
+        setSports(sportsData.sports || [])
+
+        // Get selected sports from sessionStorage
+        const stored = sessionStorage.getItem('selectedSports')
+        if (stored) {
+          setSelectedSports(JSON.parse(stored))
+        }
+
+        // Fix-16c: Fetch saved coach sports data
+        const coachSportsResponse = await fetch('/api/coaches/sports')
+        if (coachSportsResponse.ok) {
+          const coachSportsData = await coachSportsResponse.json()
+          if (coachSportsData.sports && coachSportsData.sports.length > 0) {
+            const savedSport = coachSportsData.sports[0] as CoachSportResponse
+            
+            // Pre-populate session types
+            setSessionTypes({
+              individual: savedSport.session_types.includes('individual'),
+              group: savedSport.session_types.includes('group')
+            })
+            
+            // Pre-populate skill levels (capitalize first letter)
+            const capitalizedSkillLevels = savedSport.skill_levels.map(
+              level => level.charAt(0).toUpperCase() + level.slice(1)
+            )
+            setSkillLevels(capitalizedSkillLevels)
+            
+            // Pre-populate price (convert from pence to pounds)
+            if (savedSport.price_individual_pence) {
+              const priceInPounds = (savedSport.price_individual_pence / 100).toFixed(0)
+              setPricingRows([{
+                id: '1',
+                duration: `${savedSport.session_duration_minutes} min`,
+                price: priceInPounds
+              }])
+            }
+            
+            // Fix-16f: Pre-populate age_groups (convert API format to UI format)
+            if (savedSport.age_groups && savedSport.age_groups.length > 0) {
+              const uiAgeGroups = savedSport.age_groups.map((group: string) => {
+                const mapping: Record<string, string> = {
+                  'under_8': 'Under 8',
+                  'under_10': 'Under 10',
+                  'under_12': 'Under 12',
+                  'under_14': 'Under 14',
+                  'under_16': 'Under 16',
+                  'adults': 'Adults (17+)'
+                }
+                return mapping[group] || group
+              })
+              setAgeGroups(uiAgeGroups)
+            }
+          }
+        }
       } catch (error) {
-        console.error('Error fetching sports:', error)
-        setLoadingError('Failed to load sports. Please refresh the page.')
+        console.error('[PricingStep] Error fetching data:', error)
+        setLoadingError('Failed to load data. Please refresh the page.')
+      } finally {
+        setLoading(false)
       }
     }
 
-    fetchSports()
-
-    // Get selected sports from sessionStorage
-    const stored = sessionStorage.getItem('selectedSports')
-    if (stored) {
-      setSelectedSports(JSON.parse(stored))
-    }
+    fetchData()
   }, [])
 
   const toggleSkillLevel = (level: string) => {
@@ -87,45 +152,70 @@ export function PricingStep() {
         return
       }
 
-      // Get the first selected sport (assuming single sport for now)
-      const selectedSportName = selectedSports[0]
-      const matchedSport = sports.find(s => s.name === selectedSportName)
-      
-      if (!matchedSport) {
-        setLoadingError(`Sport "${selectedSportName}" not found. Please go back and select a valid sport.`)
-        setSaving(false)
+      // Fix-17b: Loop through ALL selected sports and save each one
+      // First, validate all sports exist
+      const sportMatches = selectedSports.map(sportName => {
+        const matchedSport = sports.find(s => s.name === sportName)
+        if (!matchedSport) {
+          setLoadingError(`Sport "${sportName}" not found. Please go back and select a valid sport.`)
+          setSaving(false)
+          return null
+        }
+        return { name: sportName, id: matchedSport.id }
+      })
+
+      // If any sport not found, stop
+      if (sportMatches.some(match => match === null)) {
         return
       }
-
-      const sportId = matchedSport.id // CD-04: Real UUID from sports table
       
       // Convert session types to array format
-      const sessionTypesArray = []
+      const sessionTypesArray: string[] = []
       if (sessionTypes.individual) sessionTypesArray.push('individual')
       if (sessionTypes.group) sessionTypesArray.push('group')
       
       // Convert skill levels to lowercase array
       const skillLevelsArray = skillLevels.map(l => l.toLowerCase())
       
+      // Fix-16f: Convert age_groups from UI format to API format
+      const ageGroupsArray = ageGroups.map(group => {
+        const mapping: Record<string, string> = {
+          'Under 8': 'under_8',
+          'Under 10': 'under_10',
+          'Under 12': 'under_12',
+          'Under 14': 'under_14',
+          'Under 16': 'under_16',
+          'Adults (17+)': 'adults'
+        }
+        return mapping[group] || group.toLowerCase().replace(' ', '_')
+      })
+      
       // Get lowest price as individual price (pence)
       const lowestPricePence = pricingRows.length > 0
         ? Math.round(Math.min(...pricingRows.map(r => parseFloat(r.price || '0'))) * 100)
         : 0
       
-      await fetch('/api/coaches/sports', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sport_id: sportId, // CD-04: coach_sports.sport_id (real UUID FK to sports table)
-          session_types: sessionTypesArray, // CD-03: coach_sports.session_types (text[])
-          skill_levels: skillLevelsArray, // CD-03: coach_sports.skill_levels (text[])
-          price_individual_pence: lowestPricePence, // CD-03: coach_sports.price_individual_pence (integer)
-          price_group_pence: null, // CD-03: coach_sports.price_group_pence (not configured in UI yet)
-          max_group_size: null, // CD-03: coach_sports.max_group_size (not configured in UI yet)
-          session_duration_minutes: 60, // CD-03: default duration
-          // Note: age_groups not in coach_sports schema - skipped
+      // Fix-17b: Save all sports using Promise.all
+      const savePromises = sportMatches.map(match => 
+        fetch('/api/coaches/sports', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sport_id: match!.id, // CD-04: coach_sports.sport_id (real UUID FK to sports table)
+            session_types: sessionTypesArray, // CD-03: coach_sports.session_types (text[])
+            skill_levels: skillLevelsArray, // CD-03: coach_sports.skill_levels (text[])
+            age_groups: ageGroupsArray, // Fix-16f: coach_sports.age_groups (text[])
+            price_individual_pence: lowestPricePence, // CD-03: coach_sports.price_individual_pence (integer)
+            price_group_pence: null, // CD-03: coach_sports.price_group_pence (not configured in UI yet)
+            max_group_size: null, // CD-03: coach_sports.max_group_size (not configured in UI yet)
+            session_duration_minutes: 60, // CD-03: default duration
+          })
         })
-      })
+      )
+
+      // Wait for all saves to complete
+      await Promise.all(savePromises)
+      
       router.push('/coach/onboarding/qualifications')
     } finally {
       setSaving(false)
@@ -160,6 +250,15 @@ export function PricingStep() {
           <p className="text-[16px] text-gray-500 font-medium">Set up your session types and pricing</p>
         </div>
 
+        {/* Fix-16c: Loading state */}
+        {loading ? (
+          <div className="bg-white rounded-xl p-5" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+            <div className="flex items-center justify-center py-12">
+              <div className="text-[14px] text-gray-400">Loading your pricing...</div>
+            </div>
+          </div>
+        ) : (
+          <>
         {/* CD-04: Error display for sport lookup failures */}
         {loadingError && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
@@ -314,6 +413,8 @@ export function PricingStep() {
             {saving ? 'Saving...' : 'Save & continue →'}
           </button>
         </div>
+        </>
+        )}
         </div>
       </div>
 

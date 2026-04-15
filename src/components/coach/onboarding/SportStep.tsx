@@ -1,30 +1,95 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Target, Trophy, Circle, Waves, Medal, Feather, Activity, Flag, Dumbbell, Check } from 'lucide-react'
 import { OnboardingPreviewPanel } from '../OnboardingPreviewPanel'
 
+interface CoachSportResponse {
+  id: string
+  sport_id: string
+  sport_name: string
+  sport_slug: string
+  session_types: string[]
+  skill_levels: string[]
+  price_individual_pence: number | null
+  price_group_pence: number | null
+  max_group_size: number | null
+  session_duration_minutes: number
+  currency: string
+  is_active: boolean
+}
+
+interface Sport {
+  id: string
+  name: string
+  slug: string
+  Icon: React.ComponentType<{ size?: number; className?: string; strokeWidth?: number }>
+}
+
 export function SportStep() {
   const router = useRouter()
   const [selectedSports, setSelectedSports] = useState<string[]>([])
+  const [sports, setSports] = useState<Sport[]>([])
   const [saving, setSaving] = useState(false)
-  const [displayName] = useState('Alex Johnson') // TODO: Get from profile state
+  const [loading, setLoading] = useState(true)
+  const [coachName, setCoachName] = useState<string>('Your name')
 
-  const sports = [
-    { name: 'Cricket', Icon: Target },
-    { name: 'Football', Icon: Trophy },
-    { name: 'Tennis', Icon: Circle },
-    { name: 'Swimming', Icon: Waves },
-    { name: 'Basketball', Icon: Circle },
-    { name: 'Rugby', Icon: Target },
-    { name: 'Athletics', Icon: Medal },
-    { name: 'Badminton', Icon: Feather },
-    { name: 'Hockey', Icon: Activity },
-    { name: 'Netball', Icon: Circle },
-    { name: 'Golf', Icon: Flag },
-    { name: 'Boxing', Icon: Dumbbell },
-  ]
+  // Icon mapping for sports
+  const iconMap: Record<string, React.ComponentType<any>> = {
+    'cricket': Target,
+    'football': Trophy,
+    'tennis': Circle,
+    'swimming': Waves,
+    'basketball': Circle,
+    'rugby': Target,
+    'athletics': Medal,
+    'badminton': Feather,
+    'hockey': Activity,
+    'netball': Circle,
+    'golf': Flag,
+    'boxing': Dumbbell,
+  }
+
+  // Fix-17c: Fetch available sports from API and saved coach sports
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        // Fetch available sports list from API
+        const sportsListResponse = await fetch('/api/sports')
+        if (sportsListResponse.ok) {
+          const sportsData = await sportsListResponse.json()
+          const sportsWithIcons = sportsData.sports.map((sport: { id: string; name: string; slug: string }) => ({
+            id: sport.id,
+            name: sport.name,
+            slug: sport.slug,
+            Icon: iconMap[sport.slug] || Target
+          }))
+          setSports(sportsWithIcons)
+        }
+        
+        // Fetch saved coach sports to pre-select
+        const coachSportsResponse = await fetch('/api/coaches/sports')
+        if (coachSportsResponse.ok) {
+          const data = await coachSportsResponse.json()
+          const savedSportNames = data.sports.map((s: CoachSportResponse) => s.sport_name)
+          setSelectedSports(savedSportNames)
+        }
+        
+        // Fix-16e: Fetch coach profile for name
+        const profileResponse = await fetch('/api/coaches/profile')
+        if (profileResponse.ok) {
+          const profileData = await profileResponse.json()
+          setCoachName(profileData.full_name || 'Your name')
+        }
+      } catch (error) {
+        console.error('[SportStep] Failed to fetch data:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchData()
+  }, [])
 
   const toggleSport = (sport: string) => {
     if (selectedSports.includes(sport)) {
@@ -69,6 +134,13 @@ export function SportStep() {
 
         {/* CONTENT */}
         <div className="flex flex-col gap-3">
+          {loading ? (
+            <div className="bg-white rounded-xl p-5" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+              <div className="flex items-center justify-center py-12">
+                <div className="text-[14px] text-gray-400">Loading sports...</div>
+              </div>
+            </div>
+          ) : (
           <div className="bg-white rounded-xl p-5" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               {sports.map((sport) => {
@@ -107,6 +179,7 @@ export function SportStep() {
               </p>
             </div>
           </div>
+          )}
         </div>
 
         {/* CF-D12 CHANGE 2B: Save bar - SAVE BAR PATTERN (step 2+: back left, save right) */}
@@ -130,12 +203,12 @@ export function SportStep() {
 
       {/* Right panel - What parents see */}
       <OnboardingPreviewPanel
-        coachName={displayName || 'Your name'}
-        sport="Cricket"
-        location="London"
-        availabilityDays={['Mon', 'Wed', 'Fri']}
-        priceFromPence={5000}
-        isDbs={true}
+        coachName={coachName}
+        sport={selectedSports[0] || undefined}
+        location={undefined}
+        availabilityDays={undefined}
+        priceFromPence={undefined}
+        isDbs={false}
       />
     </div>
   )
