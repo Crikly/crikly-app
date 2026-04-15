@@ -99,19 +99,26 @@ export default async function CoachDashboardPage() {
       // Personal Info (full_name, bio, location_city)
       Promise.resolve(!!(userProfileData?.full_name && coachProfile.bio && userProfileData?.location_city)),
       
-      // Sports & Pricing (years_experience exists)
+      // Sports & Pricing (has at least one sport configured)
       supabase
-        .from('coach_profiles')
-        .select('years_experience')
-        .eq('user_profile_id', userProfile.id)
-        .single()
-        .then(({ data }) => data?.years_experience !== null),
+        .from('coach_sports')
+        .select('id', { count: 'exact', head: true })
+        .eq('coach_profile_id', coachProfile.id)
+        .then(({ count }) => (count ?? 0) > 0),
       
-      // Qualifications (DBS verified)
-      Promise.resolve(coachProfile.dbs_status === 'verified'),
+      // Qualifications (has at least one qualification)
+      supabase
+        .from('coach_qualifications')
+        .select('id', { count: 'exact', head: true })
+        .eq('coach_profile_id', coachProfile.id)
+        .then(({ count }) => (count ?? 0) > 0),
       
-      // Availability (assumed complete - matches Profile Hub TODO)
-      Promise.resolve(true),
+      // Availability (has at least one availability template)
+      supabase
+        .from('availability_templates')
+        .select('id', { count: 'exact', head: true })
+        .eq('coach_profile_id', coachProfile.id)
+        .then(({ count }) => (count ?? 0) > 0),
       
       // Booking Policy (cancellation_window_hours > 0)
       Promise.resolve(coachProfile.cancellation_window_hours > 0),
