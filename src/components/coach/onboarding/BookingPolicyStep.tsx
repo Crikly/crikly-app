@@ -12,6 +12,7 @@ export function BookingPolicyStep() {
   const [bookingApproval, setBookingApproval] = useState('Instant')
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [coachName, setCoachName] = useState<string>('Your name')
   
   // Fix-14A: Fetch and pre-populate saved booking policy
   useEffect(() => {
@@ -22,6 +23,9 @@ export function BookingPolicyStep() {
         if (!response.ok) throw new Error('Failed to fetch profile')
         
         const data = await response.json()
+        
+        // Fix-16e: Set coach name
+        setCoachName(data.full_name || 'Your name')
         
         // Map cancellation_window_hours to UI string
         if (data.cancellation_window_hours !== undefined) {
@@ -245,7 +249,7 @@ export function BookingPolicyStep() {
 
       {/* Right panel - What parents see */}
       <OnboardingPreviewPanel
-        coachName="Your name"
+        coachName={coachName}
         sport={undefined}
         location={undefined}
         availabilityDays={undefined}

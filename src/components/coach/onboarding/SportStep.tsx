@@ -25,6 +25,7 @@ export function SportStep() {
   const [selectedSports, setSelectedSports] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [coachName, setCoachName] = useState<string>('Your name')
 
   const sports = [
     { name: 'Cricket', Icon: Target },
@@ -43,22 +44,29 @@ export function SportStep() {
 
   // Fix-16c: Fetch saved sports on mount
   useEffect(() => {
-    const fetchSavedSports = async () => {
+    const fetchData = async () => {
       try {
-        const response = await fetch('/api/coaches/sports')
-        if (response.ok) {
-          const data = await response.json()
+        // Fetch saved sports
+        const sportsResponse = await fetch('/api/coaches/sports')
+        if (sportsResponse.ok) {
+          const data = await sportsResponse.json()
           const savedSportNames = data.sports.map((s: CoachSportResponse) => s.sport_name)
           setSelectedSports(savedSportNames)
         }
+        
+        // Fix-16e: Fetch coach profile for name
+        const profileResponse = await fetch('/api/coaches/profile')
+        if (profileResponse.ok) {
+          const profileData = await profileResponse.json()
+          setCoachName(profileData.full_name || 'Your name')
+        }
       } catch (error) {
-        console.error('[SportStep] Failed to fetch saved sports:', error)
+        console.error('[SportStep] Failed to fetch data:', error)
       } finally {
         setLoading(false)
       }
     }
-
-    fetchSavedSports()
+    fetchData()
   }, [])
 
   const toggleSport = (sport: string) => {
@@ -173,7 +181,7 @@ export function SportStep() {
 
       {/* Right panel - What parents see */}
       <OnboardingPreviewPanel
-        coachName="Your name"
+        coachName={coachName}
         sport={selectedSports[0] || undefined}
         location={undefined}
         availabilityDays={undefined}

@@ -36,21 +36,20 @@ export function QualificationsStep() {
   const [provider, setProvider] = useState('')
   const [year, setYear] = useState('')
   const [fileName, setFileName] = useState<string | null>(null)
-  
-  // Fix-16c: Fetch saved qualifications on mount
   const [qualifications, setQualifications] = useState<Qualification[]>([])
   const [loading, setLoading] = useState(true)
-  
+  const [coachName, setCoachName] = useState<string>('Your name')
   const [saving, setSaving] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   
   // Fix-16c: Fetch saved qualifications on mount
   useEffect(() => {
-    const fetchQualifications = async () => {
+    const fetchData = async () => {
       try {
-        const response = await fetch('/api/coaches/qualifications')
-        if (response.ok) {
-          const data = await response.json()
+        // Fetch qualifications
+        const qualsResponse = await fetch('/api/coaches/qualifications')
+        if (qualsResponse.ok) {
+          const data = await qualsResponse.json()
           const savedQuals = data.qualifications.map((q: QualificationResponse) => ({
             id: q.id,
             category: q.is_custom ? 'other' : 'coaching',
@@ -61,14 +60,20 @@ export function QualificationsStep() {
           }))
           setQualifications(savedQuals)
         }
+        
+        // Fix-16e: Fetch coach profile for name
+        const profileResponse = await fetch('/api/coaches/profile')
+        if (profileResponse.ok) {
+          const profileData = await profileResponse.json()
+          setCoachName(profileData.full_name || 'Your name')
+        }
       } catch (error) {
-        console.error('[QualificationsStep] Failed to fetch qualifications:', error)
+        console.error('[QualificationsStep] Failed to fetch data:', error)
       } finally {
         setLoading(false)
       }
     }
-
-    fetchQualifications()
+    fetchData()
   }, [])
 
   const hasDBS = qualifications.some(q => q.category === 'dbs')
@@ -84,7 +89,7 @@ export function QualificationsStep() {
     if (!qualTitle.trim()) return
     
     try {
-      await fetch('/api/coaches/qualifications', {
+      const response = await fetch('/api/coaches/qualifications', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -95,14 +100,43 @@ export function QualificationsStep() {
           // Note: file upload not implemented yet - skipped
         })
       })
-      // Reset form after successful add
-      setCategory('')
+      
+      // Fix-16e: Add new qualification to local state immediately
+      if (response.ok) {
+        const newQual = await response.json()
+        setQualifications(prev => [...prev, {
+          id: newQual.id,
+          category: 'other',
+          name: newQual.custom_name || newQual.type_name || '',
+          provider: newQual.issuing_body || '',
+          year: newQual.issued_date ? new Date(newQual.issued_date).getFullYear().toString() : '',
+          status: 'uploaded' as const
+        }])
+      }
+      
+      // Reset form
       setQualTitle('')
       setProvider('')
       setYear('')
       setFileName(null)
     } catch (error) {
       console.error('Failed to add qualification:', error)
+    }
+  }
+
+  // Fix-16e: Add handleRemove function to delete qualification and update local state
+  const handleRemove = async (qualId: string) => {
+    try {
+      const response = await fetch(`/api/coaches/qualifications/${qualId}`, {
+        method: 'DELETE',
+      })
+      
+      // Fix-16e: Remove from local state immediately after successful deletion
+      if (response.ok) {
+        setQualifications(prev => prev.filter(q => q.id !== qualId))
+      }
+    } catch (error) {
+      console.error('[QualificationsStep] Failed to remove qualification:', error)
     }
   }
 
@@ -238,7 +272,12 @@ export function QualificationsStep() {
                   </div>
                   <div className="flex gap-2 items-start shrink-0">
                     <button className="text-[10px] text-[#94A3B8] hover:text-gray-900 transition-colors">Edit</button>
-                    <button className="text-[10px] text-[#E24B4A] hover:text-red-700 transition-colors">Remove</button>
+                    <button 
+                      onClick={() => handleRemove(qual.id)}
+                      className="text-[10px] text-[#E24B4A] hover:text-red-700 transition-colors"
+                    >
+                      Remove
+                    </button>
                   </div>
                 </div>
               ))}
@@ -276,7 +315,7 @@ export function QualificationsStep() {
 
       {/* Right panel - What parents see */}
       <OnboardingPreviewPanel
-        coachName="Your name"
+        coachName={coachName}
         sport={undefined}
         location={undefined}
         availabilityDays={undefined}

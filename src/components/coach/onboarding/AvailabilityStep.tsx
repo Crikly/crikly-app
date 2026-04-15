@@ -15,7 +15,7 @@ for (let h = 6; h <= 22; h++) {
   if (h < 22) TIME_OPTIONS.push(`${String(h).padStart(2, '0')}:30`)
 }
 
-interface ScheduleBlock { id: number; day: string; sport: string; time: string; location: string; price: string }
+interface ScheduleBlock { id: string; day: string; sport: string; time: string; location: string; price: string }
 
 interface AvailabilityResponse {
   id: string
@@ -37,6 +37,7 @@ export function AvailabilityStep() {
   // Fix-16c: Fetch saved availability on mount
   const [scheduleBlocks, setScheduleBlocks] = useState<ScheduleBlock[]>([])
   const [loading, setLoading] = useState(true)
+  const [coachName, setCoachName] = useState<string>('Your name')
   const availableSports = useMemo(() => [...new Set(scheduleBlocks.map(b => b.sport))], [scheduleBlocks])
   const [showAddForm, setShowAddForm] = useState(false)
   const [preselectedDay, setPreselectedDay] = useState<string | null>(null)
@@ -51,13 +52,14 @@ export function AvailabilityStep() {
   
   // Fix-16c: Fetch saved availability on mount
   useEffect(() => {
-    const fetchAvailability = async () => {
+    const fetchData = async () => {
       try {
-        const response = await fetch('/api/coaches/availability')
-        if (response.ok) {
-          const data = await response.json()
-          const savedBlocks = data.availability.map((block: AvailabilityResponse, index: number) => ({
-            id: index + 1,
+        // Fetch availability
+        const availResponse = await fetch('/api/coaches/availability')
+        if (availResponse.ok) {
+          const data = await availResponse.json()
+          const savedBlocks = data.availability.map((block: AvailabilityResponse) => ({
+            id: block.id,
             day: DAY_ABBR[block.day_of_week],
             sport: block.sport_name || 'Sport',
             time: `${block.start_time} – ${block.end_time}`,
@@ -66,15 +68,38 @@ export function AvailabilityStep() {
           }))
           setScheduleBlocks(savedBlocks)
         }
+        
+        // Fix-16e: Fetch coach profile for name
+        const profileResponse = await fetch('/api/coaches/profile')
+        if (profileResponse.ok) {
+          const profileData = await profileResponse.json()
+          setCoachName(profileData.full_name || 'Your name')
+        }
       } catch (error) {
-        console.error('[AvailabilityStep] Failed to fetch availability:', error)
+        console.error('[AvailabilityStep] Failed to fetch data:', error)
       } finally {
         setLoading(false)
       }
     }
 
-    fetchAvailability()
+    fetchData()
   }, [])
+  
+  // Fix-16e: Add handleRemoveBlock function to delete availability block and update local state
+  const handleRemoveBlock = async (blockId: string) => {
+    try {
+      const response = await fetch(`/api/coaches/availability/${blockId}`, {
+        method: 'DELETE',
+      })
+      
+      // Fix-16e: Remove from local state immediately after successful deletion
+      if (response.ok) {
+        setScheduleBlocks(prev => prev.filter(b => b.id !== blockId))
+      }
+    } catch (error) {
+      console.error('[AvailabilityStep] Failed to remove availability block:', error)
+    }
+  }
   
   const timeToMinutes = (time: string) => {
     const [h, m] = time.split(':').map(Number)
@@ -201,6 +226,7 @@ export function AvailabilityStep() {
                                 <button 
                                   onClick={(e) => {
                                     e.stopPropagation()
+                                    handleRemoveBlock(blockForDay.id)
                                   }}
                                   className="w-7 h-7 flex items-center justify-center border-[0.5px] border-gray-100 bg-white rounded-md hover:bg-gray-50 transition-colors"
                                 >
@@ -411,7 +437,7 @@ export function AvailabilityStep() {
 
       {/* Right panel - What parents see */}
       <OnboardingPreviewPanel
-        coachName="Your name"
+        coachName={coachName}
         sport={undefined}
         location={undefined}
         availabilityDays={activeDays.length > 0 ? activeDays : undefined}

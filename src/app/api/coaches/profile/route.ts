@@ -258,6 +258,15 @@ export async function POST(
       }
     }
 
+    // Fix-16e: Validate languages if provided
+    if (body.languages !== undefined && body.languages !== null) {
+      if (!Array.isArray(body.languages)) {
+        validationErrors.push('languages must be an array')
+      } else if (body.languages.some((lang: unknown) => typeof lang !== 'string')) {
+        validationErrors.push('languages must be an array of strings')
+      }
+    }
+
     if (validationErrors.length > 0) {
       return NextResponse.json(
         { error: 'Validation failed', details: validationErrors },
@@ -292,6 +301,7 @@ export async function POST(
       bio?: string | null
       years_experience?: number | null
       gender?: string | null
+      languages?: string[]
       cancellation_window_hours?: number
       min_advance_hours?: number
       max_advance_days?: number
@@ -304,6 +314,8 @@ export async function POST(
     if (body.bio !== undefined) coachProfileUpdates.bio = body.bio
     if (body.years_experience !== undefined) coachProfileUpdates.years_experience = body.years_experience
     if (body.gender !== undefined) coachProfileUpdates.gender = body.gender
+    // Fix-16e: Add languages to coach profile updates
+    if (body.languages !== undefined && Array.isArray(body.languages)) coachProfileUpdates.languages = body.languages
     if (body.cancellation_window_hours !== undefined) coachProfileUpdates.cancellation_window_hours = body.cancellation_window_hours
     if (body.min_advance_hours !== undefined) coachProfileUpdates.min_advance_hours = body.min_advance_hours
     if (body.max_advance_days !== undefined) coachProfileUpdates.max_advance_days = body.max_advance_days

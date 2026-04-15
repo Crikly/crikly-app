@@ -235,6 +235,19 @@ export async function POST(
       }
     }
 
+    // Fix-16e: Validate age_groups if provided
+    if (body.age_groups !== undefined && body.age_groups !== null) {
+      if (!Array.isArray(body.age_groups)) {
+        validationErrors.push('age_groups must be an array')
+      } else {
+        const validAgeGroups = ['under_8', 'under_10', 'under_12', 'under_14', 'under_16', 'under_18', 'adults']
+        const invalidGroups = body.age_groups.filter((g: unknown) => !validAgeGroups.includes(g as string))
+        if (invalidGroups.length > 0) {
+          validationErrors.push('age_groups must only contain: under_8, under_10, under_12, under_14, under_16, under_18, adults')
+        }
+      }
+    }
+
     // Validate pricing based on session types
     if (body.session_types && (body.session_types.includes('individual') || body.session_types.includes('both'))) {
       if (body.price_individual_pence === undefined || body.price_individual_pence === null) {
@@ -287,6 +300,7 @@ export async function POST(
       sport_id: string
       session_types: string[]
       skill_levels: string[]
+      age_groups?: string[]
       price_individual_pence?: number | null
       price_group_pence?: number | null
       max_group_size?: number | null
@@ -296,6 +310,11 @@ export async function POST(
       sport_id: body.sport_id,
       session_types: body.session_types,
       skill_levels: body.skill_levels,
+    }
+
+    // Fix-16e: Add age_groups to insert data
+    if (body.age_groups !== undefined && Array.isArray(body.age_groups)) {
+      insertData.age_groups = body.age_groups
     }
 
     if (body.price_individual_pence !== undefined) {
