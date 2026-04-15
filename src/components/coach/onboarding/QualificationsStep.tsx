@@ -40,6 +40,7 @@ export function QualificationsStep() {
   const [loading, setLoading] = useState(true)
   const [coachName, setCoachName] = useState<string>('Your name')
   const [saving, setSaving] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   
   // Fix-17e: Extract fetchQualifications into reusable function
@@ -92,27 +93,65 @@ export function QualificationsStep() {
     if (file) setFileName(file.name)
   }
 
+  const handleEdit = (qual: Qualification) => {
+    setQualTitle(qual.name)
+    setProvider(qual.provider || '')
+    setYear(qual.year || '')
+    setEditingId(qual.id)
+  }
+
+  const handleCancelEdit = () => {
+    setEditingId(null)
+    setQualTitle('')
+    setProvider('')
+    setYear('')
+    setFileName(null)
+  }
+
   const handleAddQualification = async () => {
     // CD-03: wired - Add qualification to coach_qualifications table
     // Maps to: custom_name, issuing_body, issued_date (coach_qualifications)
     if (!qualTitle.trim()) return
     
     try {
-      const response = await fetch('/api/coaches/qualifications', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          custom_name: qualTitle, // CD-03: coach_qualifications.custom_name
-          issuing_body: provider || null, // CD-03: coach_qualifications.issuing_body
-          issued_date: year ? `${year}-01-01` : null, // CD-03: coach_qualifications.issued_date (ISO date)
-          // Note: qualification_type_id null for custom qualifications
-          // Note: file upload not implemented yet - skipped
+      if (editingId) {
+        // Fix-17g: Update existing qualification (DELETE + POST since PATCH doesn't allow custom_name change)
+        await fetch(`/api/coaches/qualifications/${editingId}`, {
+          method: 'DELETE',
         })
-      })
-      
-      // Fix-17e: Refetch qualifications to update state
-      if (response.ok) {
-        await fetchQualifications()
+        
+        const response = await fetch('/api/coaches/qualifications', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            custom_name: qualTitle,
+            issuing_body: provider || null,
+            issued_date: year ? `${year}-01-01` : null,
+          })
+        })
+        
+        if (response.ok) {
+          await fetchQualifications()
+          setEditingId(null)
+        }
+      } else {
+        // Add new qualification
+        const response = await fetch('/api/coaches/qualifications', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            custom_name: qualTitle, // CD-03: coach_qualifications.custom_name
+            issuing_body: provider || null, // CD-03: coach_qualifications.issuing_body
+            issued_date: year ? `${year}-01-01` : null, // CD-03: coach_qualifications.issued_date (ISO date)
+            // Note: qualification_type_id null for custom qualifications
+            // Note: file upload not implemented yet - skipped
+          })
+        })
+        
+        // Fix-17e: Refetch qualifications to update state
+        if (response.ok) {
+          await fetchQualifications()
+        }
       }
       
       // Reset form
@@ -235,12 +274,22 @@ export function QualificationsStep() {
             />
           </div>
 
-          <button
-            onClick={handleAddQualification}
-            className="px-5 py-2 bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-full text-[12px] font-medium transition-colors w-fit ml-auto"
-          >
-            Add qualification
-          </button>
+          <div className="flex gap-2 ml-auto">
+            {editingId && (
+              <button
+                onClick={handleCancelEdit}
+                className="px-5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-full text-[12px] font-medium transition-colors"
+              >
+                Cancel
+              </button>
+            )}
+            <button
+              onClick={handleAddQualification}
+              className="px-5 py-2 bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-full text-[12px] font-medium transition-colors"
+            >
+              {editingId ? 'Update qualification' : 'Add qualification'}
+            </button>
+          </div>
         </div>
 
           {/* Fix-16c: Loading state */}
@@ -272,7 +321,12 @@ export function QualificationsStep() {
                     </div>
                   </div>
                   <div className="flex gap-2 items-start shrink-0">
-                    <button className="text-[10px] text-[#94A3B8] hover:text-gray-900 transition-colors">Edit</button>
+                    <button 
+                      onClick={() => handleEdit(qual)}
+                      className="text-[10px] text-[#94A3B8] hover:text-gray-900 transition-colors"
+                    >
+                      Edit
+                    </button>
                     <button 
                       onClick={() => handleRemove(qual.id)}
                       className="text-[10px] text-[#E24B4A] hover:text-red-700 transition-colors"
