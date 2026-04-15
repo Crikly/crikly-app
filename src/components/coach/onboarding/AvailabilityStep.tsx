@@ -6,6 +6,7 @@ import { Pencil, X, Plus, ChevronDown, AlertTriangle } from 'lucide-react'
 import { OnboardingPreviewPanel } from '../OnboardingPreviewPanel'
 
 const DAY_ABBR = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
+const DISPLAY_ORDER = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
 const DAY_FULL: Record<string, string> = { Mon: 'Monday', Tue: 'Tuesday', Wed: 'Wednesday', Thu: 'Thursday', Fri: 'Friday', Sat: 'Saturday', Sun: 'Sunday' }
 const REPEAT_OPTIONS = ['Weekly', 'Fortnightly', 'Monthly', 'One-off']
 
@@ -41,6 +42,7 @@ export function AvailabilityStep() {
   const availableSports = useMemo(() => [...new Set(scheduleBlocks.map(b => b.sport))], [scheduleBlocks])
   const [showAddForm, setShowAddForm] = useState(false)
   const [preselectedDay, setPreselectedDay] = useState<string | null>(null)
+  const [editingBlockId, setEditingBlockId] = useState<string | null>(null)
   const [formSport, setFormSport] = useState(availableSports[0] ?? '')
   const [formDays, setFormDays] = useState<string[]>([])
   const [formStartTime, setFormStartTime] = useState('09:00')
@@ -117,7 +119,7 @@ export function AvailabilityStep() {
   
   const conflict = useMemo(() => {
     for (const day of formDays) {
-      const existingBlocks = scheduleBlocks.filter(b => b.day === day)
+      const existingBlocks = scheduleBlocks.filter(b => b.day === day && b.id !== editingBlockId)
       for (const existing of existingBlocks) {
         const [existStartStr, existEndStr] = existing.time.split(' – ')
         const existStart = timeToMinutes(existStartStr)
@@ -131,7 +133,7 @@ export function AvailabilityStep() {
       }
     }
     return null
-  }, [formSport, formDays, formStartTime, formEndTime, scheduleBlocks])
+  }, [formSport, formDays, formStartTime, formEndTime, scheduleBlocks, editingBlockId])
   
   const resetForm = () => { 
     setFormSport(availableSports[0] ?? '')
@@ -143,6 +145,19 @@ export function AvailabilityStep() {
     setFormPrice('')
     setShowAddForm(false)
     setPreselectedDay(null)
+    setEditingBlockId(null)
+  }
+  
+  const handleEditBlock = (block: ScheduleBlock) => {
+    setFormDays([block.day])
+    const times = block.time.split(' – ')
+    setFormStartTime(times[0] || '09:00')
+    setFormEndTime(times[1] || '10:00')
+    setEditingBlockId(block.id)
+    setShowAddForm(true)
+    setTimeout(() => {
+      addFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 100)
   }
   
   React.useEffect(() => {
@@ -158,7 +173,10 @@ export function AvailabilityStep() {
 
   const lowestPrice = useMemo(() => {
     if (scheduleBlocks.length === 0) return null
-    const prices = scheduleBlocks.map(b => parseInt(b.price.replace(/[^\d]/g, '')))
+    const prices = scheduleBlocks.map(b => {
+      const match = b.price.match(/£(\d+)/)
+      return match ? parseInt(match[1]) : 0
+    })
     return Math.min(...prices)
   }, [scheduleBlocks])
 
@@ -181,7 +199,7 @@ export function AvailabilityStep() {
               </div>
             ) : (
             <div className="flex flex-col gap-6 mb-6">
-              {DAY_ABBR.map((dayAbbr) => {
+              {DISPLAY_ORDER.map((dayAbbr) => {
                 const dayFull = DAY_FULL[dayAbbr]
                 const blocksForDay = scheduleBlocks.filter(b => b.day === dayAbbr)
                 
@@ -227,6 +245,7 @@ export function AvailabilityStep() {
                                 <button 
                                   onClick={(e) => {
                                     e.stopPropagation()
+                                    handleEditBlock(blockForDay)
                                   }}
                                   className="w-7 h-7 flex items-center justify-center border-[0.5px] border-gray-100 bg-white rounded-md hover:bg-gray-50 transition-colors"
                                 >
@@ -309,7 +328,7 @@ export function AvailabilityStep() {
                 <div className="mb-4">
                   <label className="block text-[12px] font-bold text-gray-500 mb-1.5 uppercase tracking-wider">Days</label>
                   <div className="flex flex-wrap gap-2">
-                    {DAY_ABBR.map(day => (
+                    {DISPLAY_ORDER.map(day => (
                       <button key={day} type="button" onClick={() => toggleDay(day)} className={`px-3.5 py-2 rounded-lg text-[13px] font-bold transition-colors border ${formDays.includes(day) ? 'bg-[#0077CC] text-white border-[#0077CC]' : 'bg-gray-50 text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-100'}`}>{day}</button>
                     ))}
                   </div>
@@ -366,6 +385,13 @@ export function AvailabilityStep() {
                           'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6
                         }
                         
+                        // Fix-17h: If editing, delete the old block first
+                        if (editingBlockId) {
+                          await fetch(`/api/coaches/availability/${editingBlockId}`, {
+                            method: 'DELETE',
+                          })
+                        }
+                        
                         // Save each selected day as a separate availability block
                         for (const dayAbbr of formDays) {
                           await fetch('/api/coaches/availability', {
@@ -392,7 +418,7 @@ export function AvailabilityStep() {
                     disabled={!!conflict || formDays.length === 0} 
                     className={`px-6 py-3 rounded-xl text-[14px] font-bold transition-colors flex items-center gap-2 ${conflict || formDays.length === 0 ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-[#0077CC] text-white hover:bg-[#0066AA]'}`}
                   >
-                    <Plus size={16} />Add this block
+                    <Plus size={16} />{editingBlockId ? 'Update block' : 'Add this block'}
                   </button>
                 </div>
               </div>
