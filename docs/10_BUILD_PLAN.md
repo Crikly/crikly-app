@@ -322,7 +322,6 @@ other screens within the same task.
 | CF-D11a | Dashboard onboarding banner — hierarchy, Do next badge, guidance copy, % in expanded state | @FrontendDeveloper | 🟢 | develop | ✅ |
 | CF-D11b | Onboarding Profile step — sticky save bar, no white card wrapper behind button | @FrontendDeveloper | 🟢 | develop | ⚪ |
 | CF-D11c | Location field — Google Places autocomplete on ProfileStep and ProfileEdit | @FrontendDeveloper | 🟢 | develop | ✅ |
-| Fix-37 | Wire location_lat and location_lng in /api/coaches/profile POST route — save to user_profiles table (backend follow-up from CF-D11c) | @BackendDeveloper | 🟡 | develop | ⚪ |
 | CF-D12 | Onboarding sport selection + pricing — save bar pattern (back left, save right, no border-top) | @FrontendDeveloper | 🟢 | develop | ✅ |
 | CF-D13 | Onboarding qualifications — replace emoji icons with Lucide, replace category dropdown with tiles | @FrontendDeveloper | 🟢 | develop | ⚪ |
 | CF-R04 | Design consistency audit — extract fonts, colours, buttons, icons, spacing, card patterns across all coach screens. Automated script first, then visual pass. Runs AFTER CG-07 complete. | @FrontendDeveloper | 🟢 | — | ⚪ |
@@ -383,6 +382,8 @@ Branch: feature/coach-data (open from develop before starting CD-01)
 | Fix-35 | Smooth page entrance animation across onboarding steps: add fade-in + slide-up animation to content wrappers in all 7 onboarding steps to eliminate jarring pop-in effect | globals.css, 7 step files | 🟢 Low | ✅ |
 | Fix-36 | Convert go-live to celebration modal over dashboard: replace full-page GoLiveStep with modal that appears once on dashboard after onboarding completion, sets is_profile_live = true | GetPaidStep.tsx, CoachHomeClient.tsx | 🟡 Medium | ✅ |
 | Fix-36b | Wire copy link and share buttons in celebration modal: derive profile URL from coach name slug, implement clipboard copy with feedback, dispatch custom event to open share modal | CoachHomeClient.tsx, CoachLayoutClient.tsx | 🟢 Low | ✅ |
+| Fix-37 | Wire location_lat and location_lng in /api/coaches/profile POST route — save to user_profiles table | @BackendDeveloper | 🟡 | develop | ⚪ |
+| Fix-38 | LocationAutocomplete styling — fix Google dropdown border + add postcode support (change types to geocode) | @FrontendDeveloper | 🟢 | develop | ⚪ |
 
 ### 3F — Coach Go-Live Gaps (CG tasks)
 
