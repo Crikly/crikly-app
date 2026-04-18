@@ -76,34 +76,71 @@ Add a role to the authenticated user's account.
 
 ### GET /api/coaches
 Search for coaches. Supports filtering and sorting.
+**Status: Implemented — CG-01a**
+**Auth: Public — no token required**
 
 **Query params:**
 ```
 sport_id        UUID
 location_lat    float
 location_lng    float
-radius_km       integer (default: 10)
+radius_km       integer (default: 10, max: 500)
 session_type    'individual' | 'group'
 skill_level     'beginner' | 'intermediate' | 'advanced'
 min_price       integer (pence)
 max_price       integer (pence)
 dbs_verified    boolean
 gender          'male' | 'female' | 'other'
-min_rating      float
+min_rating      float (0–5)
 sort            'nearest' | 'rating' | 'price_asc' | 'available'
 page            integer (default: 1)
 limit           integer (default: 20, max: 50)
 ```
 
+**Notes:**
+- `location_lat` and `location_lng` must be supplied together or not at all
+- `sort=nearest` requires location params; coaches without coordinates sort last
+- Featured coaches (`is_featured=true`) always appear before organic results, sorted by rating
+- Only coaches where `is_profile_live=true` and `is_suspended=false` are returned
+
 **Response 200:**
 ```json
 {
-  "coaches": [...],
+  "coaches": [
+    {
+      "id": "uuid",
+      "full_name": "James Wright",
+      "bio": "ECB Level 2 coach with 8 years experience...",
+      "location_city": "Birmingham",
+      "location_lat": 52.4862,
+      "location_lng": -1.8904,
+      "rating_avg": 4.8,
+      "rating_count": 23,
+      "sessions_completed": 47,
+      "dbs_status": "verified",
+      "is_featured": false,
+      "gender": "male",
+      "distance_km": 3.2,
+      "sports": [
+        {
+          "sport_id": "uuid",
+          "sport_name": "Cricket",
+          "sport_slug": "cricket",
+          "session_types": ["individual", "group"],
+          "skill_levels": ["beginner", "intermediate"],
+          "min_price_pence": 4500
+        }
+      ],
+      "primary_photo": "https://gzehxfnlfogkhadejowo.supabase.co/storage/v1/..."
+    }
+  ],
   "total": 42,
   "page": 1,
   "pages": 3
 }
 ```
+
+**Error 400:** Validation failure — invalid param types or out-of-range values
 
 ---
 
