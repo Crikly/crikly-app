@@ -393,8 +393,9 @@ Critical tasks required before any coach can go live on the platform.
 
 | ID | Task | Risk | Depends On | Status |
 |---|---|---|---|---|
-| CG-01 | Coach search API — coach appears in search results (P-09, P-10, P-11) | 🔴 High | CD-03 | ✅ |
-| CG-02 | Coach public profile page — what parents see | 🔴 High | CD-03 | ⚪ |
+| CG-01 | Coach search API — GET /api/coaches public search route (P-09, P-10, P-11) | 🔴 High | CD-03 | ✅ |
+| CG-01b | Coach profile + availability API — GET /api/coaches/[id] and GET /api/coaches/[id]/availability | 🔴 High | CG-01 | ✅ |
+| CG-02 | Coach public profile page — what parents see | 🔴 High | CG-01b | ⚪ |
 | CG-03 | Stripe Connect onboarding — real redirect (C-11, C-19) | 🔴 High | CD-03 | ⚪ |
 | CG-04 | Email notifications — booking received, confirmed (B-17) | 🟡 Medium | CG-01 | ⚪ |
 | CG-05 | Push notifications via OneSignal (B-18) | 🟡 Medium | CG-01 | ⚪ |
