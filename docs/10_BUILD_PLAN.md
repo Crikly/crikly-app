@@ -382,7 +382,7 @@ Branch: feature/coach-data (open from develop before starting CD-01)
 | Fix-35 | Smooth page entrance animation across onboarding steps: add fade-in + slide-up animation to content wrappers in all 7 onboarding steps to eliminate jarring pop-in effect | globals.css, 7 step files | 🟢 Low | ✅ |
 | Fix-36 | Convert go-live to celebration modal over dashboard: replace full-page GoLiveStep with modal that appears once on dashboard after onboarding completion, sets is_profile_live = true | GetPaidStep.tsx, CoachHomeClient.tsx | 🟡 Medium | ✅ |
 | Fix-36b | Wire copy link and share buttons in celebration modal: derive profile URL from coach name slug, implement clipboard copy with feedback, dispatch custom event to open share modal | CoachHomeClient.tsx, CoachLayoutClient.tsx | 🟢 Low | ✅ |
-| Fix-37 | Wire location_lat and location_lng in /api/coaches/profile POST route — save to user_profiles table | @BackendDeveloper | 🟡 | develop | ⚪ |
+| Fix-37 | Wire location_lat and location_lng in /api/coaches/profile POST route — save to user_profiles table | @BackendDeveloper | 🟡 | develop | ✅ |
 | Fix-38 | LocationAutocomplete styling — fix Google dropdown border + add postcode support (change types to geocode) | @FrontendDeveloper | 🟢 | develop | ✅ |
 | Fix-38b | Add Google Places autocomplete to all venue fields — availability block + session creation. Types: establishment + geocode. Reuse or extend LocationAutocomplete.tsx | @FrontendDeveloper | 🟢 | develop | ✅ |
 | Fix-38c | Add venue_id FK to availability_templates migration + wire venue saving to coach_venues table | @DatabaseArchitect | 🟡 | develop | ⚪ |

@@ -255,6 +255,22 @@ export async function POST(
       }
     }
 
+    if (body.location_lat !== undefined && body.location_lat !== null) {
+      if (typeof body.location_lat !== 'number' || !isFinite(body.location_lat)) {
+        validationErrors.push('location_lat must be a number')
+      } else if (body.location_lat < -90 || body.location_lat > 90) {
+        validationErrors.push('location_lat must be between -90 and 90')
+      }
+    }
+
+    if (body.location_lng !== undefined && body.location_lng !== null) {
+      if (typeof body.location_lng !== 'number' || !isFinite(body.location_lng)) {
+        validationErrors.push('location_lng must be a number')
+      } else if (body.location_lng < -180 || body.location_lng > 180) {
+        validationErrors.push('location_lng must be between -180 and 180')
+      }
+    }
+
     if (body.avatar_url !== undefined && body.avatar_url !== null) {
       if (typeof body.avatar_url !== 'string') {
         validationErrors.push('avatar_url must be a string')
@@ -282,6 +298,8 @@ export async function POST(
     if (body.full_name !== undefined) userProfileUpdates.full_name = body.full_name
     if (body.location_city !== undefined) userProfileUpdates.location_city = body.location_city
     if (body.location_postcode !== undefined) userProfileUpdates.location_postcode = body.location_postcode
+    if (body.location_lat !== undefined) userProfileUpdates.location_lat = body.location_lat
+    if (body.location_lng !== undefined) userProfileUpdates.location_lng = body.location_lng
     if (body.avatar_url !== undefined) userProfileUpdates.avatar_url = body.avatar_url
 
     if (Object.keys(userProfileUpdates).length > 0) {
