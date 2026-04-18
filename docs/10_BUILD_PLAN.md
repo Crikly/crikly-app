@@ -319,6 +319,11 @@ other screens within the same task.
 | CF-D08 | Earnings screen adjustments | @FrontendDeveloper | 🟢 | develop | ⚪ |
 | CF-D09 | Get Paid screen adjustments | @FrontendDeveloper | � | develop | ⚪ |
 | CF-D10 | Onboarding screens adjustments — all 6 steps + You're Live | @FrontendDeveloper | 🟢 | develop | ✅ |
+| CF-D11a | Dashboard onboarding banner — hierarchy, Do next badge, guidance copy, % in expanded state | @FrontendDeveloper | 🟢 | develop | ✅ |
+| CF-D11b | Onboarding Profile step — sticky save bar, no white card wrapper behind button | @FrontendDeveloper | 🟢 | develop | ⚪ |
+| CF-D11c | Location field — Google Places autocomplete on ProfileStep and ProfileEdit | @FrontendDeveloper | 🟢 | develop | ⚪ |
+| CF-D12 | Onboarding sport selection + pricing — save bar pattern (back left, save right, no border-top) | @FrontendDeveloper | 🟢 | develop | ✅ |
+| CF-D13 | Onboarding qualifications — replace emoji icons with Lucide, replace category dropdown with tiles | @FrontendDeveloper | 🟢 | develop | ⚪ |
 | CF-R04 | Design consistency audit — extract fonts, colours, buttons, icons, spacing, card patterns across all coach screens. Automated script first, then visual pass. Runs AFTER CG-07 complete. | @FrontendDeveloper | 🟢 | — | ⚪ |
 
 ### 3E — Data Wiring (CD tasks)
