@@ -142,7 +142,10 @@ crikly-app/
 │   ├── 11_UX_PRINCIPLES.md      ← Read before any UI work
 │   ├── 12_DESIGN_SYSTEM.md      ← Read before any UI work
 │   ├── 13_SCREEN_FLOWS.md
-│   ├── 14_COACH_REQUIREMENTS.md
+│   ├── 14_AUTH_SCREEN_SPECS.md  ← Auth screen specifications
+│   ├── 14_COACH_REQUIREMENTS.md ← 78 coach requirements
+│   ├── 15_AUTH_COMPONENT_ARCHITECTURE.md ← Auth component architecture
+│   ├── 16_DESIGN_WORKFLOW.md    ← Figma/Claude Design/Windsurf workflow + colour tokens
 │   └── agents/
 │       ├── frontend-developer.md
 │       ├── backend-developer.md
@@ -217,6 +220,8 @@ Database migration           → docs/03_DATABASE_SCHEMA.md
 Security-sensitive work      → docs/06_SECURITY_COMPLIANCE.md
 New feature                  → PRD.md (relevant section only)
 Coach module work            → docs/14_COACH_REQUIREMENTS.md
+Auth screen work             → docs/14_AUTH_SCREEN_SPECS.md + docs/15_AUTH_COMPONENT_ARCHITECTURE.md
+Design workflow / tokens     → docs/16_DESIGN_WORKFLOW.md
 ```
 
 ---
@@ -450,6 +455,38 @@ Payment rules:
 ```
 
 Full rules in `docs/06_SECURITY_COMPLIANCE.md`.
+
+---
+
+## Performance & Stress Testing — Pre-Launch Requirements
+
+All performance tasks run in Step 7 on staging.crikly.app before any production release.
+Tool: **k6** for load and stress testing. Never test against production.
+
+```
+L-02b: API load test
+       Target: p95 response time < 500ms under 50 concurrent users
+       Endpoints: coach search, booking creation, availability lookup
+       Tool: k6
+
+L-02c: Stripe webhook stress test
+       Target: idempotency holds under duplicate/burst webhook events
+       Simulate: Stripe firing same event 2-3x (real-world behaviour)
+       Risk: 🔴 High — must pass before Stripe live mode switch (L-09)
+
+L-02d: Database query audit
+       Target: no query over 200ms on p95
+       Focus: coach search filters, availability slot calculation, booking joins
+       Tool: Supabase query analyser + pg_stat_statements
+
+L-02e: Supabase connection pool test
+       Target: app handles 50 concurrent Vercel serverless connections
+       Risk: Vercel functions can spike connections — Supabase has limits
+       Fix if needed: enable Supabase connection pooler (PgBouncer)
+```
+
+These tasks are tracked in docs/10_BUILD_PLAN.md as L-02b through L-02e.
+All must pass before L-09 (Stripe live mode switch).
 
 ---
 
