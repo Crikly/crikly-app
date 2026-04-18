@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useRef, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { ChevronLeft, ChevronRight, Plus, Check, User, RefreshCw, Users, Ban, X, Calendar, MapPin, PoundSterling, AlertCircle, Info } from 'lucide-react'
 
@@ -112,6 +112,7 @@ type ActivePopover =
 
 export function Schedule() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
   const [activePopover, setActivePopover] = useState<ActivePopover>(null)
   const [weekOffset, setWeekOffset] = useState(0) // CF-D02c FIX 3: Week navigation
@@ -157,6 +158,35 @@ export function Schedule() {
       gridRef.current.scrollTop = 128
     }
   }, [])
+
+  // Fix-20: Auto-open New Session popover when ?action=new-session
+  useEffect(() => {
+    const action = searchParams.get('action')
+    if (action === 'new-session' && !activePopover) {
+      // Calculate center position for popover
+      const centerX = window.innerWidth / 2 - 190 // 380px width / 2
+      const centerY = 200
+      
+      // Get current time rounded to next 30min
+      const now = new Date()
+      const minutes = now.getMinutes()
+      const roundedMinutes = minutes < 30 ? 30 : 0
+      const roundedHours = minutes < 30 ? now.getHours() : now.getHours() + 1
+      const time = `${roundedHours.toString().padStart(2, '0')}:${roundedMinutes.toString().padStart(2, '0')}`
+      
+      // Get today's date
+      const today = now.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+      
+      setActivePopover({
+        type: 'creation',
+        source: 'button',
+        date: today,
+        time: time,
+        x: centerX,
+        y: centerY
+      })
+    }
+  }, [searchParams, activePopover])
 
   // CF-D02c FIX 1: Close popover on outside click or Escape
   useEffect(() => {
@@ -222,15 +252,31 @@ export function Schedule() {
 
   const hours = Array.from({ length: 17 }, (_, i) => i + 6)
 
-  const days = [
-    { name: 'Mon', date: '6', dayOfWeek: 1 },
-    { name: 'Tue', date: '7', dayOfWeek: 2 },
-    { name: 'Wed', date: '8', isToday: true, dayOfWeek: 3 },
-    { name: 'Thu', date: '9', dayOfWeek: 4 },
-    { name: 'Fri', date: '10', dayOfWeek: 5 },
-    { name: 'Sat', date: '11', dayOfWeek: 6 },
-    { name: 'Sun', date: '12', dayOfWeek: 0 },
-  ]
+  // Fix-26: Dynamic week calculation based on weekOffset
+  const getWeekDays = (offset: number) => {
+    const now = new Date()
+    const todayMidnight = new Date(
+      now.getFullYear(), now.getMonth(), now.getDate()
+    )
+    const currentDayOfWeek = todayMidnight.getDay()
+    const daysFromMonday = currentDayOfWeek === 0 ? 6 : currentDayOfWeek - 1
+    const monday = new Date(todayMidnight)
+    monday.setDate(todayMidnight.getDate() - daysFromMonday + offset * 7)
+
+    return Array.from({ length: 7 }, (_, i) => {
+      const day = new Date(monday)
+      day.setDate(monday.getDate() + i)
+      return {
+        name: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][i],
+        date: day.getDate().toString(),
+        dayOfWeek: day.getDay(),
+        isToday: day.getTime() === todayMidnight.getTime(),
+        fullDate: day
+      }
+    })
+  }
+
+  const days = getWeekDays(weekOffset)
   
   // CD-12: Helper to convert time string to grid position
   const timeToPosition = (time: string): number => {
@@ -257,7 +303,19 @@ export function Schedule() {
             <div className="flex items-start justify-between mb-2 px-5 pt-4">
               <div>
                 <h1 className="text-[20px] font-medium text-gray-900">Schedule</h1>
-                <p className="text-[14px] text-gray-500 mt-0.5">8 – 14 April 2026 · <span className="text-[#0077CC] font-medium">6 sessions this week</span></p>
+                {/* Fix-26: Dynamic week range */}
+                <p className="text-[14px] text-gray-500 mt-0.5">
+                  {(() => {
+                    const weekStart = days[0]
+                    const weekEnd = days[6]
+                    const weekStartDate = weekStart.fullDate
+                    const weekEndDate = weekEnd.fullDate
+                    const weekRangeLabel = weekStartDate.getMonth() === weekEndDate.getMonth()
+                      ? `${weekStartDate.getDate()} – ${weekEndDate.getDate()} ${weekEndDate.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}` 
+                      : `${weekStartDate.getDate()} ${weekStartDate.toLocaleDateString('en-GB', { month: 'short' })} – ${weekEndDate.getDate()} ${weekEndDate.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}` 
+                    return weekRangeLabel
+                  })()}
+                </p>
               </div>
               <div className="flex items-center gap-2">
                 <div className="flex bg-white border border-gray-200 rounded-full p-1">
@@ -352,7 +410,8 @@ export function Schedule() {
                       </div>
                       {days.map((day, idx) => {
                         const timeStr = `${hour.toString().padStart(2, '0')}:00`
-                        const dateStr = `${day.name} ${day.date} Apr`
+                        // Fix-26: Dynamic date string with month
+                        const dateStr = `${day.name} ${day.date} ${day.fullDate.toLocaleDateString('en-GB', { month: 'short' })}`
                         return (
                           <div 
                             key={idx} 
@@ -381,7 +440,8 @@ export function Schedule() {
                           const duration = calculateDuration(block.start_time, block.end_time)
                           const heightPx = duration * 64
                           const timeStr = block.start_time.substring(0, 5)
-                          const dateStr = `${day.name} ${day.date} Apr`
+                          // Fix-26: Dynamic date string with month
+                          const dateStr = `${day.name} ${day.date} ${day.fullDate.toLocaleDateString('en-GB', { month: 'short' })}`
                           
                           return (
                             <EventBlock
@@ -439,10 +499,12 @@ export function Schedule() {
               const popoverX = SIDEBAR_WIDTH + (mainWidth / 2) - 190 // 190 = half of 380px popover width
               const popoverY = window.innerHeight * 0.25
               
+              // Fix-26: Dynamic today date
+              const todayDay = days.find(d => d.isToday) || days[0]
               setActivePopover({
                 type: 'creation',
                 source: 'button',
-                date: 'Wed 8 Apr',
+                date: `${todayDay.name} ${todayDay.date} ${new Date().toLocaleDateString('en-GB', { month: 'short' })}`,
                 time: '09:00',
                 x: popoverX,
                 y: popoverY

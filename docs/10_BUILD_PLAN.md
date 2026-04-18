@@ -319,6 +319,7 @@ other screens within the same task.
 | CF-D08 | Earnings screen adjustments | @FrontendDeveloper | 🟢 | develop | ⚪ |
 | CF-D09 | Get Paid screen adjustments | @FrontendDeveloper | � | develop | ⚪ |
 | CF-D10 | Onboarding screens adjustments — all 6 steps + You're Live | @FrontendDeveloper | 🟢 | develop | ✅ |
+| CF-R04 | Design consistency audit — extract fonts, colours, buttons, icons, spacing, card patterns across all coach screens. Automated script first, then visual pass. Runs AFTER CG-07 complete. | @FrontendDeveloper | 🟢 | — | ⚪ |
 
 ### 3E — Data Wiring (CD tasks)
 
@@ -351,6 +352,31 @@ Branch: feature/coach-data (open from develop before starting CD-01)
 | Fix-16d | Remove all joins from coach API routes: fetch related data separately to avoid PGRST200 errors, add upsert to availability | Coach API routes | 🟡 Medium | ✅ |
 | Fix-16e | Six fixes: availability unique constraint, age_groups/languages fields, qualification/availability remove UI, right panel coach name | Multiple | 🟡 Medium | ✅ |
 | Fix-16f | Three data mapping fixes: age_groups saving/loading, languages saving/loading, time display without seconds | Onboarding components | 🟢 Low | ✅ |
+| Fix-17n | Add Blocked Dates tab to AvailabilityStep with full calendar UI and API integration | AvailabilityStep.tsx | 🟡 Medium | ✅ |
+| Fix-18a | Preview card reads price from coach_session_types: fetch minimum price_individual_pence and display in "What Parents See" card | ProfileStep.tsx | 🟢 Low | ✅ |
+| Fix-18b | Save pricing to coach_session_types not deprecated coach_sports columns: upsert session type rows when sports/pricing saved + fix broken join-filter query | sports/route.ts, session-types/route.ts | 🟡 Medium | ✅ |
+| Fix-19 | Correct RLS policies with broken auth.uid() mapping: join through user_profiles.auth_user_id across 9 policies in 5 M-14a tables | Migration file only | 🟢 Low | ✅ |
+| Fix-20 | Wire dashboard CTA buttons: Create Session opens Schedule with New Session modal, Add Availability/Create Programme navigate to correct routes | CoachHomeClient.tsx, Schedule.tsx | 🟢 Low | ✅ |
+| Fix-21 | Dynamic week dates and navigation in dashboard week strip: calculate dates from today, add week navigation with chevrons | CoachHomeClient.tsx | 🟢 Low | ✅ |
+| Fix-21b | Correct today highlight and month label in week strip: use midnight-normalized date comparison to avoid timezone bugs | CoachHomeClient.tsx | 🟢 Low | ✅ |
+| Fix-21c | Replace hardcoded ThisWeekStrip in CoachRightPanel with dynamic version matching CoachHomeClient | CoachRightPanel.tsx | 🟢 Low | ✅ |
+| Fix-22 | Move price fetch into OnboardingPreviewPanel: fetch minimum price internally so it displays on all onboarding steps without prop passing | OnboardingPreviewPanel.tsx | 🟢 Low | ✅ |
+| Fix-23 | Redesign Sport & pricing right panel: replace flat "YOUR OFFER" panel with two-section design matching OnboardingPreviewPanel (coach preview card + offer summary) | PricingStep.tsx | 🟢 Low | ✅ |
+| Fix-24 | Show real profile photo in OnboardingPreviewPanel: fetch avatar_url internally and display actual photo when uploaded, fall back to initials when not | OnboardingPreviewPanel.tsx | 🟢 Low | ✅ |
+| Fix-24b | Show real profile photo in PricingStep panel: extend existing profile fetch to capture avatar_url and display photo in inline aside panel | PricingStep.tsx | 🟢 Low | ✅ |
+| Fix-25 | Dynamic dates in Schedule right panel calendar: replace all hardcoded dates with dynamic detection based on current date, generate month grid dynamically | CoachRightPanel.tsx | 🟢 Low | ✅ |
+| Fix-26 | Dynamic week dates in Schedule grid and header: replace hardcoded Mon 6 – Sun 12 April with dynamic week calculation based on weekOffset state | Schedule.tsx | 🟢 Low | ✅ |
+| Fix-27 | Replace placeholder logos with real Crikly brand assets: update favicon, sidebar logos, mobile logos, auth logos, and onboarding logos across all coach module files | Multiple files | 🟢 Low | ✅ |
+| Fix-28 | Dynamic dashboard date and fix logo clipping: replace hardcoded "Tuesday, 14 May" with dynamic date, fix sidebar logo clipping with object-left and maxWidth | CoachHomeClient.tsx, CoachLayoutClient.tsx | 🟢 Low | ✅ |
+| Fix-29 | Stable language pill width on selection: always render checkmark icon but make invisible when not selected to prevent layout shift | ProfileStep.tsx | 🟢 Low | ✅ |
+| Fix-30 | Skeleton loader and session cache for sports list: replace loading text with animated pill skeletons, cache sports in sessionStorage to avoid re-fetching | SportStep.tsx | 🟢 Low | ✅ |
+| Fix-31 | Consistent spinner loading state across all onboarding steps: replace plain text loading states with spinner + text pattern in PricingStep, QualificationsStep, AvailabilityStep | 3 files | 🟢 Low | ✅ |
+| Fix-32 | Qualifications heading size and sticky right panel: update heading to match other steps (32px bold), make OnboardingPreviewPanel sticky so it stays fixed while content scrolls | QualificationsStep.tsx, OnboardingPreviewPanel.tsx | 🟢 Low | ✅ |
+| Fix-33 | Richer qualification cards and remove confirmation: improve card visual hierarchy with bold name and meta row, add confirmation modal before removing qualifications | QualificationsStep.tsx | 🟢 Low | ✅ |
+| Fix-34 | Sticky right panel in onboarding via proper h-screen layout context: add h-screen overflow-hidden wrapper to layout, update all 7 step files to flex-1 overflow-y-auto for independent scrolling | layout.tsx, OnboardingPreviewPanel.tsx, 7 step files | 🟡 Medium | ✅ |
+| Fix-35 | Smooth page entrance animation across onboarding steps: add fade-in + slide-up animation to content wrappers in all 7 onboarding steps to eliminate jarring pop-in effect | globals.css, 7 step files | 🟢 Low | ✅ |
+| Fix-36 | Convert go-live to celebration modal over dashboard: replace full-page GoLiveStep with modal that appears once on dashboard after onboarding completion, sets is_profile_live = true | GetPaidStep.tsx, CoachHomeClient.tsx | 🟡 Medium | ✅ |
+| Fix-36b | Wire copy link and share buttons in celebration modal: derive profile URL from coach name slug, implement clipboard copy with feedback, dispatch custom event to open share modal | CoachHomeClient.tsx, CoachLayoutClient.tsx | 🟢 Low | ✅ |
 
 ### 3F — Coach Go-Live Gaps (CG tasks)
 
@@ -372,6 +398,12 @@ Critical tasks required before any coach can go live on the platform.
 |---|---|---|---|---|---|
 | C-23 | Integration tests — all coach API routes | @QAEngineer | 🟢 | feature/coach | ⚪ |
 | C-24 | E2E test — full coach onboarding to profile live | @QAEngineer | 🟢 | feature/coach | ⚪ |
+
+### 3H — Refactoring Backlog
+
+| ID | Task | Agent | Risk | Branch | Status |
+|---|---|---|---|---|---|
+| Refactor-01 | Extract shared coach components — move ThisWeekStrip and TodayLineup from CoachHomeClient.tsx and CoachRightPanel.tsx into src/components/coach/shared/. Both files import from shared location. No visual or behavioural changes. | @FrontendDeveloper | 🟡 | refactor/extract-shared-coach-components | ⚪ |
 
 ---
 
@@ -656,14 +688,14 @@ Three-sided marketplace — coaches, parents, and venues.
 | Step 1B — Migrations | Phase 1 | 17 | 17 ✅ | 0 |
 | Step 1C — Design Foundation | Phase 1 | 6 | 6 ✅ | 0 |
 | Step 2 — Auth | Phase 1 | 15 | 15 ✅ | 0 |
-| Step 3 — Coach | Phase 1 | 58 | 35 ✅ | 23 |
+| Step 3 — Coach | Phase 1 | 60 | 56 ✅ | 4 |
 | Step 4 — Parent & Player | Phase 1 | 21 | 0 | 21 |
 | Step 5 — Booking & Payments | Phase 1 | 42 | 0 | 42 |
 | Step 6 — Admin | Phase 1 | 24 | 0 | 24 |
 | Step 7 — Pre-Launch | Phase 1 | 13 | 0 | 13 |
 | Step 8 — Mobile App | **Product Phase 2** | 20 | 0 | 20 |
 | Step 9 — Venues | **Product Phase 3** | 11 | 0 | 11 |
-| **Total** | | **257** | **103** | **154** |
+| **Total** | | **259** | **124** | **135** |
 
 ---
 

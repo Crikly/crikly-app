@@ -829,6 +829,51 @@ Doc version format:
 
 ---
 
+## Process Lessons
+
+These lessons were learned during development and validation sessions.
+They document specific failures and the rules created to prevent recurrence.
+
+---
+
+### L-04 — Claude must always read current sources before summarising
+
+**What happened:** Claude gave repeated incomplete and wrong status
+summaries in a session — missed completed sprints, dropped the
+Programmes module, gave stale task counts.
+
+**Root cause:** Claude read the stale project knowledge file
+(docs/10_BUILD_PLAN.md v2.0 from March 2026) instead of the actual
+current source. Project knowledge attached to the chat was 2 versions
+behind the develop branch.
+
+**Rule:** Claude must always verify against Notion or the document
+explicitly shared in the current conversation before giving any plan
+or status summary. If project knowledge appears stale (version mismatch
+or date mismatch), flag it immediately and do not use it as a source.
+Never summarise from memory.
+
+---
+
+### L-05 — Claude must check Notion Fix Tracker before stating what is fixed
+
+**What happened:** Claude listed Sprint 1 onboarding issues (Issues 2–10)
+as remaining work when they had already been fixed and verified in the
+Fix-16 and Fix-17 series before the session started.
+
+**Root cause:** Claude did not check the Notion Fix Tracker before making
+statements about what was or was not fixed. Lasith had explicitly stated
+at session start that Fix-16 and Fix-17 series were all resolved, but
+Claude did not cross-reference this against the tracker.
+
+**Rule:** At the start of every session, Claude must check the Notion
+Fix Tracker before making any statements about open or closed issues.
+Lasith's verbal confirmation of completed work must be cross-referenced
+against Notion — do not override it, but verify it is reflected correctly
+before producing any plan or summary.
+
+---
+
 *Crikly Working Ethics v1.0 — March 2026*
 *Review after each phase completion.*
 *Any process change must be agreed with Lasith first.*

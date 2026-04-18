@@ -13,6 +13,13 @@ const dmSans = DM_Sans({
 export const metadata: Metadata = {
   title: 'Crikly',
   description: 'Sports Coaching Marketplace',
+  icons: {
+    icon: '/icon.jpeg',
+    apple: '/icon.jpeg',
+  },
+  openGraph: {
+    images: ['/icon.jpeg'],
+  },
 }
 
 export default function RootLayout({

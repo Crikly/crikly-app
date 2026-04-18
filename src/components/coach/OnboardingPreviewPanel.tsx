@@ -1,6 +1,6 @@
 'use client'
 
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import { MapPin, Calendar, XCircle, CalendarDays, CheckCircle } from 'lucide-react'
 
 interface OnboardingPreviewPanelProps {
@@ -33,6 +33,48 @@ export function OnboardingPreviewPanel({
   infoBox,
   bookingPolicy
 }: OnboardingPreviewPanelProps) {
+  // Fix-22: Internal state for fetched price
+  const [fetchedPrice, setFetchedPrice] = useState<number | undefined>(undefined)
+  // Fix-24: Internal state for avatar URL
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
+
+  // Fix-22 & Fix-24: Fetch minimum price and avatar on mount
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        // Fetch session types for price
+        const sessionTypesResponse = await fetch('/api/coaches/session-types')
+        if (sessionTypesResponse.ok) {
+          const data = await sessionTypesResponse.json()
+          if (data.session_types && data.session_types.length > 0) {
+            const prices = data.session_types
+              .map((st: { price_individual_pence: number | null }) => st.price_individual_pence)
+              .filter((p: number | null): p is number => p !== null && p > 0)
+            if (prices.length > 0) {
+              setFetchedPrice(Math.min(...prices))
+            }
+          }
+        }
+      } catch {
+        // Fail silently — panel still renders with £-- fallback
+      }
+
+      try {
+        // Fix-24: Fetch profile for avatar
+        const profileResponse = await fetch('/api/coaches/profile')
+        if (profileResponse.ok) {
+          const profileData = await profileResponse.json()
+          if (profileData.avatar_url) {
+            setAvatarUrl(profileData.avatar_url)
+          }
+        }
+      } catch {
+        // Fail silently — falls back to initials
+      }
+    }
+    fetchData()
+  }, [])
+
   // Extract initials from coach name
   const initials = coachName
     .split(' ')
@@ -41,9 +83,10 @@ export function OnboardingPreviewPanel({
     .toUpperCase()
     .substring(0, 2) || 'AJ'
 
-  // Format price from pence to pounds
-  const formattedPrice = priceFromPence 
-    ? `£${(priceFromPence / 100).toFixed(0)}` 
+  // Fix-22: Use priceFromPence prop if provided, otherwise use fetchedPrice
+  const resolvedPrice = priceFromPence ?? fetchedPrice
+  const formattedPrice = resolvedPrice
+    ? `£${(resolvedPrice / 100).toFixed(0)}` 
     : '£--'
 
   // Format availability days
@@ -55,7 +98,7 @@ export function OnboardingPreviewPanel({
   const sportLabel = sport ? `${sport} Coach` : 'Cricket Coach'
 
   return (
-    <aside className="hidden xl:flex w-80 shrink-0 flex-col bg-white p-6 h-screen overflow-y-auto border-l border-gray-100">
+    <aside className="hidden xl:flex w-80 shrink-0 flex-col bg-white p-6 h-full overflow-y-auto border-l border-gray-100 sticky top-0">
       <div className="sticky top-6">
         <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-4" style={{ letterSpacing: '0.05em' }}>
           WHAT PARENTS SEE
@@ -65,9 +108,17 @@ export function OnboardingPreviewPanel({
         <div className="bg-white border border-gray-100 shadow-sm rounded-xl p-5 mb-4">
           {/* Avatar + Name */}
           <div className="flex items-start gap-3 mb-4">
-            <div className="w-16 h-16 bg-[#E6F1FB] rounded-full flex items-center justify-center shrink-0">
-              <span className="text-[#0C447C] text-[20px] font-bold">{initials}</span>
-            </div>
+            {avatarUrl ? (
+              <img
+                src={avatarUrl}
+                alt={coachName}
+                className="w-16 h-16 rounded-full object-cover shrink-0"
+              />
+            ) : (
+              <div className="w-16 h-16 bg-[#E6F1FB] rounded-full flex items-center justify-center shrink-0">
+                <span className="text-[#0C447C] text-[20px] font-bold">{initials}</span>
+              </div>
+            )}
             <div className="flex-1">
               <h3 className="text-[16px] font-bold text-gray-900 mb-0.5">
                 {coachName || <span className="text-gray-300">Your name</span>}
@@ -99,7 +150,7 @@ export function OnboardingPreviewPanel({
           </div>
           
           {/* Price */}
-          <div className={`text-[15px] font-bold mb-4 ${priceFromPence ? 'text-gray-900' : 'text-gray-400'}`}>
+          <div className={`text-[15px] font-bold mb-4 ${resolvedPrice ? 'text-gray-900' : 'text-gray-400'}`}>
             from {formattedPrice} / session
           </div>
           

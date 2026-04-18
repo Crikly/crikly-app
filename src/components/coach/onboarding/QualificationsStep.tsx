@@ -41,6 +41,8 @@ export function QualificationsStep() {
   const [coachName, setCoachName] = useState<string>('Your name')
   const [saving, setSaving] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null)
+  const [confirmRemoveName, setConfirmRemoveName] = useState<string>('')
   const fileInputRef = useRef<HTMLInputElement>(null)
   
   // Fix-17e: Extract fetchQualifications into reusable function
@@ -164,6 +166,19 @@ export function QualificationsStep() {
     }
   }
 
+  // Fix-33: Confirmation handlers
+  const handleRemoveWithConfirm = (qualId: string, qualName: string) => {
+    setConfirmRemoveId(qualId)
+    setConfirmRemoveName(qualName)
+  }
+
+  const handleConfirmRemove = async () => {
+    if (!confirmRemoveId) return
+    await handleRemove(confirmRemoveId)
+    setConfirmRemoveId(null)
+    setConfirmRemoveName('')
+  }
+
   // Fix-16e: Add handleRemove function to delete qualification and update local state
   const handleRemove = async (qualId: string) => {
     try {
@@ -194,7 +209,7 @@ export function QualificationsStep() {
   }
 
   return (
-    <div className="min-h-full bg-transparent font-sans text-gray-900 flex">
+    <div className="flex-1 overflow-y-auto bg-transparent font-sans text-gray-900 flex">
       <div className="flex-1 flex justify-center">
         <div className="w-full max-w-3xl px-8 pt-10">
 
@@ -212,8 +227,8 @@ export function QualificationsStep() {
             <p className="text-[11px] text-[#94A3B8]">Step 4 of 5</p>
           </div>
           
-          <h1 className="text-[20px] font-medium text-[#0F172A] mb-2">Your qualifications</h1>
-          <p className="text-[13px] text-[#64748B] mb-4">Add credentials that build parent trust and increase your bookings</p>
+          <h1 className="text-[32px] font-bold text-gray-900 leading-tight mb-2">Your qualifications</h1>
+          <p className="text-[16px] text-gray-500 font-medium">Add credentials that build parent trust and increase your bookings</p>
           
           {/* CF-D13 CHANGE 2: Trust motivator banner */}
           <div className="bg-[#E6F1FB] rounded-lg px-3.5 py-2.5">
@@ -295,44 +310,67 @@ export function QualificationsStep() {
           {/* Fix-16c: Loading state */}
           {loading ? (
             <div className="bg-white rounded-xl p-5" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
-              <div className="flex items-center justify-center py-8">
-                <div className="text-[14px] text-gray-400">Loading your qualifications...</div>
+              <div className="py-16 flex flex-col items-center justify-center">
+                <div className="w-8 h-8 border-3 border-gray-200 border-t-[#0077CC] rounded-full animate-spin mb-3" />
+                <p className="text-[14px] text-gray-500">Loading your qualifications...</p>
               </div>
             </div>
           ) : (
-          <>
+          <div className="page-content-enter">
           {/* CF-D13 CHANGE 4: Qualification cards (v1.1: shadow, no border) */}
           {qualifications.length > 0 && (
             <div className="flex flex-col gap-4">
               {qualifications.map((qual) => (
-                <div key={qual.id} className="bg-white rounded-xl p-4 flex gap-3 items-start" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 text-[14px] ${
-                    qual.status === 'uploaded' ? 'bg-[#DCFCE7] text-[#166534]' : 'bg-[#FEF3C7] text-[#92400E]'
-                  }`}>
-                    {qual.status === 'uploaded' ? '✓' : '⏱'}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[12px] font-medium text-[#0F172A]">{qual.name}</p>
-                    <p className="text-[11px] text-[#64748B] mt-0.5">{qual.provider} · {qual.year}</p>
-                    <div className={`inline-block px-2 py-0.5 rounded-full text-[9px] font-medium mt-1 ${
-                      qual.status === 'uploaded' ? 'bg-[#DCFCE7] text-[#166534]' : 'bg-[#FEF3C7] text-[#92400E]'
+                <div key={qual.id}
+                  className="qual-card-enter bg-white rounded-xl p-4 border border-gray-100"
+                  style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}
+                >
+                  <div className="flex items-start gap-3">
+                    {/* Status icon */}
+                    <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 text-[16px] ${
+                      qual.status === 'uploaded'
+                        ? 'bg-[#DCFCE7] text-[#166534]'
+                        : 'bg-[#FEF3C7] text-[#92400E]'
                     }`}>
-                      {qual.status === 'uploaded' ? 'Uploaded' : 'Pending review'}
+                      {qual.status === 'uploaded' ? '✓' : '⏱'}
                     </div>
-                  </div>
-                  <div className="flex gap-2 items-start shrink-0">
-                    <button 
-                      onClick={() => handleEdit(qual)}
-                      className="text-[10px] text-[#94A3B8] hover:text-gray-900 transition-colors"
-                    >
-                      Edit
-                    </button>
-                    <button 
-                      onClick={() => handleRemove(qual.id)}
-                      className="text-[10px] text-[#E24B4A] hover:text-red-700 transition-colors"
-                    >
-                      Remove
-                    </button>
+
+                    {/* Content */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-[14px] font-bold text-gray-900 leading-tight">
+                          {qual.name}
+                        </p>
+                        <div className="flex gap-3 shrink-0">
+                          <button
+                            onClick={() => handleEdit(qual)}
+                            className="text-[11px] font-medium text-gray-400 hover:text-gray-700 transition-colors"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleRemoveWithConfirm(qual.id, qual.name)}
+                            className="text-[11px] font-medium text-red-400 hover:text-red-600 transition-colors"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Meta row */}
+                      <p className="text-[12px] text-gray-500 mt-1">
+                        {[qual.provider, qual.year].filter(Boolean).join(' · ')}
+                      </p>
+
+                      {/* Status badge */}
+                      <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium mt-2 ${
+                        qual.status === 'uploaded'
+                          ? 'bg-[#DCFCE7] text-[#166534]'
+                          : 'bg-[#FEF3C7] text-[#92400E]'
+                      }`}>
+                        {qual.status === 'uploaded' ? '✓ Uploaded' : '⏱ Pending review'}
+                      </div>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -346,7 +384,7 @@ export function QualificationsStep() {
               <p className="text-[11px] text-[#94A3B8]">You can add credentials later from your profile</p>
             </div>
           )}
-          </>
+          </div>
           )}
 
         {/* CF-D13 CHANGE 7: Save bar (v1.1: per onboarding patterns) */}
@@ -382,6 +420,38 @@ export function QualificationsStep() {
           subMessage: 'Parents can see your credentials in search results'
         } : undefined}
       />
+
+      {/* Fix-33: Confirmation modal */}
+      {confirmRemoveId && (
+        <div className="fixed inset-0 bg-black/40 z-[100] flex items-center justify-center p-4"
+          onClick={() => setConfirmRemoveId(null)}
+        >
+          <div className="bg-white rounded-2xl p-6 w-full max-w-[360px] shadow-xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <h3 className="text-[17px] font-bold text-gray-900 mb-2">
+              Remove qualification?
+            </h3>
+            <p className="text-[14px] text-gray-500 mb-6">
+              "{confirmRemoveName}" will be permanently removed from your profile.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirmRemoveId(null)}
+                className="flex-1 py-2.5 rounded-xl bg-[#0077CC] hover:bg-[#0066AA] text-white text-[14px] font-medium transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmRemove}
+                className="flex-1 py-2.5 rounded-xl bg-white border border-red-200 text-red-600 hover:bg-red-50 text-[14px] font-medium transition-colors"
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

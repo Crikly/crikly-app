@@ -3,5 +3,9 @@ export default function OnboardingLayout({
 }: {
   children: React.ReactNode
 }) {
-  return <>{children}</>
+  return (
+    <div className="h-screen overflow-hidden flex">
+      {children}
+    </div>
+  )
 }

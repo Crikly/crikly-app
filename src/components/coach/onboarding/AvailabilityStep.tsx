@@ -335,10 +335,10 @@ export function AvailabilityStep() {
   }, [scheduleBlocks])
 
   return (
-    <div className="flex w-full">
+    <div className="flex-1 overflow-y-auto flex w-full">
       {/* Main content */}
       <div className="flex-1 flex flex-col items-center pt-10 pb-32 min-h-screen bg-white">
-        <div className="w-full max-w-[640px] px-6">
+        <div className="w-full max-w-[640px] px-6 page-content-enter">
           <div className="mb-8">
             <h1 className="text-[32px] font-bold text-gray-900 leading-tight mb-2">Your availability</h1>
             <p className="text-[16px] text-gray-500 font-medium">Set when you're available to coach</p>
@@ -356,8 +356,9 @@ export function AvailabilityStep() {
           <div className="flex flex-col pb-20">
             {loading ? (
               <div className="bg-white rounded-xl p-5" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
-                <div className="flex items-center justify-center py-12">
-                  <div className="text-[14px] text-gray-400">Loading your availability...</div>
+                <div className="py-16 flex flex-col items-center justify-center">
+                  <div className="w-8 h-8 border-3 border-gray-200 border-t-[#0077CC] rounded-full animate-spin mb-3" />
+                  <p className="text-[14px] text-gray-500">Loading your availability...</p>
                 </div>
               </div>
             ) : (

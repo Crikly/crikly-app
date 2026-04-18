@@ -347,6 +347,40 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to save sport' }, { status: 500 })
     }
 
+    // Fix-18b: Insert/upsert session type into coach_session_types table
+    // This replaces the deprecated price columns in coach_sports
+    if (body.session_duration_minutes && (body.price_individual_pence || body.price_group_pence)) {
+      const sessionTypeData: {
+        coach_sport_id: string
+        duration_minutes: number
+        price_individual_pence: number | null
+        price_group_pence: number | null
+        currency: string
+        is_active: boolean
+      } = {
+        coach_sport_id: newSport.id,
+        duration_minutes: body.session_duration_minutes,
+        price_individual_pence: body.price_individual_pence || null,
+        price_group_pence: body.price_group_pence || null,
+        currency: 'GBP',
+        is_active: true
+      }
+
+      const { error: sessionTypeError } = await supabase
+        .from('coach_session_types')
+        .upsert(sessionTypeData, {
+          onConflict: 'coach_sport_id,duration_minutes',
+          ignoreDuplicates: false
+        })
+        .select()
+        .single()
+
+      if (sessionTypeError) {
+        console.error('[POST /api/coaches/sports] session type upsert error:', sessionTypeError)
+        // Don't fail the whole request - coach_sports was saved successfully
+      }
+    }
+
     // 7. Fetch sport name and slug separately
     const { data: sportData } = await supabase
       .from('sports')

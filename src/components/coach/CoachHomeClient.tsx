@@ -1,11 +1,12 @@
 'use client'
 
-import React from 'react'
-import { useRouter } from 'next/navigation'
+import React, { useState, useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { 
   Clock, MapPin, Star, TrendingUp, AlertCircle, 
-  ChevronRight, PoundSterling, Check, Calendar, Plus
+  ChevronRight, ChevronLeft, PoundSterling, Check, Calendar, Plus,
+  Search, Banknote, Copy, Share, ArrowRight
 } from 'lucide-react'
 import { CoachRightPanel } from '@/components/coach/CoachRightPanel'
 
@@ -55,7 +56,28 @@ interface CoachHomeClientProps {
 
 export function CoachHomeClient({ data }: CoachHomeClientProps) {
   const router = useRouter()
-  const [profileExpanded, setProfileExpanded] = React.useState(false)
+  const searchParams = useSearchParams()
+  const [profileExpanded, setProfileExpanded] = useState(false)
+  const [showCelebration, setShowCelebration] = useState(false)
+  const [profileUrl, setProfileUrl] = useState('crikly.app/coach')
+  const [copied, setCopied] = useState(false)
+
+  // Fix-36: Detect celebration query param and show modal
+  useEffect(() => {
+    if (searchParams.get('celebrated') === 'true') {
+      setShowCelebration(true)
+      // Clean URL without reload
+      window.history.replaceState({}, '', '/coach/dashboard')
+    }
+  }, [searchParams])
+
+  // Fix-36b: Derive profile URL from coach name
+  useEffect(() => {
+    const slug = data.coachName.toLowerCase()
+      .replace(/\s+/g, '-')
+      .replace(/[^a-z0-9-]/g, '')
+    setProfileUrl(`crikly.app/${slug}`)
+  }, [data.coachName])
   
   // Time-based greeting
   const hour = new Date().getHours()
@@ -93,10 +115,11 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
         
         {/* Mobile Top Bar */}
         <div className="flex justify-between items-center md:hidden mb-2">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-md bg-[#0077CC] text-white flex items-center justify-center font-bold text-sm shadow-sm">C</div>
-            <span className="text-xl font-bold text-[#0077CC] tracking-tight">Crikly</span>
-          </div>
+          <img
+            src="/logo.jpeg"
+            alt="Crikly"
+            className="h-7 w-auto object-contain"
+          />
           <div className="relative">
             <img src={avatarUrl} alt="Ravi" className="w-10 h-10 rounded-full object-cover shadow-sm border border-gray-100" />
             <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 bg-red-500 rounded-full border-2 border-white flex items-center justify-center text-[10px] font-bold text-white shadow-sm">3</span>
@@ -106,7 +129,11 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
         {/* Desktop Greeting - CHANGE 1: emoji + subtitle */}
         <div className="hidden md:flex justify-between items-end">
           <div>
-            <p className="text-gray-500 text-sm mb-1.5 font-medium">Tuesday, 14 May</p>
+            <p className="text-gray-500 text-sm mb-1.5 font-medium">
+              {new Date().toLocaleDateString('en-GB', {
+                weekday: 'long', day: 'numeric', month: 'long'
+              })}
+            </p>
             <h1 className="text-4xl font-bold tracking-tight text-gray-900">{greeting}, {data.coachName.split(' ')[0] || 'Coach'} 👋</h1>
             <p className="text-sm text-gray-500 mt-1">{getSessionSubtitle()}</p>
           </div>
@@ -187,21 +214,21 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
         {/* CHANGE 3: CTA button row */}
         <div className="flex flex-col md:flex-row gap-3">
           <button
-            onClick={() => {/* TODO CD-01: wire Create Session CTA */}}
+            onClick={() => router.push('/coach/schedule?action=new-session')}
             className="flex-1 h-10 bg-[#0077CC] text-white rounded-lg text-sm font-medium flex items-center justify-center gap-2 hover:bg-[#0066AA] transition-colors"
           >
             <Plus size={16} />
             Create Session
           </button>
           <button
-            onClick={() => {/* TODO CD-01: wire Add Availability CTA */}}
+            onClick={() => router.push('/coach/availability')}
             className="flex-1 h-10 bg-white text-gray-700 border border-gray-200 rounded-lg text-sm font-medium flex items-center justify-center gap-2 hover:bg-gray-50 transition-colors"
           >
             <Plus size={16} />
             Add Availability
           </button>
           <button
-            onClick={() => {/* TODO CD-01: wire Create Programme CTA */}}
+            onClick={() => router.push('/coach/programmes')}
             className="flex-1 h-10 bg-white text-gray-700 border border-gray-200 rounded-lg text-sm font-medium flex items-center justify-center gap-2 hover:bg-gray-50 transition-colors"
           >
             <Plus size={16} />
@@ -293,37 +320,186 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
           revenueThisWeek: data.weeklyStats.revenueThisWeek
         }
       }} />
+
+      {/* Fix-36: Celebration modal */}
+      {showCelebration && (
+        <div
+          className="fixed inset-0 bg-gray-900/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4"
+          onClick={() => setShowCelebration(false)}
+        >
+          <div
+            className="bg-white rounded-3xl w-full max-w-[500px] p-8 shadow-xl relative"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex flex-col items-center text-center">
+              {/* Logo */}
+              <img
+                src="/logo.jpeg"
+                alt="Crikly"
+                className="w-24 h-auto object-contain mb-8"
+              />
+
+              {/* Green tick */}
+              <div className="w-20 h-20 bg-green-500 rounded-full flex items-center justify-center mb-6 shadow-sm">
+                <Check size={40} className="text-white" strokeWidth={3} />
+              </div>
+
+              <h1 className="text-[28px] font-bold text-gray-900 leading-tight mb-2">You're live!</h1>
+              <p className="text-[15px] text-gray-500 font-medium mb-8">
+                Parents and players can now find and book you on Crikly
+              </p>
+
+              {/* What happens next */}
+              <div className="w-full text-left mb-6">
+                <h2 className="text-[14px] font-bold text-gray-900 mb-4">
+                  What happens next?
+                </h2>
+                <div className="flex flex-col gap-3">
+                  {[
+                    { icon: <Search size={18} className="text-[#0077CC]" />, label: 'You appear in search results immediately' },
+                    { icon: <Calendar size={18} className="text-[#0077CC]" />, label: 'Bookings will show up on your dashboard' },
+                    { icon: <Banknote size={18} className="text-[#0077CC]" />, label: 'Get paid 48 hours after each session' },
+                  ].map(({ icon, label }) => (
+                    <div key={label} className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center shrink-0">
+                        {icon}
+                      </div>
+                      <span className="text-[14px] text-gray-700 font-medium">{label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Share profile */}
+              <div className="w-full border-t border-gray-100 pt-6 mb-6">
+                <h2 className="text-[14px] font-bold text-gray-900 mb-1 text-left">Share your profile</h2>
+                <p className="text-[13px] text-gray-500 mb-3 text-left">
+                  Let people know you're on Crikly
+                </p>
+                <div className="p-3 bg-gray-50 rounded-xl border border-gray-100 text-[13px] text-gray-700 font-mono truncate mb-3">
+                  {profileUrl}
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(`https://${profileUrl}`)
+                      setCopied(true)
+                      setTimeout(() => setCopied(false), 2000)
+                    }}
+                    className="flex-1 py-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-xl font-medium text-[13px] transition-colors flex items-center justify-center gap-1.5"
+                  >
+                    <Copy size={14} />
+                    {copied ? 'Copied!' : 'Copy link'}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowCelebration(false)
+                      window.dispatchEvent(new CustomEvent('crikly:open-share-modal'))
+                    }}
+                    className="flex-1 py-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-xl font-medium text-[13px] transition-colors flex items-center justify-center gap-1.5"
+                  >
+                    <Share size={14} />Share
+                  </button>
+                </div>
+              </div>
+
+              {/* CTA */}
+              <button
+                onClick={() => setShowCelebration(false)}
+                className="w-full py-3 bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-xl font-bold text-[15px] transition-colors flex items-center justify-center gap-2"
+              >
+                Go to my dashboard <ArrowRight size={16} />
+              </button>
+
+              {/* Premium upsell */}
+              <p className="text-[12px] text-gray-400 mt-4">
+                Want more bookings?{' '}
+                <button className="text-[#0077CC] font-medium hover:underline">
+                  See Premium →
+                </button>
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
 function ThisWeekStrip({ isDesktop }: { isDesktop?: boolean }) {
-  const days = [
-    { label: 'M', date: '13' },
-    { label: 'T', date: '14', active: true, hasSession: true },
-    { label: 'W', date: '15', hasSession: true },
-    { label: 'T', date: '16' },
-    { label: 'F', date: '17', hasSession: true },
-    { label: 'S', date: '18', hasSession: true },
-    { label: 'S', date: '19' },
-  ]
+  const [weekOffset, setWeekOffset] = React.useState(0)
+  
+  // Fix-21b: Calculate week dates dynamically with correct today highlighting
+  const getWeekDates = (offset: number) => {
+    const now = new Date()
+    const todayMidnight = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate()
+    )
+
+    // Get Monday of current week (local time, no UTC conversion)
+    const currentDayOfWeek = todayMidnight.getDay() // 0=Sun, 1=Mon...6=Sat
+    const daysFromMonday = currentDayOfWeek === 0 ? 6 : currentDayOfWeek - 1
+    const monday = new Date(todayMidnight)
+    monday.setDate(todayMidnight.getDate() - daysFromMonday + offset * 7)
+
+    // Generate Mon–Sun
+    const weekDays = []
+    for (let i = 0; i < 7; i++) {
+      const day = new Date(monday)
+      day.setDate(monday.getDate() + i)
+      weekDays.push({
+        label: ['M','T','W','T','F','S','S'][i],
+        date: day.getDate(),
+        isToday: day.getTime() === todayMidnight.getTime(),
+        hasSession: false
+      })
+    }
+
+    // Month label from Thursday of the displayed week
+    const thursday = new Date(monday)
+    thursday.setDate(monday.getDate() + 3)
+    const monthName = thursday.toLocaleDateString('en-GB', { month: 'long' })
+
+    return { weekDays, monthName }
+  }
+  
+  const { weekDays, monthName } = getWeekDates(weekOffset)
+  
   return (
     <div className="flex flex-col gap-4">
       <div className="flex justify-between items-center">
         <h3 className={`${isDesktop ? 'text-[22px]' : 'text-[19px]'} font-bold text-gray-900`}>This week</h3>
-        <div className="flex items-center gap-1 text-sm font-bold text-gray-500 cursor-pointer hover:text-gray-900 transition-colors">
-          May <ChevronRight size={16} />
+        <div className="flex items-center gap-1 text-sm font-bold text-gray-500">
+          {weekOffset > 0 && (
+            <button 
+              onClick={() => setWeekOffset(weekOffset - 1)}
+              className="hover:text-gray-900 transition-colors"
+            >
+              <ChevronLeft size={16} />
+            </button>
+          )}
+          <span className="cursor-pointer hover:text-gray-900 transition-colors">
+            {monthName}
+          </span>
+          <button 
+            onClick={() => setWeekOffset(weekOffset + 1)}
+            className="hover:text-gray-900 transition-colors"
+          >
+            <ChevronRight size={16} />
+          </button>
         </div>
       </div>
       <div className="flex justify-between items-center bg-gray-50 rounded-[20px] p-2.5 border border-gray-100/80 shadow-sm">
-        {days.map((day, i) => (
+        {weekDays.map((day, i) => (
           <div key={i} className="flex flex-col items-center gap-2 cursor-pointer group">
             <span className="text-[11px] text-gray-400 font-bold uppercase tracking-wider">{day.label}</span>
-            <div className={`w-9 h-9 rounded-full flex items-center justify-center text-[15px] font-bold transition-all ${day.active ? 'bg-[#0077CC] text-white shadow-md' : 'text-gray-700 group-hover:bg-gray-200'}`}>
+            <div className={`w-9 h-9 rounded-full flex items-center justify-center text-[15px] font-bold transition-all ${day.isToday ? 'bg-[#0077CC] text-white shadow-md' : 'text-gray-700 group-hover:bg-gray-200'}`}>
               {day.date}
             </div>
             <div className="h-1.5 flex justify-center w-full">
-              {day.hasSession && <div className={`w-1.5 h-1.5 rounded-full ${day.active ? 'bg-[#0077CC]' : 'bg-gray-300'}`}></div>}
+              {day.hasSession && <div className={`w-1.5 h-1.5 rounded-full ${day.isToday ? 'bg-[#0077CC]' : 'bg-gray-300'}`}></div>}
             </div>
           </div>
         ))}

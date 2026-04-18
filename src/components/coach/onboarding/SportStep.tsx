@@ -55,18 +55,26 @@ export function SportStep() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Fetch available sports list from API
-        const sportsListResponse = await fetch('/api/sports')
-        if (sportsListResponse.ok) {
-          const sportsData = await sportsListResponse.json()
-          const sportsWithIcons = sportsData.sports.map((sport: { id: string; name: string; slug: string }) => ({
-            id: sport.id,
-            name: sport.name,
-            slug: sport.slug,
-            Icon: iconMap[sport.slug] || Target
-          }))
-          setSports(sportsWithIcons)
+        // Fix-30b: Cache raw data only, apply icon mapping after
+        const cachedSports = sessionStorage.getItem('sports_list_raw')
+        let rawSports: { id: string; name: string; slug: string }[] = []
+
+        if (cachedSports) {
+          rawSports = JSON.parse(cachedSports)
+        } else {
+          const sportsResponse = await fetch('/api/sports')
+          if (!sportsResponse.ok) throw new Error('Failed to fetch sports')
+          const sportsData = await sportsResponse.json()
+          rawSports = sportsData.sports || []
+          sessionStorage.setItem('sports_list_raw', JSON.stringify(rawSports))
         }
+
+        // Always apply icon mapping after loading (never cache components)
+        const sportsWithIcons = rawSports.map((sport) => ({
+          ...sport,
+          Icon: iconMap[sport.slug] || Target
+        }))
+        setSports(sportsWithIcons)
         
         // Fetch saved coach sports to pre-select
         const coachSportsResponse = await fetch('/api/coaches/sports')
@@ -110,9 +118,9 @@ export function SportStep() {
   }
 
   return (
-    <div className="min-h-full bg-transparent font-sans text-gray-900 flex">
+    <div className="flex-1 overflow-y-auto bg-transparent font-sans text-gray-900 flex">
       <div className="flex-1 flex justify-center">
-        <div className="w-full max-w-3xl px-8 pt-10">
+        <div className="w-full max-w-3xl px-8 pt-10 page-content-enter">
 
         {/* TOP */}
         <div className="mb-10">
@@ -136,8 +144,14 @@ export function SportStep() {
         <div className="flex flex-col gap-3">
           {loading ? (
             <div className="bg-white rounded-xl p-5" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
-              <div className="flex items-center justify-center py-12">
-                <div className="text-[14px] text-gray-400">Loading sports...</div>
+              <div className="flex flex-wrap gap-3 p-6">
+                {Array.from({ length: 6 }, (_, i) => (
+                  <div
+                    key={i}
+                    className="h-11 rounded-full bg-gray-100 animate-pulse"
+                    style={{ width: `${90 + (i % 3) * 20}px` }}
+                  />
+                ))}
               </div>
             </div>
           ) : (

@@ -47,6 +47,9 @@ export function ProfileStep() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [saveSuccess, setSaveSuccess] = useState(false)
+  
+  // Fix-18a: State for minimum price from session types
+  const [minPricePence, setMinPricePence] = useState<number | undefined>(undefined)
 
   const languages = [
     'English', 'Sinhala', 'Tamil', 'Urdu', 'Hindi',
@@ -99,6 +102,24 @@ export function ProfileStep() {
         // Fix-16f: Pre-populate languages
         if (data.languages && data.languages.length > 0) {
           setSelectedLanguages(data.languages)
+        }
+        
+        // Fix-18a: Fetch minimum price from session types
+        const sessionTypesResponse = await fetch('/api/coaches/session-types')
+        if (sessionTypesResponse.ok) {
+          const sessionTypesData = await sessionTypesResponse.json()
+          
+          // Find minimum price_individual_pence across all session types
+          if (sessionTypesData.session_types && sessionTypesData.session_types.length > 0) {
+            const prices = sessionTypesData.session_types
+              .map((st: { price_individual_pence: number | null }) => st.price_individual_pence)
+              .filter((price: number | null): price is number => price !== null && price > 0)
+            
+            if (prices.length > 0) {
+              const minPrice = Math.min(...prices)
+              setMinPricePence(minPrice)
+            }
+          }
         }
       } catch (err) {
         console.error('Failed to fetch profile:', err)
@@ -179,7 +200,7 @@ export function ProfileStep() {
   const profileCompleteness = 35 // TODO: Calculate based on filled fields
   
   return (
-    <div className="min-h-full bg-transparent font-sans text-gray-900 flex">
+    <div className="flex-1 overflow-y-auto bg-transparent font-sans text-gray-900 flex">
       <div className="flex-1 flex justify-center">
         <div className="w-full max-w-3xl px-8 pt-10">
         
@@ -205,7 +226,7 @@ export function ProfileStep() {
             </button>
           </div>
         ) : (
-          <>
+          <div className="page-content-enter">
 
         {/* TOP */}
         <div className="mb-10">
@@ -390,7 +411,10 @@ export function ProfileStep() {
                             : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'
                         }`}
                       >
-                        {isSelected && <Check size={14} className="text-[#0077CC]" />}
+                        <Check
+                          size={14}
+                          className={isSelected ? 'text-[#0077CC]' : 'invisible'}
+                        />
                         {lang}
                       </button>
                     )
@@ -427,7 +451,7 @@ export function ProfileStep() {
             {saving ? 'Saving...' : 'Save & continue →'}
           </button>
         </div>
-        </>
+        </div>
         )}
         </div>
       </div>
@@ -438,7 +462,7 @@ export function ProfileStep() {
         sport={undefined}
         location={baseLocation || undefined}
         availabilityDays={undefined}
-        priceFromPence={undefined}
+        priceFromPence={minPricePence}
         isDbs={false}
       />
     </div>

@@ -64,14 +64,15 @@ export function CoachRightPanel({ dashboardData }: CoachRightPanelProps = {}) {
   const isEarningsRoute = pathname === '/coach/earnings' || pathname.includes('/earnings')
   // CF-D09 CHANGE 6: Detect get-paid route
   const isGetPaidRoute = pathname.includes('/get-paid')
-  const [selectedDate, setSelectedDate] = useState<number | null>(8) // Default to today (8th)
+  // Fix-25: Dynamic today date
+  const [selectedDate, setSelectedDate] = useState<number | null>(new Date().getDate())
 
   return (
     <aside className="hidden xl:flex w-96 shrink-0 flex-col gap-6 bg-white p-8 sticky top-0 border-l border-gray-100">
       {isScheduleRoute ? (
         <>
           <MiniCalendar selectedDate={selectedDate} onDateSelect={setSelectedDate} />
-          <DaySessionList selectedDate={selectedDate} onBackToWeek={() => setSelectedDate(8)} />
+          <DaySessionList selectedDate={selectedDate} onBackToWeek={() => setSelectedDate(new Date().getDate())} />
           <FreeSlotsThisWeek />
           <SmartInsightCard />
           <PendingApprovalCard />
@@ -410,38 +411,80 @@ function ProfileCompletenessNotice({ profile }: { profile: CoachProfileResponse 
 }
 
 function ThisWeekStrip({ isDesktop }: { isDesktop?: boolean }) {
-  const days = [
-    { label: 'M', date: '13', sessions: [] },
-    { label: 'T', date: '14', active: true, sessions: [{ type: '1-on-1', color: '#3B82F6' }, { type: 'group', color: '#7C3AED' }] },
-    { label: 'W', date: '15', sessions: [{ type: 'pending', color: '#F59E0B' }] },
-    { label: 'T', date: '16', sessions: [{ type: 'blocked', color: '#D1D5DB' }] },
-    { label: 'F', date: '17', sessions: [{ type: '1-on-1', color: '#3B82F6' }] },
-    { label: 'S', date: '18', sessions: [{ type: 'group', color: '#7C3AED' }, { type: '1-on-1', color: '#3B82F6' }, { type: 'pending', color: '#F59E0B' }] },
-    { label: 'S', date: '19', sessions: [] },
-  ]
+  const [weekOffset, setWeekOffset] = useState(0)
+
+  const getWeekDates = (offset: number) => {
+    const now = new Date()
+    const todayMidnight = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate()
+    )
+    const currentDayOfWeek = todayMidnight.getDay()
+    const daysFromMonday = currentDayOfWeek === 0 ? 6 : currentDayOfWeek - 1
+    const monday = new Date(todayMidnight)
+    monday.setDate(todayMidnight.getDate() - daysFromMonday + offset * 7)
+
+    const weekDays = []
+    for (let i = 0; i < 7; i++) {
+      const day = new Date(monday)
+      day.setDate(monday.getDate() + i)
+      weekDays.push({
+        label: ['M','T','W','T','F','S','S'][i],
+        date: day.getDate(),
+        isToday: day.getTime() === todayMidnight.getTime(),
+        hasSession: false
+      })
+    }
+
+    const thursday = new Date(monday)
+    thursday.setDate(monday.getDate() + 3)
+    const monthName = thursday.toLocaleDateString('en-GB', { month: 'long' })
+
+    return { weekDays, monthName }
+  }
+
+  const { weekDays, monthName } = getWeekDates(weekOffset)
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex justify-between items-center">
-        <h3 className={`${isDesktop ? 'text-[22px]' : 'text-[19px]'} font-bold text-gray-900`}>This week</h3>
-        <div className="flex items-center gap-1 text-sm font-bold text-gray-500 cursor-pointer hover:text-gray-900 transition-colors">
-          May <ChevronRight size={16} />
+        <h3 className={`${isDesktop ? 'text-[22px]' : 'text-[19px]'} font-bold text-gray-900`}>
+          This week
+        </h3>
+        <div className="flex items-center gap-1 text-sm font-bold text-gray-500">
+          {weekOffset > 0 && (
+            <button
+              onClick={() => setWeekOffset(weekOffset - 1)}
+              className="hover:text-gray-900 transition-colors"
+            >
+              <ChevronLeft size={16} />
+            </button>
+          )}
+          <span className="cursor-pointer hover:text-gray-900 transition-colors">
+            {monthName}
+          </span>
+          <button
+            onClick={() => setWeekOffset(weekOffset + 1)}
+            className="hover:text-gray-900 transition-colors"
+          >
+            <ChevronRight size={16} />
+          </button>
         </div>
       </div>
       <div className="flex justify-between items-center bg-gray-50 rounded-[20px] p-2.5 border border-gray-100/80 shadow-sm">
-        {days.map((day, i) => (
+        {weekDays.map((day, i) => (
           <div key={i} className="flex flex-col items-center gap-2 cursor-pointer group">
-            <span className="text-[11px] text-gray-400 font-bold uppercase tracking-wider">{day.label}</span>
-            <div className={`w-9 h-9 rounded-full flex items-center justify-center text-[15px] font-bold transition-all ${day.active ? 'bg-[#0077CC] text-white shadow-md' : 'text-gray-700 group-hover:bg-gray-200'}`}>
+            <span className="text-[11px] text-gray-400 font-bold uppercase tracking-wider">
+              {day.label}
+            </span>
+            <div className={`w-9 h-9 rounded-full flex items-center justify-center text-[15px] font-bold transition-all ${day.isToday ? 'bg-[#0077CC] text-white shadow-md' : 'text-gray-700 group-hover:bg-gray-200'}`}>
               {day.date}
             </div>
-            <div className="h-1.5 flex justify-center items-center gap-0.5">
-              {day.sessions.slice(0, 3).map((session, idx) => (
-                <div 
-                  key={idx} 
-                  className="w-1 h-1 rounded-full" 
-                  style={{ backgroundColor: session.color }}
-                />
-              ))}
+            <div className="h-1.5 flex justify-center w-full">
+              {day.hasSession && (
+                <div className={`w-1.5 h-1.5 rounded-full ${day.isToday ? 'bg-[#0077CC]' : 'bg-gray-300'}`} />
+              )}
             </div>
           </div>
         ))}
@@ -540,6 +583,15 @@ function TotalEarningsCard({ revenueThisWeek }: { revenueThisWeek?: number }) {
 
 // CF-D02c FIX 2: Enhanced mini calendar with dots and click functionality
 function MiniCalendar({ selectedDate, onDateSelect }: { selectedDate: number | null; onDateSelect: (date: number) => void }) {
+  // Fix-25: Dynamic date detection
+  const now = new Date()
+  const todayDate = now.getDate()
+  const todayMonth = now.getMonth()
+  const todayYear = now.getFullYear()
+  const currentMonthName = now.toLocaleDateString('en-GB', {
+    month: 'long', year: 'numeric'
+  })
+
   // Stub session data mapped to dates
   const sessionsByDate: Record<number, Array<'confirmed' | 'programme' | 'pending' | 'blocked'>> = {
     6: ['confirmed', 'programme'], // Mon
@@ -577,8 +629,23 @@ function MiniCalendar({ selectedDate, onDateSelect }: { selectedDate: number | n
     return <div className="flex gap-0.5 justify-center items-center h-[6px] mt-[1px]">{dots}</div>
   }
 
+  // Fix-25: Dynamic month grid helpers
+  const getDaysInMonth = (year: number, month: number) =>
+    new Date(year, month + 1, 0).getDate()
+
+  const getFirstDayOfMonth = (year: number, month: number) => {
+    const day = new Date(year, month, 1).getDay()
+    return day === 0 ? 6 : day - 1 // Convert to Mon=0
+  }
+
+  const daysInMonth = getDaysInMonth(todayYear, todayMonth)
+  const firstDay = getFirstDayOfMonth(todayYear, todayMonth)
+  const prevMonthDays = getDaysInMonth(todayYear, todayMonth - 1)
+
   // CF-D02c FIX 2: Improved date rendering with proper selection state
-  const renderDate = (date: number, isCurrentMonth: boolean, isToday: boolean) => {
+  const renderDate = (date: number, isCurrentMonth: boolean, isPreviouslyToday: boolean) => {
+    // Fix-25: Dynamic today detection
+    const isToday = date === todayDate && isCurrentMonth
     const isSelected = selectedDate === date && !isToday
     
     return (
@@ -610,7 +677,7 @@ function MiniCalendar({ selectedDate, onDateSelect }: { selectedDate: number | n
   return (
     <div className="bg-white border border-gray-200 rounded-[16px] p-5 shadow-sm">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-[15px] font-bold text-gray-900">April 2026</h3>
+        <h3 className="text-[15px] font-bold text-gray-900">{currentMonthName}</h3>
         <div className="flex gap-1">
           <button className="p-1 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-50"><ChevronLeft size={16} /></button>
           <button className="p-1 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-50"><ChevronRight size={16} /></button>
@@ -621,14 +688,19 @@ function MiniCalendar({ selectedDate, onDateSelect }: { selectedDate: number | n
       </div>
       <div className="grid grid-cols-7 gap-y-1 text-center relative z-0">
         <div className="absolute left-0 right-0 top-[28px] h-[28px] bg-[#EFF6FF] rounded-md -z-10" />
-        {renderDate(30, false, false)}
-        {renderDate(31, false, false)}
-        {[1,2,3,4,5].map(d => renderDate(d, true, false))}
-        {[6,7].map(d => renderDate(d, true, false))}
-        {renderDate(8, true, true)}
-        {[9,10,11,12].map(d => renderDate(d, true, false))}
-        {[13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30].map(d => renderDate(d, true, false))}
-        {[1,2,3].map(d => renderDate(d, false, false))}
+        {/* Fix-25: Dynamic month grid */}
+        {/* Previous month trailing days */}
+        {Array.from({ length: firstDay }, (_, i) =>
+          renderDate(prevMonthDays - firstDay + i + 1, false, false)
+        )}
+        {/* Current month days */}
+        {Array.from({ length: daysInMonth }, (_, i) =>
+          renderDate(i + 1, true, false)
+        )}
+        {/* Next month leading days (fill to complete 6 rows = 42 cells) */}
+        {Array.from({ length: 42 - firstDay - daysInMonth }, (_, i) =>
+          renderDate(i + 1, false, false)
+        )}
       </div>
     </div>
   )
@@ -666,6 +738,23 @@ function FreeSlotsThisWeek() {
 
 // CF-D02c FIX 2: Day session list with proper default state
 function DaySessionList({ selectedDate, onBackToWeek }: { selectedDate: number | null; onBackToWeek: () => void }) {
+  // Fix-25: Dynamic today detection
+  const now = new Date()
+  const todayDate = now.getDate()
+  const isToday = selectedDate === todayDate
+
+  // Fix-25: Dynamic day name generator
+  const getDayName = (date: number): string => {
+    const d = new Date(now.getFullYear(), now.getMonth(), date)
+    return d.toLocaleDateString('en-GB', {
+      weekday: 'long', day: 'numeric', month: 'short'
+    })
+  }
+
+  const todayLabel = now.toLocaleDateString('en-GB', {
+    weekday: 'long', day: 'numeric', month: 'short'
+  })
+
   // TODO CF-D02b: derive day sessions from real schedule/booking data
   const allSessions = [
     { date: 6, day: 'Mon', name: 'James Okafor', time: '09:00', sport: 'Cricket', status: 'confirmed', color: '#3B82F6' },
@@ -677,27 +766,16 @@ function DaySessionList({ selectedDate, onBackToWeek }: { selectedDate: number |
   ]
 
   const daySessions = allSessions.filter(s => s.date === selectedDate)
-  const isToday = selectedDate === 8
-  
-  const dayNames: Record<number, string> = {
-    6: 'Monday, 6 Apr',
-    7: 'Tuesday, 7 Apr',
-    8: 'Wednesday, 8 Apr',
-    9: 'Thursday, 9 Apr',
-    10: 'Friday, 10 Apr',
-    11: 'Saturday, 11 Apr',
-    12: 'Sunday, 12 Apr',
-  }
 
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-[12px] font-medium text-gray-900">
-          {/* CF-D02c FIX 2: Default shows today, no back link for today */}
-          {isToday ? 'Today, 8 Apr' : selectedDate ? dayNames[selectedDate] : 'Today, 8 Apr'}
+          {/* Fix-25: Dynamic today label */}
+          {isToday ? `Today, ${now.getDate()} ${now.toLocaleDateString('en-GB', { month: 'short' })}` : selectedDate ? getDayName(selectedDate) : todayLabel}
         </h3>
         {/* CF-D02c FIX 2: Only show back link when viewing non-today date */}
-        {!isToday && selectedDate !== null && selectedDate !== 8 && (
+        {!isToday && selectedDate !== null && selectedDate !== todayDate && (
           <button onClick={onBackToWeek} className="text-[11px] text-[#0077CC] font-medium hover:underline">
             ← This week
           </button>

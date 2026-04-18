@@ -43,3 +43,31 @@ body {
   color: #0f172a;
   font-family: 'DM Sans', sans-serif;
 }
+
+@keyframes qualCardIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.qual-card-enter {
+  animation: qualCardIn 0.2s ease-out forwards;
+}
+
+@keyframes pageContentIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.page-content-enter {
+  animation: pageContentIn 0.25s ease-out forwards;
+}

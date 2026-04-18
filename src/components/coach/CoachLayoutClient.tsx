@@ -74,6 +74,13 @@ export function CoachLayoutClient({
     fetchNotificationCount()
   }, [])
 
+  // Fix-36b: Listen for custom event to open share modal from celebration modal
+  useEffect(() => {
+    const handleOpenShare = () => setIsShareModalOpen(true)
+    window.addEventListener('crikly:open-share-modal', handleOpenShare)
+    return () => window.removeEventListener('crikly:open-share-modal', handleOpenShare)
+  }, [])
+
   // Format notification badge
   const notificationBadge = notificationCount > 9 ? '9+' : notificationCount.toString()
 
@@ -84,12 +91,12 @@ export function CoachLayoutClient({
     >
       {/* Desktop Sidebar */}
       <aside className="hidden lg:flex w-72 shrink-0 flex-col bg-white border-r border-gray-100 p-6 sticky top-0 h-screen z-10">
-        <div className="w-[160px] h-[40px] border border-dashed border-gray-300 rounded-lg flex items-center justify-center relative mb-6">
-          <span className="absolute -top-1.5 left-2 bg-white px-1 text-[10px] text-gray-400 font-medium uppercase tracking-wider leading-none">Logo</span>
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-md bg-[#0077CC] text-white flex items-center justify-center font-bold text-xs shadow-sm">C</div>
-            <span className="text-lg font-bold text-[#0077CC] tracking-tight">Crikly</span>
-          </div>
+        <div className="mb-6 flex justify-center">
+          <img
+            src="/logo.jpeg"
+            alt="Crikly"
+            className="w-36 h-auto object-contain"
+          />
         </div>
 
         <div className="flex flex-col gap-4 mb-8">

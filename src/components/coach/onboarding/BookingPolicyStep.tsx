@@ -109,7 +109,7 @@ export function BookingPolicyStep() {
 
 
   return (
-    <div className="flex w-full">
+    <div className="flex-1 overflow-y-auto flex w-full">
       {/* Main content */}
       <div className="flex-1 flex flex-col items-center pt-10 pb-32 min-h-screen bg-white">
         <div className="w-full max-w-[640px] px-6">
@@ -122,7 +122,7 @@ export function BookingPolicyStep() {
           )}
           
           {!loading && (
-          <>
+          <div className="page-content-enter">
           <div className="mb-10">
             {/* Step indicator - Step 5 of 5 */}
             <div className="mb-4">
@@ -242,7 +242,7 @@ export function BookingPolicyStep() {
               {saving ? 'Saving...' : 'Save & continue →'}
             </button>
           </div>
-          </>
+          </div>
           )}
         </div>
       </div>

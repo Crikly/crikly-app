@@ -39,6 +39,8 @@ export function PricingStep() {
   const [sports, setSports] = useState<Sport[]>([])
   const [loadingError, setLoadingError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [coachName, setCoachName] = useState('')
+  const [coachAvatarUrl, setCoachAvatarUrl] = useState<string | null>(null)
 
   useEffect(() => {
     // Fix-16c: Fetch sports list, selected sports, and saved pricing data
@@ -51,6 +53,16 @@ export function PricingStep() {
         }
         const sportsData = await sportsResponse.json()
         setSports(sportsData.sports || [])
+
+        // Fix-23 & Fix-24b: Fetch coach profile for name and avatar
+        const profileResponse = await fetch('/api/coaches/profile')
+        if (profileResponse.ok) {
+          const profileData = await profileResponse.json()
+          setCoachName(profileData.full_name || '')
+          if (profileData.avatar_url) {
+            setCoachAvatarUrl(profileData.avatar_url)
+          }
+        }
 
         // Get selected sports from sessionStorage
         const stored = sessionStorage.getItem('selectedSports')
@@ -228,7 +240,7 @@ export function PricingStep() {
     : 0
 
   return (
-    <div className="min-h-full bg-transparent font-sans text-gray-900 flex">
+    <div className="flex-1 overflow-y-auto bg-transparent font-sans text-gray-900 flex">
       <div className="flex-1 flex justify-center">
         <div className="w-full max-w-3xl px-8 pt-10">
 
@@ -253,12 +265,13 @@ export function PricingStep() {
         {/* Fix-16c: Loading state */}
         {loading ? (
           <div className="bg-white rounded-xl p-5" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
-            <div className="flex items-center justify-center py-12">
-              <div className="text-[14px] text-gray-400">Loading your pricing...</div>
+            <div className="py-16 flex flex-col items-center justify-center">
+              <div className="w-8 h-8 border-3 border-gray-200 border-t-[#0077CC] rounded-full animate-spin mb-3" />
+              <p className="text-[14px] text-gray-500">Loading your pricing...</p>
             </div>
           </div>
         ) : (
-          <>
+          <div className="page-content-enter">
         {/* CD-04: Error display for sport lookup failures */}
         {loadingError && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
@@ -413,25 +426,84 @@ export function PricingStep() {
             {saving ? 'Saving...' : 'Save & continue →'}
           </button>
         </div>
-        </>
+        </div>
         )}
         </div>
       </div>
 
-      {/* CF-D12 CHANGE 2E: Right panel - Your offer summary */}
+      {/* Fix-23: Right panel - Coach preview + Your offer summary */}
       <aside className="hidden xl:flex w-80 shrink-0 flex-col bg-white p-6 h-screen overflow-y-auto border-l border-gray-100">
         <div className="sticky top-6">
-          <p className="text-[9px] font-medium text-gray-400 uppercase tracking-wider mb-2" style={{ letterSpacing: '0.05em' }}>YOUR OFFER</p>
+          {/* SECTION 1: Coach preview card */}
+          <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-4" style={{ letterSpacing: '0.05em' }}>
+            WHAT PARENTS SEE
+          </p>
           
-          <div className="bg-gray-50 rounded-[10px] p-3">
-            <h3 className="text-[13px] font-semibold text-gray-900 mb-2">
+          <div className="bg-white border border-gray-100 shadow-sm rounded-xl p-5 mb-4">
+            {/* Avatar + Name */}
+            <div className="flex items-start gap-3 mb-4">
+              {coachAvatarUrl ? (
+                <img
+                  src={coachAvatarUrl}
+                  alt={coachName}
+                  className="w-16 h-16 rounded-full object-cover shrink-0"
+                />
+              ) : (
+                <div className="w-16 h-16 bg-[#E6F1FB] rounded-full flex items-center justify-center shrink-0">
+                  <span className="text-[#0C447C] text-[20px] font-bold">
+                    {coachName
+                      .split(' ')
+                      .map(n => n[0])
+                      .join('')
+                      .toUpperCase()
+                      .substring(0, 2) || 'C'}
+                  </span>
+                </div>
+              )}
+              <div className="flex-1">
+                <h3 className="text-[16px] font-bold text-gray-900 mb-0.5">
+                  {coachName || <span className="text-gray-300">Your name</span>}
+                </h3>
+                <p className="text-[13px] text-gray-500">
+                  {selectedSports.length > 0 ? `${selectedSports[0]} Coach` : 'Cricket Coach'}
+                </p>
+              </div>
+            </div>
+            
+            {/* Star rating */}
+            <div className="flex items-center gap-1 mb-3">
+              <span className="text-amber-400 text-[15px]">★★★★★</span>
+              <span className="text-[12px] text-gray-500 ml-1">New coach</span>
+            </div>
+            
+            {/* Price */}
+            <div className={`text-[15px] font-bold mb-4 ${minPrice > 0 ? 'text-gray-900' : 'text-gray-400'}`}>
+              from £{minPrice > 0 ? minPrice : '--'} / session
+            </div>
+            
+            {/* Book button */}
+            <button 
+              className="w-full bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-full py-3 text-[14px] font-bold transition-colors pointer-events-none"
+              disabled
+            >
+              Book a session
+            </button>
+          </div>
+
+          {/* SECTION 2: Your offer summary */}
+          <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-4 mt-6" style={{ letterSpacing: '0.05em' }}>
+            YOUR OFFER
+          </p>
+          
+          <div className="bg-white border border-gray-100 shadow-sm rounded-xl p-4">
+            <h3 className="text-[13px] font-semibold text-gray-900 mb-3">
               {selectedSports.length > 0 ? selectedSports[0] : 'Cricket'}
             </h3>
             
-            <div className="space-y-2 text-[11px]">
+            <div className="space-y-2">
               <div className="flex justify-between">
-                <span className="text-gray-500">Session types</span>
-                <span className="text-gray-900">
+                <span className="text-[11px] text-gray-500">Session types</span>
+                <span className="text-[11px] text-gray-900 font-medium text-right max-w-[140px]">
                   {sessionTypes.individual && sessionTypes.group ? 'Individual · Group' : 
                    sessionTypes.individual ? 'Individual' : 
                    sessionTypes.group ? 'Group' : 'None'}
@@ -439,30 +511,24 @@ export function PricingStep() {
               </div>
               
               <div className="flex justify-between">
-                <span className="text-gray-500">Skill levels</span>
-                <span className="text-gray-900">
+                <span className="text-[11px] text-gray-500">Skill levels</span>
+                <span className="text-[11px] text-gray-900 font-medium text-right max-w-[140px]">
                   {skillLevels.length > 0 ? skillLevels.join(', ') : 'None'}
                 </span>
               </div>
               
               <div className="flex justify-between">
-                <span className="text-gray-500">Age groups</span>
-                <span className="text-gray-900">
+                <span className="text-[11px] text-gray-500">Age groups</span>
+                <span className="text-[11px] text-gray-900 font-medium text-right max-w-[140px]">
                   {ageGroups.length > 0 ? `U${ageGroups[0].replace('Under ', '')} – U${ageGroups[ageGroups.length - 1].replace('Under ', '')}` : 'None'}
                 </span>
               </div>
             </div>
-            
-            {minPrice > 0 && (
-              <p className="text-[14px] font-semibold text-[#0077CC] mt-2">
-                from £{minPrice} / session
-              </p>
-            )}
           </div>
           
-          {/* TODO CF-D12: Show if more sports need setup */}
+          {/* Warning for multiple sports */}
           {selectedSports.length > 1 && (
-            <div className="bg-[#FFFBEB] border-l-[3px] border-[#F59E0B] rounded-r-lg px-3 py-2 mt-2">
+            <div className="bg-[#FFFBEB] border-l-[3px] border-[#F59E0B] rounded-r-lg px-3 py-2 mt-4">
               <p className="text-[11px] text-[#78350F]">{selectedSports[1]} still needs setup</p>
             </div>
           )}

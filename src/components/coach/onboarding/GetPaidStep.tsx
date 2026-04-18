@@ -7,6 +7,7 @@ import { OnboardingPreviewPanel } from '../OnboardingPreviewPanel'
 export function GetPaidStep() {
   const router = useRouter()
   const [coachName, setCoachName] = useState<string>('Your name')
+  const [isGoingLive, setIsGoingLive] = useState(false)
   
   // Fix-16e: Fetch coach profile for name
   useEffect(() => {
@@ -28,11 +29,28 @@ export function GetPaidStep() {
   // No direct Supabase save - stripe_onboarding_complete flag set by Stripe webhook
   // coach_profiles.stripe_account_id populated after successful Stripe Connect
 
+  // Fix-36: Go live and navigate to dashboard with celebration modal
+  const handleGoLive = async () => {
+    if (isGoingLive) return
+    setIsGoingLive(true)
+    try {
+      await fetch('/api/coaches/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_profile_live: true })
+      })
+      router.push('/coach/dashboard?celebrated=true')
+    } catch (error) {
+      console.error('Failed to go live:', error)
+      setIsGoingLive(false)
+    }
+  }
+
   return (
-    <div className="flex w-full">
+    <div className="flex-1 overflow-y-auto flex w-full">
       {/* Main content */}
       <div className="flex-1 flex flex-col items-center pt-10 pb-32 min-h-screen bg-white">
-        <div className="w-full max-w-[640px] px-6">
+        <div className="w-full max-w-[640px] px-6 page-content-enter">
           <div className="mb-8">
             {/* Step indicator - Step 6 of 6 */}
             <div className="mb-4">
@@ -75,8 +93,12 @@ export function GetPaidStep() {
                 ))}
               </div>
               <div className="flex flex-col items-center">
-                <button className="w-full py-4 bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-xl font-bold text-[16px] transition-colors shadow-sm flex items-center justify-center gap-2 mb-3">
-                  Connect with Stripe <ArrowLeft size={18} className="rotate-180" />
+                <button 
+                  onClick={handleGoLive}
+                  disabled={isGoingLive}
+                  className="w-full py-4 bg-[#0077CC] hover:bg-[#0066AA] disabled:opacity-60 text-white rounded-xl font-bold text-[16px] transition-colors shadow-sm flex items-center justify-center gap-2 mb-3"
+                >
+                  {isGoingLive ? 'Going live...' : 'Connect with Stripe'} <ArrowLeft size={18} className="rotate-180" />
                 </button>
                 <p className="text-[13px] text-gray-400 font-medium text-center">Takes about 5 minutes. You'll complete setup securely on Stripe.</p>
               </div>
@@ -113,17 +135,20 @@ export function GetPaidStep() {
             </button>
             <div className="flex flex-col items-center">
               <button 
-                onClick={() => router.push('/coach/onboarding/go-live')}
-                className="text-[13px] text-gray-500 hover:text-gray-900 font-medium transition-colors"
+                onClick={handleGoLive}
+                disabled={isGoingLive}
+                className="text-[13px] text-gray-500 hover:text-gray-900 font-medium transition-colors disabled:opacity-60"
               >
-                Skip for now
+                {isGoingLive ? 'Going live...' : 'Skip for now'}
               </button>
               <p className="text-[10px] text-gray-400 mt-0.5">You can complete this from your dashboard</p>
             </div>
             <button 
-              className="bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-full px-7 py-2.5 text-[13px] font-medium transition-colors"
+              onClick={handleGoLive}
+              disabled={isGoingLive}
+              className="bg-[#0077CC] hover:bg-[#0066AA] disabled:opacity-60 text-white rounded-full px-7 py-2.5 text-[13px] font-medium transition-colors"
             >
-              Connect with Stripe →
+              {isGoingLive ? 'Going live...' : 'Connect with Stripe →'}
             </button>
           </div>
         </div>
