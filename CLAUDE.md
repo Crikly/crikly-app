@@ -1,10 +1,10 @@
 # Crikly — AI Development Context
 
-**Version:** 1.1
-**Last Updated:** March 2026
-**Changed:** Fixed file locations, added coach requirements ref, added branch lifecycle rule
+**Version:** 2.0
+**Last Updated:** April 2026
+**Changed:** Rewritten for Claude Code IDE. Windsurf collaboration model replaced.
 **Maintainer:** Lasith Jayarathne
-**Read this file before every prompt. It is your briefing.**
+**Read this file at the start of every session. It is your briefing.**
 
 ---
 
@@ -30,8 +30,70 @@ expanding to all sports and activities globally.
 Plus a **Super Admin** web panel for platform operators.
 
 **Multi-role accounts:** One account can hold multiple roles.
-A parent can also be a player. A coach can also be a parent.
-Role switching is handled via a context switcher — Airbnb host/guest model.
+Role switching handled via a context switcher — Airbnb host/guest model.
+
+---
+
+## Collaboration Model
+
+```
+LASITH (Product Lead)
+  → Owns vision, priorities, and final decisions
+  → Reviews and approves ALL outputs before commit
+  → Makes every product trade-off decision
+
+CLAUDE CHAT (claude.ai — Strategic Partner)
+  → Architecture decisions and design thinking
+  → Generating and maintaining documentation
+  → Debugging complex cross-cutting problems
+  → Red flag escalation — stop Claude Code, discuss here first
+  → Writes task briefs for Claude Code to execute
+
+CLAUDE CODE (This tool — Implementation)
+  → Reads this file + relevant agent file at session start
+  → Executes one task at a time
+  → Plans before building — always show plan first
+  → Commits with correct message format
+  → Never makes architectural decisions independently
+```
+
+**Rule:** Always plan before coding. Show Lasith the plan. Get approval. Then build.
+**Rule:** One task per session. Never batch multiple tasks.
+**Rule:** If anything feels architecturally significant — stop and flag it.
+**Rule:** Windsurf is available as fallback if Claude Code goes off track.
+
+---
+
+## How To Start Every Session
+
+```
+Step 1 → Read this file (CLAUDE.md)
+Step 2 → Read docs/09_WORKING_ETHICS.md
+Step 3 → Read the relevant agent file for this task type
+Step 4 → Read docs/10_BUILD_PLAN.md — find the first ⚪ or 🟡 task
+Step 5 → State the plan clearly before touching any code
+Step 6 → Wait for Lasith approval
+Step 7 → Build
+Step 8 → Run quality gate checks
+Step 9 → Commit with correct message format
+Step 10 → Update docs/10_BUILD_PLAN.md status
+```
+
+---
+
+## Agent Files — Who Does What
+
+Always read the relevant agent file before starting any task.
+
+| Task type | Read this agent file |
+|---|---|
+| UI components, pages, onboarding screens | `docs/agents/frontend-developer.md` |
+| API routes, business logic, data wiring | `docs/agents/backend-developer.md` |
+| Database tables, migrations, RLS | `docs/agents/database-architect.md` |
+| Stripe, payments, payouts, Connect | `docs/agents/payments-engineer.md` |
+| CI/CD, deployment, infrastructure | `docs/agents/devops-engineer.md` |
+| Tests, quality gates, coverage | `docs/agents/qa-engineer.md` |
+| Architecture, cross-cutting decisions | `docs/agents/tech-lead.md` |
 
 ---
 
@@ -41,20 +103,20 @@ Role switching is handled via a context switcher — Airbnb host/guest model.
 |---|---|---|
 | Web App | Next.js 15 (App Router) | PWA — Phase 1 |
 | Language | TypeScript — STRICT MODE | No `any`. Ever. |
-| Styling | Tailwind CSS | Utility classes only |
-| Database | Supabase (PostgreSQL) | Single source of truth |
-| Auth | Supabase Auth | Email + social login |
+| Styling | Tailwind CSS | Utility classes only. No inline styles. |
+| Database | Supabase (PostgreSQL) | London region |
+| Auth | Supabase Auth | Email + Google + Apple |
 | Storage | Supabase Storage | Coach photos, documents |
-| Payments | Stripe Connect | Bookings + subscriptions + payouts |
-| Email | Resend | Transactional email |
-| Push | OneSignal | Real-time notifications |
+| Payments | Stripe Connect | Bookings + payouts |
+| Email | Resend | Transactional only |
+| Push | OneSignal | Phase 1 notifications |
 | Hosting | Vercel | Auto-deploy on push to main |
-| Mobile | Flutter (iOS + Android) | Phase 2 only |
+| Mobile | Flutter (iOS + Android) | Phase 2 only — not now |
 
-**Supabase Project URL:** `https://gzehxfnlfogkhadejowo.supabase.co`
-**Production Domain:** `https://crikly.app`
-**GitHub Org:** `github.com/Crikly`
-**Repo:** `github.com/Crikly/crikly-app`
+**Node version:** Always use Node 20 LTS. Run `node --version` to verify.
+**Supabase Project:** `https://gzehxfnlfogkhadejowo.supabase.co`
+**Production:** `https://crikly.app`
+**GitHub:** `github.com/Crikly/crikly-app`
 
 ---
 
@@ -62,235 +124,266 @@ Role switching is handled via a context switcher — Airbnb host/guest model.
 
 ```
 crikly-app/
-├── CLAUDE.md                    ← This file. Always keep updated.
-├── AGENTS.md                    ← Agentic task orchestration guide
+├── CLAUDE.md                    ← This file. Read first every session.
+├── AGENTS.md                    ← Agent orchestration guide
 ├── PRD.md                       ← Full product requirements
 │
 ├── docs/
 │   ├── 01_PROJECT_OVERVIEW.md
 │   ├── 02_TECH_ARCHITECTURE.md
-│   ├── 03_DATABASE_SCHEMA.md    ← Single source of truth for DB
+│   ├── 03_DATABASE_SCHEMA.md    ← Read before any DB work
 │   ├── 04_API_REFERENCE.md
-│   ├── 05_BUSINESS_RULES.md
-│   ├── 06_SECURITY_COMPLIANCE.md
+│   ├── 05_BUSINESS_RULES.md     ← Read before any payment/booking logic
+│   ├── 06_SECURITY_COMPLIANCE.md← Read before any auth/child data work
 │   ├── 07_FUTURE_EXPANSION.md
 │   ├── 08_CODING_STANDARDS.md
-│   ├── 09_WORKING_ETHICS.md   ← moved to docs/
-│   ├── 10_BUILD_PLAN.md
-│   ├── 11_UX_PRINCIPLES.md
-│   ├── 12_DESIGN_SYSTEM.md
+│   ├── 09_WORKING_ETHICS.md     ← Read every session
+│   ├── 10_BUILD_PLAN.md         ← Single source of truth for tasks
+│   ├── 11_UX_PRINCIPLES.md      ← Read before any UI work
+│   ├── 12_DESIGN_SYSTEM.md      ← Read before any UI work
 │   ├── 13_SCREEN_FLOWS.md
-│   ├── 14_COACH_REQUIREMENTS.md ← 78 coach requirements
+│   ├── 14_COACH_REQUIREMENTS.md
 │   └── agents/
 │       ├── frontend-developer.md
 │       ├── backend-developer.md
 │       ├── database-architect.md
 │       ├── payments-engineer.md
 │       ├── devops-engineer.md
-│       └── qa-engineer.md
+│       ├── qa-engineer.md
+│       └── tech-lead.md
 │
 ├── src/
-│   ├── app/                     ← Next.js App Router pages
-│   │   ├── (auth)/              ← Auth routes (login, register)
+│   ├── app/
+│   │   ├── (auth)/              ← Auth routes
+│   │   ├── coach/               ← Coach-facing pages (App Router)
+│   │   │   ├── layout.tsx       ← Persistent sidebar + mobile nav
+│   │   │   ├── onboarding/
+│   │   │   │   └── layout.tsx   ← Overrides — no sidebar in onboarding
+│   │   │   └── [screen]/
 │   │   ├── (parent)/            ← Parent-facing pages
 │   │   ├── (player)/            ← Player-facing pages
-│   │   ├── (coach)/             ← Coach-facing pages
-│   │   ├── (admin)/             ← Super Admin panel
-│   │   └── api/                 ← Next.js API routes
+│   │   ├── (admin)/             ← Admin panel
+│   │   └── api/                 ← API routes
 │   │       ├── auth/
 │   │       ├── bookings/
 │   │       ├── coaches/
 │   │       ├── payments/
-│   │       └── webhooks/
-│   │           └── stripe/
+│   │       └── webhooks/stripe/
 │   │
 │   ├── components/
-│   │   ├── ui/                  ← Primitive UI components
+│   │   ├── ui/                  ← Base components — never rebuild these
 │   │   ├── shared/              ← Shared across roles
-│   │   ├── parent/              ← Parent-specific components
-│   │   ├── player/              ← Player-specific components
 │   │   ├── coach/               ← Coach-specific components
-│   │   └── admin/               ← Admin-specific components
+│   │   │   ├── onboarding/      ← All onboarding step components
+│   │   │   └── shared/          ← Shared coach components
+│   │   ├── parent/
+│   │   └── admin/
 │   │
 │   ├── lib/
-│   │   ├── supabase/            ← Supabase client + server instances
-│   │   ├── stripe/              ← Stripe client + helpers
-│   │   ├── resend/              ← Email sending functions
-│   │   └── utils/               ← Shared utility functions
+│   │   ├── supabase/client.ts   ← Browser client (respects RLS)
+│   │   ├── supabase/server.ts   ← Server client (bypasses RLS — careful)
+│   │   ├── stripe/
+│   │   ├── resend/
+│   │   └── utils/
 │   │
-│   ├── hooks/                   ← Custom React hooks
-│   ├── types/                   ← TypeScript type definitions
+│   ├── hooks/
+│   ├── types/
 │   │   ├── database.ts          ← Generated from Supabase schema
-│   │   ├── api.ts               ← API request/response types
-│   │   └── domain.ts            ← Domain model types
-│   │
-│   └── constants/               ← App-wide constants
-│       ├── roles.ts
-│       ├── routes.ts
-│       └── config.ts
+│   │   ├── api.ts
+│   │   └── domain.ts
+│   └── constants/
 │
 ├── supabase/
-│   ├── migrations/              ← Database migrations (never edit manually)
-│   └── seed.sql                 ← Dev seed data
+│   └── migrations/              ← Never edit existing files. Always new file.
 │
-├── tests/
-│   ├── unit/                    ← Unit tests
-│   ├── integration/             ← API + DB integration tests
-│   └── e2e/                     ← Playwright end-to-end tests
-│
-└── .env.local                   ← Never commit. See .env.example.
+└── tests/
+    ├── unit/
+    ├── integration/
+    └── e2e/
 ```
 
 ---
 
-## Architecture Decisions
+## Context Loading — What To Read Per Task Type
 
-### Next.js App Router
-Always use the App Router pattern — not Pages Router.
-
-```
-Server Components  → Default. Data fetching, no interactivity.
-Client Components  → Only when needed ('use client' at top).
-                     Interactivity, hooks, browser APIs only.
-API Routes         → Business logic, Stripe, Supabase admin ops.
-Server Actions     → Form submissions, mutations.
-```
-
-### Supabase Client Pattern
-Two separate clients — never mix them up:
-
-```typescript
-// src/lib/supabase/client.ts — Browser (client components)
-// Uses NEXT_PUBLIC_SUPABASE_ANON_KEY
-// Respects Row Level Security (RLS)
-
-// src/lib/supabase/server.ts — Server (API routes, server components)
-// Uses SUPABASE_SERVICE_ROLE_KEY
-// Bypasses RLS — use with extreme care
-```
-
-### API Routes Pattern
-All business logic lives in API routes — never in client components.
+Never load everything. Load only what is relevant.
 
 ```
-src/app/api/bookings/route.ts      → GET list, POST create
-src/app/api/bookings/[id]/route.ts → GET one, PATCH update, DELETE
+Every session (always)       → CLAUDE.md + docs/09_WORKING_ETHICS.md
+UI component or screen       → docs/11_UX_PRINCIPLES.md + docs/12_DESIGN_SYSTEM.md
+API route or data wiring     → docs/03_DATABASE_SCHEMA.md + docs/05_BUSINESS_RULES.md
+Payment or Stripe work       → docs/05_BUSINESS_RULES.md + docs/06_SECURITY_COMPLIANCE.md
+Database migration           → docs/03_DATABASE_SCHEMA.md
+Security-sensitive work      → docs/06_SECURITY_COMPLIANCE.md
+New feature                  → PRD.md (relevant section only)
+Coach module work            → docs/14_COACH_REQUIREMENTS.md
 ```
-
-### Row Level Security (RLS)
-**Every Supabase table has RLS enabled. No exceptions.**
-Security is enforced at the database level, not just the application level.
 
 ---
 
-## TypeScript Rules — Non-Negotiable
+## Current Build State — April 2026
+
+**Active step:** Step 3 — Coach Module (56/60 complete)
+**Active branch:** develop (clean)
+**Next tasks:** CG-01, CG-02, CG-03 (coach go-live)
+**Not deployed to production yet** — single clean release after all coach features complete.
+
+See `docs/10_BUILD_PLAN.md` for the full task list and statuses.
+
+**Blocked tasks (do not touch):**
+- CD-06, CD-07 — depend on Step 5 booking API
+- CD-09 — earnings route doesn't exist yet
+
+---
+
+## Architecture — Non-Negotiable Decisions
+
+### App Router — Always
+Server Components by default. Client components only when needed.
+
+```
+Server Component  → Data fetching, no interactivity (default)
+Client Component  → Hooks, browser APIs, interactivity ('use client')
+API Route         → Business logic, Stripe, Supabase admin ops
+```
+
+### Supabase — Two Clients, Never Mixed
+```typescript
+// Browser (client components) — respects RLS
+import { createClient } from '@/lib/supabase/client'
+
+// Server (API routes, server components) — bypasses RLS
+// Use with extreme care — only when RLS cannot handle it
+import { createClient } from '@/lib/supabase/server'
+```
+
+### Money — Always Integers
+```typescript
+// ❌ Never
+const price = 9.99
+
+// ✅ Always — store as pence
+const price_pence = 999  // £9.99
+```
+
+### reactCompiler — Never
+```typescript
+// ❌ NEVER add this to next.config.ts — causes build hangs
+reactCompiler: true
+```
+
+---
+
+## Design System — Non-Negotiable
+
+```
+Font:           DM Sans only — already loaded in layout.tsx, never re-import
+Primary colour: #0077CC (brand-600)
+No hardcoded hex colours — use Tailwind tokens only
+No hardcoded sizes — use design tokens
+No inline styles
+No emoji icons — use Lucide React only
+One primary CTA per screen — never two at equal weight
+```
+
+Read `docs/12_DESIGN_SYSTEM.md` before writing any UI code.
+Read `docs/11_UX_PRINCIPLES.md` before designing any screen flow.
+Use components from `src/components/ui/` — never rebuild existing ones.
+
+---
+
+## TypeScript Rules
 
 ```typescript
-// tsconfig.json strict mode is ON. These rules apply:
-
-// ❌ NEVER — no any types
+// ❌ Never
 const data: any = response
-
-// ✅ ALWAYS — explicit types
-const data: BookingResponse = response
-
-// ❌ NEVER — non-null assertion without good reason
-const user = session!.user
-
-// ✅ ALWAYS — null checks
-if (!session?.user) return null
-
-// ❌ NEVER — implicit return types on complex functions
 async function createBooking(data) {
 
-// ✅ ALWAYS — explicit return types
+// ✅ Always
+const data: BookingResponse = response
 async function createBooking(data: CreateBookingInput): Promise<Booking> {
-```
-
----
-
-## Naming Conventions
-
-```
-Files:          kebab-case.ts        (e.g. coach-profile.tsx)
-Components:     PascalCase           (e.g. CoachProfileCard)
-Functions:      camelCase            (e.g. createBooking)
-Constants:      UPPER_SNAKE_CASE     (e.g. MAX_GROUP_SIZE)
-Types/Interfaces: PascalCase         (e.g. BookingStatus)
-DB tables:      snake_case           (e.g. coach_profiles)
-DB columns:     snake_case           (e.g. created_at)
-Env vars:       UPPER_SNAKE_CASE     (e.g. STRIPE_SECRET_KEY)
-API routes:     /api/kebab-case      (e.g. /api/coach-profiles)
+if (!session?.user) return null
 ```
 
 ---
 
 ## Git Workflow
 
-### Branch Strategy
 ```
-main      → Production. Auto-deploys to crikly.app. Never commit directly.
-staging   → Pre-production. Mirrors production for testing.
-develop   → Integration branch. All features merge here first.
-feature/* → One branch per feature (e.g. feature/coach-onboarding)
-fix/*     → Bug fixes (e.g. fix/booking-double-charge)
-chore/*   → Non-feature work (e.g. chore/update-deps)
+main      → Production. Never commit directly.
+staging   → Pre-production. Never commit directly.
+develop   → Integration branch. All features merge here.
+feature/* → One branch per feature, opened from develop
+fix/*     → Bug fixes, opened from develop
 ```
 
-### Commit Message Format
+**Branch lifecycle rule:** Merge feature branch to develop before opening next branch.
+Never let a feature branch live longer than one build step.
+
+**Commit format:**
 ```
-type(scope): short description
-
-Types: feat | fix | chore | docs | refactor | test | style
-
-Examples:
-feat(coach): add availability template setup
-fix(payments): prevent double charge on retry
-chore(deps): update Stripe SDK to v15
-docs(schema): add Training Passport tables
-test(bookings): add cancellation refund tests
-```
-
-### PR Rules
-```
-feature/* → develop    (always — never directly to main)
-develop   → staging    (for pre-release testing)
-staging   → main       (for production release)
-
-Every PR requires:
-→ At least one reviewer (yourself on solo — review carefully)
-→ All tests passing
-→ No TypeScript errors
-→ No console.logs left in code
+feat(coach): add search API with filters
+fix(auth): create user_profiles on OAuth callback
+docs(build-plan): mark CD-03 complete
+chore(deps): update Stripe SDK
 ```
 
 ---
 
-## Environment Variables
+## Quality Gate — Before Every Commit
 
-```bash
-# Supabase
-NEXT_PUBLIC_SUPABASE_URL=          # Public — safe in browser
-NEXT_PUBLIC_SUPABASE_ANON_KEY=     # Public — safe in browser
-SUPABASE_SERVICE_ROLE_KEY=         # SECRET — server only, never expose
-
-# Stripe
-NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY= # Public — safe in browser
-STRIPE_SECRET_KEY=                  # SECRET — server only
-STRIPE_WEBHOOK_SECRET=              # SECRET — server only
-
-# App
-NEXT_PUBLIC_APP_URL=https://crikly.app
 ```
-
-**NEXT_PUBLIC_ prefix** → Available in browser (client components)
-**No prefix** → Server only (API routes, server components)
+□ node --version shows v20.x.x
+□ next.config.ts does NOT contain reactCompiler: true
+□ npx tsc --noEmit passes — zero TypeScript errors
+□ No `any` types introduced
+□ No console.log in production code
+□ Tests written and passing
+□ Relevant docs updated
+□ .env.local not staged
+□ Committing to correct branch (not main, not staging)
+□ API routes wired to real data — or explicitly marked STUB with follow-up task scheduled
+□ RLS policies in place for any new DB tables
+```
 
 ---
 
-## Business Rules — Always Apply
+## Risk Classification
 
-These rules must be enforced in code, not just documented:
+```
+🟢 Low    → UI components, utilities, tests, docs
+           → Plan + build in same session
+
+🟡 Medium → API routes, new DB columns, business logic
+           → State plan, wait for Lasith approval, then build
+
+🔴 High   → Payments, auth, RLS, child data, DB restructure
+           → STOP → Discuss in Claude chat first → Get explicit approval → Then build
+```
+
+---
+
+## Red Flags — Stop and Discuss in Claude Chat First
+
+```
+→ Any payment processing logic change
+→ Any cancellation or refund flow change
+→ Any child data access pattern change
+→ Any RLS policy change
+→ Any authentication or session handling change
+→ Stripe webhook handler changes
+→ DB migration modifying existing columns
+→ Multi-role account switching logic
+→ Commission rate or payout timing changes
+→ Adding new npm dependencies
+→ Anything architecturally significant
+→ reactCompiler: true appearing in next.config.ts
+→ Node version is not 20 LTS
+```
+
+---
+
+## Business Rules — Always Enforce
 
 ```
 BR-01: Commission is added ON TOP of coach price (not deducted from it)
@@ -326,6 +419,8 @@ BR-10: All prices stored with ISO currency code (GBP, LKR, USD)
        Phase 1 = GBP only. Multi-currency architecture from day one.
 ```
 
+Full rules in `docs/05_BUSINESS_RULES.md`.
+
 ---
 
 ## Security & Compliance — Non-Negotiable
@@ -347,260 +442,41 @@ Payment rules:
 → Always use Stripe's hosted checkout — never build card forms
 → Webhook signature verification on every Stripe webhook
 → Idempotency keys on all Stripe payment intents
+→ Never expose SUPABASE_SERVICE_ROLE_KEY to browser code
+→ Never bypass RLS without documented justification
+→ Never store prices as decimals
+→ Never use sequential IDs — always UUIDs
+→ Soft deletes only — never hard DELETE
 ```
+
+Full rules in `docs/06_SECURITY_COMPLIANCE.md`.
 
 ---
 
-## Supabase Database Rules
+## Notion Sync
 
-```
-→ Every table has: id, created_at, updated_at
-→ Every table has RLS enabled
-→ Soft deletes preferred: deleted_at timestamp (not hard DELETE)
-→ All prices stored as integers in pence (£9.99 = 999)
-→ Currency stored as ISO code alongside every price
-→ All timestamps in UTC
-→ UUIDs for all primary keys (not sequential integers)
-→ Foreign keys always explicitly defined
-→ No orphaned records — referential integrity enforced
-```
+After every completed task update both:
+1. `docs/10_BUILD_PLAN.md` — mark ✅ Complete
+2. Notion Build Plan — mark ✅ Complete + add notes
 
-**Prices as integers:** Always store money as pence/cents (integer).
-Never store as decimal/float. £9.99 → stored as `999`.
-Display layer handles formatting.
+Notion Build Plan: https://www.notion.so/b288473c2a4f47ebad99bf6bf3f7b041
 
 ---
 
-## Multi-Sport & Multi-Country Design
-
-Everything must be generic from day one:
-
-```
-✅ sports table → any sport is just a row (cricket, football, tennis)
-✅ countries table → any country is configuration, not code
-✅ currencies table → ISO codes, exchange rates configurable
-✅ commission_rates → per country, per sport if needed
-✅ subscription_tiers → fully configurable via admin panel
-✅ feature_flags → every feature can be toggled without deployment
-
-❌ Never hardcode sport names in business logic
-❌ Never hardcode GBP — always reference currency from config
-❌ Never hardcode commission rate — always read from platform_config
-❌ Never hardcode feature availability — always check feature flags
-```
-
----
-
-## Feature Flags
-
-All features are controlled via the `feature_flags` table in Supabase.
-Check feature flags from the database — never hardcode feature availability.
-
-```typescript
-// Pattern for checking feature flags
-const flag = await getFeatureFlag('training_passport')
-if (!flag.enabled) return notFound()
-```
-
----
-
-## Subscription Tier Engine
-
-Coach subscription tiers are fully configurable via the admin panel.
-Never hardcode tier limits or features in application code.
-Always read from `subscription_tiers` and `tier_features` tables.
-
-```
-Free tier limits → read from database, not hardcoded
-Premium features → read from database, not hardcoded
-New tiers        → created in admin panel, zero code changes
-```
-
----
-
-## Testing Standards
-
-```
-Unit tests:        Every utility function and business logic function
-Integration tests: Every API route — happy path + error cases
-E2E tests:         Critical user journeys only
-                   → Parent books coach (happy path)
-                   → Payment success and failure
-                   → Coach cancellation + refund
-                   → Child to player transition
-
-Test files live next to the code they test:
-src/lib/utils/calculate-commission.ts
-src/lib/utils/calculate-commission.test.ts
-
-E2E tests live in:
-tests/e2e/parent-books-coach.spec.ts
-```
-
----
-
-## What To Always Do
-
-```
-✅ Read docs/03_DATABASE_SCHEMA.md before touching any database table
-✅ Read docs/05_BUSINESS_RULES.md before implementing any payment logic
-✅ Read docs/06_SECURITY_COMPLIANCE.md before handling any user data
-✅ Check feature flags before implementing feature-gated functionality
-✅ Add TypeScript types before writing implementation
-✅ Write the test file alongside the implementation file
-✅ Use server components by default — client components only when needed
-✅ Store all money as integers (pence) never decimals
-✅ Always verify Stripe webhook signatures
-✅ Always use RLS-respecting Supabase client in browser contexts
-```
-
-## What To Never Do
-
-```
-❌ Never use `any` TypeScript type
-❌ Never commit .env.local or any secrets
-❌ Never bypass Row Level Security without documented justification
-❌ Never store card details, even temporarily
-❌ Never hardcode commission rates, feature limits, or sport names
-❌ Never commit directly to main or staging branches
-❌ Never delete database records — use soft deletes (deleted_at)
-❌ Never store prices as decimals — always integers (pence)
-❌ Never skip webhook signature verification
-❌ Never expose SUPABASE_SERVICE_ROLE_KEY to browser code
-❌ Never leave console.log in production code
-❌ Never use sequential IDs — always UUIDs
-❌ Never start a new feature branch without merging the 
-   previous one to develop first
-```
-
----
-
-## Collaboration Model
-
-```
-LASITH (Product Lead)
-  → Owns vision, priorities, and final decisions
-  → Reviews and approves all outputs
-
-CLAUDE (Strategic Partner — claude.ai chat)
-  → Architecture decisions and design thinking
-  → Generating and maintaining documentation
-  → Debugging complex problems
-  → Red flag escalation point
-
-WINDSURF (Coding Environment)
-  → Writing all actual code files
-  → Following agent role instructions
-  → Referencing docs/ for context
-  → Committing and managing git workflow
-```
-
-Claude thinks and designs. Windsurf builds.
-
----
-
-## Context Optimisation — How To Load Context
-
-Load ONLY what is relevant. Never load everything.
-
-```
-Any task (always)            → CLAUDE.md + docs/09_WORKING_ETHICS.md
-DB table or migration        → docs/03_DATABASE_SCHEMA.md
-API route or business logic  → docs/03_DATABASE_SCHEMA.md + docs/05_BUSINESS_RULES.md
-UI component or page         → docs/02_TECH_ARCHITECTURE.md (file structure only)
-Payment or Stripe work       → docs/05_BUSINESS_RULES.md + docs/06_SECURITY_COMPLIANCE.md
-Security-sensitive work      → docs/06_SECURITY_COMPLIANCE.md
-New feature (any layer)      → PRD.md (relevant section only)
-Multi-country expansion      → docs/07_FUTURE_EXPANSION.md
-```
-
----
-
-## Risk Classification
-
-```
-🟢 Low    → UI components, utilities, tests, docs
-           → Auto-proceed
-
-🟡 Medium → API routes, new DB columns, business logic
-           → Review approach first
-
-🔴 High   → Payments, auth, RLS, child data, DB restructure
-           → STOP → Bring to Claude → Get approval → Then build
-```
-
----
-
-## Red Flags — Stop Windsurf, Come to Claude First
-
-```
-→ Any payment processing logic change
-→ Any cancellation or refund flow change
-→ Any child data access pattern change
-→ Any RLS policy change
-→ Any authentication change
-→ Stripe webhook handler changes
-→ DB migration modifying existing columns
-→ Multi-role account switching logic
-→ Commission rate or payout timing changes
-→ Adding new npm dependencies
-→ Anything architecturally significant
-```
-
----
-
-## Agent Files — Who Does What
-
-When working on a specific layer, read the relevant agent file first:
-
-| Working on | Read this agent file |
-|---|---|
-| UI components, pages | `docs/agents/frontend-developer.md` |
-| API routes, business logic | `docs/agents/backend-developer.md` |
-| Database tables, migrations | `docs/agents/database-architect.md` |
-| Stripe, payments, payouts | `docs/agents/payments-engineer.md` |
-| CI/CD, deployment, infra | `docs/agents/devops-engineer.md` |
-| Tests, quality, coverage | `docs/agents/qa-engineer.md` |
-
----
-
-## Documentation Versioning
-
-Every doc file has a version header. When you update a doc, increment the version:
-
-```markdown
-**Version:** 1.2
-**Last Updated:** March 2026
-**Changed:** Added Training Passport privacy rules to Section 4
-```
-
-Changes to docs must be committed with:
-```
-docs(schema): add coach_availability_blocks table v1.2
-```
-
----
-
-## Current Build Status
-
-See `docs/10_BUILD_PLAN.md` for the current task and phase.
-Always check this file at the start of every session.
-
----
-
-## Quick Reference — Key IDs & URLs
+## Quick Reference
 
 ```
 Supabase URL:     https://gzehxfnlfogkhadejowo.supabase.co
 Production:       https://crikly.app
 GitHub:           github.com/Crikly/crikly-app
-Vercel Project:   vercel.com/lasith-projects/crikly-app
-Stripe Dashboard: dashboard.stripe.com (Crikly sandbox)
+Vercel:           vercel.com/lasith-projects/crikly-app
+Stripe:           dashboard.stripe.com (Crikly sandbox)
+Notion:           notion.so/b288473c2a4f47ebad99bf6bf3f7b041
 ```
 
 ---
 
-*Crikly CLAUDE.md v1.1 — March 2026*
-*Changed: Fixed file locations, added coach requirements ref, added branch lifecycle rule*
+*Crikly CLAUDE.md v2.0 — April 2026*
+*Rewritten for Claude Code IDE.*
 *Update this file whenever architecture decisions change.*
-*Every AI prompt reads this. Keep it accurate.*
+*This file is read automatically by Claude Code at session start.*
