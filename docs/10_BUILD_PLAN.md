@@ -593,6 +593,10 @@ Lasith can manage the platform, approve DBS, configure everything.
 |---|---|---|---|---|
 | L-01 | Set up staging.crikly.app | @DevOpsEngineer | 🟡 | ⚪ |
 | L-02 | Performance audit — Lighthouse mobile target 90+ | @QAEngineer | 🟢 | ⚪ |
+| L-02b | API load test — coach search, booking creation, availability — p95 < 500ms at 50 concurrent users | @QAEngineer | 🟡 | ⚪ |
+| L-02c | Stripe webhook stress test — idempotency under duplicate/burst events | @QAEngineer | 🔴 | ⚪ |
+| L-02d | Database query audit — no query over 200ms p95 on coach search, availability, booking joins | @DatabaseArchitect | 🟡 | ⚪ |
+| L-02e | Supabase connection pool test — 50 concurrent Vercel connections without exhausting pool | @DevOpsEngineer | 🟡 | ⚪ |
 | L-03 | Security review — RLS, auth, child data, payments | Manual | 🔴 | ⚪ |
 | L-04 | Write Terms & Conditions | Manual | 🟢 | ⚪ |
 | L-05 | Write Privacy Policy (GDPR compliant) | Manual | 🟢 | ⚪ |
@@ -697,10 +701,10 @@ Three-sided marketplace — coaches, parents, and venues.
 | Step 4 — Parent & Player | Phase 1 | 21 | 0 | 21 |
 | Step 5 — Booking & Payments | Phase 1 | 42 | 0 | 42 |
 | Step 6 — Admin | Phase 1 | 24 | 0 | 24 |
-| Step 7 — Pre-Launch | Phase 1 | 13 | 0 | 13 |
+| Step 7 — Pre-Launch | Phase 1 | 17 | 0 | 17 |
 | Step 8 — Mobile App | **Product Phase 2** | 20 | 0 | 20 |
 | Step 9 — Venues | **Product Phase 3** | 11 | 0 | 11 |
-| **Total** | | **259** | **124** | **135** |
+| **Total** | | **263** | **124** | **139** |
 
 ---
 
