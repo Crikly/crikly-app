@@ -385,6 +385,7 @@ Branch: feature/coach-data (open from develop before starting CD-01)
 | Fix-37 | Wire location_lat and location_lng in /api/coaches/profile POST route — save to user_profiles table | @BackendDeveloper | 🟡 | develop | ⚪ |
 | Fix-38 | LocationAutocomplete styling — fix Google dropdown border + add postcode support (change types to geocode) | @FrontendDeveloper | 🟢 | develop | ✅ |
 | Fix-38b | Add Google Places autocomplete to all venue fields — availability block + session creation. Types: establishment + geocode. Reuse or extend LocationAutocomplete.tsx | @FrontendDeveloper | 🟢 | develop | ✅ |
+| Fix-38c | Add venue_id FK to availability_templates migration + wire venue saving to coach_venues table | @DatabaseArchitect | 🟡 | develop | ⚪ |
 
 ### 3F — Coach Go-Live Gaps (CG tasks)
 
