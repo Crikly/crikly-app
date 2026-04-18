@@ -2,8 +2,9 @@
 
 import React, { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Camera, MapPin, Calendar, ChevronDown, Check } from 'lucide-react'
+import { Camera, Calendar, ChevronDown, Check } from 'lucide-react'
 import { OnboardingPreviewPanel } from '../OnboardingPreviewPanel'
+import { LocationAutocomplete } from '../shared/LocationAutocomplete'
 
 // CD-10: API response type
 interface CoachProfileResponse {
@@ -37,6 +38,8 @@ export function ProfileStep() {
   const [displayName, setDisplayName] = useState('')
   const [bio, setBio] = useState('')
   const [baseLocation, setBaseLocation] = useState('')
+  const [locationLat, setLocationLat] = useState<number | null>(null)
+  const [locationLng, setLocationLng] = useState<number | null>(null)
   const [travelRadius, setTravelRadius] = useState('No travel (I coach at fixed venues)')
   const [selectedExperience, setSelectedExperience] = useState('3–5 yrs')
   const [gender, setGender] = useState('')
@@ -172,6 +175,8 @@ export function ProfileStep() {
           full_name: displayName,
           bio,
           location_city: baseLocation,
+          location_lat: locationLat,
+          location_lng: locationLng,
           years_experience: yearsExp,
           gender: gender.toLowerCase().replace(/\s+/g, '_'),
           languages: selectedLanguages, // Fix-16f: Include languages in save payload
@@ -317,18 +322,17 @@ export function ProfileStep() {
             <div className="flex flex-col gap-6">
               <div className="flex flex-col gap-2">
                 <label className="text-[14px] font-bold text-gray-900">Base location</label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                    <MapPin size={18} className="text-gray-400" />
-                  </div>
-                  <input
-                    type="text"
-                    value={baseLocation}
-                    onChange={e => setBaseLocation(e.target.value)}
-                    placeholder="Town, city or postcode"
-                    className="w-full pl-11 pr-4 py-3.5 rounded-xl border border-gray-200 text-[15px] text-gray-900 placeholder:text-gray-400 focus:border-[#0077CC] focus:ring-1 focus:ring-[#0077CC] outline-none transition-all"
-                  />
-                </div>
+                <LocationAutocomplete
+                  value={baseLocation}
+                  placeholder="Town, city or postcode"
+                  data-testid="location-autocomplete"
+                  onSelect={({ city, lat, lng }) => {
+                    setBaseLocation(city)
+                    setLocationLat(lat)
+                    setLocationLng(lng)
+                  }}
+                  onChange={setBaseLocation}
+                />
                 <p className="text-[13px] text-gray-500 font-medium mt-0.5">Used so parents nearby can find you</p>
               </div>
               <div className="flex flex-col gap-2">
