@@ -3,6 +3,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Pencil, X, ChevronLeft, ChevronRight, Plus, ChevronDown, AlertTriangle } from 'lucide-react'
+import { VenueAutocomplete, type VenueSelection } from './shared/LocationAutocomplete'
 
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December']
 const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
@@ -119,6 +120,7 @@ export function AvailabilityManagement() {
   const [formEndTime, setFormEndTime] = useState('10:00')
   const [formRepeat, setFormRepeat] = useState('Weekly')
   const [formVenue, setFormVenue] = useState('')
+  const [formVenueSelection, setFormVenueSelection] = useState<VenueSelection | null>(null)
   const [formPrice, setFormPrice] = useState('')
   const toggleDay = (day: string) => setFormDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day])
   
@@ -198,6 +200,7 @@ export function AvailabilityManagement() {
     setFormEndTime('10:00')
     setFormRepeat('Weekly')
     setFormVenue('')
+    setFormVenueSelection(null)
     setFormPrice('')
     setShowAddForm(false)
     setPreselectedDay(null) // CF-D06b FIX 1: Reset preselected day
@@ -543,7 +546,19 @@ export function AvailabilityManagement() {
                 </div>
                 <div className="mb-4">
                   <label className="block text-[12px] font-bold text-gray-500 mb-1.5 uppercase tracking-wider">Venue</label>
-                  <input type="text" value={formVenue} onChange={e => setFormVenue(e.target.value)} placeholder="e.g. Oval Cricket Ground" className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-[15px] font-medium text-gray-900 placeholder-gray-400 focus:outline-none focus:border-[#0077CC]" />
+                  <VenueAutocomplete
+                    value={formVenue}
+                    placeholder="e.g. Oval Cricket Ground"
+                    data-testid="venue-autocomplete"
+                    onSelect={(venue) => {
+                      setFormVenue(venue.name)
+                      setFormVenueSelection(venue)
+                    }}
+                    onChange={(val) => {
+                      setFormVenue(val)
+                      setFormVenueSelection(null)
+                    }}
+                  />
                 </div>
                 <div className="mb-5">
                   <label className="block text-[12px] font-bold text-gray-500 mb-1.5 uppercase tracking-wider">Price override <span className="normal-case font-medium text-gray-400">(optional)</span></label>
@@ -583,6 +598,8 @@ export function AvailabilityManagement() {
                               start_time: formStartTime,
                               end_time: formEndTime,
                               price_override_pence: formPrice ? Math.round(parseFloat(formPrice) * 100) : null,
+                              // STUB: venue_id wiring pending Fix-38c
+                              // formVenueSelection holds { name, address, lat, lng } when a venue is selected
                             })
                           })
                           

@@ -34,7 +34,7 @@ function PlacesInput({
     if (!inputRef.current) return
 
     autocompleteRef.current = new google.maps.places.Autocomplete(inputRef.current, {
-      types: ['(cities)'],
+      types: ['geocode'],
       componentRestrictions: { country: 'gb' },
       fields: ['name', 'geometry'],
     })
@@ -114,4 +114,97 @@ export function LocationAutocomplete(props: LocationAutocompleteProps) {
   }
 
   return <PlacesInput {...props} />
+}
+
+// ─── VenueAutocomplete ────────────────────────────────────────────────────────
+// Establishments + geocode, UK only. Used in availability blocks.
+// Shares LIBRARIES reference with LocationAutocomplete — script loads once.
+
+export interface VenueSelection {
+  name: string
+  address: string
+  lat: number
+  lng: number
+}
+
+interface VenueAutocompleteProps {
+  value: string
+  onSelect: (venue: VenueSelection) => void
+  onChange: (value: string) => void
+  placeholder?: string
+  'data-testid'?: string
+}
+
+const VENUE_INPUT_CLASS =
+  'w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-[15px] font-medium text-gray-900 placeholder-gray-400 focus:outline-none focus:border-[#0077CC]'
+
+function VenuePlacesInput({
+  value,
+  onSelect,
+  onChange,
+  placeholder,
+  'data-testid': testId,
+}: VenueAutocompleteProps) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null)
+
+  useEffect(() => {
+    if (!inputRef.current) return
+
+    autocompleteRef.current = new google.maps.places.Autocomplete(inputRef.current, {
+      types: ['establishment', 'geocode'],
+      componentRestrictions: { country: 'gb' },
+      fields: ['name', 'formatted_address', 'geometry'],
+    })
+
+    const listener = autocompleteRef.current.addListener('place_changed', () => {
+      const place = autocompleteRef.current?.getPlace()
+      if (!place?.geometry?.location) return
+
+      onSelect({
+        name: place.name ?? '',
+        address: place.formatted_address ?? '',
+        lat: place.geometry.location.lat(),
+        lng: place.geometry.location.lng(),
+      })
+    })
+
+    return () => {
+      google.maps.event.removeListener(listener)
+    }
+  }, [onSelect])
+
+  return (
+    <input
+      ref={inputRef}
+      type="text"
+      defaultValue={value}
+      onChange={e => onChange(e.target.value)}
+      placeholder={placeholder}
+      data-testid={testId}
+      className={VENUE_INPUT_CLASS}
+    />
+  )
+}
+
+export function VenueAutocomplete(props: VenueAutocompleteProps) {
+  const { isLoaded, loadError } = useLoadScript({
+    googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_PLACES_API_KEY ?? '',
+    libraries: LIBRARIES,
+  })
+
+  if (loadError || !isLoaded) {
+    return (
+      <input
+        type="text"
+        value={props.value}
+        onChange={e => props.onChange(e.target.value)}
+        placeholder={props.placeholder}
+        data-testid={props['data-testid']}
+        className={VENUE_INPUT_CLASS}
+      />
+    )
+  }
+
+  return <VenuePlacesInput {...props} />
 }

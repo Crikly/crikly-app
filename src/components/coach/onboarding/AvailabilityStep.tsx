@@ -4,6 +4,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Pencil, X, Plus, ChevronDown, AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react'
 import { OnboardingPreviewPanel } from '../OnboardingPreviewPanel'
+import { VenueAutocomplete, type VenueSelection } from '../shared/LocationAutocomplete'
 
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December']
 const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
@@ -110,6 +111,7 @@ export function AvailabilityStep() {
   const [formEndTime, setFormEndTime] = useState('10:00')
   const [formRepeat, setFormRepeat] = useState('Weekly')
   const [formVenue, setFormVenue] = useState('')
+  const [formVenueSelection, setFormVenueSelection] = useState<VenueSelection | null>(null)
   const [formPrice, setFormPrice] = useState('')
   const toggleDay = (day: string) => setFormDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day])
   
@@ -203,6 +205,7 @@ export function AvailabilityStep() {
     setFormEndTime('10:00')
     setFormRepeat('Weekly')
     setFormVenue('')
+    setFormVenueSelection(null)
     setFormPrice('')
     setShowAddForm(false)
     setPreselectedDay(null)
@@ -520,7 +523,19 @@ export function AvailabilityStep() {
                 </div>
                 <div className="mb-4">
                   <label className="block text-[12px] font-bold text-gray-500 mb-1.5 uppercase tracking-wider">Venue</label>
-                  <input type="text" value={formVenue} onChange={e => setFormVenue(e.target.value)} placeholder="e.g. Oval Cricket Ground" className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-[15px] font-medium text-gray-900 placeholder-gray-400 focus:outline-none focus:border-[#0077CC]" />
+                  <VenueAutocomplete
+                    value={formVenue}
+                    placeholder="e.g. Oval Cricket Ground"
+                    data-testid="venue-autocomplete"
+                    onSelect={(venue) => {
+                      setFormVenue(venue.name)
+                      setFormVenueSelection(venue)
+                    }}
+                    onChange={(val) => {
+                      setFormVenue(val)
+                      setFormVenueSelection(null)
+                    }}
+                  />
                 </div>
                 <div className="mb-5">
                   <label className="block text-[12px] font-bold text-gray-500 mb-1.5 uppercase tracking-wider">Price override <span className="normal-case font-medium text-gray-400">(optional)</span></label>
@@ -562,12 +577,13 @@ export function AvailabilityStep() {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
-                              sport_id: null, // CD-03: availability_templates.sport_id (null = all sports)
-                              day_of_week: dayMap[dayAbbr], // CD-03: availability_templates.day_of_week (0-6)
-                              start_time: formStartTime, // CD-03: availability_templates.start_time (HH:MM)
-                              end_time: formEndTime, // CD-03: availability_templates.end_time (HH:MM)
-                              price_override_pence: formPrice ? Math.round(parseFloat(formPrice) * 100) : null, // CD-03: availability_templates.price_override_pence (integer)
-                              // Note: session_type_id not configured in UI yet - skipped
+                              sport_id: null,
+                              day_of_week: dayMap[dayAbbr],
+                              start_time: formStartTime,
+                              end_time: formEndTime,
+                              price_override_pence: formPrice ? Math.round(parseFloat(formPrice) * 100) : null,
+                              // STUB: venue_id wiring pending Fix-38c
+                              // formVenueSelection holds { name, address, lat, lng } when a venue is selected
                             })
                           })
                         }
