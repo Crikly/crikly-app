@@ -11,7 +11,6 @@ interface QualificationRow {
   issued_date: string | null
   expiry_date: string | null
   notes: string | null
-  qualification_types: { name: string; issuing_body: string } | null
 }
 
 interface CoachSportRow {
@@ -24,7 +23,18 @@ interface CoachSportRow {
   session_duration_minutes: number
   currency: string
   is_active: boolean
-  sports: { id: string; name: string; slug: string } | null
+}
+
+interface SportRow {
+  id: string
+  name: string
+  slug: string
+}
+
+interface QualificationTypeRow {
+  id: string
+  name: string
+  issuing_body: string
 }
 
 interface PhotoRow {
@@ -83,6 +93,9 @@ export async function GET(
 
     const supabase = await createClient()
 
+    // coach_sports.sport_id and coach_qualifications.qualification_type_id have no FK
+    // constraints, so Supabase cannot resolve nested joins for those tables.
+    // They are fetched in separate queries below and merged by ID.
     const { data: row, error: dbError } = await supabase
       .from('coach_profiles')
       .select(`
@@ -116,8 +129,7 @@ export async function GET(
           max_group_size,
           session_duration_minutes,
           currency,
-          is_active,
-          sports ( id, name, slug )
+          is_active
         ),
         coach_qualifications (
           id,
@@ -126,8 +138,7 @@ export async function GET(
           issuing_body,
           issued_date,
           expiry_date,
-          notes,
-          qualification_types ( name, issuing_body )
+          notes
         ),
         coach_photos (
           id,
@@ -161,6 +172,58 @@ export async function GET(
       return NextResponse.json({ error: 'Coach not found' }, { status: 404 })
     }
 
+    // ── Fetch sports by ID (no FK — must query separately) ────────────────────
+
+    const sportIds = [
+      ...new Set((coach.coach_sports ?? []).map(s => s.sport_id).filter(Boolean)),
+    ]
+
+    const sportMap = new Map<string, { name: string; slug: string }>()
+
+    if (sportIds.length > 0) {
+      const { data: sportsData, error: sportsError } = await supabase
+        .from('sports')
+        .select('id, name, slug')
+        .in('id', sportIds)
+
+      if (sportsError) {
+        console.error('[GET /api/coaches/[id]] sports lookup error:', sportsError)
+        return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+      }
+
+      for (const s of (sportsData ?? []) as SportRow[]) {
+        sportMap.set(s.id, { name: s.name, slug: s.slug })
+      }
+    }
+
+    // ── Fetch qualification_types by ID (no FK — must query separately) ───────
+
+    const qualTypeIds = [
+      ...new Set(
+        (coach.coach_qualifications ?? [])
+          .map(q => q.qualification_type_id)
+          .filter((qid): qid is string => qid !== null),
+      ),
+    ]
+
+    const qualTypeMap = new Map<string, { name: string; issuing_body: string }>()
+
+    if (qualTypeIds.length > 0) {
+      const { data: qualTypesData, error: qualTypesError } = await supabase
+        .from('qualification_types')
+        .select('id, name, issuing_body')
+        .in('id', qualTypeIds)
+
+      if (qualTypesError) {
+        console.error('[GET /api/coaches/[id]] qualification_types lookup error:', qualTypesError)
+        return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+      }
+
+      for (const qt of (qualTypesData ?? []) as QualificationTypeRow[]) {
+        qualTypeMap.set(qt.id, { name: qt.name, issuing_body: qt.issuing_body })
+      }
+    }
+
     // ── Flatten user_profiles ─────────────────────────────────────────────────
 
     const profile = Array.isArray(coach.user_profiles)
@@ -170,27 +233,31 @@ export async function GET(
     // ── Sports ───────────────────────────────────────────────────────────────
 
     const sports = (coach.coach_sports ?? [])
-      .filter((s: CoachSportRow) => s.is_active && s.sports !== null)
-      .map((s: CoachSportRow) => ({
-        sport_id: s.sport_id,
-        sport_name: s.sports!.name,
-        sport_slug: s.sports!.slug,
-        session_types: s.session_types ?? [],
-        skill_levels: s.skill_levels ?? [],
-        price_individual_pence: s.price_individual_pence,
-        price_group_pence: s.price_group_pence,
-        max_group_size: s.max_group_size,
-        session_duration_minutes: s.session_duration_minutes,
-        currency: s.currency,
-      }))
+      .filter((s: CoachSportRow) => s.is_active && sportMap.has(s.sport_id))
+      .map((s: CoachSportRow) => {
+        const sportInfo = sportMap.get(s.sport_id)!
+        return {
+          sport_id: s.sport_id,
+          sport_name: sportInfo.name,
+          sport_slug: sportInfo.slug,
+          session_types: s.session_types ?? [],
+          skill_levels: s.skill_levels ?? [],
+          price_individual_pence: s.price_individual_pence,
+          price_group_pence: s.price_group_pence,
+          max_group_size: s.max_group_size,
+          session_duration_minutes: s.session_duration_minutes,
+          currency: s.currency,
+        }
+      })
 
     // ── Qualifications ────────────────────────────────────────────────────────
 
     const today = new Date().toISOString().slice(0, 10)
 
     const qualifications = (coach.coach_qualifications ?? []).map((q: QualificationRow) => {
-      const name = q.qualification_types?.name ?? q.custom_name ?? 'Unknown'
-      const issuing_body = q.qualification_types?.issuing_body ?? q.issuing_body ?? null
+      const qualType = q.qualification_type_id ? qualTypeMap.get(q.qualification_type_id) : null
+      const name = qualType?.name ?? q.custom_name ?? 'Unknown'
+      const issuing_body = qualType?.issuing_body ?? q.issuing_body ?? null
 
       let status: 'active' | 'expired' = 'active'
       if (q.expiry_date && q.expiry_date < today) {
