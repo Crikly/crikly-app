@@ -21,6 +21,14 @@ const PROTECTED_PREFIXES = [
   '/account',
 ]
 
+// Routes accessible to everyone — no auth gate, no redirect to dashboard.
+// These are public-facing pages (coach profiles, search results, etc.)
+// that must never be intercepted by auth logic.
+const OPEN_PREFIXES = [
+  '/coaches',
+  '/search',
+]
+
 function isPublicRoute(pathname: string): boolean {
   return PUBLIC_ROUTES.some(
     (route) => pathname === route || pathname.startsWith(`${route}/`)
@@ -29,6 +37,12 @@ function isPublicRoute(pathname: string): boolean {
 
 function isProtectedRoute(pathname: string): boolean {
   return PROTECTED_PREFIXES.some((prefix) => pathname.startsWith(prefix))
+}
+
+function isOpenRoute(pathname: string): boolean {
+  return OPEN_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+  )
 }
 
 export default async function proxy(request: NextRequest) {
@@ -67,6 +81,10 @@ export default async function proxy(request: NextRequest) {
 
   // Always use getUser() — never getSession() in middleware
   const { data: { user } } = await supabase.auth.getUser()
+
+  if (isOpenRoute(pathname)) {
+    return response
+  }
 
   if (isProtectedRoute(pathname) && !user) {
     const loginUrl = new URL('/login', request.url)
