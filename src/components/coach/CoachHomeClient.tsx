@@ -145,7 +145,8 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
           <p className="text-sm text-gray-500 mt-1">{getSessionSubtitle()}</p>
         </div>
 
-        {/* CF-D11a: Onboarding completion banner */}
+        {/* CF-D11a: Onboarding completion banner — hidden at 100% (Fix-44) */}
+        {completionPercentage < 100 && (
         <div className="flex flex-col gap-3">
           <div className="bg-[#EFF7FF] border-l-4 border-[#0077CC] rounded-r-lg overflow-hidden transition-all duration-300">
             {/* CF-D11a CHANGE 1: Banner header with completion % inline */}
@@ -210,6 +211,7 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
             </div>
           )}
         </div>
+        )}
 
         {/* CHANGE 3: CTA button row */}
         <div className="flex flex-col md:flex-row gap-3">

@@ -27,7 +27,7 @@ interface CoachProfileResponse {
   updated_at: string
 }
 
-interface ProfileSection { id: string; icon: React.ReactNode; title: string; subtitle: string; isComplete: boolean }
+interface ProfileSection { id: string; icon: React.ReactNode; title: string; subtitle: string; isComplete: boolean; isPartial?: boolean }
 
 export function ProfileEdit() {
   const router = useRouter()
@@ -39,33 +39,51 @@ export function ProfileEdit() {
   const [error, setError] = useState<string | null>(null)
   const [hasSports, setHasSports] = useState(false)
   const [hasQualifications, setHasQualifications] = useState(false)
+  // Fix-45: Real Stripe Connect status from CG-03 endpoint
+  const [stripeChargesEnabled, setStripeChargesEnabled] = useState(false)
+  const [stripePayoutsEnabled, setStripePayoutsEnabled] = useState(false)
+  const [stripeConnected, setStripeConnected] = useState(false)
+
   // CD-10b: Fetch profile data on mount
   useEffect(() => {
     const fetchProfile = async () => {
       try {
         setLoading(true)
         setError(null)
-        
+
         const response = await fetch('/api/coaches/profile')
         if (!response.ok) {
           throw new Error('Failed to fetch profile')
         }
-        
+
         const data: CoachProfileResponse = await response.json()
         setProfile(data)
-        
+
         // Fix-17m: Fetch sports count
         const sportsRes = await fetch('/api/coaches/sports')
         if (sportsRes.ok) {
           const sportsData = await sportsRes.json()
           setHasSports(sportsData.sports && sportsData.sports.length > 0)
         }
-        
+
         // Fix-17m: Fetch qualifications count
         const qualsRes = await fetch('/api/coaches/qualifications')
         if (qualsRes.ok) {
           const qualsData = await qualsRes.json()
           setHasQualifications(qualsData.qualifications && qualsData.qualifications.length > 0)
+        }
+
+        // Fix-45: Fetch real Stripe Connect status
+        const stripeRes = await fetch('/api/payments/connect/onboard')
+        if (stripeRes.ok) {
+          const stripeData = await stripeRes.json() as {
+            connected: boolean
+            charges_enabled?: boolean
+            payouts_enabled?: boolean
+          }
+          setStripeConnected(stripeData.connected)
+          setStripeChargesEnabled(stripeData.charges_enabled ?? false)
+          setStripePayoutsEnabled(stripeData.payouts_enabled ?? false)
         }
       } catch (err) {
         console.error('Failed to fetch profile:', err)
@@ -74,7 +92,7 @@ export function ProfileEdit() {
         setLoading(false)
       }
     }
-    
+
     fetchProfile()
   }, [])
   
@@ -99,9 +117,9 @@ export function ProfileEdit() {
     
     // Booking Policy (cancellation_window_hours set)
     if (profile.cancellation_window_hours > 0) completed++
-    
-    // Payment Setup (Stripe connected)
-    if (profile.stripe_onboarding_complete) completed++
+
+    // Fix-45: Payment Setup — fully live means charges + payouts enabled
+    if (stripeChargesEnabled && stripePayoutsEnabled) completed++
     
     return Math.round((completed / total) * 100)
   }
@@ -117,7 +135,10 @@ export function ProfileEdit() {
     const qualificationsComplete = hasQualifications
     const availabilityComplete = true // TODO: Check actual availability
     const policyComplete = profile.cancellation_window_hours > 0
-    const paymentComplete = profile.stripe_onboarding_complete
+    // Fix-45: fully live = charges + payouts both enabled; partial = connected but not complete
+    const paymentFullyComplete = stripeChargesEnabled && stripePayoutsEnabled
+    const paymentPartial = stripeConnected && !paymentFullyComplete
+    const paymentComplete = paymentFullyComplete
     
     return [
       { 
@@ -165,14 +186,17 @@ export function ProfileEdit() {
           : 'Set your booking policy', 
         isComplete: policyComplete 
       },
-      { 
-        id: 'payment', 
-        icon: <CreditCard size={18} className={paymentComplete ? "text-[#0077CC]" : "text-[#F59E0B]"} />, 
-        title: 'Payment Setup', 
-        subtitle: paymentComplete 
-          ? 'Stripe connected' 
-          : 'Connect your bank account', 
-        isComplete: paymentComplete 
+      {
+        id: 'payment',
+        icon: <CreditCard size={18} className={paymentFullyComplete ? "text-[#0077CC]" : paymentPartial ? "text-[#F59E0B]" : "text-gray-400"} />,
+        title: 'Payment Setup',
+        subtitle: paymentFullyComplete
+          ? 'Stripe connected — ready to receive payouts'
+          : paymentPartial
+            ? 'Stripe connected — finish setup to receive payouts'
+            : 'Connect your bank account',
+        isComplete: paymentComplete,
+        isPartial: paymentPartial,
       }
     ]
   }
@@ -378,8 +402,10 @@ export function ProfileEdit() {
                       <div className="w-4 h-4 bg-green-100 rounded-full flex items-center justify-center">
                         <CheckCircle2 size={11} className="text-green-700" strokeWidth={2.5} />
                       </div>
-                    ) : (
+                    ) : section.isPartial ? (
                       <Circle size={16} className="text-[#FCD34D]" strokeWidth={1.5} />
+                    ) : (
+                      <Circle size={16} className="text-gray-300" strokeWidth={1.5} />
                     )}
                     <ChevronRight size={18} className={!section.isComplete ? 'text-gray-400' : 'text-gray-300'} />
                   </div>
