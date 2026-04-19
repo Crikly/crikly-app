@@ -201,7 +201,7 @@ export default async function CoachProfilePage({
       {/* ── Top nav ─────────────────────────────────────────────────────── */}
       <nav className="sticky top-0 z-40 h-16 bg-white border-b border-gray-100 flex items-center justify-between px-4 sm:px-6">
         <Link href="/" data-testid="nav-logo">
-          <img src="/logo.png" alt="Crikly" className="h-8 w-32 object-contain object-left" />
+          <img src="/logo.png" alt="Crikly" className="h-8 w-auto" />
         </Link>
         <Link
           href="/search"
