@@ -1,5 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
+
+// Service-role client used only for user_profiles lookups.
+// user_profiles RLS is "own record only", which blocks the anon client
+// on public routes. Service role bypasses RLS safely here because we only
+// read the coach's public display name and location — no sensitive data.
+const supabaseAdmin = createSupabaseClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+)
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -37,6 +47,13 @@ interface QualificationTypeRow {
   issuing_body: string
 }
 
+interface UserProfileRow {
+  full_name: string
+  location_city: string | null
+  location_lat: number | null
+  location_lng: number | null
+}
+
 interface PhotoRow {
   id: string
   photo_url: string
@@ -55,6 +72,7 @@ interface AvailabilityTemplateRow {
 
 interface CoachDetailRow {
   id: string
+  user_profile_id: string
   bio: string | null
   years_experience: number | null
   dbs_status: string
@@ -69,9 +87,6 @@ interface CoachDetailRow {
   cancellation_window_hours: number
   min_advance_hours: number
   max_advance_days: number
-  user_profiles:
-    | { full_name: string; location_city: string | null; location_lat: number | null; location_lng: number | null }
-    | { full_name: string; location_city: string | null; location_lat: number | null; location_lng: number | null }[]
   coach_sports: CoachSportRow[]
   coach_qualifications: QualificationRow[]
   coach_photos: PhotoRow[]
@@ -93,13 +108,16 @@ export async function GET(
 
     const supabase = await createClient()
 
-    // coach_sports.sport_id and coach_qualifications.qualification_type_id have no FK
-    // constraints, so Supabase cannot resolve nested joins for those tables.
-    // They are fetched in separate queries below and merged by ID.
+    // user_profiles!inner was silently dropping rows when PostgREST couldn't
+    // resolve the join, so user_profiles is fetched separately below by
+    // user_profile_id. coach_sports.sport_id and
+    // coach_qualifications.qualification_type_id also have no FK constraints
+    // and are fetched separately for the same reason.
     const { data: row, error: dbError } = await supabase
       .from('coach_profiles')
       .select(`
         id,
+        user_profile_id,
         bio,
         years_experience,
         dbs_status,
@@ -114,12 +132,6 @@ export async function GET(
         cancellation_window_hours,
         min_advance_hours,
         max_advance_days,
-        user_profiles!inner (
-          full_name,
-          location_city,
-          location_lat,
-          location_lng
-        ),
         coach_sports (
           sport_id,
           session_types,
@@ -172,6 +184,21 @@ export async function GET(
       return NextResponse.json({ error: 'Coach not found' }, { status: 404 })
     }
 
+    // ── Fetch user_profiles separately (no nested join — see comment above) ────
+
+    const { data: userProfileData, error: userProfileError } = await supabaseAdmin
+      .from('user_profiles')
+      .select('full_name, location_city, location_lat, location_lng')
+      .eq('id', coach.user_profile_id)
+      .single()
+
+    if (userProfileError) {
+      console.error('[GET /api/coaches/[id]] user_profiles lookup error:', userProfileError)
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    }
+
+    const profile = userProfileData as UserProfileRow
+
     // ── Fetch sports by ID (no FK — must query separately) ────────────────────
 
     const sportIds = [
@@ -223,12 +250,6 @@ export async function GET(
         qualTypeMap.set(qt.id, { name: qt.name, issuing_body: qt.issuing_body })
       }
     }
-
-    // ── Flatten user_profiles ─────────────────────────────────────────────────
-
-    const profile = Array.isArray(coach.user_profiles)
-      ? coach.user_profiles[0]
-      : coach.user_profiles
 
     // ── Sports ───────────────────────────────────────────────────────────────
 
