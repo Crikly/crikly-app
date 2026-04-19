@@ -47,6 +47,13 @@ interface QualificationTypeRow {
   issuing_body: string
 }
 
+interface ReviewRow {
+  id: string
+  rating: number
+  comment: string | null
+  created_at: string
+}
+
 interface UserProfileRow {
   full_name: string
   location_city: string | null
@@ -313,6 +320,23 @@ export async function GET(
         sort_order: p.sort_order,
       }))
 
+    // ── Reviews (SELECT: Public RLS — anon client is fine) ───────────────────
+
+    const { data: reviewsData, error: reviewsError } = await supabase
+      .from('reviews')
+      .select('id, rating, comment, created_at')
+      .eq('coach_profile_id', id)
+      .eq('is_visible', true)
+      .order('created_at', { ascending: false })
+      .limit(10)
+
+    if (reviewsError) {
+      console.error('[GET /api/coaches/[id]] reviews lookup error:', reviewsError)
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    }
+
+    const reviews = (reviewsData ?? []) as ReviewRow[]
+
     // ── Availability templates (active only) ──────────────────────────────────
 
     const availability = (coach.availability_templates ?? [])
@@ -349,6 +373,7 @@ export async function GET(
         qualifications,
         photos,
         availability,
+        reviews,
       },
       { status: 200 },
     )

@@ -57,6 +57,13 @@ interface AvailabilityTemplate {
   end_time: string
 }
 
+interface Review {
+  id: string
+  rating: number
+  comment: string | null
+  created_at: string
+}
+
 interface CoachProfile {
   id: string
   full_name: string
@@ -80,6 +87,7 @@ interface CoachProfile {
   qualifications: Qualification[]
   photos: Photo[]
   availability: AvailabilityTemplate[]
+  reviews: Review[]
 }
 
 interface AvailabilityData {
@@ -122,6 +130,19 @@ function getMinPrice(sports: CoachSport[]): number | null {
 
 function capitalise(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1)
+}
+
+function formatRelativeDate(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime()
+  const days = Math.floor(diff / 86400000)
+  if (days < 1) return 'Today'
+  if (days < 7) return `${days} day${days !== 1 ? 's' : ''} ago`
+  const weeks = Math.floor(days / 7)
+  if (weeks < 5) return `${weeks} week${weeks !== 1 ? 's' : ''} ago`
+  const months = Math.floor(days / 30)
+  if (months < 12) return `${months} month${months !== 1 ? 's' : ''} ago`
+  const years = Math.floor(days / 365)
+  return `${years} year${years !== 1 ? 's' : ''} ago`
 }
 
 const WEEK_DAYS = [
@@ -304,15 +325,28 @@ export default async function CoachProfilePage({
               </section>
             )}
 
-            {/* Rating summary */}
-            {coach.rating_count > 0 && coach.rating_avg !== null && (
-              <section aria-labelledby="reviews-heading">
-                <h2 id="reviews-heading" className="text-xl font-bold text-gray-900 mb-4">
-                  Reviews
-                </h2>
-                <RatingSummary avg={coach.rating_avg} count={coach.rating_count} sessionsCompleted={coach.sessions_completed} />
-              </section>
-            )}
+            {/* Reviews */}
+            <section aria-labelledby="reviews-heading">
+              <h2 id="reviews-heading" className="text-xl font-bold text-gray-900 mb-4">
+                Reviews
+              </h2>
+              {coach.rating_count > 0 && coach.rating_avg !== null && (
+                <RatingSummary
+                  avg={coach.rating_avg}
+                  count={coach.rating_count}
+                  sessionsCompleted={coach.sessions_completed}
+                />
+              )}
+              {coach.reviews.length > 0 ? (
+                <div className="mt-6 space-y-4">
+                  {coach.reviews.map(review => (
+                    <ReviewCard key={review.id} review={review} />
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-4 text-sm text-gray-500">No reviews yet.</p>
+              )}
+            </section>
 
             {/* Safety */}
             <section aria-labelledby="safety-heading">
@@ -591,6 +625,37 @@ function AvailabilityGrid({ templates }: { templates: AvailabilityTemplate[] }) 
           </div>
         )
       })}
+    </div>
+  )
+}
+
+// ─── Review Card ─────────────────────────────────────────────────────────────
+
+function ReviewCard({ review }: { review: Review }) {
+  return (
+    <div
+      className="p-4 rounded-xl border border-gray-100 bg-gray-50"
+      data-testid="review-card"
+    >
+      <div className="flex items-center justify-between gap-4 mb-2">
+        <div className="flex items-center gap-3">
+          <div className="flex gap-0.5">
+            {[1, 2, 3, 4, 5].map(n => (
+              <Star
+                key={n}
+                className={`w-3.5 h-3.5 ${n <= review.rating ? 'fill-yellow-400 text-yellow-400' : 'fill-gray-200 text-gray-200'}`}
+              />
+            ))}
+          </div>
+          <span className="text-xs font-medium text-gray-500">Verified parent</span>
+        </div>
+        <span className="text-xs text-gray-400 shrink-0">
+          {formatRelativeDate(review.created_at)}
+        </span>
+      </div>
+      {review.comment && (
+        <p className="text-sm text-gray-700 leading-relaxed">{review.comment}</p>
+      )}
     </div>
   )
 }
