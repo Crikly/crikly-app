@@ -471,6 +471,23 @@ Get in-app notifications for the authenticated user.
 ### PATCH /api/notifications/[id]/read
 Mark a notification as read.
 
+### POST /api/notifications/test
+Send a test email to the authenticated user. Development/staging use only.
+
+**Auth:** Required
+
+**Request body:**
+```json
+{ "type": "booking_confirmation" | "new_booking" }
+```
+
+**Response:**
+```json
+{ "success": true, "sentTo": "user@example.com", "type": "booking_confirmation" }
+```
+
+Sends a dummy email via Resend to verify delivery. Uses fixed stub data (coach "Test Coach", sport "Cricket", £55.00 parent total / £50.00 coach earnings).
+
 ---
 
 ## Admin Routes
