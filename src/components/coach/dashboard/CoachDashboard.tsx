@@ -26,7 +26,7 @@ export function CoachDashboard() {
       {/* Desktop Sidebar */}
       <aside className="hidden lg:flex w-64 shrink-0 flex-col bg-white border-r border-gray-100 p-6 sticky top-0 h-screen z-10">
         <img
-          src="/logo.jpeg"
+          src="/logo.png"
           alt="Crikly"
           className="h-8 w-auto object-contain mb-6"
         />
@@ -86,7 +86,7 @@ export function CoachDashboard() {
           {/* Mobile Top Bar */}
           <div className="flex justify-between items-center md:hidden mb-2">
             <img
-              src="/logo.jpeg"
+              src="/logo.png"
               alt="Crikly"
               className="h-7 w-auto object-contain"
             />

@@ -116,7 +116,7 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
         {/* Mobile Top Bar */}
         <div className="flex justify-between items-center md:hidden mb-2">
           <img
-            src="/logo.jpeg"
+            src="/logo.png"
             alt="Crikly"
             className="h-7 w-auto object-contain"
           />
@@ -334,7 +334,7 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
             <div className="flex flex-col items-center text-center">
               {/* Logo */}
               <img
-                src="/logo.jpeg"
+                src="/logo.png"
                 alt="Crikly"
                 className="w-24 h-auto object-contain mb-8"
               />

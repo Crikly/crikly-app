@@ -11,7 +11,7 @@ export function GoLiveStep() {
       <div className="w-full max-w-[500px] px-6 flex flex-col items-center text-center">
         <div className="mb-10 w-full flex flex-col items-center">
           <img
-            src="/logo.jpeg"
+            src="/logo.png"
             alt="Crikly"
             className="w-28 h-auto object-contain mb-12"
           />
