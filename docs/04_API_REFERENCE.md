@@ -76,56 +76,136 @@ Add a role to the authenticated user's account.
 
 ### GET /api/coaches
 Search for coaches. Supports filtering and sorting.
+**Status: Implemented — CG-01a**
+**Auth: Public — no token required**
 
 **Query params:**
 ```
 sport_id        UUID
 location_lat    float
 location_lng    float
-radius_km       integer (default: 10)
+radius_km       integer (default: 10, max: 500)
 session_type    'individual' | 'group'
 skill_level     'beginner' | 'intermediate' | 'advanced'
 min_price       integer (pence)
 max_price       integer (pence)
 dbs_verified    boolean
 gender          'male' | 'female' | 'other'
-min_rating      float
+min_rating      float (0–5)
 sort            'nearest' | 'rating' | 'price_asc' | 'available'
 page            integer (default: 1)
 limit           integer (default: 20, max: 50)
 ```
 
+**Notes:**
+- `location_lat` and `location_lng` must be supplied together or not at all
+- `sort=nearest` requires location params; coaches without coordinates sort last
+- Featured coaches (`is_featured=true`) always appear before organic results, sorted by rating
+- Only coaches where `is_profile_live=true` and `is_suspended=false` are returned
+
 **Response 200:**
 ```json
 {
-  "coaches": [...],
+  "coaches": [
+    {
+      "id": "uuid",
+      "full_name": "James Wright",
+      "bio": "ECB Level 2 coach with 8 years experience...",
+      "location_city": "Birmingham",
+      "location_lat": 52.4862,
+      "location_lng": -1.8904,
+      "rating_avg": 4.8,
+      "rating_count": 23,
+      "sessions_completed": 47,
+      "dbs_status": "verified",
+      "is_featured": false,
+      "gender": "male",
+      "distance_km": 3.2,
+      "sports": [
+        {
+          "sport_id": "uuid",
+          "sport_name": "Cricket",
+          "sport_slug": "cricket",
+          "session_types": ["individual", "group"],
+          "skill_levels": ["beginner", "intermediate"],
+          "min_price_pence": 4500
+        }
+      ],
+      "primary_photo": "https://gzehxfnlfogkhadejowo.supabase.co/storage/v1/..."
+    }
+  ],
   "total": 42,
   "page": 1,
   "pages": 3
 }
 ```
 
+**Error 400:** Validation failure — invalid param types or out-of-range values
+
 ---
 
 ### GET /api/coaches/[id]
 Get a single coach's full public profile.
+**Status: Implemented — CG-01b**
+**Auth: Public — no token required**
 
 **Response 200:**
 ```json
 {
   "id": "uuid",
-  "full_name": "...",
-  "bio": "...",
-  "rating_avg": 4.8,
-  "rating_count": 47,
-  "sessions_completed": 47,
+  "full_name": "James Wright",
+  "bio": "ECB Level 2 coach...",
+  "years_experience": 8,
+  "location_city": "Birmingham",
+  "location_lat": 52.4862,
+  "location_lng": -1.8904,
+  "gender": "male",
+  "languages": ["English"],
   "dbs_status": "verified",
-  "sports": [...],
-  "qualifications": [...],
-  "photos": [...],
-  "availability": [...]
+  "dbs_verified_at": "2025-09-01T00:00:00Z",
+  "is_featured": false,
+  "rating_avg": 4.8,
+  "rating_count": 23,
+  "sessions_completed": 47,
+  "cancellation_window_hours": 24,
+  "min_advance_hours": 24,
+  "max_advance_days": 56,
+  "sports": [
+    {
+      "sport_id": "uuid",
+      "sport_name": "Cricket",
+      "sport_slug": "cricket",
+      "session_types": ["individual", "group"],
+      "skill_levels": ["beginner", "intermediate"],
+      "price_individual_pence": 4500,
+      "price_group_pence": 2500,
+      "max_group_size": 6,
+      "session_duration_minutes": 60,
+      "currency": "GBP"
+    }
+  ],
+  "qualifications": [
+    {
+      "id": "uuid",
+      "name": "ECB Level 2",
+      "issuing_body": "ECB",
+      "issued_date": "2022-06-01",
+      "expiry_date": "2027-06-01",
+      "status": "active",
+      "notes": null,
+      "certificate_url": null
+    }
+  ],
+  "photos": [
+    { "id": "uuid", "photo_url": "https://...", "is_primary": true, "sort_order": 0 }
+  ],
+  "availability": [
+    { "id": "uuid", "sport_id": null, "day_of_week": 6, "start_time": "09:00", "end_time": "12:00" }
+  ]
 }
 ```
+
+**Error 404:** Coach not found or not live
 
 ---
 
@@ -139,29 +219,45 @@ Create or update the authenticated coach's profile.
 ---
 
 ### GET /api/coaches/[id]/availability
-Get available slots for a coach.
+Get availability templates, blocked dates, and booking policy for a coach.
+**Status: Implemented — CG-01b**
+**Auth: Public — no token required**
 
 **Query params:**
 ```
-from_date   date (YYYY-MM-DD)
-to_date     date (YYYY-MM-DD)
-sport_id    UUID (optional)
+from_date   date (YYYY-MM-DD, optional)
+to_date     date (YYYY-MM-DD, optional)
+sport_id    UUID (optional) — filters to templates for this sport or all-sport templates
 ```
 
 **Response 200:**
 ```json
 {
-  "slots": [
+  "availability": [
     {
-      "date": "2026-04-12",
+      "id": "uuid",
+      "sport_id": null,
       "day_of_week": 6,
       "start_time": "09:00",
-      "end_time": "10:00",
-      "available": true
+      "end_time": "12:00"
     }
-  ]
+  ],
+  "blocked_dates": ["2026-04-19", "2026-04-20"],
+  "booking_policy": {
+    "cancellation_window_hours": 24,
+    "min_advance_hours": 24,
+    "max_advance_days": 56
+  }
 }
 ```
+
+**Notes:**
+- `availability` contains weekly recurring templates (active only)
+- `blocked_dates` are expanded from ranges to individual YYYY-MM-DD strings
+- `sport_id` filter matches templates for that sport OR templates with no sport (applies to all)
+
+**Error 400:** Validation failure — invalid date format or from_date > to_date
+**Error 404:** Coach not found or not live
 
 ---
 

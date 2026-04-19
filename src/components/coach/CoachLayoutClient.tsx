@@ -93,7 +93,7 @@ export function CoachLayoutClient({
       <aside className="hidden lg:flex w-72 shrink-0 flex-col bg-white border-r border-gray-100 p-6 sticky top-0 h-screen z-10">
         <div className="mb-6 flex justify-center">
           <img
-            src="/logo.jpeg"
+            src="/logo.png"
             alt="Crikly"
             className="w-36 h-auto object-contain"
           />

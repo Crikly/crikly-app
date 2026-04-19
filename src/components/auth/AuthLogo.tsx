@@ -10,7 +10,7 @@ export function AuthLogo() {
       }}
     >
       <img
-        src="/logo.jpeg"
+        src="/logo.png"
         alt="Crikly"
         className="h-8 w-auto object-contain"
       />
