@@ -1,94 +1,123 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
-import { CheckCircle2, Building2, FileText, Info, ExternalLink, ChevronRight } from 'lucide-react'
+import React, { useState, useEffect, useCallback } from 'react'
+import { Building2, FileText, Info, ExternalLink, ChevronRight, AlertCircle, CheckCircle2 } from 'lucide-react'
 
-// CD-11: API response type
-interface CoachProfileResponse {
-  id: string
-  user_profile_id: string
-  full_name: string
-  avatar_url: string | null
-  location_city: string | null
-  location_postcode: string | null
-  bio: string | null
-  years_experience: number | null
-  dbs_status: 'none' | 'pending' | 'verified' | 'expired'
-  is_profile_live: boolean
-  stripe_onboarding_complete: boolean
-  stripe_account_id?: string | null
-  cancellation_window_hours: number
-  min_advance_hours: number
-  max_advance_days: number
-  rating_avg: number | null
-  rating_count: number
-  sessions_completed: number
-  gender: string | null
-  created_at: string
-  updated_at: string
+// CG-03: Stripe Connect status from GET /api/payments/connect/onboard
+interface StripeConnectStatus {
+  connected: boolean
+  charges_enabled?: boolean
+  payouts_enabled?: boolean
+  details_submitted?: boolean
 }
 
 export function GetPaid() {
-  // CD-11: State for Stripe connection status
   const [loading, setLoading] = useState(true)
+  const [connecting, setConnecting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [stripeConnected, setStripeConnected] = useState(false)
-  
-  // CD-11: Fetch Stripe connection status on mount
-  useEffect(() => {
-    const fetchStripeStatus = async () => {
-      try {
-        setLoading(true)
-        setError(null)
-        
-        const response = await fetch('/api/coaches/profile')
-        if (!response.ok) {
-          throw new Error('Failed to fetch profile')
-        }
-        
-        const data: CoachProfileResponse = await response.json()
-        setStripeConnected(data.stripe_onboarding_complete)
-      } catch (err) {
-        console.error('Failed to fetch Stripe status:', err)
-        setError('Failed to load payment information. Please try again.')
-      } finally {
-        setLoading(false)
-      }
+  const [stripeStatus, setStripeStatus] = useState<StripeConnectStatus>({ connected: false })
+  // CG-03: Banner shown after returning from Stripe onboarding
+  const [returnBanner, setReturnBanner] = useState<'success' | 'refresh' | null>(null)
+
+  // CG-03: Fetch real Stripe Connect status
+  const fetchStripeStatus = useCallback(async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      const response = await fetch('/api/payments/connect/onboard')
+      if (!response.ok) throw new Error('Failed to fetch Stripe status')
+      const data: StripeConnectStatus = await response.json()
+      setStripeStatus(data)
+    } catch (err) {
+      console.error('[GetPaid] Failed to fetch Stripe status:', err)
+      setError('Failed to load payment information. Please try again.')
+    } finally {
+      setLoading(false)
     }
-    
-    fetchStripeStatus()
   }, [])
+
+  // CG-03: On mount — detect return from Stripe and fetch status
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('success') === 'true') {
+      setReturnBanner('success')
+      window.history.replaceState({}, '', '/coach/get-paid')
+    } else if (params.get('refresh') === 'true') {
+      setReturnBanner('refresh')
+      window.history.replaceState({}, '', '/coach/get-paid')
+    }
+    fetchStripeStatus()
+  }, [fetchStripeStatus])
+
+  // CG-03: Start or resume Stripe Connect onboarding
+  const handleConnectStripe = async () => {
+    try {
+      setConnecting(true)
+      setError(null)
+      const response = await fetch('/api/payments/connect/onboard', { method: 'POST' })
+      if (!response.ok) throw new Error('Failed to start Stripe onboarding')
+      const { onboarding_url } = await response.json() as { onboarding_url: string }
+      window.location.href = onboarding_url
+    } catch (err) {
+      console.error('[GetPaid] Stripe onboarding error:', err)
+      setError('Could not connect to Stripe. Please try again.')
+      setConnecting(false)
+    }
+  }
+
+  // Derived state — fully live means Stripe can charge and pay out
+  const fullyConnected = stripeStatus.connected &&
+    stripeStatus.charges_enabled &&
+    stripeStatus.payouts_enabled
+
+  const partiallyConnected = stripeStatus.connected && !fullyConnected
   return (
     <div className="min-h-screen flex justify-center font-sans p-6 lg:p-10" style={{ fontFamily: "'DM Sans', sans-serif" }}>
       <div className="w-full max-w-3xl flex flex-col gap-8 pb-20">
-        
+
         <div>
           <h1 className="text-[28px] md:text-[32px] font-bold text-gray-900 tracking-tight">Get Paid</h1>
         </div>
-        
-        {/* CD-11: Loading state */}
+
+        {/* CG-03: Return banners from Stripe onboarding */}
+        {returnBanner === 'success' && (
+          <div className="flex items-start gap-3 bg-green-50 border border-green-200 rounded-xl px-4 py-3">
+            <CheckCircle2 size={18} className="text-green-600 mt-0.5 shrink-0" />
+            <p className="text-[14px] text-green-800 font-medium">Bank account connected successfully. You&apos;re ready to receive payouts.</p>
+          </div>
+        )}
+        {returnBanner === 'refresh' && (
+          <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+            <AlertCircle size={18} className="text-amber-600 mt-0.5 shrink-0" />
+            <div className="flex-1">
+              <p className="text-[14px] text-amber-800 font-medium">Setup wasn&apos;t completed. You can try again below.</p>
+            </div>
+          </div>
+        )}
+
+        {/* Loading state */}
         {loading ? (
           <div className="py-16 flex flex-col items-center justify-center">
             <div className="w-8 h-8 border-3 border-gray-200 border-t-[#0077CC] rounded-full animate-spin mb-3" />
             <p className="text-[14px] text-gray-500">Loading payment information...</p>
           </div>
         ) : error ? (
-          // CD-11: Error state
+          // Error state
           <div className="py-16 flex flex-col items-center justify-center text-center px-4">
             <div className="w-16 h-16 bg-red-50 text-red-600 rounded-full flex items-center justify-center mb-4">
-              <span className="text-2xl">⚠</span>
+              <AlertCircle size={32} />
             </div>
             <h3 className="text-[18px] font-bold text-gray-900 mb-2">Failed to load payment information</h3>
             <p className="text-[14px] text-gray-500 mb-6">{error}</p>
-            <button 
-              onClick={() => window.location.reload()}
+            <button
+              onClick={() => fetchStripeStatus()}
               className="bg-[#0077CC] hover:bg-[#0066AA] text-white px-6 py-3 rounded-xl text-[15px] font-bold transition-colors"
             >
               Try Again
             </button>
           </div>
-        ) : !stripeConnected ? (
-          // CD-11: Not connected state
+        ) : !stripeStatus.connected ? (
+          // CG-03: Not connected state — real Connect button
           <div className="bg-white border border-[#E2E8F0] rounded-[16px] p-8 shadow-sm flex flex-col items-center text-center gap-6">
             <div className="w-16 h-16 rounded-full bg-[#F0F7FF] flex items-center justify-center">
               <Building2 size={32} className="text-[#0077CC]" />
@@ -99,20 +128,48 @@ export function GetPaid() {
                 Set up Stripe to receive payments from parents. It takes 2 minutes and payouts are automatic.
               </p>
             </div>
-            <button 
-              onClick={() => {
-                // CD-11: CTA placeholder - actual Stripe Connect flow is CG-03
-                alert('Stripe Connect onboarding will be implemented in CG-03')
-              }}
-              className="bg-[#0077CC] hover:bg-[#0066AA] text-white px-8 py-3.5 rounded-xl text-[15px] font-bold transition-colors"
+            <button
+              onClick={handleConnectStripe}
+              disabled={connecting}
+              className="bg-[#0077CC] hover:bg-[#0066AA] disabled:opacity-60 disabled:cursor-not-allowed text-white px-8 py-3.5 rounded-xl text-[15px] font-bold transition-colors flex items-center gap-2"
             >
-              Connect with Stripe
+              {connecting ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                  Connecting…
+                </>
+              ) : 'Connect with Stripe'}
             </button>
             <div className="bg-[#F0F7FF] rounded-lg px-4 py-3 max-w-md">
               <p className="text-[12px] text-[#0C447C] leading-relaxed">
-                🔒 Stripe is trusted by millions of businesses worldwide. Your bank details are encrypted and never stored on Crikly.
+                Stripe is trusted by millions of businesses worldwide. Your bank details are encrypted and never stored on Crikly.
               </p>
             </div>
+          </div>
+        ) : partiallyConnected ? (
+          // CG-03: Connected but setup incomplete — Finish setup button
+          <div className="bg-white border border-amber-200 rounded-[16px] p-8 shadow-sm flex flex-col items-center text-center gap-6">
+            <div className="w-16 h-16 rounded-full bg-amber-50 flex items-center justify-center">
+              <AlertCircle size={32} className="text-amber-500" />
+            </div>
+            <div>
+              <h2 className="text-[20px] font-bold text-gray-900 mb-2">Almost there — finish your setup</h2>
+              <p className="text-[14px] text-gray-500 max-w-md">
+                Your Stripe account is connected but needs a few more details before you can receive payouts.
+              </p>
+            </div>
+            <button
+              onClick={handleConnectStripe}
+              disabled={connecting}
+              className="bg-amber-500 hover:bg-amber-600 disabled:opacity-60 disabled:cursor-not-allowed text-white px-8 py-3.5 rounded-xl text-[15px] font-bold transition-colors flex items-center gap-2"
+            >
+              {connecting ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                  Loading…
+                </>
+              ) : 'Finish setup'}
+            </button>
           </div>
         ) : (
           // CD-11: Connected state (existing UI)

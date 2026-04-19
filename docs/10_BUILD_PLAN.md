@@ -400,7 +400,7 @@ Critical tasks required before any coach can go live on the platform.
 | Fix-43 | Add reviews to coach public profile — API + frontend review cards | 🟡 Medium | CG-02 | ✅ |
 | Fix-41 | Fallback to avatar_url when coach_photos empty on public profile | 🟢 Low | CG-02 | ⚪ |
 | Fix-42 | Build coach photo upload UI in Profile Hub | 🟢 Low | CG-02 | ⚪ |
-| CG-03 | Stripe Connect onboarding — real redirect (C-11, C-19) | 🔴 High | CD-03 | ⚪ |
+| CG-03 | Stripe Connect onboarding — real redirect (C-11, C-19) | 🔴 High | CD-03 | ✅ |
 | CG-04 | Email notifications — booking received, confirmed (B-17) | 🟡 Medium | CG-01 | ⚪ |
 | CG-05 | Push notifications via OneSignal (B-18) | 🟡 Medium | CG-01 | ⚪ |
 | CG-06 | Integration tests — all coach API routes (C-23) | 🟡 Medium | CD-03 | ⚪ |

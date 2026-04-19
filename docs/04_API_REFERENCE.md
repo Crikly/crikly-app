@@ -385,13 +385,47 @@ Stripe webhook handler. Verifies signature, processes events.
 
 ---
 
+### GET /api/payments/connect/onboard
+Returns the authenticated coach's current Stripe Connect status.
+
+**Auth:** Required (coach session)
+
+**Response 200 — no account linked:**
+```json
+{ "connected": false }
+```
+
+**Response 200 — account linked:**
+```json
+{
+  "connected": true,
+  "charges_enabled": true,
+  "payouts_enabled": true,
+  "details_submitted": true
+}
+```
+
+**Errors:** 401 Unauthorised, 404 coach profile not found, 500 internal
+
+---
+
 ### POST /api/payments/connect/onboard
-Generate Stripe Connect onboarding URL for coach.
+Creates a Stripe Express account (if not already linked) and returns an
+account link URL to redirect the coach through Stripe onboarding.
+On subsequent calls, generates a fresh account link for the existing account.
+
+**Auth:** Required (coach session)
 
 **Response 200:**
 ```json
 { "onboarding_url": "https://connect.stripe.com/..." }
 ```
+
+**Return URLs:**
+- Success: `NEXT_PUBLIC_APP_URL/coach/get-paid?success=true`
+- Refresh: `NEXT_PUBLIC_APP_URL/coach/get-paid?refresh=true`
+
+**Errors:** 401 Unauthorised, 404 coach profile not found, 500 internal
 
 ---
 
