@@ -137,7 +137,7 @@ const WEEK_DAYS = [
 // ─── Data Fetching ────────────────────────────────────────────────────────────
 
 async function fetchCoachProfile(id: string): Promise<CoachProfile | null> {
-  const base = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
+  const base = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
   const res = await fetch(`${base}/api/coaches/${id}`, {
     next: { revalidate: 30 },
   })
@@ -147,7 +147,7 @@ async function fetchCoachProfile(id: string): Promise<CoachProfile | null> {
 }
 
 async function fetchAvailability(id: string): Promise<AvailabilityData | null> {
-  const base = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
+  const base = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
   const res = await fetch(`${base}/api/coaches/${id}/availability`, {
     next: { revalidate: 30 },
   })
