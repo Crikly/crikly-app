@@ -324,7 +324,7 @@ other screens within the same task.
 | CF-D11c | Location field — Google Places autocomplete on ProfileStep and ProfileEdit | @FrontendDeveloper | 🟢 | develop | ✅ |
 | CF-D12 | Onboarding sport selection + pricing — save bar pattern (back left, save right, no border-top) | @FrontendDeveloper | 🟢 | develop | ✅ |
 | CF-D13 | Onboarding qualifications — replace emoji icons with Lucide, replace category dropdown with tiles | @FrontendDeveloper | 🟢 | develop | ⚪ |
-| CF-R04 | Design consistency audit — extract fonts, colours, buttons, icons, spacing, card patterns across all coach screens. Automated script first, then visual pass. Runs AFTER CG-07 complete. | @FrontendDeveloper | 🟢 | — | ⚪ |
+| CF-R04 | Coach public profile design alignment — align hero name typography, subtitle, location display, DBS badge, trust row, about fact sidebar, booking card session picker to Claude Design spec. Read docs/design/coach-profile.html. | @FrontendDeveloper | 🟢 | — | ⚪ |
 
 ### 3E — Data Wiring (CD tasks)
 
@@ -393,8 +393,13 @@ Critical tasks required before any coach can go live on the platform.
 
 | ID | Task | Risk | Depends On | Status |
 |---|---|---|---|---|
-| CG-01 | Coach search API — coach appears in search results (P-09, P-10, P-11) | 🔴 High | CD-03 | ⚪ |
-| CG-02 | Coach public profile page — what parents see | 🔴 High | CD-03 | ⚪ |
+| CG-01 | Coach search API — GET /api/coaches public search route (P-09, P-10, P-11) | 🔴 High | CD-03 | ✅ |
+| CG-01b | Coach profile + availability API — GET /api/coaches/[id] and GET /api/coaches/[id]/availability | 🔴 High | CG-01 | ✅ |
+| CG-02 | Coach public profile page — what parents see | 🔴 High | CG-01b | ✅ |
+| Fix-40 | Coach public profile polish — logo, preview link, mobile gallery (note: logo fix required hard refresh Cmd+Shift+R to clear cached .jpeg) | 🟢 Low | CG-02 | ✅ |
+| Fix-43 | Add reviews to coach public profile — API + frontend review cards | 🟡 Medium | CG-02 | ✅ |
+| Fix-41 | Fallback to avatar_url when coach_photos empty on public profile | 🟢 Low | CG-02 | ⚪ |
+| Fix-42 | Build coach photo upload UI in Profile Hub | 🟢 Low | CG-02 | ⚪ |
 | CG-03 | Stripe Connect onboarding — real redirect (C-11, C-19) | 🔴 High | CD-03 | ⚪ |
 | CG-04 | Email notifications — booking received, confirmed (B-17) | 🟡 Medium | CG-01 | ⚪ |
 | CG-05 | Push notifications via OneSignal (B-18) | 🟡 Medium | CG-01 | ⚪ |
@@ -437,9 +442,9 @@ Parents manage child profiles, search coaches, players manage their own profiles
 |---|---|---|---|---|---|
 | P-07 | Create CRUD /api/children — child profiles | @BackendDeveloper | 🟡 | feature/parent | ⚪ |
 | P-08 | Create CRUD /api/players/profile — player profiles (16+ gate) | @BackendDeveloper | 🟡 | feature/player | ⚪ |
-| P-09 | Create GET /api/coaches — search with all filters + sorting | @BackendDeveloper | 🟡 | feature/search | ⚪ |
-| P-10 | Create GET /api/coaches/[id] — full public profile | @BackendDeveloper | 🟢 | feature/search | ⚪ |
-| P-11 | Create GET /api/coaches/[id]/availability — available slots | @BackendDeveloper | 🟡 | feature/search | ⚪ |
+| P-09 | Create GET /api/coaches — search with all filters + sorting (built as CG-01, CG-01b in Step 3) | @BackendDeveloper | 🟡 | feature/search | ⚪ |
+| P-10 | Create GET /api/coaches/[id] — full public profile (built as CG-01, CG-01b in Step 3) | @BackendDeveloper | 🟢 | feature/search | ⚪ |
+| P-11 | Create GET /api/coaches/[id]/availability — available slots (built as CG-01, CG-01b in Step 3) | @BackendDeveloper | 🟡 | feature/search | ⚪ |
 
 ### 4C — Parent & Player Frontend
 
@@ -601,6 +606,8 @@ Lasith can manage the platform, approve DBS, configure everything.
 | L-02c | Stripe webhook stress test — idempotency under duplicate/burst events | @QAEngineer | 🔴 | ⚪ |
 | L-02d | Database query audit — no query over 200ms p95 on coach search, availability, booking joins | @DatabaseArchitect | 🟡 | ⚪ |
 | L-02e | Supabase connection pool test — 50 concurrent Vercel connections without exhausting pool | @DevOpsEngineer | 🟡 | ⚪ |
+| SCALE-01 | Replace JS coach search filtering with PostGIS + Supabase RPC — trigger: coach count > 200 or L-02b load test fails | @DatabaseArchitect | 🟡 | ⚪ |
+| L-UX01 | Replace UUID with human-readable slug in coach public profile URL — /coaches/lasith-jayarathne | @BackendDeveloper | 🟡 | ⚪ |
 | L-03 | Security review — RLS, auth, child data, payments | Manual | 🔴 | ⚪ |
 | L-04 | Write Terms & Conditions | Manual | 🟢 | ⚪ |
 | L-05 | Write Privacy Policy (GDPR compliant) | Manual | 🟢 | ⚪ |
@@ -701,14 +708,14 @@ Three-sided marketplace — coaches, parents, and venues.
 | Step 1B — Migrations | Phase 1 | 17 | 17 ✅ | 0 |
 | Step 1C — Design Foundation | Phase 1 | 6 | 6 ✅ | 0 |
 | Step 2 — Auth | Phase 1 | 15 | 15 ✅ | 0 |
-| Step 3 — Coach | Phase 1 | 60 | 56 ✅ | 4 |
+| Step 3 — Coach | Phase 1 | 62 | 58 ✅ | 4 |
 | Step 4 — Parent & Player | Phase 1 | 21 | 0 | 21 |
 | Step 5 — Booking & Payments | Phase 1 | 42 | 0 | 42 |
 | Step 6 — Admin | Phase 1 | 24 | 0 | 24 |
-| Step 7 — Pre-Launch | Phase 1 | 17 | 0 | 17 |
+| Step 7 — Pre-Launch | Phase 1 | 19 | 0 | 19 |
 | Step 8 — Mobile App | **Product Phase 2** | 20 | 0 | 20 |
 | Step 9 — Venues | **Product Phase 3** | 11 | 0 | 11 |
-| **Total** | | **263** | **124** | **139** |
+| **Total** | | **267** | **126** | **141** |
 
 ---
 
