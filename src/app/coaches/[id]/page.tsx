@@ -179,8 +179,8 @@ export default async function CoachProfilePage({
     <div className="min-h-screen bg-white">
       {/* ── Top nav ─────────────────────────────────────────────────────── */}
       <nav className="sticky top-0 z-40 h-16 bg-white border-b border-gray-100 flex items-center justify-between px-4 sm:px-6">
-        <Link href="/" className="font-bold text-xl text-[#0077CC]" data-testid="nav-logo">
-          Crikly
+        <Link href="/" data-testid="nav-logo">
+          <img src="/logo.jpeg" alt="Crikly" className="h-8 w-auto object-contain" />
         </Link>
         <Link
           href="/search"
@@ -392,9 +392,10 @@ function HeroGallery({ photos, coachName }: { photos: Photo[]; coachName: string
               isMain
                 ? 'md:[grid-column:1/-1] lg:[grid-column:auto] lg:row-span-2'
                 : '',
+              // i=1: span full width at md (2-tile tablet layout), revert at lg
+              i === 1 ? 'md:[grid-column:1/-1] lg:[grid-column:auto]' : '',
               hiddenLg && i === 2 ? 'hidden lg:block' : '',
               hiddenLg && i === 3 ? 'hidden lg:block' : '',
-              hiddenMd && !hiddenLg ? 'hidden md:block' : '',
               i === 4 ? 'hidden lg:block' : '',
             ]
               .filter(Boolean)

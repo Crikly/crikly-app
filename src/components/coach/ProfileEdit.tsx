@@ -287,11 +287,11 @@ export function ProfileEdit() {
               {/* Action buttons */}
               {/* CF-D07b POLISH 1: Added margin-left auto to push buttons to far right */}
               <div className="flex gap-2 shrink-0 ml-auto">
-                <button 
-                  onClick={() => {
-                    // TODO CF-D07: wire to public profile preview
-                  }}
-                  className="px-3 py-1.5 bg-white border border-gray-200 text-gray-600 text-[11px] font-medium rounded-full hover:bg-gray-50 transition-colors flex items-center gap-1"
+                <button
+                  onClick={() => profile && window.open(`/coaches/${profile.id}`, '_blank')}
+                  disabled={!profile}
+                  className="px-3 py-1.5 bg-white border border-gray-200 text-gray-600 text-[11px] font-medium rounded-full hover:bg-gray-50 transition-colors flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                  data-testid="preview-profile-btn"
                 >
                   Preview <ExternalLink size={10} />
                 </button>
