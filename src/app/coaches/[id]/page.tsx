@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import { BioExpander } from './_components/BioExpander'
 import { ShareButton } from './_components/ShareButton'
+import { BookingCard } from './_components/BookingCard'
 
 const fraunces = Fraunces({ subsets: ['latin'], weight: ['500'], variable: '--font-fraunces' })
 
@@ -425,7 +426,13 @@ export default async function CoachProfilePage({
 
           {/* Right — desktop booking card */}
           <aside className="hidden lg:block sticky top-24">
-            <BookCard coachId={coach.id} minPrice={minPrice} sports={coach.sports} policy={avail?.booking_policy ?? null} />
+            <BookingCard
+              coachId={coach.id}
+              sports={coach.sports}
+              priceFrom={minPrice}
+              ratingAvg={coach.rating_avg}
+              ratingCount={coach.rating_count}
+            />
           </aside>
         </div>
       </main>
@@ -825,101 +832,3 @@ function SafetySection({
   )
 }
 
-// ─── Book Card (desktop aside) ────────────────────────────────────────────────
-
-function BookCard({
-  coachId,
-  minPrice,
-  sports,
-  policy,
-}: {
-  coachId: string
-  minPrice: number | null
-  sports: CoachSport[]
-  policy: { cancellation_window_hours: number; min_advance_hours: number; max_advance_days: number } | null
-}) {
-  return (
-    <div
-      className="border border-gray-200 rounded-2xl p-6 shadow-sm"
-      data-testid="book-card"
-    >
-      {/* Price */}
-      <div className="mb-5">
-        {minPrice !== null ? (
-          <>
-            <p className="text-2xl font-bold text-gray-900">
-              From {formatPence(minPrice)}
-            </p>
-            <p className="text-sm text-gray-500 mt-0.5">per session</p>
-          </>
-        ) : (
-          <p className="text-gray-500 text-sm">Price on request</p>
-        )}
-      </div>
-
-      {/* Sports quick list */}
-      {sports.length > 0 && (
-        <div className="mb-5 space-y-2">
-          {sports.map(s => (
-            <div key={s.sport_id} className="flex items-center justify-between text-sm">
-              <span className="text-gray-700">{s.sport_name}</span>
-              <span className="font-medium text-gray-900">
-                {s.price_individual_pence ? formatPence(s.price_individual_pence) : '–'}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Session picker */}
-      <div className="mb-5 border border-gray-200 rounded-xl overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
-          <div>
-            <p className="text-[11px] uppercase tracking-wide font-medium text-gray-500">Session</p>
-            <p className="text-[15px] font-medium text-gray-900 mt-0.5">
-              {sports[0]
-                ? `${sports[0].session_types[0] === 'group' ? 'Group' : '1-to-1'} · ${sports[0].session_duration_minutes} min`
-                : '1-to-1 · 60 min'}
-            </p>
-          </div>
-          <ChevronRight className="w-4 h-4 text-gray-400 flex-shrink-0" />
-        </div>
-        <div className="flex">
-          <div className="flex-1 px-4 py-3 border-r border-gray-200">
-            <p className="text-[11px] uppercase tracking-wide font-medium text-gray-500">Date</p>
-            <p className="text-[15px] font-medium text-gray-400 mt-0.5">Select date</p>
-          </div>
-          <div className="flex-1 px-4 py-3">
-            <p className="text-[11px] uppercase tracking-wide font-medium text-gray-500">Time</p>
-            <p className="text-[15px] font-medium text-gray-400 mt-0.5">Select time</p>
-          </div>
-        </div>
-      </div>
-
-      {/* CTA */}
-      <Link
-        href={`/book/${coachId}`}
-        className="flex items-center justify-center w-full h-12 rounded-xl bg-[#0077CC] text-white font-semibold hover:bg-[#005fa3] transition-colors"
-        data-testid="desktop-book-cta"
-      >
-        Book a session
-      </Link>
-
-      {/* Policy */}
-      {policy && (
-        <div className="mt-4 space-y-2">
-          <div className="flex items-center gap-2 text-xs text-gray-500">
-            <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
-            Book up to {policy.max_advance_days} days ahead
-          </div>
-          <div className="flex items-center gap-2 text-xs text-gray-500">
-            <Clock className="w-3.5 h-3.5 flex-shrink-0" />
-            Cancel free {policy.cancellation_window_hours}+ hours before
-          </div>
-        </div>
-      )}
-
-      <p className="mt-4 text-xs text-center text-gray-400">You won&apos;t be charged yet</p>
-    </div>
-  )
-}
