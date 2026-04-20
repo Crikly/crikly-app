@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database'
 
 type BookingRow = Database['public']['Tables']['bookings']['Row']
@@ -7,6 +8,14 @@ type Tab = 'today' | 'upcoming' | 'past' | 'cancelled'
 
 const VALID_TABS: Tab[] = ['today', 'upcoming', 'past', 'cancelled']
 const PAGE_SIZE = 20
+
+// Service-role client for user_profiles lookups.
+// user_profiles RLS is "own record only" — service role bypasses it safely
+// since we only read the booker's display name.
+const supabaseAdmin = createSupabaseClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+)
 
 // ─── GET /api/coaches/bookings ────────────────────────────────────────────────
 
@@ -94,7 +103,31 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Failed to fetch bookings' }, { status: 500 })
   }
 
-  const items = (bookings as BookingRow[]).map((b) => ({
+  const rows = bookings as BookingRow[]
+
+  // 7. Batch-fetch booker names via admin client (user_profiles RLS blocks server client)
+  const bookerIds = [...new Set(rows.map((b) => b.booked_by_user_id))]
+  const bookerNameMap: Record<string, string> = {}
+  if (bookerIds.length > 0) {
+    const { data: profiles } = await supabaseAdmin
+      .from('user_profiles')
+      .select('id, full_name')
+      .in('id', bookerIds)
+    profiles?.forEach((p) => { bookerNameMap[p.id] = p.full_name })
+  }
+
+  // 8. Batch-fetch child names (coach can read child_profiles via RLS for their bookings)
+  const childIds = [...new Set(rows.map((b) => b.child_profile_id).filter(Boolean))] as string[]
+  const childNameMap: Record<string, string> = {}
+  if (childIds.length > 0) {
+    const { data: children } = await supabase
+      .from('child_profiles')
+      .select('id, full_name')
+      .in('id', childIds)
+    children?.forEach((c) => { childNameMap[c.id] = c.full_name })
+  }
+
+  const items = rows.map((b) => ({
     id: b.id,
     booking_reference: b.booking_reference,
     session_date: b.session_date,
@@ -107,7 +140,9 @@ export async function GET(request: Request) {
     parent_total_pence: b.parent_total_pence,
     currency: b.currency,
     booked_by_user_profile_id: b.booked_by_user_id,
+    booked_by_name: bookerNameMap[b.booked_by_user_id] ?? null,
     child_profile_id: b.child_profile_id,
+    child_name: b.child_profile_id ? (childNameMap[b.child_profile_id] ?? null) : null,
     messaging_unlocked: b.messaging_unlocked,
     created_at: b.created_at,
   }))
