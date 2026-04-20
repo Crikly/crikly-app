@@ -279,7 +279,7 @@ export function Earnings() {
     summary && summary.last_month_pence > 0
       ? Math.round(((summary.this_month_pence - summary.last_month_pence) / summary.last_month_pence) * 100)
       : null
-  const showTrend = trendPct !== null && trendPct !== 0
+  const showTrend = period === 'This month' && trendPct !== null && trendPct !== 0
 
   // Avg sub-label: only when period === 'This month' and last month has data
   let lastMonthAvg = 0
