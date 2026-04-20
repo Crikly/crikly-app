@@ -181,12 +181,10 @@ export default async function CoachProfilePage({
 }) {
   const { id } = await params
 
-  const [coach, avail] = await Promise.all([
-    fetchCoachProfile(id),
-    fetchAvailability(id),
-  ])
-
+  const coach = await fetchCoachProfile(id)
   if (!coach) notFound()
+
+  const avail = await fetchAvailability(coach.id)
 
   const minPrice = getMinPrice(coach.sports)
   const primaryPhoto = coach.photos.find(p => p.is_primary) ?? coach.photos[0] ?? null
