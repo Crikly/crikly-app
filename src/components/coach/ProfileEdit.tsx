@@ -23,6 +23,7 @@ interface CoachProfileResponse {
   rating_count: number
   sessions_completed: number
   gender: string | null
+  slug: string | null
   created_at: string
   updated_at: string
 }
@@ -312,7 +313,7 @@ export function ProfileEdit() {
               {/* CF-D07b POLISH 1: Added margin-left auto to push buttons to far right */}
               <div className="flex gap-2 shrink-0 ml-auto">
                 <button
-                  onClick={() => profile && window.open(`/coaches/${profile.id}`, '_blank')}
+                  onClick={() => profile && window.open(`/coaches/${profile.slug || profile.id}`, '_blank')}
                   disabled={!profile}
                   className="px-3 py-1.5 bg-white border border-gray-200 text-gray-600 text-[11px] font-medium rounded-full hover:bg-gray-50 transition-colors flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
                   data-testid="preview-profile-btn"
