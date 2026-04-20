@@ -1,8 +1,8 @@
 # Crikly — Comprehensive Build Plan
 
-**Version:** 2.6
+**Version:** 2.7
 **Last Updated:** April 2026
-**Changed:** SYNC-06 — added Fix-52, updated CF-R04h to ✅.
+**Changed:** SYNC-07 — CG-06 ✅.
 **This is the single source of truth for every task in the project.**
 
 ---
@@ -420,7 +420,7 @@ Critical tasks required before any coach can go live on the platform.
 | Fix-51 | Pass coach UUID not slug to availability API fetch | 🟢 Low | L-UX01 | ✅ |
 | Fix-52 | Fix UTC timezone day name bug in availability grid | 🟢 Low | CF-R04g | ✅ |
 | CG-05 | Push notifications via OneSignal (B-18) — BLOCKED: requires production deployment + OneSignal account setup. Deferred to after Step 5 booking flow. | 🟡 Medium | CG-01 | 🔴 |
-| CG-06 | Integration tests — all coach API routes (C-23) | 🟡 Medium | CD-03 | ⚪ |
+| CG-06 | Integration tests — all coach API routes (C-23) | 🟡 Medium | CD-03 | ✅ |
 | CG-07 | E2E test — full coach onboarding to profile live (C-24) | 🟡 Medium | CG-01, CG-02 | ⚪ |
 
 ### 3G — Coach Tests
