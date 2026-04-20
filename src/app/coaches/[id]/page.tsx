@@ -1,3 +1,4 @@
+import { Fraunces } from 'next/font/google'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
@@ -14,6 +15,8 @@ import {
   Globe,
 } from 'lucide-react'
 import { BioExpander } from './_components/BioExpander'
+
+const fraunces = Fraunces({ subsets: ['latin'], weight: ['500'], variable: '--font-fraunces' })
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -228,36 +231,39 @@ export default async function CoachProfilePage({
         {/* ── Hero gallery ────────────────────────────────────────────────── */}
         <HeroGallery photos={galleryPhotos} coachName={coach.full_name} />
 
-        {/* ── Coach name + rating ─────────────────────────────────────────── */}
-        <div className="mt-6 mb-2">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
-                {coach.full_name}
-              </h1>
-              {(coach.location_city || coach.location_postcode) && (
-                <p className="flex items-center gap-1.5 mt-1 text-gray-500 text-sm">
-                  <MapPin className="w-4 h-4 flex-shrink-0" />
-                  {coach.location_city || coach.location_postcode}
-                </p>
-              )}
-              {coach.dbs_status === 'verified' && (
-                <div className="inline-flex items-center gap-1.5 mt-2 px-2.5 py-1 rounded-full bg-[#E0F6F8]">
-                  <ShieldCheck className="w-3.5 h-3.5 text-[#006677]" />
-                  <span className="text-xs font-semibold text-[#006677]">DBS verified</span>
-                </div>
-              )}
-            </div>
+        {/* ── Coach name + meta row ───────────────────────────────────────── */}
+        <div className={`mt-6 mb-2 ${fraunces.variable}`}>
+          <h1
+            className="text-[34px] tracking-tight text-gray-900 leading-tight"
+            style={{ fontFamily: 'var(--font-fraunces), Georgia, serif', fontWeight: 500 }}
+          >
+            {coach.full_name}
+          </h1>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-2 text-sm text-gray-700">
             {coach.rating_avg !== null && coach.rating_count > 0 && (
-              <div className="flex items-center gap-1.5 bg-gray-50 rounded-xl px-4 py-2">
-                <Star className="w-5 h-5 fill-yellow-400 text-yellow-400" />
-                <span className="font-bold text-gray-900">
-                  {coach.rating_avg.toFixed(1)}
+              <>
+                <span className="flex items-center gap-1">
+                  <Star className="w-3.5 h-3.5 fill-yellow-400 text-yellow-400" />
+                  <span className="font-bold text-gray-900">{coach.rating_avg.toFixed(1)}</span>
+                  <span className="text-gray-500">({coach.rating_count} review{coach.rating_count !== 1 ? 's' : ''})</span>
                 </span>
-                <span className="text-gray-500 text-sm">
-                  ({coach.rating_count} review{coach.rating_count !== 1 ? 's' : ''})
+                <span className="text-gray-300">·</span>
+              </>
+            )}
+            {coach.dbs_status === 'verified' && (
+              <>
+                <span className="flex items-center gap-1 font-semibold text-[#006677]">
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  DBS verified
                 </span>
-              </div>
+                <span className="text-gray-300">·</span>
+              </>
+            )}
+            {(coach.location_city || coach.location_postcode) && (
+              <span className="flex items-center gap-1 text-gray-500">
+                <MapPin className="w-3.5 h-3.5 flex-shrink-0" />
+                {coach.location_city || coach.location_postcode}
+              </span>
             )}
           </div>
         </div>
@@ -275,18 +281,36 @@ export default async function CoachProfilePage({
                 <h2 id="about-heading" className="text-xl font-bold text-gray-900 mb-4">
                   About {coach.full_name.split(' ')[0]}
                 </h2>
-                <BioExpander bio={coach.bio} />
-                {coach.years_experience !== null && (
-                  <p className="mt-3 text-sm text-gray-500">
-                    {coach.years_experience} year{coach.years_experience !== 1 ? 's' : ''} of coaching experience
-                  </p>
-                )}
-                {coach.languages.length > 0 && (
-                  <div className="mt-3 flex items-center gap-2 text-sm text-gray-500">
-                    <Globe className="w-4 h-4 flex-shrink-0" />
-                    Coaches in {coach.languages.join(', ')}
+                <div className="flex flex-wrap gap-10">
+                  {/* Left — bio */}
+                  <div style={{ flex: '1 1 420px' }}>
+                    <BioExpander bio={coach.bio} />
                   </div>
-                )}
+                  {/* Right — fact sidebar */}
+                  <div style={{ flex: '0 0 260px', minWidth: '220px' }} className="space-y-5">
+                    {coach.years_experience !== null && (
+                      <div>
+                        <p className="text-[12px] uppercase tracking-wide font-semibold text-gray-500">Coaching for</p>
+                        <p className="text-[15px] text-gray-900 mt-1">{coach.years_experience} year{coach.years_experience !== 1 ? 's' : ''}</p>
+                      </div>
+                    )}
+                    {coach.languages.length > 0 && (
+                      <div>
+                        <p className="text-[12px] uppercase tracking-wide font-semibold text-gray-500">Speaks</p>
+                        <p className="flex items-center gap-1.5 text-[15px] text-gray-900 mt-1">
+                          <Globe className="w-4 h-4 flex-shrink-0 text-gray-400" />
+                          {coach.languages.join(', ')}
+                        </p>
+                      </div>
+                    )}
+                    {(coach.location_city || coach.location_postcode) && (
+                      <div>
+                        <p className="text-[12px] uppercase tracking-wide font-semibold text-gray-500">Based in</p>
+                        <p className="text-[15px] text-gray-900 mt-1">{coach.location_city || coach.location_postcode}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </section>
             )}
 
@@ -793,6 +817,31 @@ function BookCard({
           ))}
         </div>
       )}
+
+      {/* Session picker */}
+      <div className="mb-5 border border-gray-200 rounded-xl overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+          <div>
+            <p className="text-[11px] uppercase tracking-wide font-medium text-gray-500">Session</p>
+            <p className="text-[15px] font-medium text-gray-900 mt-0.5">
+              {sports[0]
+                ? `${sports[0].session_types[0] === 'group' ? 'Group' : '1-to-1'} · ${sports[0].session_duration_minutes} min`
+                : '1-to-1 · 60 min'}
+            </p>
+          </div>
+          <ChevronRight className="w-4 h-4 text-gray-400 flex-shrink-0" />
+        </div>
+        <div className="flex">
+          <div className="flex-1 px-4 py-3 border-r border-gray-200">
+            <p className="text-[11px] uppercase tracking-wide font-medium text-gray-500">Date</p>
+            <p className="text-[15px] font-medium text-gray-400 mt-0.5">Select date</p>
+          </div>
+          <div className="flex-1 px-4 py-3">
+            <p className="text-[11px] uppercase tracking-wide font-medium text-gray-500">Time</p>
+            <p className="text-[15px] font-medium text-gray-400 mt-0.5">Select time</p>
+          </div>
+        </div>
+      </div>
 
       {/* CTA */}
       <Link
