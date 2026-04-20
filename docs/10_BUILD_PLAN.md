@@ -2,7 +2,7 @@
 
 **Version:** 2.6
 **Last Updated:** April 2026
-**Changed:** SYNC-06 — added Fix-51, CF-R04g, CF-R04h; updated CF-R04f to ✅.
+**Changed:** SYNC-06 — added Fix-52, updated CF-R04h to ✅.
 **This is the single source of truth for every task in the project.**
 
 ---
@@ -332,7 +332,7 @@ other screens within the same task.
 | CF-R04e | Coach public profile design alignment Phase 5 — reviews rating breakdown bars, reviewer avatar circles | @FrontendDeveloper | 🟢 | develop | ✅ |
 | CF-R04f | Coach public profile Phase 6 — booking card auto-fill + share button | @FrontendDeveloper | 🟡 | develop | ✅ |
 | CF-R04g | Coach public profile Phase 7 — availability 7-day grid | @FrontendDeveloper | 🟢 | develop | ✅ |
-| CF-R04h | Coach public profile Phase 8 — slot click populates booking card + section dividers | @FrontendDeveloper | 🟢 | develop | 🟡 |
+| CF-R04h | Coach public profile Phase 8 — slot click populates booking card + section dividers + calendar link | @FrontendDeveloper | 🟢 | develop | ✅ |
 
 ### 3E — Data Wiring (CD tasks)
 
@@ -418,6 +418,7 @@ Critical tasks required before any coach can go live on the platform.
 | Fix-49 | Fix location data saved to wrong columns during onboarding | 🟢 Low | CG-02 | ✅ |
 | Fix-50 | Move Where I coach section below Qualifications | 🟢 Low | CF-R04c | ✅ |
 | Fix-51 | Pass coach UUID not slug to availability API fetch | 🟢 Low | L-UX01 | ✅ |
+| Fix-52 | Fix UTC timezone day name bug in availability grid | 🟢 Low | CF-R04g | ✅ |
 | CG-05 | Push notifications via OneSignal (B-18) — BLOCKED: requires production deployment + OneSignal account setup. Deferred to after Step 5 booking flow. | 🟡 Medium | CG-01 | 🔴 |
 | CG-06 | Integration tests — all coach API routes (C-23) | 🟡 Medium | CD-03 | ⚪ |
 | CG-07 | E2E test — full coach onboarding to profile live (C-24) | 🟡 Medium | CG-01, CG-02 | ⚪ |
