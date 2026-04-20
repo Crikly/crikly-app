@@ -150,15 +150,6 @@ function formatRelativeDate(iso: string): string {
   return `${years} year${years !== 1 ? 's' : ''} ago`
 }
 
-const WEEK_DAYS = [
-  { label: 'Mon', value: 1 },
-  { label: 'Tue', value: 2 },
-  { label: 'Wed', value: 3 },
-  { label: 'Thu', value: 4 },
-  { label: 'Fri', value: 5 },
-  { label: 'Sat', value: 6 },
-  { label: 'Sun', value: 0 },
-]
 
 // ─── Data Fetching ────────────────────────────────────────────────────────────
 
@@ -380,13 +371,22 @@ export default async function CoachProfilePage({
             {/* Availability */}
             {avail && avail.availability.length > 0 && (
               <section aria-labelledby="availability-heading">
-                <h2 id="availability-heading" className="text-xl font-bold text-gray-900 mb-4">
-                  Typical Availability
-                </h2>
-                <AvailabilityGrid templates={avail.availability} />
-                <p className="mt-3 text-sm text-gray-500">
-                  Availability may vary — select a date when booking to see open slots.
-                </p>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 id="availability-heading" className="text-xl font-bold text-gray-900">
+                    Availability
+                  </h2>
+                  <Link
+                    href={`/book/${coach.id}`}
+                    className="text-sm text-[#0077CC] font-medium hover:underline flex items-center gap-1"
+                  >
+                    View full calendar <ChevronRight className="w-3.5 h-3.5" />
+                  </Link>
+                </div>
+                <AvailabilityGrid
+                  templates={avail.availability}
+                  blockedDates={avail.blocked_dates}
+                  minAdvanceHours={avail.booking_policy.min_advance_hours}
+                />
               </section>
             )}
 
@@ -666,44 +666,109 @@ function QualificationCard({ qual }: { qual: Qualification }) {
 
 // ─── Availability Grid ────────────────────────────────────────────────────────
 
-function AvailabilityGrid({ templates }: { templates: AvailabilityTemplate[] }) {
-  return (
-    <div className="grid grid-cols-7 gap-2" data-testid="availability-grid">
-      {WEEK_DAYS.map(day => {
-        const daySlots = templates.filter(t => t.day_of_week === day.value)
-        const hasSlots = daySlots.length > 0
+function AvailabilityGrid({
+  templates,
+  blockedDates,
+  minAdvanceHours,
+}: {
+  templates: AvailabilityTemplate[]
+  blockedDates: string[]
+  minAdvanceHours: number
+}) {
+  const DAY_LABEL = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT']
+  const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+  const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
-        return (
-          <div
-            key={day.value}
-            className={[
-              'flex flex-col items-center rounded-xl py-3 px-1 text-center',
-              hasSlots
-                ? 'bg-blue-50 border border-blue-100'
-                : 'bg-gray-50 border border-gray-100',
-            ].join(' ')}
-          >
-            <span className={`text-xs font-semibold mb-1 ${hasSlots ? 'text-[#0077CC]' : 'text-gray-400'}`}>
-              {day.label}
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const now = new Date()
+  const blockedSet = new Set(blockedDates)
+  const minAdvanceMs = minAdvanceHours * 3600 * 1000
+
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(today)
+    d.setDate(today.getDate() + i)
+    return d
+  })
+
+  // Find first upcoming slot respecting min_advance_hours and blocked dates
+  let nextDate: Date | null = null
+  let nextTime: string | null = null
+
+  for (let i = 0; i < 60 && !nextDate; i++) {
+    const d = new Date(today)
+    d.setDate(today.getDate() + i)
+    const dateStr = d.toISOString().slice(0, 10)
+    if (blockedSet.has(dateStr)) continue
+
+    const daySlots = templates
+      .filter(t => t.day_of_week === d.getDay())
+      .sort((a, b) => a.start_time.localeCompare(b.start_time))
+
+    for (const slot of daySlots) {
+      const [h, m] = slot.start_time.split(':').map(Number)
+      const slotTime = new Date(d)
+      slotTime.setHours(h, m, 0, 0)
+      if (slotTime.getTime() - now.getTime() >= minAdvanceMs) {
+        nextDate = d
+        nextTime = slot.start_time
+        break
+      }
+    }
+  }
+
+  return (
+    <>
+      <div className="grid grid-cols-7 gap-1.5" data-testid="availability-grid">
+        {days.map((day, i) => {
+          const dateStr = day.toISOString().slice(0, 10)
+          const isBlocked = blockedSet.has(dateStr)
+          const slotCount = isBlocked
+            ? 0
+            : templates.filter(t => t.day_of_week === day.getDay()).length
+          const hasSlots = slotCount > 0
+
+          return (
+            <div
+              key={i}
+              className={`flex flex-col items-center rounded-xl py-3 px-1 text-center ${
+                hasSlots
+                  ? 'bg-[#E6F3FB] border border-[#B5D4F4]'
+                  : 'bg-white border border-gray-200 opacity-55'
+              }`}
+            >
+              <span className={`text-[11px] uppercase tracking-wide font-semibold mb-1.5 ${
+                hasSlots ? 'text-[#0077CC]' : 'text-gray-400'
+              }`}>
+                {DAY_LABEL[day.getDay()]}
+              </span>
+              <span className={`text-base font-bold ${hasSlots ? 'text-[#0077CC]' : 'text-gray-400'}`}>
+                {day.getDate()}
+              </span>
+              {hasSlots ? (
+                <span className="text-sm font-medium text-[#0077CC] mt-0.5">
+                  {slotCount} slot{slotCount !== 1 ? 's' : ''}
+                </span>
+              ) : (
+                <span className="text-gray-300 mt-0.5">—</span>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {nextDate !== null && nextTime !== null && (
+        <div className="flex items-center gap-2 mt-4 text-sm text-gray-600">
+          <Clock className="w-4 h-4 flex-shrink-0 text-gray-400" />
+          <span>
+            Typically responds in under 2 hours. Next session:{' '}
+            <span className="font-bold">
+              {DAY_SHORT[nextDate.getDay()]} {nextDate.getDate()} {MONTH_SHORT[nextDate.getMonth()]} {nextTime}
             </span>
-            {hasSlots ? (
-              <div className="space-y-0.5 w-full">
-                {daySlots.slice(0, 2).map(slot => (
-                  <p key={slot.id} className="text-[10px] text-[#0077CC] font-medium leading-tight">
-                    {slot.start_time}
-                  </p>
-                ))}
-                {daySlots.length > 2 && (
-                  <p className="text-[10px] text-blue-400">+{daySlots.length - 2}</p>
-                )}
-              </div>
-            ) : (
-              <span className="text-gray-300 text-lg leading-none mt-0.5">–</span>
-            )}
-          </div>
-        )
-      })}
-    </div>
+          </span>
+        </div>
+      )}
+    </>
   )
 }
 
