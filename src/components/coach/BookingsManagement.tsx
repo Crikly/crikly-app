@@ -113,7 +113,7 @@ export function BookingsManagement() {
       .catch(() => {/* non-critical — sport names fall back to empty */})
   }, [])
 
-  const PAGE_SIZE = 20
+  const PAGE_SIZE = 10
 
   const fetchBookings = useCallback(async (tab: Tab) => {
     setLoading(true)
