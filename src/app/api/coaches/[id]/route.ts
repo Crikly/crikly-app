@@ -101,6 +101,8 @@ interface CoachDetailRow {
   availability_templates: AvailabilityTemplateRow[]
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 // ─── Route handler ────────────────────────────────────────────────────────────
 
 /**
@@ -175,7 +177,7 @@ export async function GET(
           is_active
         )
       `)
-      .eq('id', id)
+      .eq(UUID_RE.test(id) ? 'id' : 'slug', id)
       .eq('is_profile_live', true)
       .eq('is_suspended', false)
       .is('deleted_at', null)
@@ -333,7 +335,7 @@ export async function GET(
     const { data: reviewsData, error: reviewsError } = await supabase
       .from('reviews')
       .select('id, rating, comment, created_at')
-      .eq('coach_profile_id', id)
+      .eq('coach_profile_id', coach.id)
       .eq('is_visible', true)
       .order('created_at', { ascending: false })
       .limit(10)

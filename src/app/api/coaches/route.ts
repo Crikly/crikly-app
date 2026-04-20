@@ -21,6 +21,7 @@ interface CoachPhotoRow {
 
 interface CoachRow {
   id: string
+  slug: string | null
   bio: string | null
   dbs_status: string
   is_featured: boolean
@@ -56,6 +57,7 @@ interface CoachSportResult {
 
 interface CoachResult {
   id: string
+  slug: string | null
   full_name: string
   bio: string | null
   location_city: string | null
@@ -268,6 +270,7 @@ export async function GET(
       .from('coach_profiles')
       .select(`
         id,
+        slug,
         bio,
         dbs_status,
         is_featured,
@@ -343,6 +346,7 @@ export async function GET(
 
       return {
         id: row.id,
+        slug: row.slug,
         full_name: profile.full_name,
         bio: row.bio,
         location_city: profile.location_city,
