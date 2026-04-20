@@ -689,6 +689,14 @@ function AvailabilityGrid({
   const blockedSet = new Set(blockedDates)
   const minAdvanceMs = minAdvanceHours * 3600 * 1000
 
+  // Use local date parts to avoid UTC midnight shift in non-UTC timezones (e.g. BST)
+  const localISODate = (d: Date): string => {
+    const y = d.getFullYear()
+    const mo = String(d.getMonth() + 1).padStart(2, '0')
+    const dd = String(d.getDate()).padStart(2, '0')
+    return `${y}-${mo}-${dd}`
+  }
+
   const days = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(today)
     d.setDate(today.getDate() + i)
@@ -702,7 +710,7 @@ function AvailabilityGrid({
   for (let i = 0; i < 60 && !nextDate; i++) {
     const d = new Date(today)
     d.setDate(today.getDate() + i)
-    const dateStr = d.toISOString().slice(0, 10)
+    const dateStr = localISODate(d)
     if (blockedSet.has(dateStr)) continue
 
     const daySlots = templates
@@ -725,7 +733,7 @@ function AvailabilityGrid({
     <>
       <div className="grid grid-cols-7 gap-1.5" data-testid="availability-grid">
         {days.map((day, i) => {
-          const dateStr = day.toISOString().slice(0, 10)
+          const dateStr = localISODate(day)
           const isBlocked = blockedSet.has(dateStr)
           const daySlots = isBlocked
             ? []
