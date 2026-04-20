@@ -1,7 +1,7 @@
 # Crikly — Comprehensive Build Plan
 
-**Version:** 2.8
-**Last Updated:** April 2026
+**Version:** 2.9
+**Last Updated:** 20 April 2026
 **Changed:** SYNC-08 — added Fix-41b, Fix-47–52, CF-R04a–h, CG-06 ✅, CF-02a, CF-05a/b/c, C-06d-create, CD-06-api, CD-09-api. Updated CD-06/CD-07/CD-09 blocker descriptions.
 **This is the single source of truth for every task in the project.**
 
@@ -364,6 +364,7 @@ Branch: feature/coach-data (open from develop before starting CD-01)
 | CD-11 | Get Paid — real Stripe connection status + payout data | GET /api/coaches/profile | 🟡 Medium | ✅ |
 | CD-12 | Schedule grid — real bookings + availability | GET /api/coaches/availability | 🔵 Low | ✅ |
 | CD-12b | Schedule grid — wire real bookings (today + upcoming + past) onto grid at z-15 | GET /api/coaches/bookings | 🟢 Low | ✅ |
+| Fix-53 | Hide trend badge on non-monthly periods — Earnings.tsx showTrend condition | Earnings.tsx | 🟢 Low | ✅ |
 | Fix-54 | Add pending_approval tab to GET /api/coaches/bookings + fetch in Schedule grid (amber EventBlock) | route.ts + Schedule.tsx | 🟢 Low | ✅ |
 | CI-01 | Wire Approve/Decline in Schedule popover — PATCH /api/coaches/bookings/[id]/status, real booking data, refreshKey | New route + Schedule.tsx | 🟡 Medium | ✅ |
 | Fix-14 | Data wiring fixes: onboarding pre-population, dashboard completion %, right panel real data | Multiple | 🟡 Medium | ✅ |
