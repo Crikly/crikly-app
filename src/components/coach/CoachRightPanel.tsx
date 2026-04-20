@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { ChevronRight, ChevronLeft, MapPin, Star, PoundSterling, Calendar } from 'lucide-react'
+import { ChevronRight, ChevronLeft, MapPin, Star, PoundSterling, Calendar, Loader2 } from 'lucide-react'
 
 // Fix-14C: API response type
 interface CoachProfileResponse {
@@ -47,6 +47,48 @@ interface DashboardData {
   }
 }
 
+// Fix-55: Booking list item from /api/coaches/bookings
+interface BookingListItem {
+  id: string
+  booking_reference: string
+  session_date: string
+  session_start_time: string
+  session_end_time: string
+  session_type: string
+  status: string
+  sport_id: string
+  coach_price_pence: number
+  child_name: string | null
+  booked_by_name: string | null
+  created_at: string
+}
+
+interface Sport { id: string; name: string }
+
+// Fix-55: Helpers
+function formatRelativeTime(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime()
+  const hours = Math.floor(diffMs / (1000 * 60 * 60))
+  if (hours < 1) return 'just now'
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`
+  const days = Math.floor(hours / 24)
+  return `${days} day${days === 1 ? '' : 's'} ago`
+}
+
+function formatSessionDateShort(dateStr: string): string {
+  const d = new Date(dateStr + 'T00:00:00')
+  return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+}
+
+function statusDotColor(status: string): string {
+  switch (status) {
+    case 'confirmed': return '#0077CC'
+    case 'completed': return '#15803D'
+    case 'pending_approval': return '#F59E0B'
+    default: return '#9CA3AF'
+  }
+}
+
 interface CoachRightPanelProps {
   dashboardData?: DashboardData
 }
@@ -67,6 +109,20 @@ export function CoachRightPanel({ dashboardData }: CoachRightPanelProps = {}) {
   // Fix-25: Dynamic today date
   const [selectedDate, setSelectedDate] = useState<number | null>(new Date().getDate())
 
+  // Fix-55: Fetch sports once when on bookings route — passed to child components
+  const [sportsMap, setSportsMap] = useState<Record<string, string>>({})
+  useEffect(() => {
+    if (!isBookingsRoute) return
+    fetch('/api/sports')
+      .then((r) => r.json())
+      .then((data: { sports?: Sport[] }) => {
+        const map: Record<string, string> = {}
+        data.sports?.forEach((s) => { map[s.id] = s.name })
+        setSportsMap(map)
+      })
+      .catch(() => {})
+  }, [isBookingsRoute])
+
   return (
     <aside className="hidden xl:flex w-96 shrink-0 flex-col gap-6 bg-white p-8 sticky top-0 border-l border-gray-100">
       {isScheduleRoute ? (
@@ -79,8 +135,8 @@ export function CoachRightPanel({ dashboardData }: CoachRightPanelProps = {}) {
         </>
       ) : isBookingsRoute ? (
         <>
-          <BookingsPendingApprovals />
-          <BookingsTodaySessions />
+          <BookingsPendingApprovals sportsMap={sportsMap} />
+          <BookingsTodaySessions sportsMap={sportsMap} />
         </>
       ) : isProfileRoute ? (
         // CF-D07 CHANGE 4: Profile-specific right panel
@@ -833,84 +889,159 @@ function PendingApprovalCard() {
   )
 }
 
-// CF-D03 CHANGE 7: Bookings-specific right panel components
-function BookingsPendingApprovals() {
-  const pendingBookings = [
-    { id: '1', client: 'David Chen', sport: 'Cricket', type: '1-on-1', date: 'Mon 14 Apr', time: '18:00', requestedAgo: '2 hours ago' },
-    { id: '2', client: "Liam O'Connor", sport: 'Cricket', type: '1-on-1', date: 'Wed 16 Apr', time: '17:00', requestedAgo: '5 hours ago' }
-  ]
+// CF-D03 CHANGE 7 / Fix-55: Bookings-specific right panel components
+function BookingsPendingApprovals({ sportsMap }: { sportsMap: Record<string, string> }) {
+  const [bookings, setBookings] = useState<BookingListItem[]>([])
+  const [loading, setLoading] = useState(true)
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+
+  const fetchPending = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await fetch('/api/coaches/bookings?tab=pending_approval')
+      if (!res.ok) { setBookings([]); return }
+      const data = await res.json() as { bookings: BookingListItem[] }
+      setBookings(data.bookings ?? [])
+    } catch {
+      setBookings([])
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { fetchPending() }, [fetchPending])
+
+  const handleAction = async (id: string, action: 'approve' | 'decline') => {
+    setActionLoadingId(id)
+    setActionError(null)
+    try {
+      const res = await fetch(`/api/coaches/bookings/${id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      })
+      if (!res.ok) {
+        const data = await res.json() as { error?: string }
+        setActionError(data.error ?? 'Something went wrong')
+        return
+      }
+      await fetchPending()
+    } catch {
+      setActionError('Network error — please try again')
+    } finally {
+      setActionLoadingId(null)
+    }
+  }
 
   return (
     <div>
       <h3 className="text-[13px] font-medium text-gray-900 mb-2">Pending approvals</h3>
-      <div className="space-y-2">
-        {pendingBookings.map((booking) => (
-          <div 
-            key={booking.id}
-            className="bg-[#FFFBEB] border-[0.5px] border-gray-100 rounded-[10px] p-3"
-          >
-            <p className="text-[12px] font-medium text-gray-900 mb-1">{booking.client}</p>
-            <p className="text-[10px] text-gray-500 mb-1">
-              {booking.sport} · {booking.type} · {booking.date} {booking.time}
-            </p>
-            <p className="text-[10px] text-[#92400E] mb-2">Requested {booking.requestedAgo}</p>
-            <div className="flex gap-1.5">
-              <button 
-                onClick={() => {
-                  // TODO CF-D03: wire Approve to booking approval API
-                }}
-                className="flex-1 bg-[#0077CC] text-white text-[11px] font-medium rounded-md py-1.5 text-center hover:bg-[#0066AA] transition-colors"
-              >
-                ✓ Approve
-              </button>
-              <button 
-                onClick={() => {
-                  // TODO CF-D03: wire Decline to booking decline API
-                }}
-                className="flex-1 bg-white border border-[#F09595] text-red-700 text-[11px] font-medium rounded-md py-1.5 text-center hover:bg-red-50 transition-colors"
-              >
-                ✗ Decline
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
+      {loading ? (
+        <p className="text-[11px] text-gray-400">Loading...</p>
+      ) : bookings.length === 0 ? (
+        <p className="text-[11px] text-gray-400">No pending approvals</p>
+      ) : (
+        <div className="space-y-2">
+          {bookings.map((booking) => {
+            const clientName = booking.child_name ?? booking.booked_by_name ?? '—'
+            const sportName = sportsMap[booking.sport_id] ?? ''
+            const typeLabel = booking.session_type === 'group' ? 'Group' : '1-on-1'
+            const dateLabel = formatSessionDateShort(booking.session_date)
+            const timeLabel = booking.session_start_time.slice(0, 5)
+            const isActing = actionLoadingId === booking.id
+            return (
+              <div key={booking.id} className="bg-[#FFFBEB] border-[0.5px] border-gray-100 rounded-[10px] p-3">
+                <p className="text-[12px] font-medium text-gray-900 mb-1">{clientName}</p>
+                <p className="text-[10px] text-gray-500 mb-1">
+                  {[sportName, typeLabel, `${dateLabel} ${timeLabel}`].filter(Boolean).join(' · ')}
+                </p>
+                <p className="text-[10px] text-[#92400E] mb-2">Requested {formatRelativeTime(booking.created_at)}</p>
+                {actionError && actionLoadingId === null && (
+                  <p className="text-[10px] text-red-600 mb-1.5">{actionError}</p>
+                )}
+                <div className="flex gap-1.5">
+                  <button
+                    onClick={() => handleAction(booking.id, 'approve')}
+                    disabled={actionLoadingId !== null}
+                    className="flex-1 bg-[#0077CC] text-white text-[11px] font-medium rounded-md py-1.5 text-center hover:bg-[#0066AA] transition-colors disabled:opacity-60 flex items-center justify-center gap-1"
+                  >
+                    {isActing && actionLoadingId === booking.id ? <Loader2 size={11} className="animate-spin" /> : '✓'} Approve
+                  </button>
+                  <button
+                    onClick={() => handleAction(booking.id, 'decline')}
+                    disabled={actionLoadingId !== null}
+                    className="flex-1 bg-white border border-[#F09595] text-red-700 text-[11px] font-medium rounded-md py-1.5 text-center hover:bg-red-50 transition-colors disabled:opacity-60 flex items-center justify-center gap-1"
+                  >
+                    {isActing && actionLoadingId === booking.id ? <Loader2 size={11} className="animate-spin" /> : '✗'} Decline
+                  </button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
 
-function BookingsTodaySessions() {
-  const todaySessions = [
-    { id: '1', time: '14:00', client: 'James Okafor', sport: 'Cricket', status: 'Confirmed', statusColor: '#3B82F6' },
-    { id: '2', time: '16:30', client: 'Marcus Trent', sport: 'Cricket', status: 'Starting soon', statusColor: '#F59E0B' }
-  ]
+function BookingsTodaySessions({ sportsMap }: { sportsMap: Record<string, string> }) {
+  const [sessions, setSessions] = useState<BookingListItem[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const fetchToday = async () => {
+      try {
+        const res = await fetch('/api/coaches/bookings?tab=today')
+        if (!res.ok) { setSessions([]); return }
+        const data = await res.json() as { bookings: BookingListItem[] }
+        setSessions(data.bookings ?? [])
+      } catch {
+        setSessions([])
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchToday()
+  }, [])
 
   return (
     <div className="border-t-[0.5px] border-gray-100 pt-3.5">
       <h3 className="text-[12px] text-gray-400 mb-2">Today's sessions</h3>
-      <div className="space-y-3">
-        {todaySessions.map((session, idx) => (
-          <div key={session.id}>
-            <div className="flex items-start gap-2">
-              <div 
-                className="w-[7px] h-[7px] rounded-full mt-1 shrink-0"
-                style={{ backgroundColor: session.statusColor }}
-              />
-              <div className="flex-1">
-                <p className="text-[11px] font-medium text-gray-900">
-                  {session.time} · {session.client}
-                </p>
-                <p className="text-[10px] text-gray-500 mt-0.5">
-                  {session.sport} · {session.status}
-                </p>
+      {loading ? (
+        <p className="text-[11px] text-gray-400">Loading...</p>
+      ) : sessions.length === 0 ? (
+        <p className="text-[11px] text-gray-400">No sessions today</p>
+      ) : (
+        <div className="space-y-3">
+          {sessions.map((session, idx) => {
+            const clientName = session.child_name ?? session.booked_by_name ?? session.booking_reference
+            const sportName = sportsMap[session.sport_id] ?? ''
+            const statusLabel = session.status.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+            return (
+              <div key={session.id}>
+                <div className="flex items-start gap-2">
+                  <div
+                    className="w-[7px] h-[7px] rounded-full mt-1 shrink-0"
+                    style={{ backgroundColor: statusDotColor(session.status) }}
+                  />
+                  <div className="flex-1">
+                    <p className="text-[11px] font-medium text-gray-900">
+                      {session.session_start_time.slice(0, 5)} · {clientName}
+                    </p>
+                    <p className="text-[10px] text-gray-500 mt-0.5">
+                      {[sportName, statusLabel].filter(Boolean).join(' · ')}
+                    </p>
+                  </div>
+                </div>
+                {idx < sessions.length - 1 && (
+                  <div className="border-t-[0.5px] border-gray-100 mt-3" />
+                )}
               </div>
-            </div>
-            {idx < todaySessions.length - 1 && (
-              <div className="border-t-[0.5px] border-gray-100 mt-3" />
-            )}
-          </div>
-        ))}
-      </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }

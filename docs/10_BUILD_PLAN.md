@@ -368,6 +368,8 @@ Branch: feature/coach-data (open from develop before starting CD-01)
 | Fix-54 | Add pending_approval tab to GET /api/coaches/bookings + fetch in Schedule grid (amber EventBlock) | route.ts + Schedule.tsx | 🟢 Low | ✅ |
 | CI-01 | Wire Approve/Decline in Schedule popover — PATCH /api/coaches/bookings/[id]/status, real booking data, refreshKey | New route + Schedule.tsx | 🟡 Medium | ✅ |
 | CI-02 | Load more pagination on Past tab + wire Pending approval tab to real API | BookingsManagement.tsx | 🟢 Low | ✅ |
+| Fix-56 | Reduce Past tab page size from 20 to 10 | BookingsManagement.tsx | 🟢 Low | ✅ |
+| Fix-55 | Wire right panel pending approvals + today's sessions to real API data | CoachRightPanel.tsx | 🟡 Medium | ✅ |
 | Fix-14 | Data wiring fixes: onboarding pre-population, dashboard completion %, right panel real data | Multiple | 🟡 Medium | ✅ |
 | Fix-15b | POST /api/coaches/sports validation fixes: add elite skill level, make group fields optional | POST /api/coaches/sports | 🟢 Low | ✅ |
 | Fix-15c | POST /api/coaches/sports 500 error: remove sports join from insert query | POST /api/coaches/sports | 🟢 Low | ✅ |
