@@ -473,38 +473,32 @@ function HeroGallery({ photos, coachName }: { photos: Photo[]; coachName: string
 function TrustRow({ coach }: { coach: CoachProfile }) {
   const stats = [
     coach.dbs_status === 'verified' && {
-      icon: <ShieldCheck className="w-5 h-5 text-[#006677]" />,
+      icon: <ShieldCheck className="w-[22px] h-[22px] text-[#006677]" />,
       label: 'DBS verified',
       sub: 'Background checked',
-      teal: true,
     },
     {
-      icon: <Star className="w-5 h-5 text-[#0077CC]" />,
+      icon: <Star className="w-[22px] h-[22px] text-[#0077CC]" />,
       label: `${coach.sessions_completed} session${coach.sessions_completed !== 1 ? 's' : ''}`,
       sub: 'Completed',
-      teal: false,
     },
     coach.years_experience !== null && {
-      icon: <Clock className="w-5 h-5 text-[#0077CC]" />,
+      icon: <Clock className="w-[22px] h-[22px] text-[#0077CC]" />,
       label: `${coach.years_experience} year${coach.years_experience !== 1 ? 's' : ''}`,
       sub: 'Coaching experience',
-      teal: false,
     },
     {
-      icon: <Calendar className="w-5 h-5 text-[#0077CC]" />,
+      icon: <Calendar className="w-[22px] h-[22px] text-[#0077CC]" />,
       label: 'Free cancellation',
       sub: `${coach.cancellation_window_hours}hrs before session`,
-      teal: false,
     },
-  ].filter(Boolean) as { icon: React.ReactNode; label: string; sub: string; teal: boolean }[]
+  ].filter(Boolean) as { icon: React.ReactNode; label: string; sub: string }[]
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 py-6 border-t border-b border-gray-100 mt-4">
       {stats.map(stat => (
         <div key={stat.label} className="flex items-start gap-3">
-          <div className={`flex-shrink-0 w-9 h-9 rounded-xl flex items-center justify-center ${stat.teal ? 'bg-[#E0F6F8]' : 'bg-blue-50'}`}>
-            {stat.icon}
-          </div>
+          <div className="flex-shrink-0 mt-0.5">{stat.icon}</div>
           <div className="min-w-0">
             <p className="text-sm font-bold text-gray-900 leading-snug">{stat.label}</p>
             <p className="text-xs text-gray-500 mt-0.5">{stat.sub}</p>
