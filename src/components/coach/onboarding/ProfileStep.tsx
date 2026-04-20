@@ -38,6 +38,7 @@ export function ProfileStep() {
   const [displayName, setDisplayName] = useState('')
   const [bio, setBio] = useState('')
   const [baseLocation, setBaseLocation] = useState('')
+  const [locationPostcode, setLocationPostcode] = useState<string | null>(null)
   const [locationLat, setLocationLat] = useState<number | null>(null)
   const [locationLng, setLocationLng] = useState<number | null>(null)
   const [travelRadius, setTravelRadius] = useState('No travel (I coach at fixed venues)')
@@ -77,6 +78,7 @@ export function ProfileStep() {
         setDisplayName(data.full_name || '')
         setBio(data.bio || '')
         setBaseLocation(data.location_city || '')
+        setLocationPostcode(data.location_postcode ?? null)
         
         // Map years_experience to experience range
         if (data.years_experience !== null) {
@@ -175,6 +177,7 @@ export function ProfileStep() {
           full_name: displayName,
           bio,
           location_city: baseLocation,
+          location_postcode: locationPostcode,
           location_lat: locationLat,
           location_lng: locationLng,
           years_experience: yearsExp,
@@ -326,8 +329,9 @@ export function ProfileStep() {
                   value={baseLocation}
                   placeholder="Town, city or postcode"
                   data-testid="location-autocomplete"
-                  onSelect={({ city, lat, lng }) => {
+                  onSelect={({ city, postcode, lat, lng }) => {
                     setBaseLocation(city)
+                    setLocationPostcode(postcode)
                     setLocationLat(lat)
                     setLocationLng(lng)
                   }}

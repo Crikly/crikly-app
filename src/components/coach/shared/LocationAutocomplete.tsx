@@ -8,6 +8,7 @@ const LIBRARIES: ['places'] = ['places']
 
 export interface LocationSelection {
   city: string
+  postcode: string | null
   lat: number
   lng: number
 }
@@ -36,15 +37,23 @@ function PlacesInput({
     autocompleteRef.current = new google.maps.places.Autocomplete(inputRef.current, {
       types: ['geocode'],
       componentRestrictions: { country: 'gb' },
-      fields: ['name', 'geometry'],
+      fields: ['name', 'geometry', 'address_components'],
     })
 
     const listener = autocompleteRef.current.addListener('place_changed', () => {
       const place = autocompleteRef.current?.getPlace()
-      if (!place?.geometry?.location || !place.name) return
+      if (!place?.geometry?.location) return
+
+      const components = place.address_components ?? []
+      const find = (...types: string[]) =>
+        components.find(c => types.some(t => c.types.includes(t)))?.long_name ?? null
+
+      const city = find('postal_town') ?? find('locality') ?? place.name ?? ''
+      const postcode = find('postal_code')
 
       onSelect({
-        city: place.name,
+        city,
+        postcode,
         lat: place.geometry.location.lat(),
         lng: place.geometry.location.lng(),
       })
