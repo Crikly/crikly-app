@@ -357,8 +357,8 @@ Branch: feature/coach-data (open from develop before starting CD-01)
 | CD-06 | Bookings list — real data | GET /api/coaches/bookings | 🟡 Medium | ✅ |
 | CD-07 | Booking detail — real data | GET /api/coaches/bookings/[id] | 🟡 Medium | ✅ |
 | CD-08 | Programmes list — real data | GET /api/coaches/programmes | 🟡 Medium | ✅ |
-| CD-09-api | Build GET /api/coaches/earnings — unblocks CD-09 | New route | 🟢 Low | ⚪ |
-| CD-09 | Earnings summary — real data — Blocked: depends on CD-09-api | GET /api/coaches/earnings | 🟡 Medium | 🔴 |
+| CD-09-api | Build GET /api/coaches/earnings — unblocks CD-09 | New route | 🟢 Low | ✅ |
+| CD-09 | Earnings summary — real data | GET /api/coaches/earnings | 🟡 Medium | 🔴 |
 | CD-10 | Profile edit — load and save real data | GET/POST /api/coaches/profile | 🟡 Medium | ✅  |
 | CD-10b | Profile Hub — wire to real data | GET /api/coaches/profile | 🟡 Medium | ✅ |
 | CD-11 | Get Paid — real Stripe connection status + payout data | GET /api/coaches/profile | 🟡 Medium | ✅ |

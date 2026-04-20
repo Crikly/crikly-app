@@ -463,6 +463,50 @@ Get all reviews for a coach.
 
 ---
 
+### GET /api/coaches/earnings
+Returns earnings summary and payout history for the authenticated coach.
+**Status: Implemented — CD-09-api**
+**Auth: Required (coach session)**
+
+**Response 200:**
+```json
+{
+  "summary": {
+    "total_earned_pence": 245000,
+    "pending_pence": 5500,
+    "this_month_pence": 82500,
+    "last_month_pence": 77500,
+    "currency": "GBP"
+  },
+  "payouts": [
+    {
+      "id": "uuid",
+      "booking_id": "uuid",
+      "booking_reference": "CRK-2026-0012",
+      "session_date": "2026-04-10",
+      "session_type": "individual",
+      "amount_pence": 5500,
+      "currency": "GBP",
+      "status": "paid",
+      "scheduled_at": "2026-04-12T10:00:00Z",
+      "processed_at": "2026-04-12T10:05:00Z"
+    }
+  ]
+}
+```
+
+**Notes:**
+- `summary.total_earned_pence` — lifetime sum of all `paid` payouts (BR-03: coach receives full `amount_pence`)
+- `summary.pending_pence` — sum of payouts with status `pending` or `processing`
+- `summary.this_month_pence` — paid payouts where `processed_at` ≥ first day of current UTC month
+- `summary.last_month_pence` — paid payouts in the prior calendar month
+- `payouts` — max 50 rows, ordered by `scheduled_at DESC`, joined to bookings for reference/date/type
+- All money values in pence integers — never decimals
+
+**Errors:** 401 Unauthorised, 403 coach role required, 404 coach profile not found
+
+---
+
 ## Notification Routes
 
 ### PATCH /api/notifications/preferences
