@@ -327,6 +327,9 @@ other screens within the same task.
 | CF-R04 | Coach public profile design alignment — align hero name typography, subtitle, location display, DBS badge, trust row, about fact sidebar, booking card session picker to Claude Design spec. Read docs/design/coach-profile.html. | @FrontendDeveloper | 🟢 | — | ⚪ |
 | CF-R04a | Coach public profile design alignment Phase 1 — location fallback to postcode, teal DBS pill badge near name, 4-stat trust row grid | @FrontendDeveloper | 🟢 | develop | ✅ |
 | CF-R04b | Coach public profile design alignment Phase 2 — Fraunces serif name, inline meta row, two-column about with fact sidebar, session picker in booking card | @FrontendDeveloper | 🟢 | develop | ✅ |
+| CF-R04c | Coach public profile design alignment Phase 3 — "Where I coach" section, updated Safety & Trust banner with DBS icon block | @FrontendDeveloper | 🟢 | develop | ✅ |
+| CF-R04d | Coach public profile design alignment Phase 4 — move name + meta row above hero gallery | @FrontendDeveloper | 🟢 | develop | ✅ |
+| CF-R04e | Coach public profile design alignment Phase 5 — reviews rating breakdown bars, reviewer avatar circles | @FrontendDeveloper | 🟢 | develop | ✅ |
 
 ### 3E — Data Wiring (CD tasks)
 

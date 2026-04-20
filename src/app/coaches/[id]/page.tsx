@@ -228,11 +228,8 @@ export default async function CoachProfilePage({
           <span className="text-gray-900 font-medium">{coach.full_name}</span>
         </nav>
 
-        {/* ── Hero gallery ────────────────────────────────────────────────── */}
-        <HeroGallery photos={galleryPhotos} coachName={coach.full_name} />
-
         {/* ── Coach name + meta row ───────────────────────────────────────── */}
-        <div className={`mt-6 mb-2 ${fraunces.variable}`}>
+        <div className={`mt-6 mb-4 ${fraunces.variable}`}>
           <h1
             className="text-[34px] tracking-tight text-gray-900 leading-tight"
             style={{ fontFamily: 'var(--font-fraunces), Georgia, serif', fontWeight: 500 }}
@@ -268,6 +265,9 @@ export default async function CoachProfilePage({
           </div>
         </div>
 
+        {/* ── Hero gallery ────────────────────────────────────────────────── */}
+        <HeroGallery photos={galleryPhotos} coachName={coach.full_name} />
+
         {/* ── Trust row ───────────────────────────────────────────────────── */}
         <TrustRow coach={coach} />
 
@@ -275,6 +275,36 @@ export default async function CoachProfilePage({
         <div className="grid lg:grid-cols-[minmax(0,1fr)_380px] gap-12 items-start mt-10">
           {/* Left — main content */}
           <div className="space-y-10 min-w-0">
+            {/* Where I coach */}
+            {(coach.location_city || coach.location_postcode) && (
+              <section aria-labelledby="location-heading">
+                <h2 id="location-heading" className="text-xl font-bold text-gray-900 mb-4">
+                  Where I coach
+                </h2>
+                <div className="border border-gray-100 rounded-2xl p-5 space-y-4">
+                  <div className="flex items-center gap-2.5">
+                    <MapPin className="w-5 h-5 text-[#0077CC] flex-shrink-0" />
+                    <span className="font-semibold text-gray-900">
+                      {coach.location_city || coach.location_postcode}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {coach.cancellation_window_hours > 0 && (
+                      <span className="bg-gray-50 border border-gray-200 rounded-full px-3 py-1 text-xs text-gray-600">
+                        Free cancellation {coach.cancellation_window_hours}hrs before
+                      </span>
+                    )}
+                    <span className="bg-gray-50 border border-gray-200 rounded-full px-3 py-1 text-xs text-gray-600">
+                      Instant booking confirmation
+                    </span>
+                    <span className="bg-gray-50 border border-gray-200 rounded-full px-3 py-1 text-xs text-gray-600">
+                      Payment held until after first session
+                    </span>
+                  </div>
+                </div>
+              </section>
+            )}
+
             {/* About */}
             {coach.bio && (
               <section aria-labelledby="about-heading">
@@ -360,18 +390,20 @@ export default async function CoachProfilePage({
               <h2 id="reviews-heading" className="text-xl font-bold text-gray-900 mb-4">
                 Reviews
               </h2>
-              {coach.rating_count > 0 && coach.rating_avg !== null && (
-                <RatingSummary
-                  avg={coach.rating_avg}
-                  count={coach.rating_count}
-                  sessionsCompleted={coach.sessions_completed}
-                />
-              )}
               {coach.reviews.length > 0 ? (
-                <div className="mt-6 space-y-4">
-                  {coach.reviews.map(review => (
-                    <ReviewCard key={review.id} review={review} />
-                  ))}
+                <div className="flex flex-wrap gap-8">
+                  <div className="w-[200px] flex-shrink-0">
+                    <RatingBreakdown
+                      reviews={coach.reviews}
+                      avg={coach.rating_avg ?? 0}
+                      count={coach.rating_count}
+                    />
+                  </div>
+                  <div className="flex-1 min-w-0 space-y-4">
+                    {coach.reviews.map(review => (
+                      <ReviewCard key={review.id} review={review} />
+                    ))}
+                  </div>
                 </div>
               ) : (
                 <p className="mt-4 text-sm text-gray-500">No reviews yet.</p>
@@ -672,58 +704,75 @@ function ReviewCard({ review }: { review: Review }) {
       className="p-4 rounded-xl border border-gray-100 bg-gray-50"
       data-testid="review-card"
     >
-      <div className="flex items-center justify-between gap-4 mb-2">
-        <div className="flex items-center gap-3">
-          <div className="flex gap-0.5">
-            {[1, 2, 3, 4, 5].map(n => (
-              <Star
-                key={n}
-                className={`w-3.5 h-3.5 ${n <= review.rating ? 'fill-yellow-400 text-yellow-400' : 'fill-gray-200 text-gray-200'}`}
-              />
-            ))}
-          </div>
-          <span className="text-xs font-medium text-gray-500">Verified parent</span>
+      <div className="flex gap-3">
+        <div className="flex-shrink-0 w-11 h-11 rounded-full bg-blue-50 flex items-center justify-center">
+          <span className="text-sm font-semibold text-[#0077CC]">P</span>
         </div>
-        <span className="text-xs text-gray-400 shrink-0">
-          {formatRelativeDate(review.created_at)}
-        </span>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-4 mb-2">
+            <div className="flex items-center gap-3">
+              <div className="flex gap-0.5">
+                {[1, 2, 3, 4, 5].map(n => (
+                  <Star
+                    key={n}
+                    className={`w-3.5 h-3.5 ${n <= review.rating ? 'fill-yellow-400 text-yellow-400' : 'fill-gray-200 text-gray-200'}`}
+                  />
+                ))}
+              </div>
+              <span className="text-xs font-medium text-gray-500">Verified parent</span>
+            </div>
+            <span className="text-xs text-gray-400 shrink-0">
+              {formatRelativeDate(review.created_at)}
+            </span>
+          </div>
+          {review.comment && (
+            <p className="text-sm text-gray-700 leading-relaxed">{review.comment}</p>
+          )}
+        </div>
       </div>
-      {review.comment && (
-        <p className="text-sm text-gray-700 leading-relaxed">{review.comment}</p>
-      )}
     </div>
   )
 }
 
-// ─── Rating Summary ───────────────────────────────────────────────────────────
+// ─── Rating Breakdown ─────────────────────────────────────────────────────────
 
-function RatingSummary({
-  avg,
-  count,
-  sessionsCompleted,
-}: {
-  avg: number
-  count: number
-  sessionsCompleted: number
-}) {
+function RatingBreakdown({ reviews, avg, count }: { reviews: Review[]; avg: number; count: number }) {
+  const total = reviews.length || 1
+  const breakdown = [5, 4, 3, 2, 1].map(star => ({
+    star,
+    count: reviews.filter(r => r.rating === star).length,
+  }))
+
   return (
-    <div className="flex items-center gap-8 p-6 rounded-2xl bg-gray-50 border border-gray-100">
-      <div className="text-center">
-        <p className="text-4xl font-bold text-gray-900">{avg.toFixed(1)}</p>
-        <div className="flex gap-0.5 mt-1.5 justify-center">
-          {[1, 2, 3, 4, 5].map(n => (
-            <Star
-              key={n}
-              className={`w-4 h-4 ${n <= Math.round(avg) ? 'fill-yellow-400 text-yellow-400' : 'fill-gray-200 text-gray-200'}`}
-            />
-          ))}
+    <div>
+      <p className="text-[12px] uppercase tracking-wide font-semibold text-gray-500 mb-3">Overall Rating</p>
+      <div className="flex items-center gap-3 mb-4">
+        <span className="text-4xl font-bold text-gray-900">{avg.toFixed(1)}</span>
+        <div>
+          <div className="flex gap-0.5">
+            {[1, 2, 3, 4, 5].map(n => (
+              <Star
+                key={n}
+                className={`w-3.5 h-3.5 ${n <= Math.round(avg) ? 'fill-yellow-400 text-yellow-400' : 'fill-gray-200 text-gray-200'}`}
+              />
+            ))}
+          </div>
+          <span className="text-xs text-gray-500 mt-0.5 block">{count} review{count !== 1 ? 's' : ''}</span>
         </div>
-        <p className="text-xs text-gray-500 mt-1">{count} review{count !== 1 ? 's' : ''}</p>
       </div>
-      <div className="h-14 w-px bg-gray-200" />
-      <div>
-        <p className="text-2xl font-bold text-gray-900">{sessionsCompleted}</p>
-        <p className="text-sm text-gray-500 mt-0.5">sessions completed</p>
+      <div className="space-y-2">
+        {breakdown.map(({ star, count: c }) => (
+          <div key={star} className="flex items-center gap-2">
+            <span className="text-xs text-gray-600 w-3 text-right shrink-0">{star}</span>
+            <div className="flex-1 h-1.5 rounded-full bg-gray-100 overflow-hidden">
+              <div
+                className="h-full bg-gray-900 rounded-full"
+                style={{ width: `${(c / total) * 100}%` }}
+              />
+            </div>
+            <span className="text-xs text-gray-500 w-3 shrink-0">{c}</span>
+          </div>
+        ))}
       </div>
     </div>
   )
@@ -733,7 +782,6 @@ function RatingSummary({
 
 function SafetySection({
   dbsStatus,
-  dbsVerifiedAt,
 }: {
   dbsStatus: string
   dbsVerifiedAt: string | null
@@ -743,13 +791,14 @@ function SafetySection({
   return (
     <div className="space-y-4">
       {isVerified && (
-        <div className="flex items-start gap-4 p-5 rounded-2xl bg-[#E0F6F8] border border-teal-100">
-          <ShieldCheck className="w-6 h-6 text-[#006677] flex-shrink-0 mt-0.5" />
+        <div className="flex items-start gap-4 p-5 rounded-2xl bg-[#E0F6F8] border border-[#BFE4E8] mb-5">
+          <div className="flex-shrink-0 w-11 h-11 rounded-xl bg-[#006677] flex items-center justify-center">
+            <ShieldCheck className="w-5 h-5 text-white" />
+          </div>
           <div>
-            <p className="font-semibold text-[#006677]">DBS Checked &amp; Verified</p>
-            <p className="text-sm text-[#006677]/80 mt-0.5">
-              This coach has passed an enhanced DBS (Disclosure and Barring Service) check.
-              {dbsVerifiedAt ? ` Verified ${formatDate(dbsVerifiedAt)}.` : ''}
+            <p className="text-base font-semibold text-[#006677]">This coach is DBS verified by Crikly</p>
+            <p className="text-sm mt-1" style={{ color: 'rgba(0,102,119,0.85)' }}>
+              Every coach on Crikly undergoes an enhanced DBS check and safeguarding review before their first session.
             </p>
           </div>
         </div>
