@@ -109,6 +109,7 @@ limit           integer (default: 20, max: 50)
   "coaches": [
     {
       "id": "uuid",
+      "slug": "james-wright",
       "full_name": "James Wright",
       "bio": "ECB Level 2 coach with 8 years experience...",
       "location_city": "Birmingham",
@@ -145,8 +146,10 @@ limit           integer (default: 20, max: 50)
 ---
 
 ### GET /api/coaches/[id]
-Get a single coach's full public profile.
-**Status: Implemented — CG-01b**
+Get a single coach's full public profile. Accepts either a UUID or a human-readable slug (L-UX01).
+- UUID: `/api/coaches/18369fae-ad5b-4dbe-9108-3bd150c90df8`
+- Slug: `/api/coaches/james-wright`
+**Status: Implemented — CG-01b, L-UX01**
 **Auth: Public — no token required**
 
 **Response 200:**

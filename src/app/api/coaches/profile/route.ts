@@ -1,6 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
+// ─── Slug helpers ─────────────────────────────────────────────────────────────
+
+type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>
+
+function generateSlug(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9-]/g, '')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+}
+
+async function findUniqueSlug(
+  supabase: SupabaseServerClient,
+  name: string,
+  excludeId?: string,
+): Promise<string> {
+  const base = generateSlug(name)
+  let candidate = base
+  let suffix = 2
+
+  for (;;) {
+    let q = supabase.from('coach_profiles').select('id').eq('slug', candidate)
+    if (excludeId) q = q.neq('id', excludeId)
+    const { data } = await q.maybeSingle()
+    if (!data) return candidate
+    candidate = `${base}-${suffix++}`
+  }
+}
+
 /**
  * Coach profile response shape
  */
@@ -24,6 +55,7 @@ interface CoachProfileResponse {
   sessions_completed: number
   gender: string | null
   languages?: string[]
+  slug: string | null
   created_at: string
   updated_at: string
 }
@@ -86,6 +118,7 @@ export async function GET(): Promise<NextResponse<CoachProfileResponse | { error
         sessions_completed,
         gender,
         languages,
+        slug,
         created_at,
         updated_at,
         user_profiles!inner (
@@ -103,9 +136,19 @@ export async function GET(): Promise<NextResponse<CoachProfileResponse | { error
     }
 
     // 4. Flatten response
-    const userProfileData = Array.isArray(coachProfile.user_profiles) 
-      ? coachProfile.user_profiles[0] 
+    const userProfileData = Array.isArray(coachProfile.user_profiles)
+      ? coachProfile.user_profiles[0]
       : coachProfile.user_profiles
+
+    // 5. Backfill slug if missing
+    let slug: string | null = coachProfile.slug ?? null
+    if (!slug && userProfileData.full_name) {
+      slug = await findUniqueSlug(supabase, userProfileData.full_name, coachProfile.id)
+      await supabase
+        .from('coach_profiles')
+        .update({ slug })
+        .eq('id', coachProfile.id)
+    }
 
     const response: CoachProfileResponse = {
       id: coachProfile.id,
@@ -127,6 +170,7 @@ export async function GET(): Promise<NextResponse<CoachProfileResponse | { error
       sessions_completed: coachProfile.sessions_completed,
       gender: coachProfile.gender,
       languages: coachProfile.languages || [],
+      slug,
       created_at: coachProfile.created_at,
       updated_at: coachProfile.updated_at,
     }
@@ -371,6 +415,7 @@ export async function POST(
         sessions_completed,
         gender,
         languages,
+        slug,
         created_at,
         updated_at,
         user_profiles!inner (
@@ -389,9 +434,19 @@ export async function POST(
     }
 
     // 7. Flatten response
-    const userProfileData = Array.isArray(updatedProfile.user_profiles) 
-      ? updatedProfile.user_profiles[0] 
+    const userProfileData = Array.isArray(updatedProfile.user_profiles)
+      ? updatedProfile.user_profiles[0]
       : updatedProfile.user_profiles
+
+    // 8. Generate or regenerate slug when name changed or slug is missing
+    let slug: string | null = updatedProfile.slug ?? null
+    if ((body.full_name !== undefined || !slug) && userProfileData.full_name) {
+      slug = await findUniqueSlug(supabase, userProfileData.full_name, updatedProfile.id)
+      await supabase
+        .from('coach_profiles')
+        .update({ slug })
+        .eq('id', updatedProfile.id)
+    }
 
     const response: CoachProfileResponse = {
       id: updatedProfile.id,
@@ -413,6 +468,7 @@ export async function POST(
       sessions_completed: updatedProfile.sessions_completed,
       gender: updatedProfile.gender,
       languages: updatedProfile.languages || [],
+      slug,
       created_at: updatedProfile.created_at,
       updated_at: updatedProfile.updated_at,
     }

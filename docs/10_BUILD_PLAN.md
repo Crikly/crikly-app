@@ -610,7 +610,7 @@ Lasith can manage the platform, approve DBS, configure everything.
 | L-02d | Database query audit — no query over 200ms p95 on coach search, availability, booking joins | @DatabaseArchitect | 🟡 | ⚪ |
 | L-02e | Supabase connection pool test — 50 concurrent Vercel connections without exhausting pool | @DevOpsEngineer | 🟡 | ⚪ |
 | SCALE-01 | Replace JS coach search filtering with PostGIS + Supabase RPC — trigger: coach count > 200 or L-02b load test fails | @DatabaseArchitect | 🟡 | ⚪ |
-| L-UX01 | Replace UUID with human-readable slug in coach public profile URL — /coaches/lasith-jayarathne | @BackendDeveloper | 🟡 | ⚪ |
+| L-UX01 | Replace UUID with human-readable slug in coach public profile URL — /coaches/lasith-jayarathne | @BackendDeveloper | 🟡 | ✅ |
 | L-03 | Security review — RLS, auth, child data, payments | Manual | 🔴 | ⚪ |
 | L-04 | Write Terms & Conditions | Manual | 🟢 | ⚪ |
 | L-05 | Write Privacy Policy (GDPR compliant) | Manual | 🟢 | ⚪ |

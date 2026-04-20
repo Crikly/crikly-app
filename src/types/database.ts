@@ -507,6 +507,7 @@ export type Database = {
           rating_count: number
           requires_manual_approval: boolean
           sessions_completed: number
+          slug: string | null
           stripe_account_id: string | null
           stripe_onboarding_complete: boolean
           subscription_tier_id: string | null
@@ -539,6 +540,7 @@ export type Database = {
           rating_count?: number
           requires_manual_approval?: boolean
           sessions_completed?: number
+          slug?: string | null
           stripe_account_id?: string | null
           stripe_onboarding_complete?: boolean
           subscription_tier_id?: string | null
@@ -571,6 +573,7 @@ export type Database = {
           rating_count?: number
           requires_manual_approval?: boolean
           sessions_completed?: number
+          slug?: string | null
           stripe_account_id?: string | null
           stripe_onboarding_complete?: boolean
           subscription_tier_id?: string | null
