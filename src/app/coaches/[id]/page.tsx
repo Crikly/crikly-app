@@ -11,7 +11,6 @@ import {
   ChevronRight,
   Calendar,
   CheckCircle2,
-  BadgeCheck,
   Globe,
 } from 'lucide-react'
 import { BioExpander } from './_components/BioExpander'
@@ -70,6 +69,7 @@ interface CoachProfile {
   bio: string | null
   years_experience: number | null
   location_city: string | null
+  location_postcode: string | null
   location_lat: number | null
   location_lng: number | null
   gender: string | null
@@ -235,11 +235,17 @@ export default async function CoachProfilePage({
               <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
                 {coach.full_name}
               </h1>
-              {coach.location_city && (
+              {(coach.location_city || coach.location_postcode) && (
                 <p className="flex items-center gap-1.5 mt-1 text-gray-500 text-sm">
                   <MapPin className="w-4 h-4 flex-shrink-0" />
-                  {coach.location_city}
+                  {coach.location_city || coach.location_postcode}
                 </p>
+              )}
+              {coach.dbs_status === 'verified' && (
+                <div className="inline-flex items-center gap-1.5 mt-2 px-2.5 py-1 rounded-full bg-[#E0F6F8]">
+                  <ShieldCheck className="w-3.5 h-3.5 text-[#006677]" />
+                  <span className="text-xs font-semibold text-[#006677]">DBS verified</span>
+                </div>
               )}
             </div>
             {coach.rating_avg !== null && coach.rating_count > 0 && (
@@ -465,33 +471,44 @@ function HeroGallery({ photos, coachName }: { photos: Photo[]; coachName: string
 // ─── Trust Row ────────────────────────────────────────────────────────────────
 
 function TrustRow({ coach }: { coach: CoachProfile }) {
-  const items = [
+  const stats = [
     coach.dbs_status === 'verified' && {
-      icon: <ShieldCheck className="w-4 h-4 text-[#0077CC]" />,
-      label: 'DBS Verified',
+      icon: <ShieldCheck className="w-5 h-5 text-[#006677]" />,
+      label: 'DBS verified',
+      sub: 'Background checked',
+      teal: true,
     },
-    coach.sessions_completed > 0 && {
-      icon: <CheckCircle2 className="w-4 h-4 text-[#0077CC]" />,
-      label: `${coach.sessions_completed} session${coach.sessions_completed !== 1 ? 's' : ''} completed`,
+    {
+      icon: <Star className="w-5 h-5 text-[#0077CC]" />,
+      label: `${coach.sessions_completed} session${coach.sessions_completed !== 1 ? 's' : ''}`,
+      sub: 'Completed',
+      teal: false,
     },
-    coach.qualifications.some(q => q.status === 'active') && {
-      icon: <Award className="w-4 h-4 text-[#0077CC]" />,
-      label: 'Qualified coach',
+    coach.years_experience !== null && {
+      icon: <Clock className="w-5 h-5 text-[#0077CC]" />,
+      label: `${coach.years_experience} year${coach.years_experience !== 1 ? 's' : ''}`,
+      sub: 'Coaching experience',
+      teal: false,
     },
-    coach.is_featured && {
-      icon: <BadgeCheck className="w-4 h-4 text-[#0077CC]" />,
-      label: 'Featured coach',
+    {
+      icon: <Calendar className="w-5 h-5 text-[#0077CC]" />,
+      label: 'Free cancellation',
+      sub: `${coach.cancellation_window_hours}hrs before session`,
+      teal: false,
     },
-  ].filter(Boolean) as { icon: React.ReactNode; label: string }[]
-
-  if (items.length === 0) return null
+  ].filter(Boolean) as { icon: React.ReactNode; label: string; sub: string; teal: boolean }[]
 
   return (
-    <div className="flex flex-wrap gap-x-6 gap-y-3 py-6 border-t border-b border-gray-100 mt-4">
-      {items.map(item => (
-        <div key={item.label} className="flex items-center gap-2">
-          {item.icon}
-          <span className="text-sm font-medium text-gray-700">{item.label}</span>
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 py-6 border-t border-b border-gray-100 mt-4">
+      {stats.map(stat => (
+        <div key={stat.label} className="flex items-start gap-3">
+          <div className={`flex-shrink-0 w-9 h-9 rounded-xl flex items-center justify-center ${stat.teal ? 'bg-[#E0F6F8]' : 'bg-blue-50'}`}>
+            {stat.icon}
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-gray-900 leading-snug">{stat.label}</p>
+            <p className="text-xs text-gray-500 mt-0.5">{stat.sub}</p>
+          </div>
         </div>
       ))}
     </div>

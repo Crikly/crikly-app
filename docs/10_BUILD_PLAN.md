@@ -325,6 +325,7 @@ other screens within the same task.
 | CF-D12 | Onboarding sport selection + pricing — save bar pattern (back left, save right, no border-top) | @FrontendDeveloper | 🟢 | develop | ✅ |
 | CF-D13 | Onboarding qualifications — replace emoji icons with Lucide, replace category dropdown with tiles | @FrontendDeveloper | 🟢 | develop | ⚪ |
 | CF-R04 | Coach public profile design alignment — align hero name typography, subtitle, location display, DBS badge, trust row, about fact sidebar, booking card session picker to Claude Design spec. Read docs/design/coach-profile.html. | @FrontendDeveloper | 🟢 | — | ⚪ |
+| CF-R04a | Coach public profile design alignment Phase 1 — location fallback to postcode, teal DBS pill badge near name, 4-stat trust row grid | @FrontendDeveloper | 🟢 | develop | ✅ |
 
 ### 3E — Data Wiring (CD tasks)
 
