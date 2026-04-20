@@ -59,6 +59,7 @@ interface UserProfileRow {
   location_city: string | null
   location_lat: number | null
   location_lng: number | null
+  avatar_url: string | null
 }
 
 interface PhotoRow {
@@ -195,7 +196,7 @@ export async function GET(
 
     const { data: userProfileData, error: userProfileError } = await supabaseAdmin
       .from('user_profiles')
-      .select('full_name, location_city, location_lat, location_lng')
+      .select('full_name, location_city, location_lat, location_lng, avatar_url')
       .eq('id', coach.user_profile_id)
       .single()
 
@@ -307,7 +308,7 @@ export async function GET(
 
     // ── Photos — primary first, then by sort_order ────────────────────────────
 
-    const photos = [...(coach.coach_photos ?? [])]
+    let photos = [...(coach.coach_photos ?? [])]
       .sort((a: PhotoRow, b: PhotoRow) => {
         if (a.is_primary && !b.is_primary) return -1
         if (!a.is_primary && b.is_primary) return 1
@@ -319,6 +320,10 @@ export async function GET(
         is_primary: p.is_primary,
         sort_order: p.sort_order,
       }))
+
+    if (photos.length === 0 && profile.avatar_url) {
+      photos = [{ id: 'avatar', photo_url: profile.avatar_url, is_primary: true, sort_order: 0 }]
+    }
 
     // ── Reviews (SELECT: Public RLS — anon client is fine) ───────────────────
 
