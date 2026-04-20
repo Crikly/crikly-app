@@ -15,6 +15,7 @@ import {
   Globe,
 } from 'lucide-react'
 import { BioExpander } from './_components/BioExpander'
+import { ShareButton } from './_components/ShareButton'
 
 const fraunces = Fraunces({ subsets: ['latin'], weight: ['500'], variable: '--font-fraunces' })
 
@@ -206,13 +207,16 @@ export default async function CoachProfilePage({
         <Link href="/" data-testid="nav-logo">
           <img src="/logo.png" alt="Crikly" className="w-36 h-auto object-contain" />
         </Link>
-        <Link
-          href="/search"
-          className="text-sm font-medium text-gray-600 hover:text-gray-900 flex items-center gap-1"
-        >
-          <ChevronRight className="w-4 h-4 rotate-180" />
-          Back to search
-        </Link>
+        <div className="flex items-center gap-3">
+          <ShareButton coachName={coach.full_name} />
+          <Link
+            href="/search"
+            className="text-sm font-medium text-gray-600 hover:text-gray-900 flex items-center gap-1"
+          >
+            <ChevronRight className="w-4 h-4 rotate-180" />
+            Back to search
+          </Link>
+        </div>
       </nav>
 
       <main className="max-w-6xl mx-auto px-4 sm:px-6 pb-32 lg:pb-16 pt-6">
