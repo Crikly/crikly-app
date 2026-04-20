@@ -2,7 +2,7 @@
 
 **Version:** 2.8
 **Last Updated:** April 2026
-**Changed:** SYNC-08 — added CF-02a, CF-05a/b/c, C-06d-create, CD-06-api, CD-09-api. Updated CD-06/CD-07/CD-09 blocker descriptions. CG-06 ✅.
+**Changed:** SYNC-08 — added Fix-41b, Fix-47–52, CF-R04a–h, CG-06 ✅, CF-02a, CF-05a/b/c, C-06d-create, CD-06-api, CD-09-api. Updated CD-06/CD-07/CD-09 blocker descriptions.
 **This is the single source of truth for every task in the project.**
 
 ---
@@ -336,7 +336,7 @@ other screens within the same task.
 | CF-R04d | Coach public profile design alignment Phase 4 — move name + meta row above hero gallery | @FrontendDeveloper | 🟢 | develop | ✅ |
 | CF-R04e | Coach public profile design alignment Phase 5 — reviews rating breakdown bars, reviewer avatar circles | @FrontendDeveloper | 🟢 | develop | ✅ |
 | CF-R04f | Coach public profile Phase 6 — booking card auto-fill + share button | @FrontendDeveloper | 🟡 | develop | ✅ |
-| CF-R04g | Coach public profile Phase 7 — availability 7-day grid | @FrontendDeveloper | 🟢 | develop | ✅ |
+| CF-R04g | Coach public profile Phase 7 — availability 7-day grid with slot counts | @FrontendDeveloper | 🟢 | develop | ✅ |
 | CF-R04h | Coach public profile Phase 8 — slot click populates booking card + section dividers + calendar link | @FrontendDeveloper | 🟢 | develop | ✅ |
 
 ### 3E — Data Wiring (CD tasks)
@@ -414,6 +414,7 @@ Critical tasks required before any coach can go live on the platform.
 | Fix-40 | Coach public profile polish — logo, preview link, mobile gallery (note: logo fix required hard refresh Cmd+Shift+R to clear cached .jpeg) | 🟢 Low | CG-02 | ✅ |
 | Fix-43 | Add reviews to coach public profile — API + frontend review cards | 🟡 Medium | CG-02 | ✅ |
 | Fix-41 | Fallback to avatar_url when coach_photos empty on public profile | 🟢 Low | CG-02 | ✅ |
+| Fix-41b | Upgrade Google avatar URL s96-c → s400-c + add image hostnames to next.config.ts | 🟢 Low | Fix-41 | ✅ |
 | Fix-42 | Build coach photo upload UI in Profile Hub | 🟢 Low | CG-02 | ⚪ |
 | CG-03 | Stripe Connect onboarding — real redirect (C-11, C-19) | 🔴 High | CD-03 | ✅ |
 | Fix-44 | Hide profile completion banner when at 100% on dashboard | 🟢 Low | CG-03 | ✅ |
@@ -732,14 +733,14 @@ Three-sided marketplace — coaches, parents, and venues.
 | Step 1B — Migrations | Phase 1 | 17 | 17 ✅ | 0 |
 | Step 1C — Design Foundation | Phase 1 | 6 | 6 ✅ | 0 |
 | Step 2 — Auth | Phase 1 | 15 | 15 ✅ | 0 |
-| Step 3 — Coach | Phase 1 | 69 | 58 ✅ | 11 |
+| Step 3 — Coach | Phase 1 | 72 | 60 ✅ | 12 |
 | Step 4 — Parent & Player | Phase 1 | 21 | 0 | 21 |
 | Step 5 — Booking & Payments | Phase 1 | 42 | 0 | 42 |
 | Step 6 — Admin | Phase 1 | 24 | 0 | 24 |
 | Step 7 — Pre-Launch | Phase 1 | 19 | 0 | 19 |
 | Step 8 — Mobile App | **Product Phase 2** | 20 | 0 | 20 |
 | Step 9 — Venues | **Product Phase 3** | 11 | 0 | 11 |
-| **Total** | | **274** | **126** | **148** |
+| **Total** | | **277** | **128** | **149** |
 
 ---
 
