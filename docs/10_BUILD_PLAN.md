@@ -1,8 +1,8 @@
 # Crikly — Comprehensive Build Plan
 
-**Version:** 2.7
+**Version:** 2.8
 **Last Updated:** April 2026
-**Changed:** SYNC-07 — CG-06 ✅.
+**Changed:** SYNC-08 — added CF-02a, CF-05a/b/c, C-06d-create, CD-06-api, CD-09-api. Updated CD-06/CD-07/CD-09 blocker descriptions. CG-06 ✅.
 **This is the single source of truth for every task in the project.**
 
 ---
@@ -243,6 +243,7 @@ schedule (command centre + 4 event popovers), get paid standalone.
 | C-06b | CRUD /api/coaches/session-types — standalone routes | @BackendDeveloper | 🟢 | feature/coach | ✅ |
 | C-06c | CRUD /api/coaches/venues | @BackendDeveloper | 🟢 | feature/coach | ✅ |
 | C-06d | CRUD /api/coaches/programmes | @BackendDeveloper | 🟡 | feature/coach | ✅ |
+| C-06d-create | POST /api/coaches/programmes — create + edit + cancel programme API (deferred from C-06d) | @BackendDeveloper | 🟡 | develop | ⚪ |
 | C-07 | Create CRUD /api/coaches/qualifications | @BackendDeveloper | 🟢 | feature/coach | ✅ |
 | C-08 | Create CRUD /api/coaches/photos | @BackendDeveloper | 🟢 | feature/coach | ✅ |
 | C-09 | Create CRUD /api/coaches/availability — template blocks | @BackendDeveloper | 🟡 | feature/coach | ✅ |
@@ -263,6 +264,9 @@ C-05, C-06, C-07, C-08 are safe to proceed without M-015.
 | CF-03 | Bookings list screen | @FrontendDeveloper | 🟢 | feature/coach-frontend | ✅ |
 | CF-04 | Booking Detail screen | @FrontendDeveloper | 🟢 | feature/coach-frontend | ✅ |
 | CF-05 | Programmes screen | @FrontendDeveloper | 🟢 | feature/coach-frontend | ✅ |
+| CF-05a | Create Programme form UI — multi-step form on Programmes screen | @FrontendDeveloper | 🟡 | develop | ⚪ |
+| CF-05b | Edit Programme UI — locked fields after enrolment + cancel action | @FrontendDeveloper | 🟢 | develop | ⚪ |
+| CF-05c | Programme Roster view — enrolled participants list + manual offline add | @FrontendDeveloper | 🟢 | develop | ⚪ |
 | CF-06 | Availability screen | @FrontendDeveloper | 🟢 | feature/coach-frontend | ✅ |
 | CF-07 | Profile Hub screen | @FrontendDeveloper | 🟢 | feature/coach-frontend | ✅ |
 | CF-08 | Earnings screen | @FrontendDeveloper | 🟢 | feature/coach-frontend | ✅ |
@@ -324,6 +328,7 @@ other screens within the same task.
 | CF-D11c | Location field — Google Places autocomplete on ProfileStep and ProfileEdit | @FrontendDeveloper | 🟢 | develop | ✅ |
 | CF-D12 | Onboarding sport selection + pricing — save bar pattern (back left, save right, no border-top) | @FrontendDeveloper | 🟢 | develop | ✅ |
 | CF-D13 | Onboarding qualifications — replace emoji icons with Lucide, replace category dropdown with tiles | @FrontendDeveloper | 🟢 | develop | ⚪ |
+| CF-02a | Create Session UI on Schedule screen — manual 1-on-1 slot creation modal | @FrontendDeveloper | 🟡 | develop | ⚪ |
 | CF-R04 | Coach public profile design alignment — align hero name typography, subtitle, location display, DBS badge, trust row, about fact sidebar, booking card session picker to Claude Design spec. Read docs/design/coach-profile.html. | @FrontendDeveloper | 🟢 | — | ⚪ |
 | CF-R04a | Coach public profile design alignment Phase 1 — location fallback to postcode, teal DBS pill badge near name, 4-stat trust row grid | @FrontendDeveloper | 🟢 | develop | ✅ |
 | CF-R04b | Coach public profile design alignment Phase 2 — Fraunces serif name, inline meta row, two-column about with fact sidebar, session picker in booking card | @FrontendDeveloper | 🟢 | develop | ✅ |
@@ -348,10 +353,12 @@ Branch: feature/coach-data (open from develop before starting CD-01)
 | CD-03b | Fix sport_id placeholder in PricingStep — real UUID lookup | GET /api/sports | 🔴 High | ✅ |
 | CD-04 | Availability management — real schedule blocks | GET/POST/DELETE /api/coaches/availability | 🟡 Medium | ✅ |
 | CD-05 | Availability management — real blocked dates | GET/POST/DELETE /api/coaches/blocked-dates | 🟡 Medium | ✅ |
-| CD-06 | Bookings list — real data — Blocked: depends on B-12 (GET /api/bookings) — Step 5 | GET /api/bookings (needs B-12 first) | 🟡 Medium | 🔴 |
-| CD-07 | Booking detail — real data — Blocked: depends on B-13 (GET /api/bookings/[id]) — Step 5 | GET /api/bookings/[id] (needs B-13 first) | 🟡 Medium | 🔴 |
+| CD-06-api | Build GET /api/coaches/bookings + GET /api/coaches/bookings/[id] — unblocks CD-06 and CD-07 | New routes | 🟡 Medium | ⚪ |
+| CD-06 | Bookings list — real data — Blocked: depends on CD-06-api | GET /api/coaches/bookings | 🟡 Medium | 🔴 |
+| CD-07 | Booking detail — real data — Blocked: depends on CD-06-api | GET /api/coaches/bookings/[id] | 🟡 Medium | 🔴 |
 | CD-08 | Programmes list — real data | GET /api/coaches/programmes | 🟡 Medium | ✅ |
-| CD-09 | Earnings summary — real data — Blocked: GET /api/coaches/earnings route does not exist yet — needs building before wiring | GET /api/coaches/earnings (needs building) | 🟡 Medium | 🔴 |
+| CD-09-api | Build GET /api/coaches/earnings — unblocks CD-09 | New route | 🟢 Low | ⚪ |
+| CD-09 | Earnings summary — real data — Blocked: depends on CD-09-api | GET /api/coaches/earnings | 🟡 Medium | 🔴 |
 | CD-10 | Profile edit — load and save real data | GET/POST /api/coaches/profile | 🟡 Medium | ✅  |
 | CD-10b | Profile Hub — wire to real data | GET /api/coaches/profile | 🟡 Medium | ✅ |
 | CD-11 | Get Paid — real Stripe connection status + payout data | GET /api/coaches/profile | 🟡 Medium | ✅ |
@@ -725,14 +732,14 @@ Three-sided marketplace — coaches, parents, and venues.
 | Step 1B — Migrations | Phase 1 | 17 | 17 ✅ | 0 |
 | Step 1C — Design Foundation | Phase 1 | 6 | 6 ✅ | 0 |
 | Step 2 — Auth | Phase 1 | 15 | 15 ✅ | 0 |
-| Step 3 — Coach | Phase 1 | 62 | 58 ✅ | 4 |
+| Step 3 — Coach | Phase 1 | 69 | 58 ✅ | 11 |
 | Step 4 — Parent & Player | Phase 1 | 21 | 0 | 21 |
 | Step 5 — Booking & Payments | Phase 1 | 42 | 0 | 42 |
 | Step 6 — Admin | Phase 1 | 24 | 0 | 24 |
 | Step 7 — Pre-Launch | Phase 1 | 19 | 0 | 19 |
 | Step 8 — Mobile App | **Product Phase 2** | 20 | 0 | 20 |
 | Step 9 — Venues | **Product Phase 3** | 11 | 0 | 11 |
-| **Total** | | **267** | **126** | **141** |
+| **Total** | | **274** | **126** | **148** |
 
 ---
 
