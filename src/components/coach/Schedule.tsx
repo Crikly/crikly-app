@@ -103,6 +103,20 @@ function EventBlock({ top, height, type, title, subtitle, sessionId, onCardClick
   )
 }
 
+// CD-12b: Booking block type
+interface BookingBlock {
+  id: string
+  booking_reference: string
+  session_date: string
+  session_start_time: string
+  session_end_time: string
+  session_type: string
+  status: string
+  coach_price_pence: number
+  child_name: string | null
+  booked_by_name: string | null
+}
+
 // CF-D02c FIX 1: Single popover state
 // CF-D02d BUG FIX 3: Add source field to distinguish slot vs button trigger
 type ActivePopover =
@@ -127,6 +141,9 @@ export function Schedule() {
   const [availability, setAvailability] = useState<AvailabilityResponse[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  // CD-12b: State for booking blocks
+  const [bookings, setBookings] = useState<BookingBlock[]>([])
 
   // CD-12: Fetch availability data on mount
   useEffect(() => {
@@ -158,6 +175,51 @@ export function Schedule() {
       gridRef.current.scrollTop = 128
     }
   }, [])
+
+  // CD-12b: Fetch bookings for the visible week (today + upcoming + past)
+  useEffect(() => {
+    const fetchBookings = async () => {
+      try {
+        setLoading(true)
+        const [todayRes, upcomingRes, pastRes] = await Promise.all([
+          fetch('/api/coaches/bookings?tab=today'),
+          fetch('/api/coaches/bookings?tab=upcoming'),
+          fetch('/api/coaches/bookings?tab=past'),
+        ])
+        const [todayData, upcomingData, pastData] = await Promise.all([
+          todayRes.ok ? (todayRes.json() as Promise<{ bookings: BookingBlock[] }>) : Promise.resolve({ bookings: [] }),
+          upcomingRes.ok ? (upcomingRes.json() as Promise<{ bookings: BookingBlock[] }>) : Promise.resolve({ bookings: [] }),
+          pastRes.ok ? (pastRes.json() as Promise<{ bookings: BookingBlock[] }>) : Promise.resolve({ bookings: [] }),
+        ])
+
+        const merged = [...(todayData.bookings ?? []), ...(upcomingData.bookings ?? []), ...(pastData.bookings ?? [])]
+        const seen = new Set<string>()
+        const deduped = merged.filter((b) => {
+          if (seen.has(b.id)) return false
+          seen.add(b.id)
+          return true
+        })
+
+        const weekStart = days[0].fullDate.toISOString().slice(0, 10)
+        const weekEnd = days[6].fullDate.toISOString().slice(0, 10)
+        const visible = deduped.filter(
+          (b) =>
+            b.session_date >= weekStart &&
+            b.session_date <= weekEnd &&
+            b.status !== 'cancelled_parent' &&
+            b.status !== 'cancelled_coach',
+        )
+        setBookings(visible)
+      } catch {
+        // non-critical — grid still shows availability
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchBookings()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weekOffset])
 
   // Fix-20: Auto-open New Session popover when ?action=new-session
   useEffect(() => {
@@ -460,6 +522,37 @@ export function Schedule() {
                   })}
                 </div>
                 
+                {/* CD-12b: Real booking blocks */}
+                <div className="absolute inset-0 flex pointer-events-auto z-[15]">
+                  <div className="w-16 shrink-0" />
+                  {days.map((day, dayIdx) => {
+                    const isoDate = day.fullDate.toISOString().slice(0, 10)
+                    const dayBookings = bookings.filter((b) => b.session_date === isoDate)
+                    return (
+                      <div key={dayIdx} className="flex-1 relative border-r border-transparent">
+                        {dayBookings.map((booking) => {
+                          const topPosition = timeToPosition(booking.session_start_time) * 64
+                          const heightPx = calculateDuration(booking.session_start_time, booking.session_end_time) * 64
+                          const title = booking.child_name ?? booking.booked_by_name ?? booking.booking_reference
+                          const subtitle = `${booking.session_start_time.slice(0, 5)} · ${booking.session_type === 'group' ? 'Group' : '1-on-1'}`
+                          return (
+                            <EventBlock
+                              key={booking.id}
+                              top={topPosition}
+                              height={heightPx}
+                              type="confirmed"
+                              title={title}
+                              subtitle={subtitle}
+                              sessionId={booking.id}
+                              onCardClick={handleCardClick}
+                            />
+                          )
+                        })}
+                      </div>
+                    )
+                  })}
+                </div>
+
                 {/* CD-12: Empty state */}
                 {!loading && !error && availability.length === 0 && (
                   <div className="absolute inset-0 flex items-center justify-center z-20">

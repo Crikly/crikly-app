@@ -363,6 +363,7 @@ Branch: feature/coach-data (open from develop before starting CD-01)
 | CD-10b | Profile Hub — wire to real data | GET /api/coaches/profile | 🟡 Medium | ✅ |
 | CD-11 | Get Paid — real Stripe connection status + payout data | GET /api/coaches/profile | 🟡 Medium | ✅ |
 | CD-12 | Schedule grid — real bookings + availability | GET /api/coaches/availability | 🔵 Low | ✅ |
+| CD-12b | Schedule grid — wire real bookings (today + upcoming + past) onto grid at z-15 | GET /api/coaches/bookings | 🟢 Low | ✅ |
 | Fix-14 | Data wiring fixes: onboarding pre-population, dashboard completion %, right panel real data | Multiple | 🟡 Medium | ✅ |
 | Fix-15b | POST /api/coaches/sports validation fixes: add elite skill level, make group fields optional | POST /api/coaches/sports | 🟢 Low | ✅ |
 | Fix-15c | POST /api/coaches/sports 500 error: remove sports join from insert query | POST /api/coaches/sports | 🟢 Low | ✅ |
