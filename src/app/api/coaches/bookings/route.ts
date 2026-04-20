@@ -4,9 +4,9 @@ import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database'
 
 type BookingRow = Database['public']['Tables']['bookings']['Row']
-type Tab = 'today' | 'upcoming' | 'past' | 'cancelled'
+type Tab = 'today' | 'upcoming' | 'past' | 'cancelled' | 'pending_approval'
 
-const VALID_TABS: Tab[] = ['today', 'upcoming', 'past', 'cancelled']
+const VALID_TABS: Tab[] = ['today', 'upcoming', 'past', 'cancelled', 'pending_approval']
 const PAGE_SIZE = 20
 
 // Service-role client for user_profiles lookups.
@@ -64,7 +64,7 @@ export async function GET(request: Request) {
   const rawTab = searchParams.get('tab') ?? 'upcoming'
   if (!VALID_TABS.includes(rawTab as Tab)) {
     return NextResponse.json(
-      { error: 'Validation failed', details: ['tab must be one of: today, upcoming, past, cancelled'] },
+      { error: 'Validation failed', details: ['tab must be one of: today, upcoming, past, cancelled, pending_approval'] },
       { status: 400 },
     )
   }
@@ -89,11 +89,13 @@ export async function GET(request: Request) {
     filtered = base.gt('session_date', todayIso).eq('status', 'confirmed')
   } else if (tab === 'past') {
     filtered = base.in('status', ['completed', 'no_show'])
+  } else if (tab === 'pending_approval') {
+    filtered = base.in('status', ['pending_approval'])
   } else {
     filtered = base.in('status', ['cancelled_parent', 'cancelled_coach'])
   }
 
-  const ascending = tab === 'today' || tab === 'upcoming'
+  const ascending = tab === 'today' || tab === 'upcoming' || tab === 'pending_approval'
   const { data: bookings, error: bookingsError } = await filtered
     .order('session_date', { ascending })
     .order('session_start_time', { ascending: true })

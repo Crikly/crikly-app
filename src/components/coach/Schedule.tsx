@@ -144,6 +144,8 @@ export function Schedule() {
 
   // CD-12b: State for booking blocks
   const [bookings, setBookings] = useState<BookingBlock[]>([])
+  // CI-01: Increment to force bookings re-fetch after approve/decline
+  const [refreshKey, setRefreshKey] = useState(0)
 
   // CD-12: Fetch availability data on mount
   useEffect(() => {
@@ -176,23 +178,30 @@ export function Schedule() {
     }
   }, [])
 
-  // CD-12b: Fetch bookings for the visible week (today + upcoming + past)
+  // CD-12b / Fix-54: Fetch bookings for the visible week (today + upcoming + past + pending_approval)
   useEffect(() => {
     const fetchBookings = async () => {
       try {
         setLoading(true)
-        const [todayRes, upcomingRes, pastRes] = await Promise.all([
+        const [todayRes, upcomingRes, pastRes, pendingRes] = await Promise.all([
           fetch('/api/coaches/bookings?tab=today'),
           fetch('/api/coaches/bookings?tab=upcoming'),
           fetch('/api/coaches/bookings?tab=past'),
+          fetch('/api/coaches/bookings?tab=pending_approval'),
         ])
-        const [todayData, upcomingData, pastData] = await Promise.all([
+        const [todayData, upcomingData, pastData, pendingData] = await Promise.all([
           todayRes.ok ? (todayRes.json() as Promise<{ bookings: BookingBlock[] }>) : Promise.resolve({ bookings: [] }),
           upcomingRes.ok ? (upcomingRes.json() as Promise<{ bookings: BookingBlock[] }>) : Promise.resolve({ bookings: [] }),
           pastRes.ok ? (pastRes.json() as Promise<{ bookings: BookingBlock[] }>) : Promise.resolve({ bookings: [] }),
+          pendingRes.ok ? (pendingRes.json() as Promise<{ bookings: BookingBlock[] }>) : Promise.resolve({ bookings: [] }),
         ])
 
-        const merged = [...(todayData.bookings ?? []), ...(upcomingData.bookings ?? []), ...(pastData.bookings ?? [])]
+        const merged = [
+          ...(todayData.bookings ?? []),
+          ...(upcomingData.bookings ?? []),
+          ...(pastData.bookings ?? []),
+          ...(pendingData.bookings ?? []),
+        ]
         const seen = new Set<string>()
         const deduped = merged.filter((b) => {
           if (seen.has(b.id)) return false
@@ -219,7 +228,7 @@ export function Schedule() {
 
     fetchBookings()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [weekOffset])
+  }, [weekOffset, refreshKey])
 
   // Fix-20: Auto-open New Session popover when ?action=new-session
   useEffect(() => {
@@ -535,12 +544,14 @@ export function Schedule() {
                           const heightPx = calculateDuration(booking.session_start_time, booking.session_end_time) * 64
                           const title = booking.child_name ?? booking.booked_by_name ?? booking.booking_reference
                           const subtitle = `${booking.session_start_time.slice(0, 5)} · ${booking.session_type === 'group' ? 'Group' : '1-on-1'}`
+                          const blockType: EventBlockProps['type'] =
+                            booking.status === 'pending_approval' ? 'pending' : 'confirmed'
                           return (
                             <EventBlock
                               key={booking.id}
                               top={topPosition}
                               height={heightPx}
-                              type="confirmed"
+                              type={blockType}
                               title={title}
                               subtitle={subtitle}
                               sessionId={booking.id}
@@ -613,12 +624,14 @@ export function Schedule() {
 
         {/* CF-D02c FIX 1: Single popover rendering */}
         {activePopover?.type === 'session' && (
-          <SessionPopover 
-            x={activePopover.x} 
-            y={activePopover.y} 
-            sessionId={activePopover.sessionId} 
-            type={activePopover.sessionType} 
-            onClose={() => setActivePopover(null)} 
+          <SessionPopover
+            x={activePopover.x}
+            y={activePopover.y}
+            sessionId={activePopover.sessionId}
+            type={activePopover.sessionType}
+            booking={bookings.find((b) => b.id === activePopover.sessionId) ?? null}
+            onClose={() => setActivePopover(null)}
+            onRefresh={() => { setActivePopover(null); setRefreshKey((k) => k + 1) }}
           />
         )}
         {activePopover?.type === 'creation' && (
@@ -667,7 +680,42 @@ export function Schedule() {
 }
 
 // CF-D02b CHANGE 1: Session Popover Component (4 types)
-function SessionPopover({ x, y, sessionId, type, onClose }: { x: number; y: number; sessionId: string; type: string; onClose: () => void }) {
+function SessionPopover({
+  x, y, sessionId, type, booking, onClose, onRefresh,
+}: {
+  x: number
+  y: number
+  sessionId: string
+  type: string
+  booking: BookingBlock | null
+  onClose: () => void
+  onRefresh: () => void
+}) {
+  const [actionLoading, setActionLoading] = useState<'approve' | 'decline' | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+
+  const handleStatusAction = async (action: 'approve' | 'decline') => {
+    setActionLoading(action)
+    setActionError(null)
+    try {
+      const res = await fetch(`/api/coaches/bookings/${sessionId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      })
+      if (!res.ok) {
+        const data = await res.json() as { error?: string }
+        setActionError(data.error ?? 'Something went wrong')
+        return
+      }
+      onRefresh()
+    } catch {
+      setActionError('Network error — please try again')
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
   const getPopoverContent = () => {
     switch (type) {
       case 'confirmed':
@@ -735,37 +783,60 @@ function SessionPopover({ x, y, sessionId, type, onClose }: { x: number; y: numb
           </>
         )
       
-      case 'pending':
+      case 'pending': {
+        const clientName = booking?.child_name ?? booking?.booked_by_name ?? '—'
+        const dateLabel = booking
+          ? (() => {
+              const d = new Date(booking.session_date + 'T00:00:00')
+              const dayStr = d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+              return `${dayStr} · ${booking.session_start_time.slice(0, 5)} – ${booking.session_end_time.slice(0, 5)}`
+            })()
+          : '—'
+        const typeLabel = booking?.session_type === 'group' ? 'Group' : '1-on-1'
         return (
           <>
             <div className="flex items-start justify-between mb-3">
-              <h3 className="text-[15px] font-medium text-gray-900">David Chen</h3>
+              <h3 className="text-[15px] font-medium text-gray-900">{clientName}</h3>
               <span className="px-2 py-0.5 bg-amber-50 text-amber-800 border border-amber-200 rounded-full text-[11px] font-medium">Awaiting approval</span>
             </div>
             <div className="space-y-2 mb-3">
               <div className="flex items-center gap-2 text-[13px] text-gray-600">
                 <Calendar size={14} />
-                <span>Wed 8 Apr · 13:00 – 14:00</span>
+                <span>{dateLabel}</span>
               </div>
               <div className="flex items-center gap-2 text-[13px] text-gray-600">
                 <User size={14} />
-                <span>Cricket · 1-on-1</span>
+                <span>{typeLabel}</span>
               </div>
               <div className="flex items-center gap-2 text-[13px] text-amber-700 font-medium">
                 <AlertCircle size={14} className="text-amber-500" />
                 <span>Respond within 24 hours</span>
               </div>
             </div>
+            {actionError && (
+              <p className="text-[12px] text-red-600 mb-2">{actionError}</p>
+            )}
             <div className="flex gap-2 mt-3">
-              <button onClick={() => {/* TODO CF-D02b: wire Approve action to booking approval API */}} className="flex-1 bg-green-600 text-white rounded-lg py-2 text-[13px] font-medium hover:bg-green-700 flex items-center justify-center gap-1">
-                <Check size={14} /> Approve
+              <button
+                onClick={() => handleStatusAction('approve')}
+                disabled={actionLoading !== null}
+                className="flex-1 bg-green-600 text-white rounded-lg py-2 text-[13px] font-medium hover:bg-green-700 flex items-center justify-center gap-1 disabled:opacity-60"
+              >
+                {actionLoading === 'approve' ? <RefreshCw size={13} className="animate-spin" /> : <Check size={14} />}
+                Approve
               </button>
-              <button onClick={() => {/* TODO CF-D02b: wire Decline action to booking decline API */}} className="flex-1 bg-white border border-red-200 text-red-600 rounded-lg py-2 text-[13px] font-medium hover:bg-red-50 flex items-center justify-center gap-1">
-                <X size={14} /> Decline
+              <button
+                onClick={() => handleStatusAction('decline')}
+                disabled={actionLoading !== null}
+                className="flex-1 bg-white border border-red-200 text-red-600 rounded-lg py-2 text-[13px] font-medium hover:bg-red-50 flex items-center justify-center gap-1 disabled:opacity-60"
+              >
+                {actionLoading === 'decline' ? <RefreshCw size={13} className="animate-spin" /> : <X size={14} />}
+                Decline
               </button>
             </div>
           </>
         )
+      }
       
       case 'blocked':
         return (
