@@ -322,7 +322,10 @@ export async function GET(
       }))
 
     if (photos.length === 0 && profile.avatar_url) {
-      photos = [{ id: 'avatar', photo_url: profile.avatar_url, is_primary: true, sort_order: 0 }]
+      const avatarUrl = profile.avatar_url.includes('=s96-c')
+        ? profile.avatar_url.replace('=s96-c', '=s400-c')
+        : profile.avatar_url
+      photos = [{ id: 'avatar', photo_url: avatarUrl, is_primary: true, sort_order: 0 }]
     }
 
     // ── Reviews (SELECT: Public RLS — anon client is fine) ───────────────────
