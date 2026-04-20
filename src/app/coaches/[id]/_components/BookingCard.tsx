@@ -127,8 +127,7 @@ function findNextSlot(data: AvailabilityResponse): NextSlot | null {
 }
 
 function slotFromParams(dateParam: string, timeParam: string): NextSlot {
-  const [year, month, day] = dateParam.split('-').map(Number)
-  const d = new Date(year, month - 1, day)
+  const d = new Date(dateParam + 'T12:00:00')
   const dateLabel = formatDateLabel(d)
 
   const now = new Date()

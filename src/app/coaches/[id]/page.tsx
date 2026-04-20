@@ -314,7 +314,7 @@ export default async function CoachProfilePage({
 
             {/* Sports & Pricing */}
             {coach.sports.length > 0 && (
-              <section aria-labelledby="sports-heading" className="pt-10 pb-2 border-t border-gray-100">
+              <section aria-labelledby="sports-heading" className="pt-10 pb-8 border-t border-gray-100">
                 <h2 id="sports-heading" className="text-xl font-bold text-gray-900 mb-4">
                   Sessions &amp; Pricing
                 </h2>
@@ -328,7 +328,7 @@ export default async function CoachProfilePage({
 
             {/* Qualifications */}
             {coach.qualifications.length > 0 && (
-              <section aria-labelledby="quals-heading" className="pt-10 pb-2 border-t border-gray-100">
+              <section aria-labelledby="quals-heading" className="pt-10 pb-8 border-t border-gray-100">
                 <h2 id="quals-heading" className="text-xl font-bold text-gray-900 mb-4">
                   Qualifications
                 </h2>
@@ -342,7 +342,7 @@ export default async function CoachProfilePage({
 
             {/* Where I coach */}
             {(coach.location_city || coach.location_postcode) && (
-              <section aria-labelledby="location-heading" className="pt-10 pb-2 border-t border-gray-100">
+              <section aria-labelledby="location-heading" className="pt-10 pb-8 border-t border-gray-100">
                 <h2 id="location-heading" className="text-xl font-bold text-gray-900 mb-4">
                   Where I coach
                 </h2>
@@ -372,7 +372,7 @@ export default async function CoachProfilePage({
 
             {/* Availability */}
             {avail && avail.availability.length > 0 && (
-              <section aria-labelledby="availability-heading" className="pt-10 pb-2 border-t border-gray-100">
+              <section aria-labelledby="availability-heading" className="pt-10 pb-8 border-t border-gray-100">
                 <div className="flex items-center justify-between mb-4">
                   <h2 id="availability-heading" className="text-xl font-bold text-gray-900">
                     Availability
@@ -393,7 +393,7 @@ export default async function CoachProfilePage({
             )}
 
             {/* Reviews */}
-            <section aria-labelledby="reviews-heading" className="pt-10 pb-2 border-t border-gray-100">
+            <section aria-labelledby="reviews-heading" className="pt-10 pb-8 border-t border-gray-100">
               <h2 id="reviews-heading" className="text-xl font-bold text-gray-900 mb-4">
                 Reviews
               </h2>
@@ -418,7 +418,7 @@ export default async function CoachProfilePage({
             </section>
 
             {/* Safety */}
-            <section aria-labelledby="safety-heading" className="pt-10 pb-2 border-t border-gray-100">
+            <section aria-labelledby="safety-heading" className="pt-10 pb-8 border-t border-gray-100">
               <h2 id="safety-heading" className="text-xl font-bold text-gray-900 mb-4">
                 Safety &amp; Trust
               </h2>
