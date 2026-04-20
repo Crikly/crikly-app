@@ -335,7 +335,7 @@ export async function GET(
     const { data: reviewsData, error: reviewsError } = await supabase
       .from('reviews')
       .select('id, rating, comment, created_at')
-      .eq('coach_profile_id', id)
+      .eq('coach_profile_id', coach.id)
       .eq('is_visible', true)
       .order('created_at', { ascending: false })
       .limit(10)
