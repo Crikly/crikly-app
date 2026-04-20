@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Star, ChevronRight } from 'lucide-react'
 
@@ -125,13 +126,42 @@ function findNextSlot(data: AvailabilityResponse): NextSlot | null {
   return null
 }
 
+function slotFromParams(dateParam: string, timeParam: string): NextSlot {
+  const [year, month, day] = dateParam.split('-').map(Number)
+  const d = new Date(year, month - 1, day)
+  const dateLabel = formatDateLabel(d)
+
+  const now = new Date()
+  const today = new Date(now)
+  today.setHours(0, 0, 0, 0)
+  const tomorrow = new Date(today)
+  tomorrow.setDate(today.getDate() + 1)
+
+  let nextLabel: string
+  if (toDateStr(d) === toDateStr(today)) nextLabel = 'Today'
+  else if (toDateStr(d) === toDateStr(tomorrow)) nextLabel = 'Tomorrow'
+  else nextLabel = dateLabel
+
+  return { dateLabel, timeLabel: timeParam, nextLabel }
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function BookingCard({ coachId, sports, priceFrom, ratingAvg, ratingCount }: BookingCardProps) {
   const [loading, setLoading] = useState(true)
   const [nextSlot, setNextSlot] = useState<NextSlot | null>(null)
+  const searchParams = useSearchParams()
 
   useEffect(() => {
+    const paramDate = searchParams.get('date')
+    const paramTime = searchParams.get('time')
+
+    if (paramDate && paramTime) {
+      setNextSlot(slotFromParams(paramDate, paramTime))
+      setLoading(false)
+      return
+    }
+
     fetch(`/api/coaches/${coachId}/availability`)
       .then(r => r.ok ? r.json() as Promise<AvailabilityResponse> : null)
       .then(data => {
@@ -139,7 +169,7 @@ export function BookingCard({ coachId, sports, priceFrom, ratingAvg, ratingCount
       })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [coachId])
+  }, [coachId, searchParams])
 
   const firstSport = sports[0]
   const sessionLabel = firstSport

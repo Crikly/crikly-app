@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import { Fraunces } from 'next/font/google'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
@@ -271,7 +272,7 @@ export default async function CoachProfilePage({
         {/* ── Main layout ─────────────────────────────────────────────────── */}
         <div className="grid lg:grid-cols-[minmax(0,1fr)_380px] gap-12 items-start mt-10">
           {/* Left — main content */}
-          <div className="space-y-10 min-w-0">
+          <div className="min-w-0">
             {/* About */}
             {coach.bio && (
               <section aria-labelledby="about-heading">
@@ -313,7 +314,7 @@ export default async function CoachProfilePage({
 
             {/* Sports & Pricing */}
             {coach.sports.length > 0 && (
-              <section aria-labelledby="sports-heading">
+              <section aria-labelledby="sports-heading" className="pt-10 border-t border-gray-100">
                 <h2 id="sports-heading" className="text-xl font-bold text-gray-900 mb-4">
                   Sessions &amp; Pricing
                 </h2>
@@ -327,7 +328,7 @@ export default async function CoachProfilePage({
 
             {/* Qualifications */}
             {coach.qualifications.length > 0 && (
-              <section aria-labelledby="quals-heading">
+              <section aria-labelledby="quals-heading" className="pt-10 border-t border-gray-100">
                 <h2 id="quals-heading" className="text-xl font-bold text-gray-900 mb-4">
                   Qualifications
                 </h2>
@@ -341,7 +342,7 @@ export default async function CoachProfilePage({
 
             {/* Where I coach */}
             {(coach.location_city || coach.location_postcode) && (
-              <section aria-labelledby="location-heading">
+              <section aria-labelledby="location-heading" className="pt-10 border-t border-gray-100">
                 <h2 id="location-heading" className="text-xl font-bold text-gray-900 mb-4">
                   Where I coach
                 </h2>
@@ -371,7 +372,7 @@ export default async function CoachProfilePage({
 
             {/* Availability */}
             {avail && avail.availability.length > 0 && (
-              <section aria-labelledby="availability-heading">
+              <section aria-labelledby="availability-heading" className="pt-10 border-t border-gray-100">
                 <div className="flex items-center justify-between mb-4">
                   <h2 id="availability-heading" className="text-xl font-bold text-gray-900">
                     Availability
@@ -392,7 +393,7 @@ export default async function CoachProfilePage({
             )}
 
             {/* Reviews */}
-            <section aria-labelledby="reviews-heading">
+            <section aria-labelledby="reviews-heading" className="pt-10 border-t border-gray-100">
               <h2 id="reviews-heading" className="text-xl font-bold text-gray-900 mb-4">
                 Reviews
               </h2>
@@ -417,7 +418,7 @@ export default async function CoachProfilePage({
             </section>
 
             {/* Safety */}
-            <section aria-labelledby="safety-heading">
+            <section aria-labelledby="safety-heading" className="pt-10 border-t border-gray-100">
               <h2 id="safety-heading" className="text-xl font-bold text-gray-900 mb-4">
                 Safety &amp; Trust
               </h2>
@@ -427,13 +428,15 @@ export default async function CoachProfilePage({
 
           {/* Right — desktop booking card */}
           <aside className="hidden lg:block sticky top-24">
-            <BookingCard
-              coachId={coach.id}
-              sports={coach.sports}
-              priceFrom={minPrice}
-              ratingAvg={coach.rating_avg}
-              ratingCount={coach.rating_count}
-            />
+            <Suspense fallback={<div className="border border-gray-200 rounded-2xl p-6 h-64 animate-pulse" />}>
+              <BookingCard
+                coachId={coach.id}
+                sports={coach.sports}
+                priceFrom={minPrice}
+                ratingAvg={coach.rating_avg}
+                ratingCount={coach.rating_count}
+              />
+            </Suspense>
           </aside>
         </div>
       </main>
@@ -724,20 +727,28 @@ function AvailabilityGrid({
         {days.map((day, i) => {
           const dateStr = day.toISOString().slice(0, 10)
           const isBlocked = blockedSet.has(dateStr)
-          const slotCount = isBlocked
-            ? 0
-            : templates.filter(t => t.day_of_week === day.getDay()).length
+          const daySlots = isBlocked
+            ? []
+            : templates
+                .filter(t => t.day_of_week === day.getDay())
+                .sort((a, b) => a.start_time.localeCompare(b.start_time))
+          const slotCount = daySlots.length
           const hasSlots = slotCount > 0
 
-          return (
-            <div
-              key={i}
-              className={`flex flex-col items-center rounded-xl py-3 px-1 text-center ${
-                hasSlots
-                  ? 'bg-[#E6F3FB] border border-[#B5D4F4]'
-                  : 'bg-white border border-gray-200 opacity-55'
-              }`}
-            >
+          // First slot that respects min_advance_hours (for click target)
+          let firstSlot: string | null = null
+          for (const slot of daySlots) {
+            const [h, m] = slot.start_time.split(':').map(Number)
+            const slotTime = new Date(day)
+            slotTime.setHours(h, m, 0, 0)
+            if (slotTime.getTime() - now.getTime() >= minAdvanceMs) {
+              firstSlot = slot.start_time
+              break
+            }
+          }
+
+          const cellContent = (
+            <>
               <span className={`text-[11px] uppercase tracking-wide font-semibold mb-1.5 ${
                 hasSlots ? 'text-[#0077CC]' : 'text-gray-400'
               }`}>
@@ -753,6 +764,33 @@ function AvailabilityGrid({
               ) : (
                 <span className="text-gray-300 mt-0.5">—</span>
               )}
+            </>
+          )
+
+          if (firstSlot) {
+            return (
+              <Link
+                key={i}
+                href={`?date=${dateStr}&time=${firstSlot}`}
+                scroll={false}
+                className="flex flex-col items-center rounded-xl py-3 px-1 text-center bg-[#E6F3FB] border border-[#B5D4F4] hover:bg-[#D5EBF8] transition-colors"
+                data-testid={`availability-day-${i}`}
+              >
+                {cellContent}
+              </Link>
+            )
+          }
+
+          return (
+            <div
+              key={i}
+              className={`flex flex-col items-center rounded-xl py-3 px-1 text-center ${
+                hasSlots
+                  ? 'bg-[#E6F3FB] border border-[#B5D4F4]'
+                  : 'bg-white border border-gray-200 opacity-55'
+              }`}
+            >
+              {cellContent}
             </div>
           )
         })}
