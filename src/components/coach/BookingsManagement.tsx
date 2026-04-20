@@ -1,7 +1,7 @@
 'use client'
 import React, { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { ChevronRight, MapPin } from 'lucide-react'
+import { ChevronRight, Loader2 } from 'lucide-react'
 
 type Tab = 'Upcoming' | 'Pending approval' | 'Past'
 
@@ -57,6 +57,7 @@ function statusBadge(status: string, dateStr: string, startTime: string): { bg: 
     return { bg: '#FEF3C7', text: '#B45309', label: 'Starting soon' }
   }
   switch (status) {
+    case 'pending_approval': return { bg: '#FEF3C7', text: '#B45309', label: 'Pending approval' }
     case 'confirmed':   return { bg: '#E0F6F8', text: '#0099AA', label: 'Confirmed' }
     case 'completed':   return { bg: '#DCFCE7', text: '#15803D', label: 'Completed' }
     case 'no_show':     return { bg: '#FEE2E2', text: '#B91C1C', label: 'No show' }
@@ -96,6 +97,9 @@ export function BookingsManagement() {
   const [bookings, setBookings] = useState<BookingListItem[]>([])
   const [upcomingCount, setUpcomingCount] = useState(0)
   const [sportsMap, setSportsMap] = useState<Record<string, string>>({})
+  const [pastPage, setPastPage] = useState(1)
+  const [hasMore, setHasMore] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
 
   // Fetch sports once on mount
   useEffect(() => {
@@ -109,30 +113,48 @@ export function BookingsManagement() {
       .catch(() => {/* non-critical — sport names fall back to empty */})
   }, [])
 
+  const PAGE_SIZE = 20
+
   const fetchBookings = useCallback(async (tab: Tab) => {
-    if (tab === 'Pending approval') {
-      // BR-06: bookings are auto-confirmed — no pending approval state exists
-      setBookings([])
-      setLoading(false)
-      return
-    }
     setLoading(true)
-    const apiTab = tab === 'Upcoming' ? 'upcoming' : 'past'
+    setPastPage(1)
+    setHasMore(false)
+
+    let apiTab: string
+    if (tab === 'Upcoming') apiTab = 'upcoming'
+    else if (tab === 'Past') apiTab = 'past'
+    else apiTab = 'pending_approval'
+
     try {
-      const res = await fetch(`/api/coaches/bookings?tab=${apiTab}`)
-      if (!res.ok) {
-        setBookings([])
-        return
-      }
+      const res = await fetch(`/api/coaches/bookings?tab=${apiTab}&page=1`)
+      if (!res.ok) { setBookings([]); return }
       const data = await res.json() as { bookings: BookingListItem[] }
-      setBookings(data.bookings ?? [])
-      if (tab === 'Upcoming') setUpcomingCount(data.bookings?.length ?? 0)
+      const rows = data.bookings ?? []
+      setBookings(rows)
+      if (tab === 'Upcoming') setUpcomingCount(rows.length)
+      if (tab === 'Past') setHasMore(rows.length === PAGE_SIZE)
     } catch {
       setBookings([])
     } finally {
       setLoading(false)
     }
   }, [])
+
+  const loadMore = useCallback(async () => {
+    setLoadingMore(true)
+    const nextPage = pastPage + 1
+    try {
+      const res = await fetch(`/api/coaches/bookings?tab=past&page=${nextPage}`)
+      if (!res.ok) return
+      const data = await res.json() as { bookings: BookingListItem[] }
+      const rows = data.bookings ?? []
+      setBookings((prev) => [...prev, ...rows])
+      setPastPage(nextPage)
+      setHasMore(rows.length === PAGE_SIZE)
+    } catch { /* silent — existing list stays intact */ } finally {
+      setLoadingMore(false)
+    }
+  }, [pastPage])
 
   useEffect(() => {
     fetchBookings(activeTab)
@@ -307,6 +329,20 @@ export function BookingsManagement() {
                   </div>
                 )
               })
+            )}
+
+            {activeTab === 'Past' && hasMore && !loading && (
+              <button
+                onClick={loadMore}
+                disabled={loadingMore}
+                className="w-full rounded-xl border border-gray-200 py-3 text-[14px] font-medium text-gray-600 hover:bg-gray-50 transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
+              >
+                {loadingMore ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  'Load more past bookings'
+                )}
+              </button>
             )}
           </div>
         </div>
