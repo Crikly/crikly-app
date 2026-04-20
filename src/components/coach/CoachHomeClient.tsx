@@ -16,6 +16,14 @@ const group1Url = "https://images.unsplash.com/photo-1761039807856-9f412d0e0a3d?
 const group2Url = "https://images.unsplash.com/photo-1609422644211-a85c36ee36a7?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxraWRzJTIwcGxheWluZyUyMHNwb3J0c3xlbnwxfHx8fDE3NzU0ODc5Nzl8MA&ixlib=rb-4.1.0&q=80&w=1080"
 const fallbackAvatarUrl = "https://images.unsplash.com/photo-1609422644211-a85c36ee36a7?w=100&q=80"
 
+interface Programme {
+  id: string
+  title: string
+  current_spots: number
+  max_spots: number
+  status: string
+}
+
 interface DashboardData {
   coachName: string
   profileCompletion: {
@@ -48,6 +56,7 @@ interface DashboardData {
     average: number
     count: number
   }
+  programmes: Programme[]
 }
 
 interface CoachHomeClientProps {
@@ -310,7 +319,40 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
           </div>
         </section>
 
-        {/* Group Programmes - STUB: No data source yet - hidden until wired */}
+        {/* Group Programmes */}
+        <section className="flex flex-col gap-3.5">
+          <div className="flex justify-between items-end">
+            <h2 className="text-[19px] font-bold text-gray-900">Your programmes</h2>
+            <Link href="/coach/programmes" className="text-[#0077CC] text-sm font-bold hover:underline">View all</Link>
+          </div>
+          {data.programmes.length === 0 ? (
+            <div className="flex flex-col items-center justify-center border-2 border-dashed border-gray-200 rounded-2xl bg-gray-50 p-10 text-center">
+              <Calendar size={40} className="text-gray-300 mb-4" />
+              <h3 className="text-base font-bold text-gray-900 mb-1">No programmes yet</h3>
+              <p className="text-sm text-gray-500 mb-5">Create a group programme to coach multiple players at once.</p>
+              <button
+                data-testid="create-programme-button"
+                onClick={() => router.push('/coach/programmes')}
+                className="bg-[#0077CC] text-white px-5 py-2.5 rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-[#0066AA] transition-colors"
+              >
+                <Plus size={16} />
+                Create programme
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {data.programmes.slice(0, 2).map((prog, i) => (
+                <GroupCard
+                  key={prog.id}
+                  title={prog.title}
+                  spots={`${prog.current_spots} of ${prog.max_spots} spots taken`}
+                  image={i === 0 ? group1Url : group2Url}
+                  active={prog.status === 'active'}
+                />
+              ))}
+            </div>
+          )}
+        </section>
         </div>
       </div>
 

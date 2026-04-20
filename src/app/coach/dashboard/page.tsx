@@ -1,6 +1,14 @@
 import { createClient } from '@/lib/supabase/server'
 import { CoachHomeClient } from '@/components/coach/CoachHomeClient'
 
+interface Programme {
+  id: string
+  title: string
+  current_spots: number
+  max_spots: number
+  status: string
+}
+
 interface DashboardData {
   coachName: string
   profileCompletion: {
@@ -33,6 +41,7 @@ interface DashboardData {
     average: number
     count: number
   }
+  programmes: Programme[]
 }
 
 export default async function CoachDashboardPage() {
@@ -57,7 +66,8 @@ export default async function CoachDashboardPage() {
     rating: {
       average: 0,
       count: 0
-    }
+    },
+    programmes: []
   }
 
   try {
@@ -272,6 +282,22 @@ export default async function CoachDashboardPage() {
       average: coachProfile.rating_avg || 0,
       count: coachProfile.rating_count || 0
     }
+
+    // 9. Group programmes
+    const { data: programmesData } = await supabase
+      .from('group_programmes')
+      .select('id, title, current_spots, max_spots, status')
+      .eq('coach_profile_id', coachProfile.id)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false })
+
+    dashboardData.programmes = (programmesData || []).map(p => ({
+      id: p.id,
+      title: p.title,
+      current_spots: p.current_spots,
+      max_spots: p.max_spots,
+      status: p.status,
+    }))
 
   } catch (error) {
     // Return with empty defaults on error

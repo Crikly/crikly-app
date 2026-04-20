@@ -404,6 +404,7 @@ Critical tasks required before any coach can go live on the platform.
 | Fix-44 | Hide profile completion banner when at 100% on dashboard | 🟢 Low | CG-03 | ✅ |
 | Fix-45 | Sync Payment Setup row in Profile Hub to real Stripe Connect status | 🟢 Low | CG-03 | ✅ |
 | CG-04 | Email notifications — booking received, confirmed (B-17) | 🟡 Medium | CG-01 | ✅ |
+| Fix-46 | Wire group programmes to coach dashboard | 🟢 Low | CG-02 | ✅ |
 | CG-05 | Push notifications via OneSignal (B-18) | 🟡 Medium | CG-01 | ⚪ |
 | CG-06 | Integration tests — all coach API routes (C-23) | 🟡 Medium | CD-03 | ⚪ |
 | CG-07 | E2E test — full coach onboarding to profile live (C-24) | 🟡 Medium | CG-01, CG-02 | ⚪ |
