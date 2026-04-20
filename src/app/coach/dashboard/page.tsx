@@ -288,8 +288,10 @@ export default async function CoachDashboardPage() {
       .from('group_programmes')
       .select('id, title, current_spots, max_spots, status')
       .eq('coach_profile_id', coachProfile.id)
+      .eq('status', 'active')
+      .gte('ends_at', new Date().toISOString())
       .is('deleted_at', null)
-      .order('created_at', { ascending: false })
+      .order('starts_at', { ascending: true })
 
     dashboardData.programmes = (programmesData || []).map(p => ({
       id: p.id,
