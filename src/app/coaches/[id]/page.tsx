@@ -275,36 +275,6 @@ export default async function CoachProfilePage({
         <div className="grid lg:grid-cols-[minmax(0,1fr)_380px] gap-12 items-start mt-10">
           {/* Left — main content */}
           <div className="space-y-10 min-w-0">
-            {/* Where I coach */}
-            {(coach.location_city || coach.location_postcode) && (
-              <section aria-labelledby="location-heading">
-                <h2 id="location-heading" className="text-xl font-bold text-gray-900 mb-4">
-                  Where I coach
-                </h2>
-                <div className="border border-gray-100 rounded-2xl p-5 space-y-4">
-                  <div className="flex items-center gap-2.5">
-                    <MapPin className="w-5 h-5 text-[#0077CC] flex-shrink-0" />
-                    <span className="font-semibold text-gray-900">
-                      {coach.location_city || coach.location_postcode}
-                    </span>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {coach.cancellation_window_hours > 0 && (
-                      <span className="bg-gray-50 border border-gray-200 rounded-full px-3 py-1 text-xs text-gray-600">
-                        Free cancellation {coach.cancellation_window_hours}hrs before
-                      </span>
-                    )}
-                    <span className="bg-gray-50 border border-gray-200 rounded-full px-3 py-1 text-xs text-gray-600">
-                      Instant booking confirmation
-                    </span>
-                    <span className="bg-gray-50 border border-gray-200 rounded-full px-3 py-1 text-xs text-gray-600">
-                      Payment held until after first session
-                    </span>
-                  </div>
-                </div>
-              </section>
-            )}
-
             {/* About */}
             {coach.bio && (
               <section aria-labelledby="about-heading">
@@ -368,6 +338,36 @@ export default async function CoachProfilePage({
                   {coach.qualifications.map(q => (
                     <QualificationCard key={q.id} qual={q} />
                   ))}
+                </div>
+              </section>
+            )}
+
+            {/* Where I coach */}
+            {(coach.location_city || coach.location_postcode) && (
+              <section aria-labelledby="location-heading">
+                <h2 id="location-heading" className="text-xl font-bold text-gray-900 mb-4">
+                  Where I coach
+                </h2>
+                <div className="border border-gray-100 rounded-2xl p-5 space-y-4">
+                  <div className="flex items-center gap-2.5">
+                    <MapPin className="w-5 h-5 text-[#0077CC] flex-shrink-0" />
+                    <span className="font-semibold text-gray-900">
+                      {coach.location_city || coach.location_postcode}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {coach.cancellation_window_hours > 0 && (
+                      <span className="bg-gray-50 border border-gray-200 rounded-full px-3 py-1 text-xs text-gray-600">
+                        Free cancellation {coach.cancellation_window_hours}hrs before
+                      </span>
+                    )}
+                    <span className="bg-gray-50 border border-gray-200 rounded-full px-3 py-1 text-xs text-gray-600">
+                      Instant booking confirmation
+                    </span>
+                    <span className="bg-gray-50 border border-gray-200 rounded-full px-3 py-1 text-xs text-gray-600">
+                      Payment held until after first session
+                    </span>
+                  </div>
                 </div>
               </section>
             )}
