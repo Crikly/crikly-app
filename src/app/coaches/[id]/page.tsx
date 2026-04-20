@@ -163,10 +163,13 @@ async function fetchCoachProfile(id: string): Promise<CoachProfile | null> {
   return res.json() as Promise<CoachProfile>
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 async function fetchAvailability(id: string): Promise<AvailabilityData | null> {
+  if (!UUID_RE.test(id)) return null
   const base = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
   const res = await fetch(`${base}/api/coaches/${id}/availability`, {
-    next: { revalidate: 30 },
+    cache: 'no-store',
   })
   if (!res.ok) return null
   return res.json() as Promise<AvailabilityData>
