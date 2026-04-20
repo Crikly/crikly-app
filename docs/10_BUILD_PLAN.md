@@ -330,6 +330,7 @@ other screens within the same task.
 | CF-R04c | Coach public profile design alignment Phase 3 — "Where I coach" section, updated Safety & Trust banner with DBS icon block | @FrontendDeveloper | 🟢 | develop | ✅ |
 | CF-R04d | Coach public profile design alignment Phase 4 — move name + meta row above hero gallery | @FrontendDeveloper | 🟢 | develop | ✅ |
 | CF-R04e | Coach public profile design alignment Phase 5 — reviews rating breakdown bars, reviewer avatar circles | @FrontendDeveloper | 🟢 | develop | ✅ |
+| CF-R04f | Coach public profile Phase 6 — booking card auto-fill + share button | @FrontendDeveloper | 🟡 | develop | 🟡 |
 
 ### 3E — Data Wiring (CD tasks)
 
@@ -403,13 +404,17 @@ Critical tasks required before any coach can go live on the platform.
 | CG-02 | Coach public profile page — what parents see | 🔴 High | CG-01b | ✅ |
 | Fix-40 | Coach public profile polish — logo, preview link, mobile gallery (note: logo fix required hard refresh Cmd+Shift+R to clear cached .jpeg) | 🟢 Low | CG-02 | ✅ |
 | Fix-43 | Add reviews to coach public profile — API + frontend review cards | 🟡 Medium | CG-02 | ✅ |
-| Fix-41 | Fallback to avatar_url when coach_photos empty on public profile | 🟢 Low | CG-02 | ⚪ |
+| Fix-41 | Fallback to avatar_url when coach_photos empty on public profile | 🟢 Low | CG-02 | ✅ |
 | Fix-42 | Build coach photo upload UI in Profile Hub | 🟢 Low | CG-02 | ⚪ |
 | CG-03 | Stripe Connect onboarding — real redirect (C-11, C-19) | 🔴 High | CD-03 | ✅ |
 | Fix-44 | Hide profile completion banner when at 100% on dashboard | 🟢 Low | CG-03 | ✅ |
 | Fix-45 | Sync Payment Setup row in Profile Hub to real Stripe Connect status | 🟢 Low | CG-03 | ✅ |
 | CG-04 | Email notifications — booking received, confirmed (B-17) | 🟡 Medium | CG-01 | ✅ |
 | Fix-46 | Wire group programmes to coach dashboard | 🟢 Low | CG-02 | ✅ |
+| Fix-47 | Fix reviews query using raw slug in UUID column | 🟢 Low | L-UX01 | ✅ |
+| Fix-48 | Use slug in preview button URL on Profile Hub | 🟢 Low | L-UX01 | ✅ |
+| Fix-49 | Fix location data saved to wrong columns during onboarding | 🟢 Low | CG-02 | ✅ |
+| Fix-50 | Move Where I coach section below Qualifications | 🟢 Low | CF-R04c | ✅ |
 | CG-05 | Push notifications via OneSignal (B-18) — BLOCKED: requires production deployment + OneSignal account setup. Deferred to after Step 5 booking flow. | 🟡 Medium | CG-01 | 🔴 |
 | CG-06 | Integration tests — all coach API routes (C-23) | 🟡 Medium | CD-03 | ⚪ |
 | CG-07 | E2E test — full coach onboarding to profile live (C-24) | 🟡 Medium | CG-01, CG-02 | ⚪ |
