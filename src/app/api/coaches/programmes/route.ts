@@ -313,7 +313,7 @@ export async function POST(
     // 5. Verify sport_id is in coach's configured sports
     const { data: coachSport, error: sportCheckError } = await supabase
       .from('coach_sports')
-      .select('id, sports!inner(name)')
+      .select('id')
       .eq('coach_profile_id', coachProfile.id)
       .eq('sport_id', body.sport_id)
       .single()

@@ -268,6 +268,7 @@ C-05, C-06, C-07, C-08 are safe to proceed without M-015.
 | Fix-58 | 9 post-review fixes to Create Programme flow — CoachRightPanel preview, bg, step dots, multi-day, session exclusions, fixed schedule modes, auto-save, rolling end date, Step 4 review | CreateProgramme.tsx + CoachRightPanel.tsx | 🟢 Low | ✅ |
 | Fix-59 | Hydration fix (mounted guard on isProgrammeCreateRoute) + programme preview card redesign to parent-facing card with badges, schedule, sessions, capacity, price rows | CoachRightPanel.tsx | 🟢 Low | ✅ |
 | Fix-60 | Page title hierarchy ("Create Programme" fixed h1 + step subheadings demoted to 16px gray) + sport_id debug log before POST | CreateProgramme.tsx | 🟢 Low | ✅ |
+| Fix-61 | Remove nested join (sports!inner) from programme sport validation — simple .select('id') existence check eliminates PGRST200 risk | api/coaches/programmes/route.ts | 🟢 Low | ✅ |
 | CF-05b | Edit Programme UI — locked fields after enrolment + cancel action | @FrontendDeveloper | 🟢 | develop | ⚪ |
 | CF-05c | Programme Roster view — enrolled participants list + manual offline add | @FrontendDeveloper | 🟢 | develop | ⚪ |
 | CF-06 | Availability screen | @FrontendDeveloper | 🟢 | feature/coach-frontend | ✅ |
