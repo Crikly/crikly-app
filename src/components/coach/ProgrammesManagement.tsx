@@ -156,7 +156,9 @@ export function ProgrammesManagement() {
           <div className="flex items-center gap-6 border-b border-gray-100">
             {(['Active', 'Draft'] as Tab[]).map((tab) => (
               <button key={tab} onClick={() => setActiveTab(tab)} className={`pb-3 text-[15px] font-bold transition-colors relative whitespace-nowrap ${activeTab === tab ? 'text-[#0077CC]' : 'text-gray-500 hover:text-gray-700'}`}>
-                {tab}
+                {tab === 'Draft' && draftProgrammes.length > 0
+                  ? `Draft (${draftProgrammes.length})`
+                  : tab}
                 {activeTab === tab && <div className="absolute bottom-0 left-0 w-full h-[2px] bg-[#0077CC]" />}
               </button>
             ))}
