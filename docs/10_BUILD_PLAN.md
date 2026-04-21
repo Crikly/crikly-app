@@ -281,7 +281,7 @@ C-05, C-06, C-07, C-08 are safe to proceed without M-015.
 | Fix-67-DB | Add venue_name + venue_address text columns to group_programmes (inline, no FK); update database.ts types | migration 019 + types/database.ts | 🟢 Low | ✅ |
 | Fix-67-UI | Add VenueAutocomplete (establishment+geocode) to Create Programme Step 2; wire venue_name+venue_address to POST/PATCH API; venueKey remount for clear button | CreateProgramme.tsx + programmes routes | 🟡 Medium | ✅ |
 | Fix-68 | Wire Publish + Delete buttons on draft programme cards; fetchProgrammes lifted to useCallback; actionLoading per-card loading state | ProgrammesManagement.tsx | 🟢 Low | ✅ |
-| Fix-69 | Inline delete confirmation (Cancel + Confirm delete replaces window.confirm); admin client for DELETE route ownership SELECT + soft-delete UPDATE | ProgrammesManagement.tsx + [programmeId]/route.ts | 🟢 Low | ✅ |
+| Fix-69 | Replace all browser dialogs (confirm/alert) with inline confirmation UI + error state in ProgrammesManagement + AvailabilityManagement; DELETE route admin client already done | ProgrammesManagement.tsx + AvailabilityManagement.tsx | 🟡 Medium | ✅ |
 | CF-05b | Edit Programme UI — locked fields after enrolment + cancel action | @FrontendDeveloper | 🟢 | develop | ⚪ |
 | CF-05c | Programme Roster view — enrolled participants list + manual offline add | @FrontendDeveloper | 🟢 | develop | ⚪ |
 | CF-06 | Availability screen | @FrontendDeveloper | 🟢 | feature/coach-frontend | ✅ |

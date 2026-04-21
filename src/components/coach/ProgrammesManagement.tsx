@@ -50,6 +50,7 @@ export function ProgrammesManagement() {
   const [error, setError] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<{ id: string; message: string } | null>(null)
 
   // CD-08: Fetch programmes — useCallback so action handlers can call it
   const fetchProgrammes = useCallback(async () => {
@@ -111,6 +112,7 @@ export function ProgrammesManagement() {
   // Fix-68: Publish a draft programme
   async function handlePublish(programmeId: string) {
     if (actionLoading) return
+    setActionError(null)
     setActionLoading(programmeId)
     try {
       const res = await fetch(`/api/coaches/programmes/${programmeId}`, {
@@ -120,12 +122,12 @@ export function ProgrammesManagement() {
       })
       if (!res.ok) {
         const data = await res.json()
-        alert(data.error || 'Failed to publish programme')
+        setActionError({ id: programmeId, message: data.error || 'Failed to publish programme' })
         return
       }
       await fetchProgrammes()
     } catch {
-      alert('Something went wrong. Please try again.')
+      setActionError({ id: programmeId, message: 'Something went wrong. Please try again.' })
     } finally {
       setActionLoading(null)
     }
@@ -134,6 +136,7 @@ export function ProgrammesManagement() {
   // Fix-69-1: Delete a draft programme (called after inline confirmation)
   async function handleDelete(programmeId: string) {
     if (actionLoading) return
+    setActionError(null)
     setActionLoading(programmeId)
     try {
       const res = await fetch(`/api/coaches/programmes/${programmeId}`, {
@@ -141,12 +144,12 @@ export function ProgrammesManagement() {
       })
       if (!res.ok) {
         const data = await res.json()
-        alert(data.error || 'Failed to delete programme')
+        setActionError({ id: programmeId, message: data.error || 'Failed to delete programme' })
         return
       }
       await fetchProgrammes()
     } catch {
-      alert('Something went wrong. Please try again.')
+      setActionError({ id: programmeId, message: 'Something went wrong. Please try again.' })
     } finally {
       setActionLoading(null)
       setDeleteConfirmId(null)
@@ -325,6 +328,13 @@ export function ProgrammesManagement() {
                   </div>
                 </div>
                 
+                {/* Fix-69-1: Inline action error */}
+                {actionError?.id === programme.id && (
+                  <div className="border-t-[0.5px] border-gray-100 px-4 pt-2 bg-white">
+                    <p className="text-[11px] text-red-500 leading-snug">{actionError.message}</p>
+                  </div>
+                )}
+
                 {/* CF-D05 CHANGE 4: Quick action row */}
                 <div className="border-t-[0.5px] border-gray-100 px-4 py-2 flex gap-2 bg-white">
                   {isDraft ? (

@@ -104,12 +104,20 @@ export function AvailabilityManagement() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
-  
+  // Fix-69-2: inline confirmation + error for availability block delete
+  const [deleteBlockConfirmId, setDeleteBlockConfirmId] = useState<string | null>(null)
+  const [blockDeleteError, setBlockDeleteError] = useState<string | null>(null)
+  const [addBlockError, setAddBlockError] = useState<string | null>(null)
+  const [blockDatesError, setBlockDatesError] = useState<string | null>(null)
+
   // CD-05: Blocked dates real data state
   const [blockedRanges, setBlockedRanges] = useState<BlockedRange[]>([])
   const [blockedLoading, setBlockedLoading] = useState(false)
   const [blockedError, setBlockedError] = useState<string | null>(null)
   const [deletingBlocked, setDeletingBlocked] = useState<string | null>(null)
+  // Fix-69-2: inline confirmation + error for blocked date remove
+  const [removeBlockedConfirmId, setRemoveBlockedConfirmId] = useState<string | null>(null)
+  const [blockedActionError, setBlockedActionError] = useState<string | null>(null)
   const availableSports = useMemo(() => [...new Set(scheduleBlocks.map(b => b.sport))], [scheduleBlocks])
   const [showAddForm, setShowAddForm] = useState(false)
   // CF-D06b FIX 1: Add preselectedDay state
@@ -270,7 +278,7 @@ export function AvailabilityManagement() {
   const handleBlockDates = async () => {
     // CD-05: Wire to POST /api/coaches/blocked-dates
     if (!rangeStart) return
-    
+    setBlockDatesError(null)
     try {
       const end = rangeEnd ?? rangeStart
       
@@ -312,7 +320,7 @@ export function AvailabilityManagement() {
       setHoverDate(null)
     } catch (err) {
       console.error('Error blocking dates:', err)
-      alert('Failed to block dates. Please try again.')
+      setBlockDatesError('Failed to block dates. Please try again.')
     }
   }
   const clearSelection = () => { setRangeStart(null); setRangeEnd(null); setBlockLabel(''); setHoverDate(null) }
@@ -343,6 +351,13 @@ export function AvailabilityManagement() {
             {error && (
               <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
                 <p className="text-[14px] font-medium text-red-700">{error}</p>
+              </div>
+            )}
+            {/* Fix-69-2: inline block delete error */}
+            {blockDeleteError && (
+              <div className="mb-4 flex items-center justify-between p-3 bg-red-50 border border-red-200 rounded-xl">
+                <p className="text-[13px] font-medium text-red-700">{blockDeleteError}</p>
+                <button onClick={() => setBlockDeleteError(null)} className="ml-3 text-red-400 hover:text-red-600 transition-colors"><X size={14} /></button>
               </div>
             )}
             
@@ -404,47 +419,66 @@ export function AvailabilityManagement() {
                                 </div>
                               </div>
                               
-                              {/* Edit/delete icons */}
+                              {/* Edit/delete icons — Fix-69-2: inline confirmation */}
                               <div className="flex items-center gap-1 shrink-0">
-                                <button 
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    // TODO CF-D06: wire edit action
-                                  }}
-                                  className="w-7 h-7 flex items-center justify-center border-[0.5px] border-gray-100 bg-white rounded-md hover:bg-gray-50 transition-colors"
-                                >
-                                  <Pencil size={12} className="text-gray-400" />
-                                </button>
-                                <button 
-                                  onClick={async (e) => {
-                                    e.stopPropagation()
-                                    // CD-04: Wire delete action
-                                    if (!confirm('Delete this availability block?')) return
-                                    
-                                    try {
-                                      setDeleting(blockForDay.id)
-                                      const response = await fetch(`/api/coaches/availability/${blockForDay.id}`, {
-                                        method: 'DELETE'
-                                      })
-                                      
-                                      if (!response.ok) {
-                                        throw new Error('Failed to delete block')
-                                      }
-                                      
-                                      // Remove from local state
-                                      setScheduleBlocks(prev => prev.filter(b => b.id !== blockForDay.id))
-                                    } catch (err) {
-                                      console.error('Error deleting block:', err)
-                                      alert('Failed to delete block. Please try again.')
-                                    } finally {
-                                      setDeleting(null)
-                                    }
-                                  }}
-                                  disabled={deleting === blockForDay.id}
-                                  className="w-7 h-7 flex items-center justify-center border-[0.5px] border-gray-100 bg-white rounded-md hover:bg-gray-50 transition-colors disabled:opacity-50"
-                                >
-                                  <X size={12} className="text-gray-400" />
-                                </button>
+                                {deleteBlockConfirmId === blockForDay.id ? (
+                                  <>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        setDeleteBlockConfirmId(null)
+                                      }}
+                                      className="px-2 py-1 text-[11px] text-gray-500 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors"
+                                    >
+                                      Cancel
+                                    </button>
+                                    <button
+                                      disabled={deleting === blockForDay.id}
+                                      onClick={async (e) => {
+                                        e.stopPropagation()
+                                        setBlockDeleteError(null)
+                                        try {
+                                          setDeleting(blockForDay.id)
+                                          const response = await fetch(`/api/coaches/availability/${blockForDay.id}`, { method: 'DELETE' })
+                                          if (!response.ok) throw new Error('Failed to delete block')
+                                          setScheduleBlocks(prev => prev.filter(b => b.id !== blockForDay.id))
+                                          setDeleteBlockConfirmId(null)
+                                        } catch (err) {
+                                          console.error('Error deleting block:', err)
+                                          setBlockDeleteError('Failed to delete block. Please try again.')
+                                          setDeleteBlockConfirmId(null)
+                                        } finally {
+                                          setDeleting(null)
+                                        }
+                                      }}
+                                      className="px-2 py-1 text-[11px] text-white bg-red-600 border border-red-600 rounded-md hover:bg-red-700 transition-colors disabled:opacity-50"
+                                    >
+                                      {deleting === blockForDay.id ? '…' : 'Delete'}
+                                    </button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        // TODO CF-D06: wire edit action
+                                      }}
+                                      className="w-7 h-7 flex items-center justify-center border-[0.5px] border-gray-100 bg-white rounded-md hover:bg-gray-50 transition-colors"
+                                    >
+                                      <Pencil size={12} className="text-gray-400" />
+                                    </button>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        setDeleteBlockConfirmId(blockForDay.id)
+                                      }}
+                                      disabled={!!deleting}
+                                      className="w-7 h-7 flex items-center justify-center border-[0.5px] border-gray-100 bg-white rounded-md hover:bg-gray-50 transition-colors disabled:opacity-50"
+                                    >
+                                      <X size={12} className="text-gray-400" />
+                                    </button>
+                                  </>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -570,8 +604,13 @@ export function AvailabilityManagement() {
                 {conflict && (
                   <div className="mb-4 flex items-start gap-2.5 bg-red-50 border border-red-200/70 rounded-xl px-4 py-3">
                     <AlertTriangle size={15} className="text-red-500 mt-0.5 shrink-0" />
-                    {/* CF-D06b FIX 2: Updated error message for overlap */}
                     <p className="text-[13px] font-medium text-red-700 leading-snug">{conflict.message}</p>
+                  </div>
+                )}
+                {addBlockError && (
+                  <div className="mb-4 flex items-center justify-between bg-red-50 border border-red-200/70 rounded-xl px-4 py-3">
+                    <p className="text-[13px] font-medium text-red-700">{addBlockError}</p>
+                    <button onClick={() => setAddBlockError(null)} className="ml-3 text-red-400 hover:text-red-600 transition-colors"><X size={14} /></button>
                   </div>
                 )}
                 <div className="flex items-center justify-between">
@@ -633,7 +672,7 @@ export function AvailabilityManagement() {
                         resetForm()
                       } catch (err) {
                         console.error('Error adding block:', err)
-                        alert('Failed to add availability block. Please try again.')
+                        setAddBlockError('Failed to add availability block. Please try again.')
                       }
                     }}
                     disabled={!!conflict || formDays.length === 0} 
@@ -768,11 +807,24 @@ export function AvailabilityManagement() {
                   <button onClick={handleBlockDates} className="flex-1 py-2.5 bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-xl text-[14px] font-bold transition-colors">Block these dates</button>
                   <button onClick={clearSelection} className="px-5 py-2.5 border border-gray-200 text-gray-600 rounded-xl text-[14px] font-bold hover:bg-gray-50 transition-colors">Clear</button>
                 </div>
+                {blockDatesError && (
+                  <div className="mt-2 flex items-center justify-between bg-red-50 border border-red-200 rounded-xl px-3 py-2">
+                    <p className="text-[12px] font-medium text-red-700">{blockDatesError}</p>
+                    <button onClick={() => setBlockDatesError(null)} className="ml-3 text-red-400 hover:text-red-600 transition-colors"><X size={13} /></button>
+                  </div>
+                )}
               </div>
             )}
             <div className="bg-white border border-gray-100 shadow-sm rounded-[24px] p-6">
               <h3 className="text-[15px] font-bold text-gray-900 mb-1">Blocked periods</h3>
               <p className="text-[13px] text-gray-400 font-medium mb-4">Parents and players won't be able to book on these dates</p>
+              {/* Fix-69-2: inline blocked action error */}
+              {blockedActionError && (
+                <div className="mb-4 flex items-center justify-between bg-red-50 border border-red-200 rounded-xl px-3 py-2">
+                  <p className="text-[12px] font-medium text-red-700">{blockedActionError}</p>
+                  <button onClick={() => setBlockedActionError(null)} className="ml-3 text-red-400 hover:text-red-600 transition-colors"><X size={13} /></button>
+                </div>
+              )}
               {blockedRanges.length === 0 ? (
                 <div className="text-center py-8">
                   <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3"><X size={18} className="text-gray-400" /></div>
@@ -787,35 +839,47 @@ export function AvailabilityManagement() {
                         <span className="text-[14px] font-bold text-gray-900 shrink-0 tabular-nums">{fmt(item.start)}{!sameDay(item.start, item.end) && <> – {fmt(item.end)}</>}</span>
                         {item.label ? <span className="text-[14px] text-gray-500 font-medium truncate">{item.label}</span> : <span className="text-[13px] text-gray-300 font-medium italic">No label</span>}
                       </div>
-                      <button 
-                        onClick={async () => {
-                          // CD-05: Wire to DELETE /api/coaches/blocked-dates/[id]
-                          if (!confirm('Remove this blocked date?')) return
-                          
-                          try {
-                            setDeletingBlocked(item.id)
-                            const response = await fetch(`/api/coaches/blocked-dates/${item.id}`, {
-                              method: 'DELETE'
-                            })
-                            
-                            if (!response.ok) {
-                              throw new Error('Failed to delete blocked date')
-                            }
-                            
-                            // Remove from local state
-                            setBlockedRanges(prev => prev.filter(r => r.id !== item.id))
-                          } catch (err) {
-                            console.error('Error deleting blocked date:', err)
-                            alert('Failed to remove blocked date. Please try again.')
-                          } finally {
-                            setDeletingBlocked(null)
-                          }
-                        }}
-                        disabled={deletingBlocked === item.id}
-                        className="ml-3 shrink-0 flex items-center gap-1 text-[13px] text-gray-400 hover:text-red-500 font-bold transition-colors disabled:opacity-50"
-                      >
-                        <X size={14} /> remove
-                      </button>
+                      {/* Fix-69-2: inline confirmation for blocked date remove */}
+                      {removeBlockedConfirmId === item.id ? (
+                        <div className="ml-3 shrink-0 flex items-center gap-1">
+                          <button
+                            onClick={() => setRemoveBlockedConfirmId(null)}
+                            className="px-2 py-1 text-[11px] text-gray-500 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            disabled={deletingBlocked === item.id}
+                            onClick={async () => {
+                              setBlockedActionError(null)
+                              try {
+                                setDeletingBlocked(item.id)
+                                const response = await fetch(`/api/coaches/blocked-dates/${item.id}`, { method: 'DELETE' })
+                                if (!response.ok) throw new Error('Failed to delete blocked date')
+                                setBlockedRanges(prev => prev.filter(r => r.id !== item.id))
+                                setRemoveBlockedConfirmId(null)
+                              } catch (err) {
+                                console.error('Error deleting blocked date:', err)
+                                setBlockedActionError('Failed to remove blocked date. Please try again.')
+                                setRemoveBlockedConfirmId(null)
+                              } finally {
+                                setDeletingBlocked(null)
+                              }
+                            }}
+                            className="px-2 py-1 text-[11px] text-white bg-red-600 rounded-md hover:bg-red-700 transition-colors disabled:opacity-50"
+                          >
+                            {deletingBlocked === item.id ? '…' : 'Remove'}
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setRemoveBlockedConfirmId(item.id)}
+                          disabled={!!deletingBlocked}
+                          className="ml-3 shrink-0 flex items-center gap-1 text-[13px] text-gray-400 hover:text-red-500 font-bold transition-colors disabled:opacity-50"
+                        >
+                          <X size={14} /> remove
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
