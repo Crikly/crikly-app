@@ -368,7 +368,7 @@ export async function POST(
       payment_type: body.payment_type,
       price_per_session_pence: body.price_per_session_pence || 0,
       late_joining_allowed: body.late_joining_allowed === true,
-      model: 'group',
+      model: 'programme',
       skill_level: skillLevel,
       status: requestedStatus,
       currency: 'GBP',
