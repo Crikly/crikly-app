@@ -264,7 +264,6 @@ C-05, C-06, C-07, C-08 are safe to proceed without M-015.
 | CF-03 | Bookings list screen | @FrontendDeveloper | 🟢 | feature/coach-frontend | ✅ |
 | CF-04 | Booking Detail screen | @FrontendDeveloper | 🟢 | feature/coach-frontend | ✅ |
 | CF-05 | Programmes screen | @FrontendDeveloper | 🟢 | feature/coach-frontend | ✅ |
-| CF-05a | Create Programme slide-over — POST /api/coaches/programmes, draft save, sport picker, schedule + pricing fields | ProgrammesManagement.tsx | 🟡 Medium | ✅ |
 | CF-05a | Create Programme form UI — multi-step form on Programmes screen | @FrontendDeveloper | 🟡 | develop | ⚪ |
 | CF-05b | Edit Programme UI — locked fields after enrolment + cancel action | @FrontendDeveloper | 🟢 | develop | ⚪ |
 | CF-05c | Programme Roster view — enrolled participants list + manual offline add | @FrontendDeveloper | 🟢 | develop | ⚪ |
