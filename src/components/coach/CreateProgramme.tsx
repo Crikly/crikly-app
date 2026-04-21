@@ -233,6 +233,10 @@ function StepDots({
 
 export function CreateProgramme() {
   const router = useRouter()
+  // Fix-62-2: Hydration guard — page title changed in Fix-60 causes server/client mismatch
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => setMounted(true), [])
+
   const [step, setStep] = useState(1)
   const [sports, setSports] = useState<Sport[]>([])
   const [loadingSports, setLoadingSports] = useState(true)
@@ -521,6 +525,8 @@ export function CreateProgramme() {
       ? `Rolling · ends ${new Date(form.rolling_end_date + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`
       : 'Rolling · ongoing'
   }
+
+  if (!mounted) return null
 
   return (
     <div className="min-h-screen bg-white"> {/* Fix-58-1: white background */}
