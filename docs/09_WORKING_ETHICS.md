@@ -1,13 +1,13 @@
 # Crikly — Working Ethics & Collaboration Standards
 
-**Version:** 1.3
-**Last Updated:** March 2026
-**Changed:** Added API stub rule — routes must be wired or explicitly labelled STUB (March 2026)
+**Version:** 1.4
+**Last Updated:** 21 April 2026
+**Changed:** SYNC-10 — Windsurf → Claude Code, Claude Design workflow added
 **Maintainer:** Lasith Jayarathne
 **Review:** After each phase completion
 
 This file lives in the project root and is referenced at the
-start of every Windsurf session. Read it before every prompt.
+start of every Claude Code session. Read it before every prompt.
 
 ---
 
@@ -26,9 +26,9 @@ CLAUDE (Strategic Partner — this chat)
   → Reviewing approach and trade-off analysis
   → Debugging complex cross-cutting problems
   → Brainstorming solutions before implementation
-  → Red flag escalation — stop Windsurf, bring here first
+  → Red flag escalation — stop Claude Code, bring here first
 
-WINDSURF (Coding Environment — Agent Team)
+CLAUDE CODE (Coding Environment — Implementation)
   → Writing all actual code files
   → Following agent role instructions precisely
   → Referencing docs/ folder for context
@@ -36,15 +36,15 @@ WINDSURF (Coding Environment — Agent Team)
   → One agent, one task, one commit
 ```
 
-**Rule:** Claude thinks and designs. Windsurf builds.
-Never ask Windsurf to make architectural decisions.
+**Rule:** Claude thinks and designs. Claude Code builds.
+Never ask Claude Code to make architectural decisions.
 Never ask Claude to write production code files.
 
 ---
 
 ## Session Flow
 
-### Starting Every Windsurf Session
+### Starting Every Claude Code Session
 
 ```
 Step 1 → Open docs/10_BUILD_PLAN.md
@@ -69,7 +69,7 @@ Step 8 → Mark task ✅ in Notion Build Plan (same ID)
 Step 9 → Move to next task
 ```
 
-### Standard Windsurf Prompt Template
+### Standard Claude Code Prompt Template
 
 ```
 @[AgentName]
@@ -110,13 +110,40 @@ Risk: 🟢 Low | 🟡 Medium | 🔴 High
 
 ---
 
+## Design Workflow — New UI Screens
+
+For any new screen or major UI component, follow this order.
+Never build a new screen without an approved design first.
+
+Step 1 — Claude generates an interactive HTML design artifact
+          in this chat (Claude.ai)
+Step 2 — Lasith reviews the artifact and approves (7/10 minimum)
+          Feedback shared here, Claude iterates
+Step 3 — Claude validates the design against requirements
+Step 4 — Claude writes the Claude Code prompt, including the
+          approved HTML as reference
+Step 5 — Lasith pastes prompt + HTML into Claude Code
+Step 6 — Claude Code builds the Next.js implementation
+Step 7 — Lasith tests in browser, shares screenshot
+Step 8 — Claude reviews, updates Notion + build plan
+
+Rule: Design artifact must be approved before any Claude Code
+      prompt is written.
+Rule: Copy HTML from the Claude artifact directly —
+      never use the api.anthropic.com/v1/design/ handshake URL,
+      it expires immediately.
+Rule: Claude Design replaces Figma Make, v0, and Windsurf
+      for all UI screen work.
+
+---
+
 ## Context Optimisation — Golden Rules
 
 These rules exist to minimise context window consumption
 and maximise the quality of every Windsurf prompt.
 
 ### Rule 1 — Always Load Context Files First
-Never assume Windsurf remembers previous sessions.
+Never assume Claude Code remembers previous sessions.
 Every prompt must explicitly reference relevant docs.
 A prompt without context files will produce generic output.
 
