@@ -147,7 +147,7 @@ export function ProgrammesManagement() {
         <div className="px-5 pt-8 pb-2 bg-white sticky top-0 z-10">
           <div className="flex items-center justify-between mb-2">
             <h1 className="text-[28px] font-bold text-gray-900 tracking-tight">Programmes</h1>
-            <button className="bg-[#0077CC] hover:bg-[#0066AA] text-white px-3.5 py-2 rounded-full text-[13px] font-bold flex items-center gap-1.5 transition-colors shadow-sm"><Plus size={16} />New Programme</button>
+            <button onClick={() => router.push('/coach/programmes/create')} className="bg-[#0077CC] hover:bg-[#0066AA] text-white px-3.5 py-2 rounded-full text-[13px] font-bold flex items-center gap-1.5 transition-colors shadow-sm"><Plus size={16} />New Programme</button>
           </div>
           {/* CF-D05 CHANGE 1: State-aware subtitle */}
           <p className="text-[13px] text-gray-500 mt-1 mb-4">
@@ -385,7 +385,7 @@ export function ProgrammesManagement() {
               <div className="w-16 h-16 bg-[#E6F3FB] text-[#0077CC] rounded-full flex items-center justify-center mb-4"><BookOpen size={28} /></div>
               <h3 className="text-[18px] font-bold text-gray-900 mb-2">No programmes yet</h3>
               <p className="text-[14px] text-gray-500 font-medium mb-6 max-w-[260px] leading-relaxed">Create your first programme to start accepting group bookings</p>
-              <button className="bg-[#0077CC] hover:bg-[#0066AA] text-white px-6 py-3 rounded-xl text-[15px] font-bold flex items-center gap-2 transition-colors shadow-sm w-full max-w-[200px] justify-center"><Plus size={18} />Create Programme</button>
+              <button onClick={() => router.push('/coach/programmes/create')} className="bg-[#0077CC] hover:bg-[#0066AA] text-white px-6 py-3 rounded-xl text-[15px] font-bold flex items-center gap-2 transition-colors shadow-sm w-full max-w-[200px] justify-center"><Plus size={18} />Create Programme</button>
             </div>
           )}
         </div>

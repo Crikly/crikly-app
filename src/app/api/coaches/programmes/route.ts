@@ -325,6 +325,15 @@ export async function POST(
       )
     }
 
+    // Validate skill_level if provided
+    const VALID_SKILL_LEVELS = ['beginner', 'intermediate', 'advanced', 'all']
+    const skillLevel: string = body.skill_level && VALID_SKILL_LEVELS.includes(body.skill_level)
+      ? body.skill_level
+      : 'all'
+
+    // Validate status if provided
+    const requestedStatus: string = body.status === 'active' ? 'active' : 'draft'
+
     // 6. Insert new programme
     const insertData: {
       coach_profile_id: string
@@ -335,11 +344,13 @@ export async function POST(
       day_of_week: number
       start_time: string
       duration_minutes: number
+      session_count?: number | null
       max_spots: number
       payment_type: string
       price_per_session_pence: number
       block_price_pence?: number | null
       block_session_count?: number | null
+      late_joining_allowed: boolean
       model: string
       skill_level: string
       status: string
@@ -355,9 +366,10 @@ export async function POST(
       max_spots: body.max_spots,
       payment_type: body.payment_type,
       price_per_session_pence: body.price_per_session_pence || 0,
+      late_joining_allowed: body.late_joining_allowed === true,
       model: 'group',
-      skill_level: 'all',
-      status: 'draft',
+      skill_level: skillLevel,
+      status: requestedStatus,
       currency: 'GBP',
     }
 
@@ -365,9 +377,16 @@ export async function POST(
       insertData.description = body.description
     }
 
+    if (body.schedule_type === 'fixed' && typeof body.session_count === 'number' && body.session_count > 0) {
+      insertData.session_count = body.session_count
+    }
+
     if (body.payment_type === 'block_upfront') {
       insertData.block_price_pence = body.block_price_pence
-      insertData.block_session_count = body.block_session_count
+      // Use session_count as block_session_count when not explicitly provided
+      insertData.block_session_count = typeof body.block_session_count === 'number'
+        ? body.block_session_count
+        : (typeof body.session_count === 'number' ? body.session_count : null)
     }
 
     const { data: newProgramme, error: insertError } = await supabase
