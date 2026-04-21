@@ -444,7 +444,7 @@ export function ProgrammesManagement() {
                       <button
                         onClick={(e) => {
                           e.stopPropagation()
-                          // TODO CF-D05: wire Manage action
+                          router.push(`/coach/programmes/${programme.id}/roster`)
                         }}
                         className="flex-1 bg-white border border-gray-200 text-gray-600 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 hover:border-gray-300 hover:text-gray-700 transition-all duration-150"
                       >
@@ -498,7 +498,7 @@ export function ProgrammesManagement() {
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
-                            // TODO CF-D05: wire Manage action
+                            router.push(`/coach/programmes/${programme.id}/roster`)
                           }}
                           className="flex-1 bg-white border border-gray-200 text-gray-600 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 hover:border-gray-300 hover:text-gray-700 transition-all duration-150"
                         >
