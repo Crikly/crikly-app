@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 interface ProgrammeResponse {
   id: string
@@ -214,7 +215,10 @@ export async function PATCH(
     }
 
     // 4. Verify coach owns this programme and get current values
-    const { data: existingProgramme, error: programmeCheckError } = await supabase
+    // Fix-64: Use admin client — bypasses RLS auth_user_id mismatch (dev DB).
+    // Ownership enforced explicitly via .eq('coach_profile_id', coachProfile.id).
+    const adminSupabase = createAdminClient()
+    const { data: existingProgramme, error: programmeCheckError } = await adminSupabase
       .from('group_programmes')
       .select('id, status, current_spots, max_spots')
       .eq('id', programmeId)
@@ -373,8 +377,8 @@ export async function PATCH(
     if (body.block_session_count !== undefined) updateData.block_session_count = body.block_session_count
     if (body.status !== undefined) updateData.status = body.status
 
-    // 7. Update programme
-    const { data: updatedProgramme, error: updateError } = await supabase
+    // 7. Update programme (adminSupabase already created in step 4)
+    const { data: updatedProgramme, error: updateError } = await adminSupabase
       .from('group_programmes')
       .update(updateData)
       .eq('id', programmeId)
