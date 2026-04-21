@@ -603,18 +603,24 @@ function ProgrammeDetailModal({
 
   const isDraft = programme.status === 'Draft'
   const fillPercentage = Math.min((programme.spotsFilled / programme.spotsTotal) * 100, 100)
+  const spotsLeft = programme.spotsTotal - programme.spotsFilled
   const shareUrl = `https://crikly.app/programmes/${programme.id}`
 
   const daysLabel = programme.days_of_week.length > 0
     ? programme.days_of_week.map(d => DAY_SHORT[d] ?? '').join(', ')
     : '—'
-
   const startTime = programme.start_time ? programme.start_time.substring(0, 5) : null
   const endTime = startTime ? calculateEndTime(startTime, programme.duration_minutes) : null
 
-  const cancellationLabel = programme.cancellation_window_hours === 0
+  const priceAmt = programme.price.split(' ')[0]
+  const pricePer = programme.price.split(' ').slice(1).join(' ')
+
+  const cancellationTitle = programme.cancellation_window_hours === 0
     ? 'No cancellations allowed'
-    : `${programme.cancellation_window_hours}h before session`
+    : `Free cancellation up to ${programme.cancellation_window_hours} hours before`
+  const cancellationSub = programme.cancellation_window_hours === 0
+    ? 'Parents cannot cancel once booked.'
+    : 'After that, parents are charged the full session fee.'
 
   function handleCopyLink() {
     navigator.clipboard.writeText(shareUrl).then(() => {
@@ -634,197 +640,256 @@ function ProgrammeDetailModal({
   const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(`Join my ${programme.name} programme on Crikly!\n${shareUrl}`)}`
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end md:items-center justify-center"
-      style={{ fontFamily: "'DM Sans', sans-serif" }}
-    >
+    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ fontFamily: "'DM Sans', sans-serif" }}>
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
 
-      {/* Panel */}
+      {/* Modal */}
       <div
-        className="relative w-full md:max-w-lg bg-white rounded-t-[20px] md:rounded-2xl flex flex-col overflow-hidden"
-        style={{ maxHeight: '90vh' }}
-        onClick={e => e.stopPropagation()}
+        className="relative w-full mx-4 bg-white rounded-[20px] overflow-hidden flex flex-col"
+        style={{ maxWidth: 480, maxHeight: '90vh', boxShadow: '0 32px 80px rgba(0,0,0,.35), 0 8px 24px rgba(0,0,0,.15)' }}
       >
+        {/* Close button — absolute so it floats above content */}
+        <button
+          onClick={onClose}
+          aria-label="Close"
+          className="absolute top-[14px] right-[14px] w-9 h-9 rounded-full bg-[#F1F5F9] hover:bg-[#E2E8F0] flex items-center justify-center z-10 transition-colors text-[#475569]"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M18 6L6 18M6 6l12 12"/>
+          </svg>
+        </button>
+
         {/* Scrollable body */}
-        <div className="overflow-y-auto flex-1 pb-[80px]">
-          {/* Header */}
-          <div className="px-5 pt-5 pb-4 border-b border-gray-100">
-            <div className="flex items-start justify-between gap-3 mb-2">
-              <h2 className="text-[18px] font-bold text-gray-900 leading-tight">{programme.name}</h2>
-              <button
-                onClick={onClose}
-                className="shrink-0 w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 transition-colors"
-                aria-label="Close"
-              >
-                <X size={16} className="text-gray-600" />
-              </button>
+        <div className="flex-1 overflow-y-auto px-7 pt-7 pb-5">
+
+          {/* Title row */}
+          <div className="flex flex-wrap items-center gap-2 pr-9">
+            <h2 className="w-full text-[20px] font-bold tracking-[-0.01em] leading-[1.25] text-[#0F172A]">
+              {programme.name}
+            </h2>
+            <span className="inline-flex items-center px-[10px] py-1 bg-[#E6F3FB] text-[#0C447C] rounded-[6px] text-[12px] font-medium leading-4">
+              {programme.sport_name}
+            </span>
+            <span className={`inline-flex items-center gap-[5px] px-[10px] py-1 rounded-[6px] text-[12px] font-medium leading-4 ${
+              programme.status === 'Active' ? 'bg-[#DCFCE7] text-[#15803D]'
+              : programme.status === 'Full'   ? 'bg-[#0077CC] text-white'
+              : 'bg-[#F1F5F9] text-[#475569]'
+            }`}>
+              {programme.status === 'Active' && <span className="w-1.5 h-1.5 rounded-full bg-[#15803D] shrink-0" />}
+              {programme.status}
+            </span>
+          </div>
+
+          {/* Schedule */}
+          <div className="mt-[22px]">
+            <div className="flex items-center gap-1.5 text-[11px] font-medium text-[#64748B] uppercase tracking-[0.08em] mb-[10px]">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>
+              </svg>
+              Schedule
             </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="px-2.5 py-1 rounded-full bg-[#E6F3FB] text-[#0C447C] text-[11px] font-semibold">
-                {programme.sport_name}
-              </span>
-              <span className={`px-2.5 py-1 rounded-full text-[11px] font-semibold ${
-                programme.status === 'Active' ? 'bg-[#DCFCE7] text-[#15803D]'
-                : programme.status === 'Full' ? 'bg-[#0077CC] text-white'
-                : 'bg-[#F3F4F6] text-[#6B7280]'
-              }`}>
-                {programme.status}
-              </span>
+            <div className="flex items-center gap-3 px-4 py-[14px] bg-[#F8FAFC] border border-[#E2E8F0] rounded-[12px]">
+              <div className="w-10 h-10 rounded-[10px] bg-[#E6F3FB] flex items-center justify-center shrink-0">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0077CC" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>
+                </svg>
+              </div>
+              <div>
+                <div className="text-[15px] font-medium text-[#0F172A] tracking-[-0.005em]">
+                  Every {daysLabel}{startTime && endTime ? ` · ${startTime} – ${endTime}` : ''}
+                </div>
+                <div className="text-[13px] text-[#64748B] mt-0.5">
+                  {programme.duration_minutes} minutes{programme.block_session_count ? ` · ${programme.block_session_count} sessions` : ''}
+                </div>
+              </div>
             </div>
           </div>
 
-          <div className="px-5 py-4 space-y-4">
-            {/* Schedule */}
-            <div>
-              <p className="text-[11px] font-semibold text-[#94A3B8] uppercase tracking-wide mb-2">Schedule</p>
-              <div className="flex items-center gap-2 mb-1.5">
-                <Calendar size={14} className="text-gray-400 shrink-0" />
-                <span className="text-[13px] text-gray-700">{daysLabel}</span>
-              </div>
-              {startTime && endTime && (
-                <div className="flex items-center gap-2">
-                  <Clock size={14} className="text-gray-400 shrink-0" />
-                  <span className="text-[13px] text-gray-700">{startTime} – {endTime} ({programme.duration_minutes} min)</span>
-                </div>
-              )}
-              {programme.block_session_count && (
-                <div className="flex items-center gap-2 mt-1.5">
-                  <BookOpen size={14} className="text-gray-400 shrink-0" />
-                  <span className="text-[13px] text-gray-700">{programme.block_session_count} sessions</span>
-                </div>
-              )}
+          {/* Capacity */}
+          <div className="mt-[22px]">
+            <div className="flex items-center gap-1.5 text-[11px] font-medium text-[#64748B] uppercase tracking-[0.08em] mb-[10px]">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/>
+              </svg>
+              Capacity
             </div>
-
-            {/* Capacity */}
-            <div>
-              <p className="text-[11px] font-semibold text-[#94A3B8] uppercase tracking-wide mb-2">Capacity</p>
-              <div className="flex items-center justify-between mb-1.5">
-                <div className="flex items-center gap-1.5">
-                  <Users size={14} className="text-gray-400" />
-                  <span className="text-[13px] text-gray-700">{programme.spotsFilled} / {programme.spotsTotal} spots filled</span>
-                </div>
-                <span className="text-[12px] font-semibold" style={{ color: programme.status === 'Full' ? '#0077CC' : '#1F2937' }}>
-                  {Math.round(fillPercentage)}%
-                </span>
-              </div>
-              <div className="h-[6px] bg-gray-100 rounded-full overflow-hidden">
-                <div
-                  className="h-full rounded-full"
-                  style={{
-                    width: `${fillPercentage}%`,
-                    backgroundColor: programme.status === 'Full' ? '#0077CC' : fillPercentage < 25 ? '#F59E0B' : '#0077CC',
-                  }}
-                />
-              </div>
+            <div className="h-2 bg-[#E2E8F0] rounded-full overflow-hidden">
+              <div className="h-full bg-[#0077CC] rounded-full" style={{ width: `${fillPercentage}%`, transition: 'width .3s' }} />
             </div>
+            <div className="flex justify-between items-baseline mt-2 text-[13px] text-[#475569]">
+              <span><strong className="text-[#0F172A] font-medium">{programme.spotsFilled} of {programme.spotsTotal}</strong> spots filled</span>
+              <span>{spotsLeft} spot{spotsLeft !== 1 ? 's' : ''} left</span>
+            </div>
+          </div>
 
-            {/* Price */}
-            <div>
-              <p className="text-[11px] font-semibold text-[#94A3B8] uppercase tracking-wide mb-2">Price</p>
-              <div className="flex items-center gap-2">
-                <Tag size={14} className="text-gray-400 shrink-0" />
-                <span className="text-[13px] text-gray-700">{programme.price}</span>
+          {/* Price */}
+          <div className="mt-[22px]">
+            <div className="text-[11px] font-medium text-[#64748B] uppercase tracking-[0.08em] mb-[10px]">Price</div>
+            <div className="flex items-baseline gap-2.5">
+              <span className="text-[32px] font-bold tracking-[-0.02em] text-[#0F172A] leading-none">{priceAmt}</span>
+              <span className="text-[14px] text-[#64748B]">{pricePer}</span>
+            </div>
+          </div>
+
+          {/* Venue (optional) */}
+          {programme.venue_name && (
+            <div className="mt-[22px]">
+              <div className="text-[11px] font-medium text-[#64748B] uppercase tracking-[0.08em] mb-[10px]">Venue</div>
+              <div className="flex items-start gap-3 px-4 py-[14px] bg-[#F8FAFC] border border-[#E2E8F0] rounded-[12px]">
+                <div className="w-9 h-9 rounded-[10px] bg-[#FEF3C7] flex items-center justify-center shrink-0">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#B45309" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/>
+                  </svg>
+                </div>
+                <div>
+                  <div className="text-[15px] font-medium tracking-[-0.005em] text-[#0F172A]">{programme.venue_name}</div>
+                  {programme.venue_address && (
+                    <div className="text-[13px] text-[#64748B] mt-0.5 leading-[1.4]">{programme.venue_address}</div>
+                  )}
+                </div>
               </div>
             </div>
+          )}
 
-            {/* Venue (optional) */}
-            {programme.venue_name && (
+          {/* Description (optional) */}
+          {programme.description && (
+            <div className="mt-[22px]">
+              <div className="text-[11px] font-medium text-[#64748B] uppercase tracking-[0.08em] mb-[10px]">About</div>
+              <p className="text-[13px] text-[#475569] leading-relaxed">{programme.description}</p>
+            </div>
+          )}
+
+          {/* Cancellation policy */}
+          <div className="mt-[22px] pb-1">
+            <div className="text-[11px] font-medium text-[#64748B] uppercase tracking-[0.08em] mb-[10px]">Cancellation policy</div>
+            <div className="flex items-start gap-3 px-4 py-[14px] bg-[#F0FDF4] border border-[#BBF7D0] rounded-[12px]">
+              <div className="w-9 h-9 rounded-[10px] bg-[#DCFCE7] flex items-center justify-center shrink-0">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#15803D" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 2l8 3v7c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V5z"/><path d="M9 12l2 2 4-4"/>
+                </svg>
+              </div>
               <div>
-                <p className="text-[11px] font-semibold text-[#94A3B8] uppercase tracking-wide mb-2">Venue</p>
-                <div className="flex items-start gap-2">
-                  <MapPin size={14} className="text-gray-400 shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-[13px] text-gray-700 font-medium">{programme.venue_name}</p>
-                    {programme.venue_address && (
-                      <p className="text-[12px] text-gray-500 mt-0.5">{programme.venue_address}</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Description (optional) */}
-            {programme.description && (
-              <div>
-                <p className="text-[11px] font-semibold text-[#94A3B8] uppercase tracking-wide mb-2">About</p>
-                <p className="text-[13px] text-gray-700 leading-relaxed">{programme.description}</p>
-              </div>
-            )}
-
-            {/* Cancellation window */}
-            <div>
-              <p className="text-[11px] font-semibold text-[#94A3B8] uppercase tracking-wide mb-2">Cancellation Policy</p>
-              <div className="flex items-center gap-2">
-                <Shield size={14} className="text-gray-400 shrink-0" />
-                <span className="text-[13px] text-gray-700">{cancellationLabel}</span>
+                <div className="text-[14px] font-medium tracking-[-0.005em] text-[#0F172A]">{cancellationTitle}</div>
+                <div className="text-[13px] text-[#475569] mt-0.5 leading-[1.4]">{cancellationSub}</div>
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Sticky actions bar */}
-        <div className="absolute bottom-0 left-0 right-0 bg-white border-t border-gray-100 px-5 py-3">
-          {shareOpen ? (
-            // Share sheet
-            <div className="space-y-2">
-              <div className="flex gap-2">
+          {/* Share sheet — inline after body content */}
+          {shareOpen && (
+            <div className="border-t border-[#E2E8F0] mt-4 pt-0 pb-2">
+              <div className="text-[11px] font-medium text-[#64748B] uppercase tracking-[0.08em] mt-4 mb-3">Share this programme</div>
+              <div className="flex flex-col gap-2">
+                {/* WhatsApp */}
                 <a
                   href={whatsappUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex-1 h-10 rounded-[10px] bg-[#25D366] text-white text-[12px] font-semibold flex items-center justify-center gap-1.5 hover:opacity-90 transition-opacity"
+                  className="flex items-center gap-[14px] px-4 py-[14px] bg-[#F0FDF4] border-[1.5px] border-[#BBF7D0] hover:border-[#86EFAC] rounded-[12px] transition-colors"
                 >
-                  WhatsApp
+                  <div className="w-10 h-10 rounded-[10px] bg-[#25D366] text-white flex items-center justify-center shrink-0">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347zm-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.304-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                    </svg>
+                  </div>
+                  <div className="flex-1 text-left">
+                    <div className="text-[15px] font-medium tracking-[-0.005em] text-[#0F172A]">WhatsApp</div>
+                    <div className="text-[13px] text-[#64748B] mt-0.5">Opens WhatsApp with a pre-filled message</div>
+                  </div>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg>
                 </a>
+
+                {/* Copy link */}
                 <button
                   onClick={handleCopyLink}
-                  className="flex-1 h-10 rounded-[10px] border border-gray-200 text-gray-700 text-[12px] font-semibold hover:bg-gray-50 transition-colors"
+                  className="flex items-center gap-[14px] px-4 py-[14px] bg-[#F8FAFC] border-[1.5px] border-[#E2E8F0] hover:border-[#CBD5E1] rounded-[12px] text-left transition-colors w-full"
                 >
-                  {copied === 'link' ? 'Copied!' : 'Copy link'}
+                  <div className="w-10 h-10 rounded-[10px] bg-[#E2E8F0] text-[#475569] flex items-center justify-center shrink-0">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M10 13a5 5 0 007.07 0l3-3a5 5 0 00-7.07-7.07l-1.72 1.72"/><path d="M14 11a5 5 0 00-7.07 0l-3 3a5 5 0 007.07 7.07l1.72-1.72"/>
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <div className="text-[15px] font-medium tracking-[-0.005em] text-[#0F172A]">{copied === 'link' ? 'Copied!' : 'Copy link'}</div>
+                    <div className="text-[13px] text-[#64748B] mt-0.5">crikly.app/programmes/…</div>
+                  </div>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg>
                 </button>
+
+                {/* Copy text */}
                 <button
                   onClick={handleCopyText}
-                  className="flex-1 h-10 rounded-[10px] border border-gray-200 text-gray-700 text-[12px] font-semibold hover:bg-gray-50 transition-colors"
+                  className="flex items-center gap-[14px] px-4 py-[14px] bg-[#F8FAFC] border-[1.5px] border-[#E2E8F0] hover:border-[#CBD5E1] rounded-[12px] text-left transition-colors w-full"
                 >
-                  {copied === 'text' ? 'Copied!' : 'Copy text'}
+                  <div className="w-10 h-10 rounded-[10px] bg-[#E2E8F0] text-[#475569] flex items-center justify-center shrink-0">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <div className="text-[15px] font-medium tracking-[-0.005em] text-[#0F172A]">{copied === 'text' ? 'Copied!' : 'Copy text'}</div>
+                    <div className="text-[13px] text-[#64748B] mt-0.5">Full programme details, ready to paste</div>
+                  </div>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg>
                 </button>
               </div>
+
+              {/* Back button */}
               <button
                 onClick={() => setShareOpen(false)}
-                className="w-full h-9 rounded-[10px] text-[12px] font-medium text-gray-500 hover:text-gray-700 transition-colors"
+                className="inline-flex items-center gap-1.5 text-[#0077CC] text-[14px] font-medium bg-transparent border-none cursor-pointer pt-[14px] mt-1 hover:underline"
               >
-                ← Back
-              </button>
-            </div>
-          ) : (
-            // Normal actions
-            <div className="flex gap-2">
-              {isDraft && (
-                <button
-                  onClick={() => onNavigate(`/coach/programmes/${programme.id}/edit`)}
-                  className="flex-1 h-11 rounded-[10px] border border-gray-200 text-gray-700 text-[13px] font-semibold hover:bg-gray-50 transition-colors"
-                >
-                  Edit
-                </button>
-              )}
-              <button
-                onClick={() => onNavigate(isDraft ? `/coach/programmes/${programme.id}/edit` : `/coach/programmes/${programme.id}/roster`)}
-                className="flex-1 h-11 rounded-[10px] bg-[#0077CC] hover:bg-[#0066AA] text-white text-[13px] font-semibold transition-colors"
-              >
-                {isDraft ? 'Preview' : 'Manage'}
-              </button>
-              <button
-                onClick={() => setShareOpen(true)}
-                className="flex-1 h-11 rounded-[10px] bg-[#16A34A] hover:bg-[#15803D] text-white text-[13px] font-semibold flex items-center justify-center gap-1.5 transition-colors"
-              >
-                <Share2 size={14} />
-                Share
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M19 12H5M12 19l-7-7 7-7"/>
+                </svg>
+                Back
               </button>
             </div>
           )}
         </div>
+
+        {/* Sticky actions bar — hidden when share sheet is open */}
+        {!shareOpen && (
+          <div
+            className="sticky bottom-0 bg-white border-t border-[#E2E8F0] px-5 py-4 grid gap-2.5 items-center"
+            style={{ gridTemplateColumns: 'auto 1fr auto' }}
+          >
+            {/* Edit — disabled for non-draft per design */}
+            <button
+              disabled={!isDraft}
+              onClick={() => isDraft && onNavigate(`/coach/programmes/${programme.id}/edit`)}
+              className="h-11 px-[18px] rounded-[12px] text-[14px] font-medium bg-white text-[#475569] border-[1.5px] border-[#E2E8F0] hover:bg-[#F8FAFC] disabled:opacity-50 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-1.5"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>
+              </svg>
+              Edit
+            </button>
+
+            {/* Manage / Preview */}
+            <button
+              onClick={() => onNavigate(isDraft ? `/coach/programmes/${programme.id}/edit` : `/coach/programmes/${programme.id}/roster`)}
+              className="h-11 px-[18px] rounded-[12px] text-[14px] font-medium bg-[#0077CC] hover:bg-[#0066AA] text-white flex items-center justify-center gap-1.5 transition-colors"
+            >
+              {isDraft ? 'Preview' : 'Manage'}
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M5 12h14M13 5l7 7-7 7"/>
+              </svg>
+            </button>
+
+            {/* Share */}
+            <button
+              onClick={() => setShareOpen(true)}
+              className="h-11 px-[18px] rounded-[12px] text-[14px] font-medium bg-white text-[#15803D] border-[1.5px] border-[#BBF7D0] hover:bg-[#F0FDF4] flex items-center gap-1.5 transition-colors"
+            >
+              Share
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M7 17L17 7M17 7H9M17 7v8"/>
+              </svg>
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )
