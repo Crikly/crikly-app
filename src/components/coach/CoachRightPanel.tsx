@@ -109,8 +109,11 @@ export function CoachRightPanel({ dashboardData }: CoachRightPanelProps = {}) {
   const isEarningsRoute = pathname === '/coach/earnings' || pathname.includes('/earnings')
   // CF-D09 CHANGE 6: Detect get-paid route
   const isGetPaidRoute = pathname.includes('/get-paid')
+  // Fix-59-1: Hydration guard — pathname is client-only; guard prevents server/client mismatch
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => setMounted(true), [])
   // Fix-58-2: Detect programme create route
-  const isProgrammeCreateRoute = pathname.includes('/programmes/create')
+  const isProgrammeCreateRoute = mounted && pathname.includes('/programmes/create')
   // Fix-25: Dynamic today date
   const [selectedDate, setSelectedDate] = useState<number | null>(new Date().getDate())
 
@@ -1004,17 +1007,17 @@ function BookingsPendingApprovals({ sportsMap }: { sportsMap: Record<string, str
   )
 }
 
-// Fix-58-2: Programme create right panel — live preview of what's being filled in
+// Fix-59-2: Programme create right panel — parent-facing preview card + step tracker
 function ProgrammeCreatePreviewPanel({ preview }: { preview: ProgrammePreviewState | null }) {
   const DAYS_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
   const formatDays = (days: number[]): string => {
-    if (days.length === 0) return '—'
+    if (days.length === 0) return ''
     return days.map((d) => DAYS_SHORT[d]).join(', ')
   }
 
   const formatTime = (hhmm: string): string => {
-    if (!hhmm) return '—'
+    if (!hhmm) return ''
     const [h, m] = hhmm.split(':')
     const hour = parseInt(h, 10)
     const suffix = hour >= 12 ? 'pm' : 'am'
@@ -1022,76 +1025,108 @@ function ProgrammeCreatePreviewPanel({ preview }: { preview: ProgrammePreviewSta
     return `${h12}:${m}${suffix}`
   }
 
-  const formatPrice = (pence: number, type: string): string => {
-    if (!pence) return '—'
-    const amount = `£${(pence / 100).toFixed(0)}`
-    return type === 'per_session' ? `${amount} / session` : `${amount} block`
+  const formatScheduleRow = (): string => {
+    if (!preview) return ''
+    const { days_of_week, start_time, duration_minutes } = preview.form
+    const parts: string[] = []
+    if (days_of_week.length > 0) parts.push(`Every ${formatDays(days_of_week)}`)
+    if (start_time) parts.push(formatTime(start_time))
+    if (duration_minutes > 0) parts.push(`${duration_minutes} min`)
+    return parts.join(' · ')
+  }
+
+  const formatSessionsRow = (): string => {
+    if (!preview) return ''
+    const { schedule_type, fixed_schedule_mode, session_count, programme_end_date } = preview.form
+    if (schedule_type === 'rolling') return 'Ongoing'
+    if (fixed_schedule_mode === 'count' && session_count > 0) return `${session_count} sessions`
+    if (fixed_schedule_mode === 'end_date' && programme_end_date) {
+      const d = new Date(programme_end_date + 'T00:00:00')
+      return `Ends ${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`
+    }
+    return ''
   }
 
   const sportName = preview
-    ? (preview.sports.find((s) => s.sport_id === preview.form.sport_id)?.sport_name ?? '—')
-    : '—'
+    ? (preview.sports.find((s) => s.sport_id === preview.form.sport_id)?.sport_name ?? '')
+    : ''
 
-  const stepLabels = ['Details', 'Schedule', 'Spots & Pricing', 'Review']
+  const skillLabel = (): string => {
+    if (!preview?.form.skill_level || preview.form.skill_level === 'all') return 'All levels'
+    return preview.form.skill_level.charAt(0).toUpperCase() + preview.form.skill_level.slice(1)
+  }
+
+  const priceLabel = (): string => {
+    if (!preview?.form.price_pence) return ''
+    const amount = `£${(preview.form.price_pence / 100).toFixed(0)}`
+    return preview.form.payment_type === 'per_session' ? `${amount} / session` : `${amount} block`
+  }
+
+  const stepLabels = ['Details', 'Schedule', 'Spots & pricing', 'Review']
+  const scheduleRow = formatScheduleRow()
+  const sessionsRow = formatSessionsRow()
+  const price = priceLabel()
+  const hasTitle = !!(preview?.form.title)
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-5">
+      {/* Section 1 — Parent preview */}
       <div>
-        <div className="text-[9px] font-medium text-gray-400 uppercase tracking-wider mb-2">PROGRAMME PREVIEW</div>
-        {!preview || !preview.form.title ? (
-          <p className="text-[12px] text-gray-400">Start filling in details to see a preview</p>
+        <div className="text-[9px] font-medium text-gray-400 uppercase tracking-wider mb-2">PARENT PREVIEW</div>
+        {!hasTitle ? (
+          <p className="text-[12px] text-gray-400 italic leading-relaxed">
+            Fill in details to see how parents will see your programme
+          </p>
         ) : (
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-            <h3 className="text-[15px] font-semibold text-gray-900 mb-0.5 leading-snug">{preview.form.title}</h3>
-            {preview.form.description && (
-              <p className="text-[11px] text-gray-500 mb-3 line-clamp-2 leading-relaxed">{preview.form.description}</p>
-            )}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+            <h3 className="text-[16px] font-bold text-gray-900 mb-2 leading-snug">{preview!.form.title}</h3>
 
-            <div className="space-y-1.5">
-              {sportName !== '—' && (
-                <div className="flex items-center gap-1.5 text-[11px] text-gray-600">
-                  <span className="text-gray-400 w-3">◆</span>
-                  <span>{sportName}</span>
-                  {preview.form.skill_level && preview.form.skill_level !== 'all' && (
-                    <span className="ml-1 px-1.5 py-0.5 bg-gray-100 rounded-full text-[10px] text-gray-500 capitalize">
-                      {preview.form.skill_level}
-                    </span>
-                  )}
-                  {preview.form.skill_level === 'all' && (
-                    <span className="ml-1 px-1.5 py-0.5 bg-gray-100 rounded-full text-[10px] text-gray-500">All levels</span>
-                  )}
+            {/* Badges */}
+            <div className="flex flex-wrap gap-1.5 mb-3">
+              {sportName && (
+                <span className="px-2 py-0.5 bg-[#E6F3FB] text-[#0077CC] text-[10px] font-medium rounded-full">
+                  {sportName}
+                </span>
+              )}
+              <span className="px-2 py-0.5 bg-gray-100 text-gray-500 text-[10px] font-medium rounded-full">
+                {skillLabel()}
+              </span>
+            </div>
+
+            <div className="space-y-2">
+              {/* Schedule */}
+              {scheduleRow && (
+                <div className="flex items-center gap-2 text-[11px] text-gray-600">
+                  <Calendar size={12} className="text-gray-400 shrink-0" />
+                  <span>{scheduleRow}</span>
                 </div>
               )}
-              {preview.form.days_of_week.length > 0 && (
-                <div className="flex items-center gap-1.5 text-[11px] text-gray-600">
-                  <Calendar size={11} className="text-gray-400 shrink-0" />
-                  <span>{formatDays(preview.form.days_of_week)}</span>
-                  {preview.form.start_time && (
-                    <span className="text-gray-400">· {formatTime(preview.form.start_time)}</span>
-                  )}
+
+              {/* Sessions */}
+              {sessionsRow && (
+                <div className="flex items-center gap-2 text-[11px] text-gray-600">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400 shrink-0">
+                    <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                  </svg>
+                  <span>{sessionsRow}</span>
                 </div>
               )}
-              {preview.form.duration_minutes > 0 && (
-                <div className="flex items-center gap-1.5 text-[11px] text-gray-600">
-                  <span className="text-gray-400 w-3">⏱</span>
-                  <span>{preview.form.duration_minutes} min</span>
-                  {preview.form.schedule_type && (
-                    <span className="ml-1 px-1.5 py-0.5 bg-[#E6F1FB] rounded-full text-[10px] text-[#0077CC] capitalize">
-                      {preview.form.schedule_type}
-                    </span>
-                  )}
+
+              {/* Capacity */}
+              {preview!.form.max_spots > 0 && (
+                <div className="flex items-center gap-2 text-[11px] text-gray-600">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400 shrink-0">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                  </svg>
+                  <span>{preview!.form.max_spots} spots available</span>
                 </div>
               )}
-              {preview.form.max_spots > 0 && (
-                <div className="flex items-center gap-1.5 text-[11px] text-gray-600">
-                  <span className="text-gray-400 w-3">👥</span>
-                  <span>{preview.form.max_spots} spots</span>
-                </div>
-              )}
-              {preview.form.price_pence > 0 && (
-                <div className="flex items-center gap-1.5 text-[11px] font-medium text-gray-900">
-                  <PoundSterling size={11} className="text-[#0077CC] shrink-0" />
-                  <span>{formatPrice(preview.form.price_pence, preview.form.payment_type)}</span>
+
+              {/* Price */}
+              {price && (
+                <div className="flex items-center gap-2 text-[12px] font-bold text-[#0077CC]">
+                  <PoundSterling size={12} className="shrink-0" />
+                  <span>{price}</span>
                 </div>
               )}
             </div>
@@ -1099,26 +1134,26 @@ function ProgrammeCreatePreviewPanel({ preview }: { preview: ProgrammePreviewSta
         )}
       </div>
 
-      {/* Step progress */}
+      {/* Section 2 — Steps */}
       <div>
-        <div className="text-[9px] font-medium text-gray-400 uppercase tracking-wider mb-2">PROGRESS</div>
-        <div className="space-y-1.5">
+        <div className="text-[9px] font-medium text-gray-400 uppercase tracking-wider mb-2">STEPS</div>
+        <div className="space-y-2">
           {stepLabels.map((label, i) => {
             const stepNum = i + 1
             const isDone = preview ? stepNum < preview.step : false
             const isCurrent = preview ? stepNum === preview.step : stepNum === 1
             return (
-              <div key={i} className="flex items-center gap-2">
-                <div className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] shrink-0 ${
+              <div key={i} className="flex items-center gap-2.5">
+                <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
                   isDone ? 'bg-[#0077CC] text-white' :
-                  isCurrent ? 'bg-[#E6F1FB] border border-[#0077CC] text-[#0077CC]' :
+                  isCurrent ? 'bg-white border-2 border-[#0077CC] text-[#0077CC]' :
                   'bg-gray-100 text-gray-400'
                 }`}>
                   {isDone ? '✓' : stepNum}
                 </div>
-                <span className={`text-[11px] ${
+                <span className={`text-[12px] ${
                   isDone ? 'text-[#0077CC] font-medium' :
-                  isCurrent ? 'text-gray-900 font-medium' :
+                  isCurrent ? 'text-gray-900 font-semibold' :
                   'text-gray-400'
                 }`}>{label}</span>
               </div>
