@@ -1,7 +1,30 @@
 'use client'
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, Check, Loader2, Calendar, RefreshCw, CreditCard, Layers } from 'lucide-react'
+
+// Exported so CoachRightPanel can type the event detail
+export interface ProgrammePreviewEventDetail {
+  form: {
+    title: string
+    description: string
+    sport_id: string
+    skill_level: string
+    days_of_week: number[]
+    start_time: string
+    duration_minutes: number
+    session_count: number
+    schedule_type: string
+    fixed_schedule_mode: string
+    programme_end_date: string
+    rolling_end_date: string
+    max_spots: number
+    payment_type: string
+    price_pence: number
+  }
+  sports: Sport[]
+  step: number
+}
 
 interface Sport {
   id: string
@@ -17,10 +40,14 @@ interface FormData {
   skill_level: 'beginner' | 'intermediate' | 'advanced' | 'all'
   // Step 2
   schedule_type: 'fixed' | 'rolling'
-  day_of_week: number
+  days_of_week: number[]          // Fix-58-4: multi-select
   start_time: string
   duration_minutes: number
+  fixed_schedule_mode: 'count' | 'end_date'  // Fix-58-5
   session_count: number
+  programme_end_date: string      // Fix-58-5: for fixed end-date mode
+  rolling_end_date: string        // Fix-58-8: optional rolling end
+  excluded_dates: string[]        // Fix-58-6: session exclusions
   // Step 3
   max_spots: number
   payment_type: 'per_session' | 'block_upfront'
@@ -54,6 +81,58 @@ function displayToPence(val: string): number {
   const n = parseFloat(val.replace(/[^0-9.]/g, ''))
   return isNaN(n) ? 0 : Math.round(n * 100)
 }
+
+function formatDaysLabel(days: number[]): string {
+  if (days.length === 0) return '—'
+  return [...days].sort((a, b) => a - b).map((d) => DAYS[d]).join(', ')
+}
+
+function formatSessionDate(dateStr: string): string {
+  const d = new Date(dateStr + 'T00:00:00')
+  return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+}
+
+function generateSessionDates(
+  days: number[],
+  mode: 'count' | 'end_date',
+  count: number,
+  endDateStr: string,
+): string[] {
+  const dates: string[] = []
+  if (days.length === 0) return dates
+
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const start = new Date(today)
+  start.setDate(start.getDate() + 1)
+
+  if (mode === 'count') {
+    const cur = new Date(start)
+    let generated = 0
+    const limit = count * 7 + 30
+    let iter = 0
+    while (generated < count && iter < limit) {
+      if (days.includes(cur.getDay())) {
+        dates.push(cur.toISOString().split('T')[0])
+        generated++
+      }
+      cur.setDate(cur.getDate() + 1)
+      iter++
+    }
+  } else if (mode === 'end_date' && endDateStr) {
+    const end = new Date(endDateStr + 'T00:00:00')
+    const cur = new Date(start)
+    while (cur <= end) {
+      if (days.includes(cur.getDay())) {
+        dates.push(cur.toISOString().split('T')[0])
+      }
+      cur.setDate(cur.getDate() + 1)
+    }
+  }
+  return dates
+}
+
+// ── Sub-components ────────────────────────────────────────────────────────────
 
 function PillButton({
   active,
@@ -115,98 +194,55 @@ function SelectCard({
   )
 }
 
-function StepDots({ step, total }: { step: number; total: number }) {
+// Fix-58-7: Clickable step dots matching onboarding style
+function StepDots({
+  step,
+  total,
+  onStepClick,
+}: {
+  step: number
+  total: number
+  onStepClick: (targetStep: number) => void
+}) {
   return (
-    <div className="flex gap-2">
-      {Array.from({ length: total }).map((_, i) => (
-        <span
-          key={i}
-          className={`w-2.5 h-2.5 rounded-full transition-colors ${i < step ? 'bg-[#0077CC]' : 'bg-[#E2E8F0]'}`}
-        />
-      ))}
+    <div className="flex items-center gap-1.5">
+      {Array.from({ length: total }).map((_, i) => {
+        const isCompleted = i < step - 1
+        const isCurrent = i === step - 1
+        if (isCompleted) {
+          return (
+            <button
+              key={i}
+              type="button"
+              onClick={() => onStepClick(i + 1)}
+              className="w-6 h-2 rounded-full bg-[#0077CC] cursor-pointer hover:bg-[#0066AA] transition-colors"
+              aria-label={`Go to step ${i + 1}`}
+            />
+          )
+        }
+        if (isCurrent) {
+          return <span key={i} className="w-6 h-2 rounded-full bg-[#0077CC]" />
+        }
+        return <span key={i} className="w-2 h-2 rounded-full bg-[#E2E8F0]" />
+      })}
     </div>
   )
 }
 
-function PreviewCard({
-  form,
-  sports,
-  step,
-}: {
-  form: FormData
-  sports: Sport[]
-  step: number
-}) {
-  const sport = sports.find((s) => s.sport_id === form.sport_id)
-  const skillLabel = SKILL_LEVELS.find((s) => s.value === form.skill_level)?.label ?? ''
-  const dayLabel = form.day_of_week >= 0 ? DAY_FULL[form.day_of_week].substring(0, 3) : '—'
-  const priceDisplay = form.price_pence > 0 ? `£${penceToDisplay(form.price_pence)}` : '—'
-
-  return (
-    <aside className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-2xl p-5 sticky top-6">
-      <p className="text-[11px] font-medium text-[#64748B] uppercase tracking-[0.08em] mb-3">Parent preview</p>
-      <div className="bg-white border border-[#E2E8F0] rounded-[14px] p-[18px] shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
-        <h3 className="text-[17px] font-semibold text-[#0F172A] tracking-tight mb-2">
-          {form.title || 'Programme title'}
-        </h3>
-        <div className="flex flex-wrap gap-1.5">
-          {sport && (
-            <span className="inline-flex items-center px-2.5 py-0.5 text-[11px] font-medium rounded-[6px] bg-[#E6F3FB] text-[#0C447C]">
-              {sport.sport_name}
-            </span>
-          )}
-          {form.skill_level && (
-            <span className="inline-flex items-center px-2.5 py-0.5 text-[11px] font-medium rounded-[6px] bg-[#F1F5F9] text-[#475569]">
-              {skillLabel}
-            </span>
-          )}
-        </div>
-
-        {step >= 2 && form.day_of_week >= 0 && (
-          <p className="text-[15px] font-medium text-[#0F172A] mt-4">
-            Every {dayLabel} · {formatTime(form.start_time)} · {form.duration_minutes} min
-          </p>
-        )}
-        {step >= 2 && (
-          <p className="text-[13px] text-[#64748B] mt-1">
-            {form.schedule_type === 'fixed'
-              ? `Fixed · ${form.session_count} sessions`
-              : 'Rolling · join anytime'}
-          </p>
-        )}
-
-        {step >= 3 && form.price_pence > 0 && (
-          <>
-            <div className="flex items-baseline justify-between mt-3.5">
-              <span className="text-[22px] font-bold tracking-tight text-[#0F172A]">
-                {priceDisplay}
-                <span className="text-[13px] font-normal text-[#64748B] ml-1">
-                  {form.payment_type === 'per_session' ? '/ session' : 'upfront'}
-                </span>
-              </span>
-            </div>
-            <div className="mt-3.5">
-              <div className="h-1.5 bg-[#E2E8F0] rounded-full overflow-hidden">
-                <div className="h-full bg-[#0077CC] w-0" />
-              </div>
-              <p className="text-[12px] text-[#64748B] mt-1.5">0 / {form.max_spots} spots booked</p>
-            </div>
-          </>
-        )}
-
-        {!form.title && !sport && (
-          <p className="text-[13px] text-[#94A3B8] mt-3 leading-snug">Fill in the details to complete your preview.</p>
-        )}
-      </div>
-    </aside>
-  )
-}
+// ── Main component ─────────────────────────────────────────────────────────────
 
 export function CreateProgramme() {
   const router = useRouter()
   const [step, setStep] = useState(1)
   const [sports, setSports] = useState<Sport[]>([])
   const [loadingSports, setLoadingSports] = useState(true)
+
+  // Fix-58-3: auto-save state
+  const [programmeId, setProgrammeId] = useState<string | null>(null)
+  const [autoSaving, setAutoSaving] = useState(false)
+  const [continueError, setContinueError] = useState<string | null>(null)
+
+  // Step 4 final save
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -216,29 +252,36 @@ export function CreateProgramme() {
     sport_id: '',
     skill_level: 'all',
     schedule_type: 'fixed',
-    day_of_week: 6, // Saturday
+    days_of_week: [6],             // Saturday default
     start_time: '09:00',
     duration_minutes: 60,
+    fixed_schedule_mode: 'count',
     session_count: 8,
+    programme_end_date: '',
+    rolling_end_date: '',
+    excluded_dates: [],
     max_spots: 8,
     payment_type: 'per_session',
-    price_pence: 2800, // £28 default
+    price_pence: 2800,
     late_joining_allowed: false,
   })
 
+  // Fix-58-9: fetch from /api/coaches/sports (coach's configured sports + valid sport_ids)
   useEffect(() => {
     async function fetchSports() {
       try {
         const res = await fetch('/api/coaches/sports')
         if (!res.ok) return
         const data = await res.json()
-        const sportList: Sport[] = (data.sports || []).map((s: { id: string; sport_id: string; sport_name: string }) => ({
-          id: s.id,
-          sport_id: s.sport_id,
-          sport_name: s.sport_name,
-        }))
+        const sportList: Sport[] = (data.sports || []).map(
+          (s: { id: string; sport_id: string; sport_name: string }) => ({
+            id: s.id,
+            sport_id: s.sport_id, // sports table UUID — correct field for API
+            sport_name: s.sport_name,
+          }),
+        )
         setSports(sportList)
-        if (sportList.length > 0 && !form.sport_id) {
+        if (sportList.length > 0) {
           setForm((f) => ({ ...f, sport_id: sportList[0].sport_id }))
         }
       } finally {
@@ -246,62 +289,206 @@ export function CreateProgramme() {
       }
     }
     fetchSports()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Fix-58-2: broadcast preview state to CoachRightPanel via CustomEvent
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const detail: ProgrammePreviewEventDetail = { form, sports, step }
+    window.dispatchEvent(new CustomEvent('programme-preview-update', { detail }))
+  }, [form, sports, step])
 
   function update<K extends keyof FormData>(key: K, value: FormData[K]) {
     setForm((f) => ({ ...f, [key]: value }))
   }
 
+  // Fix-58-4: toggle a day in/out of days_of_week array
+  function toggleDay(dayIndex: number) {
+    const current = form.days_of_week
+    if (current.includes(dayIndex)) {
+      if (current.length === 1) return // prevent empty selection
+      update('days_of_week', current.filter((d) => d !== dayIndex))
+    } else {
+      update('days_of_week', [...current, dayIndex].sort((a, b) => a - b))
+    }
+  }
+
+  // Fix-58-6: toggle a session date in/out of excluded_dates
+  function toggleExcludeDate(dateStr: string) {
+    const current = form.excluded_dates
+    if (current.includes(dateStr)) {
+      update('excluded_dates', current.filter((d) => d !== dateStr))
+    } else {
+      update('excluded_dates', [...current, dateStr])
+    }
+  }
+
+  // Fix-58-6: computed session dates
+  const sessionDates = useMemo(() => {
+    if (form.schedule_type !== 'fixed') return []
+    if (form.days_of_week.length === 0) return []
+    if (form.fixed_schedule_mode === 'count' && form.session_count < 2) return []
+    if (form.fixed_schedule_mode === 'end_date' && !form.programme_end_date) return []
+    return generateSessionDates(
+      form.days_of_week,
+      form.fixed_schedule_mode,
+      form.session_count,
+      form.programme_end_date,
+    )
+  }, [
+    form.schedule_type,
+    form.days_of_week,
+    form.fixed_schedule_mode,
+    form.session_count,
+    form.programme_end_date,
+  ])
+
+  const activeSessionCount = sessionDates.filter((d) => !form.excluded_dates.includes(d)).length
+
   function canContinue(): boolean {
     if (step === 1) return form.title.trim().length > 0 && form.sport_id.length > 0
-    if (step === 2) return form.day_of_week >= 0 && form.start_time.length > 0 && form.duration_minutes > 0
+    if (step === 2) {
+      if (form.days_of_week.length === 0 || !form.start_time || !form.duration_minutes) return false
+      if (form.schedule_type === 'fixed') {
+        if (form.fixed_schedule_mode === 'count') return form.session_count >= 2
+        return form.programme_end_date.length > 0
+      }
+      return true
+    }
     if (step === 3) return form.max_spots >= 2 && form.price_pence >= 100
     return true
   }
 
+  // Build full POST body (used at step 1 and as fallback on step 4 publish)
+  function buildPostBody(status: 'draft' | 'active'): Record<string, unknown> {
+    const body: Record<string, unknown> = {
+      sport_id: form.sport_id,
+      title: form.title.trim(),
+      description: form.description.trim() || null,
+      skill_level: form.skill_level,
+      schedule_type: form.schedule_type,
+      day_of_week: form.days_of_week[0] ?? 6,
+      start_time: form.start_time,
+      duration_minutes: form.duration_minutes,
+      max_spots: form.max_spots,
+      payment_type: form.payment_type,
+      late_joining_allowed: form.late_joining_allowed,
+      status,
+    }
+    if (form.schedule_type === 'fixed' && form.fixed_schedule_mode === 'count') {
+      body.session_count = form.session_count
+    }
+    if (form.payment_type === 'per_session') {
+      body.price_per_session_pence = form.price_pence
+    } else {
+      body.block_price_pence = form.price_pence
+      body.block_session_count = form.session_count
+      body.price_per_session_pence = form.price_pence
+    }
+    return body
+  }
+
+  // Fix-58-3: auto-save on Continue
+  async function handleContinue() {
+    if (!canContinue()) return
+    setAutoSaving(true)
+    setContinueError(null)
+
+    try {
+      if (step === 1) {
+        // Create draft with all current form data (defaults included)
+        const res = await fetch('/api/coaches/programmes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(buildPostBody('draft')),
+        })
+        if (!res.ok) {
+          const data = await res.json()
+          throw new Error(data.error || 'Failed to save draft')
+        }
+        const data = await res.json()
+        setProgrammeId(data.id)
+      } else if (step === 2) {
+        if (!programmeId) throw new Error('No programme ID — please go back to step 1.')
+        const patchBody: Record<string, unknown> = {
+          schedule_type: form.schedule_type,
+          day_of_week: form.days_of_week[0] ?? 6,
+          start_time: form.start_time,
+          duration_minutes: form.duration_minutes,
+        }
+        const res = await fetch(`/api/coaches/programmes/${programmeId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(patchBody),
+        })
+        if (!res.ok) {
+          const data = await res.json()
+          throw new Error(data.error || 'Failed to save schedule')
+        }
+      } else if (step === 3) {
+        if (!programmeId) throw new Error('No programme ID — please go back to step 1.')
+        const patchBody: Record<string, unknown> = {
+          max_spots: form.max_spots,
+          payment_type: form.payment_type,
+        }
+        if (form.payment_type === 'per_session') {
+          patchBody.price_per_session_pence = form.price_pence
+        } else {
+          patchBody.block_price_pence = form.price_pence
+          patchBody.block_session_count = form.session_count
+          patchBody.price_per_session_pence = form.price_pence
+        }
+        // TODO Fix-59: add late_joining_allowed to PATCH route
+        const res = await fetch(`/api/coaches/programmes/${programmeId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(patchBody),
+        })
+        if (!res.ok) {
+          const data = await res.json()
+          throw new Error(data.error || 'Failed to save settings')
+        }
+      }
+      setStep((s) => s + 1)
+    } catch (err) {
+      setContinueError(err instanceof Error ? err.message : 'Something went wrong. Please try again.')
+    } finally {
+      setAutoSaving(false)
+    }
+  }
+
   async function submit(publishNow: boolean) {
+    if (!publishNow) {
+      // Save as draft — already auto-saved, just redirect
+      router.push('/coach/programmes')
+      return
+    }
+
     setSaving(true)
     setError(null)
     try {
-      const body: Record<string, unknown> = {
-        sport_id: form.sport_id,
-        title: form.title.trim(),
-        description: form.description.trim() || null,
-        skill_level: form.skill_level,
-        schedule_type: form.schedule_type,
-        day_of_week: form.day_of_week,
-        start_time: form.start_time,
-        duration_minutes: form.duration_minutes,
-        max_spots: form.max_spots,
-        payment_type: form.payment_type,
-        late_joining_allowed: form.late_joining_allowed,
-        status: publishNow ? 'active' : 'draft',
-      }
-
-      if (form.schedule_type === 'fixed') {
-        body.session_count = form.session_count
-      }
-
-      if (form.payment_type === 'per_session') {
-        body.price_per_session_pence = form.price_pence
+      if (programmeId) {
+        const res = await fetch(`/api/coaches/programmes/${programmeId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'active' }),
+        })
+        if (!res.ok) {
+          const data = await res.json()
+          throw new Error(data.error || 'Failed to publish programme')
+        }
       } else {
-        body.block_price_pence = form.price_pence
-        body.block_session_count = form.session_count
-        body.price_per_session_pence = form.price_pence
+        // Fallback: create and publish in one call
+        const res = await fetch('/api/coaches/programmes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(buildPostBody('active')),
+        })
+        if (!res.ok) {
+          const data = await res.json()
+          throw new Error(data.error || 'Failed to create programme')
+        }
       }
-
-      const res = await fetch('/api/coaches/programmes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || 'Failed to create programme')
-      }
-
       router.push('/coach/programmes')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong')
@@ -310,14 +497,33 @@ export function CreateProgramme() {
     }
   }
 
+  // Derived values for review step
   const sport = sports.find((s) => s.sport_id === form.sport_id)
   const skillLabel = SKILL_LEVELS.find((s) => s.value === form.skill_level)?.label ?? ''
-  const dayLabel = form.day_of_week >= 0 ? DAY_FULL[form.day_of_week] : '—'
+  const daysLabel = formatDaysLabel(form.days_of_week)
   const priceDisplay = form.price_pence > 0 ? `£${penceToDisplay(form.price_pence)}` : '£—'
 
+  let scheduleTypeValue: string
+  if (form.schedule_type === 'fixed') {
+    if (form.fixed_schedule_mode === 'count') {
+      scheduleTypeValue = `Fixed · ${form.session_count} sessions`
+    } else {
+      const endFmt = form.programme_end_date
+        ? new Date(form.programme_end_date + 'T00:00:00').toLocaleDateString('en-GB', {
+            day: 'numeric', month: 'short',
+          })
+        : '—'
+      scheduleTypeValue = `Fixed · ends ${endFmt}`
+    }
+  } else {
+    scheduleTypeValue = form.rolling_end_date
+      ? `Rolling · ends ${new Date(form.rolling_end_date + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`
+      : 'Rolling · ongoing'
+  }
+
   return (
-    <div className="min-h-screen bg-[#F8FAFC]" style={{ fontFamily: "'DM Sans', sans-serif" }}>
-      <div className="max-w-[1160px] mx-auto px-8 py-6 pb-12">
+    <div className="min-h-screen bg-white"> {/* Fix-58-1: white background */}
+      <div className="max-w-[760px] mx-auto px-8 py-6 pb-16">
 
         {/* Card */}
         <div className="bg-white border border-[#E2E8F0] rounded-[20px] px-10 py-8 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
@@ -332,7 +538,8 @@ export function CreateProgramme() {
               <ArrowLeft size={15} />
               {step === 1 ? 'Back to programmes' : 'Back'}
             </button>
-            <StepDots step={step} total={4} />
+            {/* Fix-58-7: clickable step dots matching onboarding style */}
+            <StepDots step={step} total={4} onStepClick={setStep} />
           </div>
 
           {/* Step tag */}
@@ -340,293 +547,416 @@ export function CreateProgramme() {
             Step {step} of 4
           </span>
 
-          {/* ── STEP 1 ── */}
+          {/* ── STEP 1 — Name your programme ── */}
           {step === 1 && (
             <>
               <h1 className="text-[28px] font-bold text-[#0F172A] tracking-tight mt-1">Name your programme</h1>
               <p className="text-sm text-[#64748B] mt-1.5 mb-6">Give parents a clear idea of what to expect.</p>
-              <div className="grid grid-cols-[minmax(0,560px)_minmax(0,1fr)] gap-10 items-start max-[820px]:grid-cols-1 max-[820px]:gap-6">
-                <div>
-                  <div className="mb-[22px]">
-                    <label className="block text-[12px] font-medium text-[#475569] mb-2">Programme title</label>
-                    <input
-                      type="text"
-                      value={form.title}
-                      onChange={(e) => update('title', e.target.value)}
-                      placeholder="e.g. Saturday Beginner Cricket"
-                      className="w-full px-4 py-3.5 bg-white border border-[#E2E8F0] rounded-[12px] text-[15px] text-[#0F172A] outline-none transition-[border,box-shadow] focus:border-[#0077CC] focus:shadow-[0_0_0_3px_rgba(0,119,204,0.15)]"
-                    />
+
+              <div className="mb-[22px]">
+                <label className="block text-[12px] font-medium text-[#475569] mb-2">Programme title</label>
+                <input
+                  type="text"
+                  value={form.title}
+                  onChange={(e) => update('title', e.target.value)}
+                  placeholder="e.g. Saturday Beginner Cricket"
+                  className="w-full px-4 py-3.5 bg-white border border-[#E2E8F0] rounded-[12px] text-[15px] text-[#0F172A] outline-none transition-[border,box-shadow] focus:border-[#0077CC] focus:shadow-[0_0_0_3px_rgba(0,119,204,0.15)]"
+                />
+              </div>
+              <div className="mb-[22px]">
+                <label className="block text-[12px] font-medium text-[#475569] mb-2">
+                  Description <span className="text-[11px] text-[#94A3B8] font-normal ml-1">Optional</span>
+                </label>
+                <textarea
+                  value={form.description}
+                  onChange={(e) => update('description', e.target.value)}
+                  placeholder="What will participants learn?"
+                  rows={3}
+                  className="w-full px-4 py-3.5 bg-white border border-[#E2E8F0] rounded-[12px] text-[15px] text-[#0F172A] outline-none transition-[border,box-shadow] focus:border-[#0077CC] focus:shadow-[0_0_0_3px_rgba(0,119,204,0.15)] resize-y"
+                />
+              </div>
+              <div className="mb-[22px]">
+                <label className="block text-[12px] font-medium text-[#475569] mb-2">Sport</label>
+                {loadingSports ? (
+                  <div className="flex items-center gap-2 text-[#64748B] text-sm">
+                    <Loader2 size={14} className="animate-spin" />
+                    Loading sports…
                   </div>
-                  <div className="mb-[22px]">
-                    <label className="block text-[12px] font-medium text-[#475569] mb-2">
-                      Description <span className="text-[11px] text-[#94A3B8] font-normal ml-1">Optional</span>
-                    </label>
-                    <textarea
-                      value={form.description}
-                      onChange={(e) => update('description', e.target.value)}
-                      placeholder="What will participants learn?"
-                      rows={3}
-                      className="w-full px-4 py-3.5 bg-white border border-[#E2E8F0] rounded-[12px] text-[15px] text-[#0F172A] outline-none transition-[border,box-shadow] focus:border-[#0077CC] focus:shadow-[0_0_0_3px_rgba(0,119,204,0.15)] resize-y"
-                    />
+                ) : sports.length === 0 ? (
+                  <p className="text-sm text-[#94A3B8]">No sports configured. Add a sport in your profile first.</p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {sports.map((s) => (
+                      <PillButton
+                        key={s.sport_id}
+                        active={form.sport_id === s.sport_id}
+                        onClick={() => update('sport_id', s.sport_id)}
+                      >
+                        {s.sport_name}
+                      </PillButton>
+                    ))}
                   </div>
-                  <div className="mb-[22px]">
-                    <label className="block text-[12px] font-medium text-[#475569] mb-2">Sport</label>
-                    {loadingSports ? (
-                      <div className="flex items-center gap-2 text-[#64748B] text-sm">
-                        <Loader2 size={14} className="animate-spin" />
-                        Loading sports…
-                      </div>
-                    ) : sports.length === 0 ? (
-                      <p className="text-sm text-[#94A3B8]">No sports configured. Add a sport in your profile first.</p>
-                    ) : (
-                      <div className="flex flex-wrap gap-2">
-                        {sports.map((s) => (
-                          <PillButton
-                            key={s.sport_id}
-                            active={form.sport_id === s.sport_id}
-                            onClick={() => update('sport_id', s.sport_id)}
-                          >
-                            {s.sport_name}
-                          </PillButton>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  <div className="mb-[22px]">
-                    <label className="block text-[12px] font-medium text-[#475569] mb-2">Skill level</label>
-                    <div className="flex flex-wrap gap-2">
-                      {SKILL_LEVELS.map((sl) => (
-                        <PillButton
-                          key={sl.value}
-                          active={form.skill_level === sl.value}
-                          onClick={() => update('skill_level', sl.value)}
-                        >
-                          {sl.label}
-                        </PillButton>
-                      ))}
-                    </div>
-                  </div>
+                )}
+              </div>
+              <div className="mb-[22px]">
+                <label className="block text-[12px] font-medium text-[#475569] mb-2">Skill level</label>
+                <div className="flex flex-wrap gap-2">
+                  {SKILL_LEVELS.map((sl) => (
+                    <PillButton
+                      key={sl.value}
+                      active={form.skill_level === sl.value}
+                      onClick={() => update('skill_level', sl.value)}
+                    >
+                      {sl.label}
+                    </PillButton>
+                  ))}
                 </div>
-                <PreviewCard form={form} sports={sports} step={step} />
               </div>
             </>
           )}
 
-          {/* ── STEP 2 ── */}
+          {/* ── STEP 2 — When does it run ── */}
           {step === 2 && (
             <>
               <h1 className="text-[28px] font-bold text-[#0F172A] tracking-tight mt-1">When does it run?</h1>
               <p className="text-sm text-[#64748B] mt-1.5 mb-6">Set the recurring day and time for your sessions.</p>
-              <div className="grid grid-cols-[minmax(0,560px)_minmax(0,1fr)] gap-10 items-start max-[820px]:grid-cols-1 max-[820px]:gap-6">
-                <div>
-                  <div className="mb-[22px]">
-                    <label className="block text-[12px] font-medium text-[#475569] mb-2">Schedule type</label>
-                    <div className="grid grid-cols-2 gap-3">
-                      <SelectCard
-                        active={form.schedule_type === 'fixed'}
-                        onClick={() => update('schedule_type', 'fixed')}
-                        icon={<Calendar size={20} strokeWidth={1.8} />}
-                        title="Fixed"
-                        description="Set number of sessions with start and end date."
-                      />
-                      <SelectCard
-                        active={form.schedule_type === 'rolling'}
-                        onClick={() => update('schedule_type', 'rolling')}
-                        icon={<RefreshCw size={20} strokeWidth={1.8} />}
-                        title="Rolling"
-                        description="Ongoing — participants join anytime."
-                      />
-                    </div>
-                  </div>
-                  <div className="mb-[22px]">
-                    <label className="block text-[12px] font-medium text-[#475569] mb-2">Day of the week</label>
-                    <div className="flex flex-wrap gap-2">
-                      {DAYS.map((day, i) => (
-                        <PillButton
-                          key={day}
-                          active={form.day_of_week === i}
-                          onClick={() => update('day_of_week', i)}
-                        >
-                          {day}
-                        </PillButton>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="flex gap-6 flex-wrap mb-[22px]">
-                    <div className="flex-none">
-                      <label className="block text-[12px] font-medium text-[#475569] mb-2">Start time</label>
-                      <input
-                        type="time"
-                        value={form.start_time}
-                        onChange={(e) => update('start_time', e.target.value)}
-                        className="text-[18px] font-medium px-4 py-3.5 border border-[#E2E8F0] rounded-[12px] w-[140px] tracking-wide outline-none focus:border-[#0077CC] focus:shadow-[0_0_0_3px_rgba(0,119,204,0.15)]"
-                      />
-                    </div>
-                    <div className="flex-1 min-w-[260px]">
-                      <label className="block text-[12px] font-medium text-[#475569] mb-2">Duration</label>
-                      <div className="flex flex-wrap gap-2">
-                        {DURATIONS.map((d) => (
-                          <PillButton
-                            key={d}
-                            active={form.duration_minutes === d}
-                            onClick={() => update('duration_minutes', d)}
-                          >
-                            {d} min
-                          </PillButton>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                  {form.schedule_type === 'fixed' && (
-                    <div className="mb-[22px]">
-                      <label className="block text-[12px] font-medium text-[#475569] mb-2">Number of sessions</label>
-                      <input
-                        type="number"
-                        min={2}
-                        max={52}
-                        value={form.session_count}
-                        onChange={(e) => update('session_count', Math.max(2, parseInt(e.target.value) || 2))}
-                        className="w-[140px] px-4 py-3.5 border border-[#E2E8F0] rounded-[12px] text-[15px] text-[#0F172A] outline-none focus:border-[#0077CC] focus:shadow-[0_0_0_3px_rgba(0,119,204,0.15)]"
-                      />
-                      <p className="text-[12px] text-[#94A3B8] mt-2">
-                        The programme will run for {form.session_count} consecutive {dayLabel}s.
-                      </p>
-                    </div>
-                  )}
+
+              {/* Schedule type */}
+              <div className="mb-[22px]">
+                <label className="block text-[12px] font-medium text-[#475569] mb-2">Schedule type</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <SelectCard
+                    active={form.schedule_type === 'fixed'}
+                    onClick={() => update('schedule_type', 'fixed')}
+                    icon={<Calendar size={20} strokeWidth={1.8} />}
+                    title="Fixed"
+                    description="Set number of sessions with start and end date."
+                  />
+                  <SelectCard
+                    active={form.schedule_type === 'rolling'}
+                    onClick={() => update('schedule_type', 'rolling')}
+                    icon={<RefreshCw size={20} strokeWidth={1.8} />}
+                    title="Rolling"
+                    description="Ongoing — participants join anytime."
+                  />
                 </div>
-                <PreviewCard form={form} sports={sports} step={step} />
               </div>
+
+              {/* Day of week — Fix-58-4: multi-select */}
+              <div className="mb-[22px]">
+                <label className="block text-[12px] font-medium text-[#475569] mb-2">Day of the week</label>
+                <div className="flex flex-wrap gap-2">
+                  {DAYS.map((day, i) => (
+                    <PillButton
+                      key={day}
+                      active={form.days_of_week.includes(i)}
+                      onClick={() => toggleDay(i)}
+                    >
+                      {day}
+                    </PillButton>
+                  ))}
+                </div>
+                {/* Fix-58-4: multi-day note */}
+                {form.days_of_week.length > 1 && (
+                  <p className="text-[12px] text-[#94A3B8] mt-2">
+                    Multi-day programmes will be fully supported soon. Your first selected day will be used for now.
+                  </p>
+                )}
+              </div>
+
+              {/* Start time + Duration */}
+              <div className="flex gap-6 flex-wrap mb-[22px]">
+                <div className="flex-none">
+                  <label className="block text-[12px] font-medium text-[#475569] mb-2">Start time</label>
+                  <input
+                    type="time"
+                    value={form.start_time}
+                    onChange={(e) => update('start_time', e.target.value)}
+                    className="text-[18px] font-medium px-4 py-3.5 border border-[#E2E8F0] rounded-[12px] w-[140px] tracking-wide outline-none focus:border-[#0077CC] focus:shadow-[0_0_0_3px_rgba(0,119,204,0.15)]"
+                  />
+                </div>
+                <div className="flex-1 min-w-[260px]">
+                  <label className="block text-[12px] font-medium text-[#475569] mb-2">Duration</label>
+                  <div className="flex flex-wrap gap-2">
+                    {DURATIONS.map((d) => (
+                      <PillButton
+                        key={d}
+                        active={form.duration_minutes === d}
+                        onClick={() => update('duration_minutes', d)}
+                      >
+                        {d} min
+                      </PillButton>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Fix-58-5: Fixed — sessions count OR end date */}
+              {form.schedule_type === 'fixed' && (
+                <div className="mb-[22px]">
+                  <label className="block text-[12px] font-medium text-[#475569] mb-3">Programme length</label>
+                  <div className="flex flex-col gap-3">
+                    {/* Radio: Number of sessions */}
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="fixed_schedule_mode"
+                        checked={form.fixed_schedule_mode === 'count'}
+                        onChange={() => {
+                          update('fixed_schedule_mode', 'count')
+                          update('programme_end_date', '')
+                        }}
+                        className="mt-1 accent-[#0077CC]"
+                      />
+                      <div className="flex-1">
+                        <span className="text-[14px] font-medium text-[#0F172A]">Number of sessions</span>
+                        {form.fixed_schedule_mode === 'count' && (
+                          <div className="mt-2">
+                            <input
+                              type="number"
+                              min={2}
+                              max={52}
+                              value={form.session_count}
+                              onChange={(e) => update('session_count', Math.max(2, parseInt(e.target.value) || 2))}
+                              className="w-[120px] px-4 py-2.5 border border-[#E2E8F0] rounded-[12px] text-[15px] text-[#0F172A] outline-none focus:border-[#0077CC] focus:shadow-[0_0_0_3px_rgba(0,119,204,0.15)]"
+                            />
+                            <p className="text-[12px] text-[#94A3B8] mt-1.5">
+                              Runs for {form.session_count} consecutive{' '}
+                              {form.days_of_week.length === 1
+                                ? `${DAY_FULL[form.days_of_week[0]]}s`
+                                : 'sessions'}.
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </label>
+
+                    {/* Radio: End date */}
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="fixed_schedule_mode"
+                        checked={form.fixed_schedule_mode === 'end_date'}
+                        onChange={() => {
+                          update('fixed_schedule_mode', 'end_date')
+                          update('session_count', 0)
+                        }}
+                        className="mt-1 accent-[#0077CC]"
+                      />
+                      <div className="flex-1">
+                        <span className="text-[14px] font-medium text-[#0F172A]">End date</span>
+                        {form.fixed_schedule_mode === 'end_date' && (
+                          <div className="mt-2">
+                            <input
+                              type="date"
+                              value={form.programme_end_date}
+                              min={new Date(Date.now() + 86400000).toISOString().split('T')[0]}
+                              onChange={(e) => update('programme_end_date', e.target.value)}
+                              className="px-4 py-2.5 border border-[#E2E8F0] rounded-[12px] text-[15px] text-[#0F172A] outline-none focus:border-[#0077CC] focus:shadow-[0_0_0_3px_rgba(0,119,204,0.15)]"
+                            />
+                            {form.programme_end_date && (
+                              <p className="text-[12px] text-[#94A3B8] mt-1.5">
+                                Programme ends{' '}
+                                {new Date(form.programme_end_date + 'T00:00:00').toLocaleDateString('en-GB', {
+                                  weekday: 'long', day: 'numeric', month: 'long',
+                                })}.
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </label>
+                  </div>
+                </div>
+              )}
+
+              {/* Fix-58-8: Rolling — optional end date */}
+              {form.schedule_type === 'rolling' && (
+                <div className="mb-[22px]">
+                  <label className="block text-[12px] font-medium text-[#475569] mb-2">
+                    End date <span className="text-[11px] text-[#94A3B8] font-normal ml-1">Optional</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={form.rolling_end_date}
+                    min={new Date(Date.now() + 86400000).toISOString().split('T')[0]}
+                    onChange={(e) => update('rolling_end_date', e.target.value)}
+                    className="px-4 py-2.5 border border-[#E2E8F0] rounded-[12px] text-[15px] text-[#0F172A] outline-none focus:border-[#0077CC] focus:shadow-[0_0_0_3px_rgba(0,119,204,0.15)]"
+                  />
+                  <p className="text-[12px] text-[#94A3B8] mt-2">Leave blank for an ongoing programme.</p>
+                </div>
+              )}
+
+              {/* Fix-58-6: Session exclusion editor */}
+              {sessionDates.length > 0 && (
+                <div className="mb-[22px]">
+                  <div className="flex items-center justify-between mb-3">
+                    <label className="text-[12px] font-medium text-[#475569]">Sessions</label>
+                    <span className="text-[12px] text-[#64748B]">
+                      {activeSessionCount} of {sessionDates.length} active
+                    </span>
+                  </div>
+                  <div className="border border-[#E2E8F0] rounded-[12px] overflow-hidden">
+                    {sessionDates.map((dateStr, idx) => {
+                      const isExcluded = form.excluded_dates.includes(dateStr)
+                      return (
+                        <div
+                          key={dateStr}
+                          className={`flex items-center justify-between px-4 py-3 ${
+                            idx < sessionDates.length - 1 ? 'border-b border-[#F1F5F9]' : ''
+                          }`}
+                        >
+                          <span
+                            className={`text-[14px] font-medium ${
+                              isExcluded ? 'line-through text-[#94A3B8]' : 'text-[#0F172A]'
+                            }`}
+                          >
+                            {formatSessionDate(dateStr)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => toggleExcludeDate(dateStr)}
+                            className={`text-[12px] font-medium px-2.5 py-1 rounded-[6px] transition-colors ${
+                              isExcluded
+                                ? 'text-[#0077CC] bg-[#E6F3FB] hover:bg-[#D0EAFA]'
+                                : 'text-[#94A3B8] hover:text-[#475569] hover:bg-[#F1F5F9]'
+                            }`}
+                          >
+                            {isExcluded ? 'Include' : 'Skip'}
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
             </>
           )}
 
-          {/* ── STEP 3 ── */}
+          {/* ── STEP 3 — Spots and payment ── */}
           {step === 3 && (
             <>
               <h1 className="text-[28px] font-bold text-[#0F172A] tracking-tight mt-1">Spots and payment</h1>
               <p className="text-sm text-[#64748B] mt-1.5 mb-6">Set how many can join and how they pay.</p>
-              <div className="grid grid-cols-[minmax(0,560px)_minmax(0,1fr)] gap-10 items-start max-[820px]:grid-cols-1 max-[820px]:gap-6">
-                <div>
-                  <div className="mb-[22px]">
-                    <label className="block text-[12px] font-medium text-[#475569] mb-2">Maximum spots</label>
-                    <div className="inline-flex items-center border border-[#E2E8F0] rounded-[12px] overflow-hidden bg-white">
-                      <button
-                        type="button"
-                        onClick={() => update('max_spots', Math.max(2, form.max_spots - 1))}
-                        className="w-11 h-12 flex items-center justify-center text-[#475569] text-lg hover:bg-[#F8FAFC] transition-colors"
-                        aria-label="Decrease"
-                      >
-                        −
-                      </button>
-                      <span className="min-w-12 text-center text-[16px] font-medium px-3.5 border-x border-[#E2E8F0] leading-[48px]">
-                        {form.max_spots}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => update('max_spots', form.max_spots + 1)}
-                        className="w-11 h-12 flex items-center justify-center text-[#475569] text-lg hover:bg-[#F8FAFC] transition-colors"
-                        aria-label="Increase"
-                      >
-                        +
-                      </button>
-                    </div>
-                    <p className="text-[12px] text-[#94A3B8] mt-2">Minimum 2 participants.</p>
-                  </div>
-                  <div className="mb-[22px]">
-                    <label className="block text-[12px] font-medium text-[#475569] mb-2">Payment type</label>
-                    <div className="grid grid-cols-2 gap-3">
-                      <SelectCard
-                        active={form.payment_type === 'per_session'}
-                        onClick={() => update('payment_type', 'per_session')}
-                        icon={<CreditCard size={20} strokeWidth={1.8} />}
-                        title="Per session"
-                        description="Parents pay for each session."
-                      />
-                      <SelectCard
-                        active={form.payment_type === 'block_upfront'}
-                        onClick={() => update('payment_type', 'block_upfront')}
-                        icon={<Layers size={20} strokeWidth={1.8} />}
-                        title="Block upfront"
-                        description="Parents pay for all sessions at once."
-                      />
-                    </div>
-                  </div>
-                  <div className="mb-[22px]">
-                    <label className="block text-[12px] font-medium text-[#475569] mb-2">
-                      {form.payment_type === 'per_session' ? 'Price per session' : 'Block price'}
-                    </label>
-                    <div className="relative w-[200px]">
-                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#94A3B8] text-base">£</span>
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        value={penceToDisplay(form.price_pence)}
-                        onChange={(e) => update('price_pence', displayToPence(e.target.value))}
-                        className="w-full pl-9 pr-4 py-3.5 border border-[#E2E8F0] rounded-[12px] text-[18px] font-medium text-[#0F172A] outline-none focus:border-[#0077CC] focus:shadow-[0_0_0_3px_rgba(0,119,204,0.15)]"
-                      />
-                    </div>
-                    {form.price_pence > 0 && (
-                      <p className="text-[12px] text-[#334155] mt-2.5">
-                        Parents pay{' '}
-                        <strong className="text-[#0077CC]">{priceDisplay}</strong>{' '}
-                        {form.payment_type === 'per_session' ? 'per session.' : 'upfront for all sessions.'}
-                      </p>
-                    )}
-                  </div>
-                  <div className="mb-[22px]">
-                    <div className="flex items-center justify-between px-4 py-3.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-[12px]">
-                      <div>
-                        <p className="text-[14px] font-medium text-[#0F172A]">Allow late joining</p>
-                        <p className="text-[13px] text-[#64748B] mt-0.5">Parents can book after the programme starts.</p>
-                      </div>
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-checked={form.late_joining_allowed}
-                        onClick={() => update('late_joining_allowed', !form.late_joining_allowed)}
-                        className={`w-10 h-6 rounded-full relative flex-shrink-0 transition-colors ${
-                          form.late_joining_allowed ? 'bg-[#0077CC]' : 'bg-[#CBD5E1]'
-                        }`}
-                      >
-                        <span
-                          className={`absolute top-[2px] w-5 h-5 bg-white rounded-full shadow-[0_1px_2px_rgba(0,0,0,0.15)] transition-[left] ${
-                            form.late_joining_allowed ? 'left-[18px]' : 'left-[2px]'
-                          }`}
-                        />
-                      </button>
-                    </div>
-                  </div>
+
+              <div className="mb-[22px]">
+                <label className="block text-[12px] font-medium text-[#475569] mb-2">Maximum spots</label>
+                <div className="inline-flex items-center border border-[#E2E8F0] rounded-[12px] overflow-hidden bg-white">
+                  <button
+                    type="button"
+                    onClick={() => update('max_spots', Math.max(2, form.max_spots - 1))}
+                    className="w-11 h-12 flex items-center justify-center text-[#475569] text-lg hover:bg-[#F8FAFC] transition-colors"
+                    aria-label="Decrease"
+                  >
+                    −
+                  </button>
+                  <span className="min-w-12 text-center text-[16px] font-medium px-3.5 border-x border-[#E2E8F0] leading-[48px]">
+                    {form.max_spots}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => update('max_spots', form.max_spots + 1)}
+                    className="w-11 h-12 flex items-center justify-center text-[#475569] text-lg hover:bg-[#F8FAFC] transition-colors"
+                    aria-label="Increase"
+                  >
+                    +
+                  </button>
                 </div>
-                <PreviewCard form={form} sports={sports} step={step} />
+                <p className="text-[12px] text-[#94A3B8] mt-2">Minimum 2 participants.</p>
+              </div>
+
+              <div className="mb-[22px]">
+                <label className="block text-[12px] font-medium text-[#475569] mb-2">Payment type</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <SelectCard
+                    active={form.payment_type === 'per_session'}
+                    onClick={() => update('payment_type', 'per_session')}
+                    icon={<CreditCard size={20} strokeWidth={1.8} />}
+                    title="Per session"
+                    description="Parents pay for each session."
+                  />
+                  <SelectCard
+                    active={form.payment_type === 'block_upfront'}
+                    onClick={() => update('payment_type', 'block_upfront')}
+                    icon={<Layers size={20} strokeWidth={1.8} />}
+                    title="Block upfront"
+                    description="Parents pay for all sessions at once."
+                  />
+                </div>
+              </div>
+
+              <div className="mb-[22px]">
+                <label className="block text-[12px] font-medium text-[#475569] mb-2">
+                  {form.payment_type === 'per_session' ? 'Price per session' : 'Block price'}
+                </label>
+                <div className="relative w-[200px]">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#94A3B8] text-base">£</span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={penceToDisplay(form.price_pence)}
+                    onChange={(e) => update('price_pence', displayToPence(e.target.value))}
+                    className="w-full pl-9 pr-4 py-3.5 border border-[#E2E8F0] rounded-[12px] text-[18px] font-medium text-[#0F172A] outline-none focus:border-[#0077CC] focus:shadow-[0_0_0_3px_rgba(0,119,204,0.15)]"
+                  />
+                </div>
+                {form.price_pence > 0 && (
+                  <p className="text-[12px] text-[#334155] mt-2.5">
+                    Parents pay{' '}
+                    <strong className="text-[#0077CC]">{priceDisplay}</strong>{' '}
+                    {form.payment_type === 'per_session' ? 'per session.' : 'upfront for all sessions.'}
+                  </p>
+                )}
+              </div>
+
+              <div className="mb-[22px]">
+                <div className="flex items-center justify-between px-4 py-3.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-[12px]">
+                  <div>
+                    <p className="text-[14px] font-medium text-[#0F172A]">Allow late joining</p>
+                    <p className="text-[13px] text-[#64748B] mt-0.5">Parents can book after the programme starts.</p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={form.late_joining_allowed}
+                    onClick={() => update('late_joining_allowed', !form.late_joining_allowed)}
+                    className={`w-10 h-6 rounded-full relative flex-shrink-0 transition-colors ${
+                      form.late_joining_allowed ? 'bg-[#0077CC]' : 'bg-[#CBD5E1]'
+                    }`}
+                  >
+                    <span
+                      className={`absolute top-[2px] w-5 h-5 bg-white rounded-full shadow-[0_1px_2px_rgba(0,0,0,0.15)] transition-[left] ${
+                        form.late_joining_allowed ? 'left-[18px]' : 'left-[2px]'
+                      }`}
+                    />
+                  </button>
+                </div>
               </div>
             </>
           )}
 
-          {/* ── STEP 4 ── */}
+          {/* ── STEP 4 — Review & save ── */}
           {step === 4 && (
             <>
               <h1 className="text-[28px] font-bold text-[#0F172A] tracking-tight mt-1">Review &amp; save</h1>
               <p className="text-sm text-[#64748B] mt-1.5 mb-6">Check everything looks right before saving.</p>
+
               <div className="bg-white border border-[#E2E8F0] rounded-2xl overflow-hidden mb-6">
                 {[
                   { key: 'Programme', value: form.title },
-                  { key: 'Sport', value: sport?.sport_name ?? '—', chip: 'blue' },
+                  { key: 'Sport', value: sport?.sport_name ?? '—', chip: true },
                   { key: 'Skill level', value: skillLabel },
                   {
                     key: 'Schedule',
-                    value: `Every ${DAYS[form.day_of_week]} · ${formatTime(form.start_time)} · ${form.duration_minutes} min`,
+                    value: `Every ${daysLabel} · ${formatTime(form.start_time)} · ${form.duration_minutes} min`,
                   },
-                  {
-                    key: 'Type',
-                    value: form.schedule_type === 'fixed'
-                      ? `Fixed · ${form.session_count} sessions`
-                      : 'Rolling · join anytime',
-                  },
+                  { key: 'Type', value: scheduleTypeValue },
                   { key: 'Capacity', value: `${form.max_spots} spots` },
                   {
                     key: 'Price',
-                    value: form.payment_type === 'per_session'
-                      ? `${priceDisplay} per session`
-                      : `${priceDisplay} upfront`,
+                    value:
+                      form.payment_type === 'per_session'
+                        ? `${priceDisplay} per session`
+                        : `${priceDisplay} upfront`,
                   },
                   {
                     key: 'Late joining',
@@ -642,7 +972,7 @@ export function CreateProgramme() {
                     <span
                       className={`text-[15px] font-medium flex items-center gap-2 ${muted ? 'text-[#64748B]' : 'text-[#0F172A]'}`}
                     >
-                      {chip === 'blue' ? (
+                      {chip ? (
                         <span className="inline-flex items-center px-2.5 py-0.5 text-[11px] font-medium rounded-[6px] bg-[#E6F3FB] text-[#0C447C]">
                           {value}
                         </span>
@@ -654,9 +984,7 @@ export function CreateProgramme() {
                 ))}
               </div>
 
-              {error && (
-                <p className="text-sm text-red-600 mb-4 text-center">{error}</p>
-              )}
+              {error && <p className="text-sm text-red-600 mb-4 text-center">{error}</p>}
 
               <div className="flex flex-col gap-2.5 max-w-[560px] mx-auto w-full">
                 <button
@@ -683,7 +1011,7 @@ export function CreateProgramme() {
             </>
           )}
 
-          {/* Bottom action bar (steps 1–3) */}
+          {/* ── Bottom action bar (steps 1–3) ── */}
           {step < 4 && (
             <div className="flex items-center justify-between mt-7 pt-5 border-t border-[#F1F5F9]">
               <button
@@ -693,14 +1021,29 @@ export function CreateProgramme() {
               >
                 {step === 1 ? 'Save draft' : '← Back'}
               </button>
-              <button
-                type="button"
-                disabled={!canContinue()}
-                onClick={() => setStep((s) => s + 1)}
-                className="h-12 px-6 rounded-full bg-[#0077CC] hover:bg-[#0066AA] text-white text-[15px] font-medium flex items-center gap-1.5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                Continue →
-              </button>
+
+              <div className="flex items-center gap-3">
+                {/* Fix-58-3: auto-saving indicator */}
+                {autoSaving && (
+                  <span className="flex items-center gap-1.5 text-[13px] text-[#64748B]">
+                    <Loader2 size={13} className="animate-spin" />
+                    Saving…
+                  </span>
+                )}
+                {continueError && !autoSaving && (
+                  <span className="text-[12px] text-red-500 max-w-[200px] text-right leading-tight">
+                    {continueError}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  disabled={!canContinue() || autoSaving}
+                  onClick={handleContinue}
+                  className="h-12 px-6 rounded-full bg-[#0077CC] hover:bg-[#0066AA] text-white text-[15px] font-medium flex items-center gap-1.5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Continue →
+                </button>
+              </div>
             </div>
           )}
         </div>

@@ -4,6 +4,9 @@ import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { ChevronRight, ChevronLeft, MapPin, Star, PoundSterling, Calendar, Loader2 } from 'lucide-react'
+import type { ProgrammePreviewEventDetail } from './CreateProgramme'
+
+type ProgrammePreviewState = ProgrammePreviewEventDetail
 
 // Fix-14C: API response type
 interface CoachProfileResponse {
@@ -106,8 +109,21 @@ export function CoachRightPanel({ dashboardData }: CoachRightPanelProps = {}) {
   const isEarningsRoute = pathname === '/coach/earnings' || pathname.includes('/earnings')
   // CF-D09 CHANGE 6: Detect get-paid route
   const isGetPaidRoute = pathname.includes('/get-paid')
+  // Fix-58-2: Detect programme create route
+  const isProgrammeCreateRoute = pathname.includes('/programmes/create')
   // Fix-25: Dynamic today date
   const [selectedDate, setSelectedDate] = useState<number | null>(new Date().getDate())
+
+  // Fix-58-2: Programme create preview state — populated via CustomEvent bridge
+  const [programmePreview, setProgrammePreview] = useState<ProgrammePreviewState | null>(null)
+  useEffect(() => {
+    if (!isProgrammeCreateRoute) return
+    const handler = (e: Event) => {
+      setProgrammePreview((e as CustomEvent<ProgrammePreviewState>).detail)
+    }
+    window.addEventListener('programme-preview-update', handler)
+    return () => window.removeEventListener('programme-preview-update', handler)
+  }, [isProgrammeCreateRoute])
 
   // Fix-55: Fetch sports once when on bookings route — passed to child components
   const [sportsMap, setSportsMap] = useState<Record<string, string>>({})
@@ -157,6 +173,9 @@ export function CoachRightPanel({ dashboardData }: CoachRightPanelProps = {}) {
           <GetPaidReassurance />
           <GetPaidHistoryLink router={router} />
         </>
+      ) : isProgrammeCreateRoute ? (
+        // Fix-58-2: Programme create live preview
+        <ProgrammeCreatePreviewPanel preview={programmePreview} />
       ) : (
         <>
           <ThisWeekStrip isDesktop />
@@ -981,6 +1000,132 @@ function BookingsPendingApprovals({ sportsMap }: { sportsMap: Record<string, str
           })}
         </div>
       )}
+    </div>
+  )
+}
+
+// Fix-58-2: Programme create right panel — live preview of what's being filled in
+function ProgrammeCreatePreviewPanel({ preview }: { preview: ProgrammePreviewState | null }) {
+  const DAYS_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+  const formatDays = (days: number[]): string => {
+    if (days.length === 0) return '—'
+    return days.map((d) => DAYS_SHORT[d]).join(', ')
+  }
+
+  const formatTime = (hhmm: string): string => {
+    if (!hhmm) return '—'
+    const [h, m] = hhmm.split(':')
+    const hour = parseInt(h, 10)
+    const suffix = hour >= 12 ? 'pm' : 'am'
+    const h12 = hour % 12 === 0 ? 12 : hour % 12
+    return `${h12}:${m}${suffix}`
+  }
+
+  const formatPrice = (pence: number, type: string): string => {
+    if (!pence) return '—'
+    const amount = `£${(pence / 100).toFixed(0)}`
+    return type === 'per_session' ? `${amount} / session` : `${amount} block`
+  }
+
+  const sportName = preview
+    ? (preview.sports.find((s) => s.sport_id === preview.form.sport_id)?.sport_name ?? '—')
+    : '—'
+
+  const stepLabels = ['Details', 'Schedule', 'Spots & Pricing', 'Review']
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div>
+        <div className="text-[9px] font-medium text-gray-400 uppercase tracking-wider mb-2">PROGRAMME PREVIEW</div>
+        {!preview || !preview.form.title ? (
+          <p className="text-[12px] text-gray-400">Start filling in details to see a preview</p>
+        ) : (
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+            <h3 className="text-[15px] font-semibold text-gray-900 mb-0.5 leading-snug">{preview.form.title}</h3>
+            {preview.form.description && (
+              <p className="text-[11px] text-gray-500 mb-3 line-clamp-2 leading-relaxed">{preview.form.description}</p>
+            )}
+
+            <div className="space-y-1.5">
+              {sportName !== '—' && (
+                <div className="flex items-center gap-1.5 text-[11px] text-gray-600">
+                  <span className="text-gray-400 w-3">◆</span>
+                  <span>{sportName}</span>
+                  {preview.form.skill_level && preview.form.skill_level !== 'all' && (
+                    <span className="ml-1 px-1.5 py-0.5 bg-gray-100 rounded-full text-[10px] text-gray-500 capitalize">
+                      {preview.form.skill_level}
+                    </span>
+                  )}
+                  {preview.form.skill_level === 'all' && (
+                    <span className="ml-1 px-1.5 py-0.5 bg-gray-100 rounded-full text-[10px] text-gray-500">All levels</span>
+                  )}
+                </div>
+              )}
+              {preview.form.days_of_week.length > 0 && (
+                <div className="flex items-center gap-1.5 text-[11px] text-gray-600">
+                  <Calendar size={11} className="text-gray-400 shrink-0" />
+                  <span>{formatDays(preview.form.days_of_week)}</span>
+                  {preview.form.start_time && (
+                    <span className="text-gray-400">· {formatTime(preview.form.start_time)}</span>
+                  )}
+                </div>
+              )}
+              {preview.form.duration_minutes > 0 && (
+                <div className="flex items-center gap-1.5 text-[11px] text-gray-600">
+                  <span className="text-gray-400 w-3">⏱</span>
+                  <span>{preview.form.duration_minutes} min</span>
+                  {preview.form.schedule_type && (
+                    <span className="ml-1 px-1.5 py-0.5 bg-[#E6F1FB] rounded-full text-[10px] text-[#0077CC] capitalize">
+                      {preview.form.schedule_type}
+                    </span>
+                  )}
+                </div>
+              )}
+              {preview.form.max_spots > 0 && (
+                <div className="flex items-center gap-1.5 text-[11px] text-gray-600">
+                  <span className="text-gray-400 w-3">👥</span>
+                  <span>{preview.form.max_spots} spots</span>
+                </div>
+              )}
+              {preview.form.price_pence > 0 && (
+                <div className="flex items-center gap-1.5 text-[11px] font-medium text-gray-900">
+                  <PoundSterling size={11} className="text-[#0077CC] shrink-0" />
+                  <span>{formatPrice(preview.form.price_pence, preview.form.payment_type)}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Step progress */}
+      <div>
+        <div className="text-[9px] font-medium text-gray-400 uppercase tracking-wider mb-2">PROGRESS</div>
+        <div className="space-y-1.5">
+          {stepLabels.map((label, i) => {
+            const stepNum = i + 1
+            const isDone = preview ? stepNum < preview.step : false
+            const isCurrent = preview ? stepNum === preview.step : stepNum === 1
+            return (
+              <div key={i} className="flex items-center gap-2">
+                <div className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] shrink-0 ${
+                  isDone ? 'bg-[#0077CC] text-white' :
+                  isCurrent ? 'bg-[#E6F1FB] border border-[#0077CC] text-[#0077CC]' :
+                  'bg-gray-100 text-gray-400'
+                }`}>
+                  {isDone ? '✓' : stepNum}
+                </div>
+                <span className={`text-[11px] ${
+                  isDone ? 'text-[#0077CC] font-medium' :
+                  isCurrent ? 'text-gray-900 font-medium' :
+                  'text-gray-400'
+                }`}>{label}</span>
+              </div>
+            )
+          })}
+        </div>
+      </div>
     </div>
   )
 }
