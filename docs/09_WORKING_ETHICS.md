@@ -2,7 +2,7 @@
 
 **Version:** 1.4
 **Last Updated:** 21 April 2026
-**Changed:** SYNC-10 — Windsurf → Claude Code, Claude Design workflow added
+**Changed:** SYNC-10 — Claude Code replaces Windsurf, Claude Design workflow added, browser dialogs rule added
 **Maintainer:** Lasith Jayarathne
 **Review:** After each phase completion
 
@@ -28,12 +28,13 @@ CLAUDE (Strategic Partner — this chat)
   → Brainstorming solutions before implementation
   → Red flag escalation — stop Claude Code, bring here first
 
-CLAUDE CODE (Coding Environment — Implementation)
+CLAUDE CODE (Coding Agent)
   → Writing all actual code files
   → Following agent role instructions precisely
   → Referencing docs/ folder for context
   → Committing and managing git workflow
-  → One agent, one task, one commit
+  → One task per session, plan shown before coding begins
+  → Never proceeds without explicit approval of plan
 ```
 
 **Rule:** Claude thinks and designs. Claude Code builds.
@@ -112,35 +113,39 @@ Risk: 🟢 Low | 🟡 Medium | 🔴 High
 
 ## Design Workflow — New UI Screens
 
-For any new screen or major UI component, follow this order.
-Never build a new screen without an approved design first.
+For any new screen or major UI component, this order is
+mandatory. Never build a new screen without an approved
+Claude Design output first.
 
-Step 1 — Claude generates an interactive HTML design artifact
-          in this chat (Claude.ai)
-Step 2 — Lasith reviews the artifact and approves (7/10 minimum)
-          Feedback shared here, Claude iterates
-Step 3 — Claude validates the design against requirements
-Step 4 — Claude writes the Claude Code prompt, including the
-          approved HTML as reference
-Step 5 — Lasith pastes prompt + HTML into Claude Code
-Step 6 — Claude Code builds the Next.js implementation
-Step 7 — Lasith tests in browser, shares screenshot
-Step 8 — Claude reviews, updates Notion + build plan
+Step 1  — Claude writes a Claude Design prompt in this chat
+Step 2  — Lasith opens Claude Design (new claude.ai
+           conversation → click the paintbrush/design icon)
+           and pastes the prompt
+Step 3  — Claude Design generates the screens as an
+           interactive HTML artifact
+Step 4  — Lasith reviews and approves (7/10 minimum).
+           Feedback shared here. Claude iterates if needed.
+Step 5  — Claude validates the design against requirements
+Step 6  — Claude writes the Claude Code prompt, including
+           the approved HTML as a reference
+Step 7  — Lasith pastes the prompt into Claude Code
+Step 8  — Claude Code builds the Next.js implementation
+Step 9  — Lasith tests in browser, shares screenshot here
+Step 10 — Claude reviews, updates Notion + build plan
 
-Rule: Design artifact must be approved before any Claude Code
-      prompt is written.
-Rule: Copy HTML from the Claude artifact directly —
-      never use the api.anthropic.com/v1/design/ handshake URL,
-      it expires immediately.
-Rule: Claude Design replaces Figma Make, v0, and Windsurf
-      for all UI screen work.
+Rule: Design artifact must be approved before any Claude
+      Code prompt is written.
+Rule: Copy HTML from the Claude artifact directly when
+      needed — the api.anthropic.com/v1/design/ handshake
+      URL expires immediately and cannot be used.
+Rule: Claude Design replaces Figma Make and v0 entirely.
 
 ---
 
 ## Context Optimisation — Golden Rules
 
 These rules exist to minimise context window consumption
-and maximise the quality of every Windsurf prompt.
+and maximise the quality of every Claude Code session.
 
 ### Rule 1 — Always Load Context Files First
 Never assume Claude Code remembers previous sessions.
@@ -165,7 +170,7 @@ Default is `feature/[feature-name]`. Never `main`.
 
 ### Rule 5 — State What NOT to Touch
 Locked files must be explicitly named.
-Windsurf must not infer what is safe to modify.
+Claude Code must not infer what is safe to modify.
 
 ### Rule 6 — One Commit Per Logical Unit
 Never bundle unrelated changes in one commit.
@@ -244,7 +249,7 @@ Process — no exceptions:
 4. Claude prompt includes "match this design exactly"
 5. Screenshot attached in v0.dev alongside prompt
 6. v0 output verified against approved design
-   before moving to Windsurf
+   before Claude Code implementation
 
 Claude checklist — if any unchecked, STOP:
 □ Screenshot received for this specific screen?
@@ -258,14 +263,14 @@ Claude checklist — if any unchecked, STOP:
 GitHub docs/ = single source of truth for all design decisions
 Notion       = human-readable mirror — Claude keeps updated
 Claude AI    = queries Notion for current state each session
-Windsurf     = reads GitHub docs/ before every UI task
+Claude Code  = reads GitHub docs/ before every UI task
 ```
 
 ---
 
 ## Prompt Quality Checklist
 
-Before sending any Windsurf prompt, verify:
+Before sending any Claude Code prompt, verify:
 
 ```
 □ Agent role specified (@AgentName)?
@@ -316,9 +321,9 @@ Every task must have a risk level assigned.
 
 ---
 
-## Red Flags — Stop Windsurf, Come to Claude First
+## Red Flags — Stop Claude Code, Come to Claude First
 
-Stop Windsurf immediately and bring to Claude if:
+Stop Claude Code immediately and bring to Claude if:
 
 ```
 → Any change to payment processing logic
@@ -480,23 +485,23 @@ Risk: 🔴 High — payment logic
 
 ---
 
-## Windsurf Optimisation — Getting The Best Results
+## Claude Code Optimisation — Getting The Best Results
 
 ### Model Selection
-Always use Claude Sonnet for Windsurf coding tasks.
+Always use Claude Sonnet for Claude Code tasks.
 Use Claude Opus only for complex architectural analysis that Sonnet struggles with.
 Never use Haiku for production code — output quality is insufficient.
 
 ### Session Length Rules
 ```
-Keep each Windsurf session to ONE task (one task ID).
+Keep each Claude Code session to ONE task (one task ID).
 A session that tries to do M-01, M-02, M-03 in one go will degrade.
 Context quality drops after ~30 minutes of coding in one session.
 If a session goes long → commit what's done → start fresh session for next task.
 ```
 
-### When Windsurf Goes Off Track
-Signs Windsurf is going off track:
+### When Claude Code Goes Off Track
+Signs Claude Code is going off track:
 - It starts making architectural decisions
 - It modifies files not listed in the prompt
 - It asks questions instead of following the spec
@@ -506,25 +511,25 @@ What to do:
 1. Stop the session immediately
 2. Do not accept the output
 3. Come to Claude with the problem
-4. Get a clearer prompt, then restart Windsurf
+4. Get a clearer prompt, then restart Claude Code
 
 ### Prompt Repair — When Output Is Wrong
-If Windsurf produces wrong output, do NOT try to fix it in the same session.
+If Claude Code produces wrong output, do NOT try to fix it in the same session.
 Instead:
 ```
 1. Reject the output (Ctrl+Z or discard)
 2. Identify WHY the prompt was unclear
 3. Rewrite the prompt with the missing clarity
-4. Start a fresh Windsurf session
+4. Start a fresh Claude Code session
 ```
-Trying to correct Windsurf mid-session produces worse results than starting clean.
+Trying to correct Claude Code mid-session produces worse results than starting clean.
 
 ### Context Window Management
-Windsurf has no memory between sessions.
+Claude Code has no memory between sessions.
 Every session must re-establish context via the context files in the prompt.
 
 ```
-NEVER assume Windsurf remembers:
+NEVER assume Claude Code remembers:
 → What was built last session
 → Any decisions made in previous sessions
 → Why something was done a certain way
@@ -541,10 +546,10 @@ A bloated context produces generic, unfocused output.
 ### Signs A Prompt Needs Improving
 ```
 Bad prompt symptoms:
-→ Windsurf asks "what do you want me to do?"
+→ Claude Code asks "what do you want me to do?"
 → Output is generic (not Crikly-specific)
 → Wrong file paths used
-→ Windsurf modifies unrelated files
+→ Claude Code modifies unrelated files
 → Output doesn't match the agent's role
 
 Good prompt characteristics:
@@ -658,8 +663,8 @@ unmerged while new work started on develop. This caused:
 - Duplicate route files surviving because cleanup on feature/auth
   was invisible to develop
 
-**The fix at end of every Windsurf session:**
-Before closing Windsurf, always run:
+**The fix at end of every Claude Code session:**
+Before closing Claude Code, always run:
 git checkout develop
 git merge feature/[current-branch] --no-ff
 git push origin develop
@@ -689,6 +694,32 @@ Only THEN start the next feature branch.
   before marking complete. Auth path is not complete until
   user_profiles creation is confirmed in the database.
 ```
+
+## UI Standards — Non-Negotiable Rules
+
+### No Browser Dialogs — Ever
+window.confirm() and window.alert() are FORBIDDEN in all
+UI code. No exceptions.
+
+Confirmations must use inline UI:
+- First click: show inline [Cancel] + [Confirm action]
+  buttons replacing the original button
+- Cancel: gray outlined button, dismisses confirmation
+- Confirm: red filled button for destructive actions,
+  blue for non-destructive
+- Only the affected item shows the confirmation state
+- Other items remain interactive
+
+Errors must show inline near the relevant action:
+- Small red text below the action area, OR
+- Dismissible red banner with × close button
+- Never use alert() for errors
+
+This rule was established after Fix-69 (21 April 2026)
+when window.confirm() was used in Fix-68 and had to be
+fixed immediately.
+
+---
 
 ## Auth Path Rule — Non-Negotiable
 
@@ -766,7 +797,7 @@ https://www.notion.so/b288473c2a4f47ebad99bf6bf3f7b041
 
 ---
 
-### Every Windsurf Session — Exact Steps
+### Every Claude Code Session — Exact Steps
 
 **START of session (before touching any code):**
 1. Open `docs/10_BUILD_PLAN.md`
@@ -776,7 +807,7 @@ https://www.notion.so/b288473c2a4f47ebad99bf6bf3f7b041
 5. Change Notion status to 🟡 In Progress
 6. Only then start coding
 
-**END of session (before closing Windsurf):**
+**END of session (before closing Claude Code):**
 1. Mark completed tasks ✅ Complete in `docs/10_BUILD_PLAN.md`
 2. Open Notion Build Plan → find each completed task by ID
 3. Change Notion status to ✅ Complete
@@ -816,13 +847,13 @@ Notion:               | M-01 — Migration 001 — user_profiles | ✅ Complete 
 
 ### What Lasith Uses Notion For
 
-Lasith tracks progress in Notion — not in Windsurf or GitHub.
+Lasith tracks progress in Notion — not in Claude Code or GitHub.
 This means:
 - Notion is what Lasith opens to check what's been done
 - Notion is what Lasith opens to see what's in progress
 - Notion is what Lasith opens to raise blockers and questions
 
-If a task is done in code but not marked in Notion — **it doesn't exist to Lasith.**
+If a task is done in Claude Code but not marked in Notion — **it doesn't exist to Lasith.**
 
 ---
 
