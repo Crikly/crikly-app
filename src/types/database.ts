@@ -1393,6 +1393,8 @@ export type Database = {
           status: string
           title: string
           updated_at: string
+          venue_address: string | null
+          venue_name: string | null
         }
         Insert: {
           age_groups?: string[]
@@ -1426,6 +1428,8 @@ export type Database = {
           status?: string
           title: string
           updated_at?: string
+          venue_address?: string | null
+          venue_name?: string | null
         }
         Update: {
           age_groups?: string[]
@@ -1459,6 +1463,8 @@ export type Database = {
           status?: string
           title?: string
           updated_at?: string
+          venue_address?: string | null
+          venue_name?: string | null
         }
         Relationships: [
           {
