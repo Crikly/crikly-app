@@ -283,6 +283,7 @@ C-05, C-06, C-07, C-08 are safe to proceed without M-015.
 | Fix-68 | Wire Publish + Delete buttons on draft programme cards; fetchProgrammes lifted to useCallback; actionLoading per-card loading state | ProgrammesManagement.tsx | 🟢 Low | ✅ |
 | Fix-69 | Replace all browser dialogs (confirm/alert) with inline confirmation UI + error state in ProgrammesManagement + AvailabilityManagement; DELETE route admin client already done | ProgrammesManagement.tsx + AvailabilityManagement.tsx | 🟡 Medium | ✅ |
 | CF-05b | Edit Programme UI — locked fields after enrolment + cancel action | @FrontendDeveloper | 🟢 | develop | ✅ |
+| Fix-70 | Add min_participants + cancellation_window_hours to Create Programme Step 3 and all API routes (REQ-C-050, REQ-C-057) | CreateProgramme.tsx + programmes routes | 🟢 Low | ✅ |
 | CF-05c | Programme Roster view — enrolled participants list + manual offline add | @FrontendDeveloper | 🟢 | develop | ⚪ |
 | CF-06 | Availability screen | @FrontendDeveloper | 🟢 | feature/coach-frontend | ✅ |
 | CF-07 | Profile Hub screen | @FrontendDeveloper | 🟢 | feature/coach-frontend | ✅ |

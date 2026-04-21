@@ -28,6 +28,8 @@ interface ProgrammeResponse {
   venue_address: string | null
   skill_level: string
   session_count: number | null
+  min_participants: number | null
+  cancellation_window_hours: number
 }
 
 function getDayName(dayOfWeek: number | null): string | null {
@@ -102,7 +104,7 @@ export async function GET(
     const adminSupabase = createAdminClient()
     const { data: programme, error: programmeError } = await adminSupabase
       .from('group_programmes')
-      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address, skill_level, session_count')
+      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address, skill_level, session_count, min_participants, cancellation_window_hours')
       .eq('id', programmeId)
       .eq('coach_profile_id', coachProfile.id)
       .is('deleted_at', null)
@@ -145,6 +147,8 @@ export async function GET(
       venue_address: programme.venue_address,
       skill_level: programme.skill_level,
       session_count: programme.session_count,
+      min_participants: programme.min_participants,
+      cancellation_window_hours: programme.cancellation_window_hours,
     }
 
     return NextResponse.json(response, { status: 200 })
@@ -367,6 +371,8 @@ export async function PATCH(
       updated_at: string
       venue_name?: string | null
       venue_address?: string | null
+      min_participants?: number | null
+      cancellation_window_hours?: number
     } = {
       updated_at: new Date().toISOString(),
     }
@@ -393,6 +399,14 @@ export async function PATCH(
 
     if (body.venue_name !== undefined) updateData.venue_name = body.venue_name || null
     if (body.venue_address !== undefined) updateData.venue_address = body.venue_address || null
+    if (body.min_participants !== undefined) {
+      updateData.min_participants = typeof body.min_participants === 'number' && body.min_participants > 0
+        ? body.min_participants
+        : null
+    }
+    if (body.cancellation_window_hours !== undefined && typeof body.cancellation_window_hours === 'number') {
+      updateData.cancellation_window_hours = body.cancellation_window_hours
+    }
 
     // 7. Update programme (adminSupabase already created in step 4)
     const { data: updatedProgramme, error: updateError } = await adminSupabase
@@ -400,7 +414,7 @@ export async function PATCH(
       .update(updateData)
       .eq('id', programmeId)
       .eq('coach_profile_id', coachProfile.id)
-      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address, skill_level, session_count')
+      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address, skill_level, session_count, min_participants, cancellation_window_hours')
       .single()
 
     if (updateError) {
@@ -441,6 +455,8 @@ export async function PATCH(
       venue_address: updatedProgramme.venue_address,
       skill_level: updatedProgramme.skill_level,
       session_count: updatedProgramme.session_count,
+      min_participants: updatedProgramme.min_participants,
+      cancellation_window_hours: updatedProgramme.cancellation_window_hours,
     }
 
     return NextResponse.json(response, { status: 200 })

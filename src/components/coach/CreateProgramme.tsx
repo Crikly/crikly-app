@@ -54,9 +54,11 @@ interface FormData {
   venue_address: string
   // Step 3
   max_spots: number
+  min_participants: number
   payment_type: 'per_session' | 'block_upfront'
   price_pence: number
   late_joining_allowed: boolean
+  cancellation_window_hours: number
 }
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -274,9 +276,11 @@ export function CreateProgramme() {
     venue_name: '',
     venue_address: '',
     max_spots: 8,
+    min_participants: 0,
     payment_type: 'per_session',
     price_pence: 2800,
     late_joining_allowed: false,
+    cancellation_window_hours: 24,
   })
 
   // Fix-58-9: fetch from /api/coaches/sports (coach's configured sports + valid sport_ids)
@@ -385,8 +389,10 @@ export function CreateProgramme() {
       start_time: form.start_time,
       duration_minutes: form.duration_minutes,
       max_spots: form.max_spots,
+      min_participants: form.min_participants || null,
       payment_type: form.payment_type,
       late_joining_allowed: form.late_joining_allowed,
+      cancellation_window_hours: form.cancellation_window_hours,
       venue_name: form.venue_name || null,
       venue_address: form.venue_address || null,
       status,
@@ -449,7 +455,9 @@ export function CreateProgramme() {
         if (!programmeId) throw new Error('No programme ID — please go back to step 1.')
         const patchBody: Record<string, unknown> = {
           max_spots: form.max_spots,
+          min_participants: form.min_participants || null,
           payment_type: form.payment_type,
+          cancellation_window_hours: form.cancellation_window_hours,
         }
         if (form.payment_type === 'per_session') {
           patchBody.price_per_session_pence = form.price_pence
@@ -918,6 +926,26 @@ export function CreateProgramme() {
               </div>
 
               <div className="mb-[22px]">
+                <label className="block text-[12px] font-medium text-[#475569] mb-2">
+                  Minimum participants{' '}
+                  <span className="text-[11px] text-[#94A3B8] font-normal ml-1">Optional</span>
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  max={form.max_spots - 1}
+                  value={form.min_participants === 0 ? '' : form.min_participants}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value)
+                    update('min_participants', isNaN(val) ? 0 : Math.min(Math.max(0, val), form.max_spots - 1))
+                  }}
+                  placeholder="e.g. 4"
+                  className="w-[120px] px-4 py-2.5 border border-[#E2E8F0] rounded-[12px] text-[15px] text-[#0F172A] outline-none focus:border-[#0077CC] focus:shadow-[0_0_0_3px_rgba(0,119,204,0.15)]"
+                />
+                <p className="text-[12px] text-[#94A3B8] mt-1.5">Cancel automatically if minimum not met by session time.</p>
+              </div>
+
+              <div className="mb-[22px]">
                 <label className="block text-[12px] font-medium text-[#475569] mb-2">Payment type</label>
                 <div className="grid grid-cols-2 gap-3">
                   <SelectCard
@@ -982,6 +1010,28 @@ export function CreateProgramme() {
                     />
                   </button>
                 </div>
+              </div>
+
+              <div className="mb-[22px]">
+                <label className="block text-[12px] font-medium text-[#475569] mb-2">Cancellation window</label>
+                <div className="flex flex-wrap gap-2">
+                  {([
+                    { value: 0, label: 'No cancellations' },
+                    { value: 12, label: '12h' },
+                    { value: 24, label: '24h' },
+                    { value: 48, label: '48h' },
+                    { value: 72, label: '72h' },
+                  ] as { value: number; label: string }[]).map(({ value, label }) => (
+                    <PillButton
+                      key={value}
+                      active={form.cancellation_window_hours === value}
+                      onClick={() => update('cancellation_window_hours', value)}
+                    >
+                      {label}
+                    </PillButton>
+                  ))}
+                </div>
+                <p className="text-[12px] text-[#94A3B8] mt-2">Parents cannot cancel within this many hours of the session.</p>
               </div>
             </>
           )}

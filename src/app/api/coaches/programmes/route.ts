@@ -30,6 +30,8 @@ interface ProgrammeResponse {
   created_at: string
   venue_name: string | null
   venue_address: string | null
+  min_participants: number | null
+  cancellation_window_hours: number
 }
 
 /**
@@ -110,7 +112,7 @@ export async function GET(
     const adminSupabase = createAdminClient()
     let query = adminSupabase
       .from('group_programmes')
-      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address')
+      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address, min_participants, cancellation_window_hours')
       .eq('coach_profile_id', coachProfile.id)
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
@@ -159,6 +161,8 @@ export async function GET(
       created_at: prog.created_at,
       venue_name: prog.venue_name,
       venue_address: prog.venue_address,
+      min_participants: prog.min_participants,
+      cancellation_window_hours: prog.cancellation_window_hours,
     }))
 
     return NextResponse.json({ programmes: response }, { status: 200 })
@@ -352,6 +356,8 @@ export async function POST(
       block_price_pence?: number | null
       block_session_count?: number | null
       late_joining_allowed: boolean
+      min_participants?: number | null
+      cancellation_window_hours: number
       model: string
       skill_level: string
       status: string
@@ -370,10 +376,17 @@ export async function POST(
       payment_type: body.payment_type,
       price_per_session_pence: body.price_per_session_pence || 0,
       late_joining_allowed: body.late_joining_allowed === true,
+      cancellation_window_hours: typeof body.cancellation_window_hours === 'number' ? body.cancellation_window_hours : 24,
       model: 'programme',
       skill_level: skillLevel,
       status: requestedStatus,
       currency: 'GBP',
+    }
+
+    if (body.min_participants !== undefined) {
+      insertData.min_participants = typeof body.min_participants === 'number' && body.min_participants > 0
+        ? body.min_participants
+        : null
     }
 
     if (body.description !== undefined) {
@@ -409,7 +422,7 @@ export async function POST(
     const { data: newProgramme, error: insertError } = await adminSupabase
       .from('group_programmes')
       .insert(insertData)
-      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address')
+      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address, min_participants, cancellation_window_hours')
       .single()
 
     if (insertError) {
@@ -448,6 +461,8 @@ export async function POST(
       created_at: newProgramme.created_at,
       venue_name: newProgramme.venue_name,
       venue_address: newProgramme.venue_address,
+      min_participants: newProgramme.min_participants,
+      cancellation_window_hours: newProgramme.cancellation_window_hours,
     }
 
     return NextResponse.json(response, { status: 201 })
