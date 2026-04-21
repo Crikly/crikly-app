@@ -273,6 +273,7 @@ C-05, C-06, C-07, C-08 are safe to proceed without M-015.
 | Fix-62b | Admin client for group_programmes INSERT to bypass RLS on dev DB auth_user_id mismatch — user already authenticated before insert | admin.ts (new) + programmes/route.ts | 🟡 Medium | ✅ |
 | Fix-63 | Correct model value in group_programmes INSERT: 'group' → 'programme' to satisfy check constraint | api/coaches/programmes/route.ts | 🟢 Low | ✅ |
 | Fix-64 | Admin client for PATCH handler ownership SELECT + UPDATE — same RLS auth_user_id bypass as Fix-62, ownership enforced via explicit WHERE | programmes/[programmeId]/route.ts | 🟢 Low | ✅ |
+| Fix-65 | Admin client for GET programmes (RLS SELECT only allows active — drafts blocked) + remove sports!inner nested join (two-query pattern) | api/coaches/programmes/route.ts | 🟡 Medium | ✅ |
 | CF-05b | Edit Programme UI — locked fields after enrolment + cancel action | @FrontendDeveloper | 🟢 | develop | ⚪ |
 | CF-05c | Programme Roster view — enrolled participants list + manual offline add | @FrontendDeveloper | 🟢 | develop | ⚪ |
 | CF-06 | Availability screen | @FrontendDeveloper | 🟢 | feature/coach-frontend | ✅ |

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
+
 /**
  * Programme response
  */
@@ -101,36 +102,16 @@ export async function GET(
       return NextResponse.json({ error: 'Coach profile not found' }, { status: 404 })
     }
 
-    // 4. Build query
-    let query = supabase
+    // 4. Fetch programmes — Fix-65-2: admin client bypasses SELECT RLS (only allows
+    // active status); ownership enforced via explicit coach_profile_id filter.
+    const adminSupabase = createAdminClient()
+    let query = adminSupabase
       .from('group_programmes')
-      .select(`
-        id,
-        sport_id,
-        title,
-        description,
-        schedule_type,
-        day_of_week,
-        start_time,
-        duration_minutes,
-        max_spots,
-        current_spots,
-        payment_type,
-        price_per_session_pence,
-        block_price_pence,
-        block_session_count,
-        currency,
-        status,
-        created_at,
-        sports!inner (
-          name
-        )
-      `)
+      .select('id, sport_id, title, description, schedule_type, day_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at')
       .eq('coach_profile_id', coachProfile.id)
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
 
-    // Apply status filter if provided
     if (statusFilter) {
       query = query.eq('status', statusFilter)
     }
@@ -142,35 +123,37 @@ export async function GET(
       return NextResponse.json({ error: 'Failed to fetch programmes' }, { status: 500 })
     }
 
-    // 5. Build response
-    const response: ProgrammeResponse[] = (programmes || []).map((prog) => {
-      const sportData = prog.sports
-        ? (Array.isArray(prog.sports) ? prog.sports[0] : prog.sports)
-        : null
+    // 5. Fetch sport names separately — Fix-65-1: remove sports!inner nested join
+    const sportIds = [...new Set((programmes || []).map((p) => p.sport_id).filter(Boolean))]
+    const sportsMap: Record<string, string> = {}
+    if (sportIds.length > 0) {
+      const { data: sportsData } = await supabase.from('sports').select('id, name').in('id', sportIds)
+      sportsData?.forEach((s) => { sportsMap[s.id] = s.name })
+    }
 
-      return {
-        id: prog.id,
-        sport_id: prog.sport_id,
-        sport_name: sportData?.name || '',
-        title: prog.title,
-        description: prog.description,
-        schedule_type: prog.schedule_type,
-        day_of_week: prog.day_of_week,
-        day_name: getDayName(prog.day_of_week),
-        start_time: prog.start_time,
-        duration_minutes: prog.duration_minutes,
-        max_spots: prog.max_spots,
-        current_spots: prog.current_spots,
-        spots_remaining: prog.max_spots - prog.current_spots,
-        payment_type: prog.payment_type,
-        price_per_session_pence: prog.price_per_session_pence,
-        block_price_pence: prog.block_price_pence,
-        block_session_count: prog.block_session_count,
-        currency: prog.currency,
-        status: prog.status,
-        created_at: prog.created_at,
-      }
-    })
+    // 6. Build response
+    const response: ProgrammeResponse[] = (programmes || []).map((prog) => ({
+      id: prog.id,
+      sport_id: prog.sport_id,
+      sport_name: sportsMap[prog.sport_id] || '',
+      title: prog.title,
+      description: prog.description,
+      schedule_type: prog.schedule_type,
+      day_of_week: prog.day_of_week,
+      day_name: getDayName(prog.day_of_week),
+      start_time: prog.start_time,
+      duration_minutes: prog.duration_minutes,
+      max_spots: prog.max_spots,
+      current_spots: prog.current_spots,
+      spots_remaining: prog.max_spots - prog.current_spots,
+      payment_type: prog.payment_type,
+      price_per_session_pence: prog.price_per_session_pence,
+      block_price_pence: prog.block_price_pence,
+      block_session_count: prog.block_session_count,
+      currency: prog.currency,
+      status: prog.status,
+      created_at: prog.created_at,
+    }))
 
     return NextResponse.json({ programmes: response }, { status: 200 })
 
