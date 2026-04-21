@@ -49,6 +49,7 @@ export function ProgrammesManagement() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
 
   // CD-08: Fetch programmes — useCallback so action handlers can call it
   const fetchProgrammes = useCallback(async () => {
@@ -130,10 +131,9 @@ export function ProgrammesManagement() {
     }
   }
 
-  // Fix-68: Delete a draft programme
-  async function handleDelete(programmeId: string, title: string) {
+  // Fix-69-1: Delete a draft programme (called after inline confirmation)
+  async function handleDelete(programmeId: string) {
     if (actionLoading) return
-    if (!confirm(`Delete "${title}"? This cannot be undone.`)) return
     setActionLoading(programmeId)
     try {
       const res = await fetch(`/api/coaches/programmes/${programmeId}`, {
@@ -149,6 +149,7 @@ export function ProgrammesManagement() {
       alert('Something went wrong. Please try again.')
     } finally {
       setActionLoading(null)
+      setDeleteConfirmId(null)
     }
   }
   
@@ -348,16 +349,40 @@ export function ProgrammesManagement() {
                       >
                         Edit
                       </button>
-                      <button
-                        disabled={actionLoading === programme.id}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleDelete(programme.id, programme.name)
-                        }}
-                        className="flex-1 bg-white border border-gray-200 text-red-600 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 hover:border-gray-300 transition-all duration-150 disabled:opacity-60 disabled:cursor-not-allowed"
-                      >
-                        {actionLoading === programme.id ? 'Deleting...' : 'Delete'}
-                      </button>
+                      {deleteConfirmId === programme.id ? (
+                        <>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setDeleteConfirmId(null)
+                            }}
+                            className="flex-1 bg-white border border-gray-200 text-gray-600 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 hover:border-gray-300 transition-all duration-150"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            disabled={actionLoading === programme.id}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleDelete(programme.id)
+                            }}
+                            className="flex-1 bg-red-600 text-white rounded-md text-[11px] py-1.5 text-center hover:bg-red-700 transition-all duration-150 disabled:opacity-60 disabled:cursor-not-allowed"
+                          >
+                            {actionLoading === programme.id ? 'Deleting...' : 'Confirm delete'}
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          disabled={!!actionLoading}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setDeleteConfirmId(programme.id)
+                          }}
+                          className="flex-1 bg-white border border-gray-200 text-red-600 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 hover:border-gray-300 transition-all duration-150 disabled:opacity-60 disabled:cursor-not-allowed"
+                        >
+                          Delete
+                        </button>
+                      )}
                     </>
                   ) : isFull ? (
                     // Full programme actions

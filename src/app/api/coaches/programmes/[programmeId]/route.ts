@@ -496,7 +496,10 @@ export async function DELETE(
     }
 
     // 4. Verify coach owns this programme and check status/enrolments
-    const { data: existingProgramme, error: programmeCheckError } = await supabase
+    // Fix-69-2: admin client — same RLS auth_user_id mismatch as Fix-64.
+    // Ownership enforced via explicit .eq('coach_profile_id', coachProfile.id).
+    const adminSupabase = createAdminClient()
+    const { data: existingProgramme, error: programmeCheckError } = await adminSupabase
       .from('group_programmes')
       .select('id, status, current_spots')
       .eq('id', programmeId)
@@ -517,7 +520,7 @@ export async function DELETE(
     }
 
     // 5. Soft delete — set deleted_at
-    const { error: deleteError } = await supabase
+    const { error: deleteError } = await adminSupabase
       .from('group_programmes')
       .update({ deleted_at: new Date().toISOString() })
       .eq('id', programmeId)
