@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 /**
  * Programme response
@@ -389,7 +390,11 @@ export async function POST(
         : (typeof body.session_count === 'number' ? body.session_count : null)
     }
 
-    const { data: newProgramme, error: insertError } = await supabase
+    // Fix-62: Use admin client for INSERT only — user is already authenticated and
+    // coach ownership verified above. Bypasses RLS to avoid auth_user_id mapping
+    // mismatch on dev DB (same root cause as Fix-19).
+    const adminSupabase = createAdminClient()
+    const { data: newProgramme, error: insertError } = await adminSupabase
       .from('group_programmes')
       .insert(insertData)
       .select(`
