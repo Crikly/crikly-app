@@ -277,6 +277,7 @@ C-05, C-06, C-07, C-08 are safe to proceed without M-015.
 | Fix-66 | Draft count badge on Draft tab in ProgrammesManagement — shows "Draft (N)" when drafts exist | ProgrammesManagement.tsx | 🟢 Low | ✅ |
 | Fix-58-DB | Add days_of_week integer[] column to group_programmes — supports multi-day programmes, backwards-compatible with existing day_of_week | migration 018 | 🟡 Medium | ✅ |
 | Fix-58-DB-api | Accept + return days_of_week[] in POST/PATCH/GET; backwards compat [day_of_week]→days_of_week; fix remaining sports!inner joins; update database.ts types | programmes/route.ts + [programmeId]/route.ts + types/database.ts | 🟡 Medium | ✅ |
+| Fix-58-FE | Send days_of_week array in buildPostBody + step 2 PATCH; remove stale multi-day helper note | CreateProgramme.tsx | 🟢 Low | ✅ |
 | CF-05b | Edit Programme UI — locked fields after enrolment + cancel action | @FrontendDeveloper | 🟢 | develop | ⚪ |
 | CF-05c | Programme Roster view — enrolled participants list + manual offline add | @FrontendDeveloper | 🟢 | develop | ⚪ |
 | CF-06 | Availability screen | @FrontendDeveloper | 🟢 | feature/coach-frontend | ✅ |

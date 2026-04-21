@@ -372,6 +372,7 @@ export function CreateProgramme() {
       skill_level: form.skill_level,
       schedule_type: form.schedule_type,
       day_of_week: form.days_of_week[0] ?? 6,
+      days_of_week: form.days_of_week,
       start_time: form.start_time,
       duration_minutes: form.duration_minutes,
       max_spots: form.max_spots,
@@ -418,6 +419,7 @@ export function CreateProgramme() {
         const patchBody: Record<string, unknown> = {
           schedule_type: form.schedule_type,
           day_of_week: form.days_of_week[0] ?? 6,
+          days_of_week: form.days_of_week,
           start_time: form.start_time,
           duration_minutes: form.duration_minutes,
         }
@@ -664,12 +666,6 @@ export function CreateProgramme() {
                     </PillButton>
                   ))}
                 </div>
-                {/* Fix-58-4: multi-day note */}
-                {form.days_of_week.length > 1 && (
-                  <p className="text-[12px] text-[#94A3B8] mt-2">
-                    Multi-day programmes will be fully supported soon. Your first selected day will be used for now.
-                  </p>
-                )}
               </div>
 
               {/* Start time + Duration */}
