@@ -11,6 +11,7 @@ interface ProgrammeResponse {
   schedule_type: string
   day_of_week: number | null
   day_name: string | null
+  days_of_week: number[] | null
   start_time: string | null
   duration_minutes: number
   max_spots: number
@@ -94,28 +95,7 @@ export async function GET(
     // 4. Fetch programme and verify ownership
     const { data: programme, error: programmeError } = await supabase
       .from('group_programmes')
-      .select(`
-        id,
-        sport_id,
-        title,
-        description,
-        schedule_type,
-        day_of_week,
-        start_time,
-        duration_minutes,
-        max_spots,
-        current_spots,
-        payment_type,
-        price_per_session_pence,
-        block_price_pence,
-        block_session_count,
-        currency,
-        status,
-        created_at,
-        sports!inner (
-          name
-        )
-      `)
+      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at')
       .eq('id', programmeId)
       .eq('coach_profile_id', coachProfile.id)
       .is('deleted_at', null)
@@ -125,20 +105,23 @@ export async function GET(
       return NextResponse.json({ error: 'Programme not found or access denied' }, { status: 404 })
     }
 
-    // 5. Build response
-    const sportData = programme.sports
-      ? (Array.isArray(programme.sports) ? programme.sports[0] : programme.sports)
-      : null
+    // 5. Fetch sport name separately (Fix-65-1 pattern — no nested join)
+    let getSportName = ''
+    if (programme.sport_id) {
+      const { data: sportRow } = await supabase.from('sports').select('name').eq('id', programme.sport_id).single()
+      getSportName = sportRow?.name || ''
+    }
 
     const response: ProgrammeResponse = {
       id: programme.id,
       sport_id: programme.sport_id,
-      sport_name: sportData?.name || '',
+      sport_name: getSportName,
       title: programme.title,
       description: programme.description,
       schedule_type: programme.schedule_type,
       day_of_week: programme.day_of_week,
       day_name: getDayName(programme.day_of_week),
+      days_of_week: programme.days_of_week ?? null,
       start_time: programme.start_time,
       duration_minutes: programme.duration_minutes,
       max_spots: programme.max_spots,
@@ -268,6 +251,16 @@ export async function PATCH(
       }
     }
 
+    if (body.days_of_week !== undefined && body.days_of_week !== null) {
+      if (!Array.isArray(body.days_of_week)) {
+        validationErrors.push('days_of_week must be an array')
+      } else if (body.days_of_week.length < 1 || body.days_of_week.length > 7) {
+        validationErrors.push('days_of_week must have between 1 and 7 elements')
+      } else if (!body.days_of_week.every((d: unknown) => typeof d === 'number' && d >= 0 && d <= 6)) {
+        validationErrors.push('each value in days_of_week must be a number between 0 and 6')
+      }
+    }
+
     if (body.start_time !== undefined && typeof body.start_time !== 'string') {
       validationErrors.push('start_time must be a string (HH:MM format)')
     }
@@ -351,6 +344,7 @@ export async function PATCH(
       description?: string | null
       schedule_type?: string
       day_of_week?: number
+      days_of_week?: number[] | null
       start_time?: string
       duration_minutes?: number
       max_spots?: number
@@ -377,34 +371,20 @@ export async function PATCH(
     if (body.block_session_count !== undefined) updateData.block_session_count = body.block_session_count
     if (body.status !== undefined) updateData.status = body.status
 
+    // Fix-58-DB-api: populate days_of_week — prefer explicit array, fall back to [day_of_week]
+    if (Array.isArray(body.days_of_week) && body.days_of_week.length > 0) {
+      updateData.days_of_week = body.days_of_week
+    } else if (typeof body.day_of_week === 'number') {
+      updateData.days_of_week = [body.day_of_week]
+    }
+
     // 7. Update programme (adminSupabase already created in step 4)
     const { data: updatedProgramme, error: updateError } = await adminSupabase
       .from('group_programmes')
       .update(updateData)
       .eq('id', programmeId)
       .eq('coach_profile_id', coachProfile.id)
-      .select(`
-        id,
-        sport_id,
-        title,
-        description,
-        schedule_type,
-        day_of_week,
-        start_time,
-        duration_minutes,
-        max_spots,
-        current_spots,
-        payment_type,
-        price_per_session_pence,
-        block_price_pence,
-        block_session_count,
-        currency,
-        status,
-        created_at,
-        sports!inner (
-          name
-        )
-      `)
+      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at')
       .single()
 
     if (updateError) {
@@ -412,20 +392,23 @@ export async function PATCH(
       return NextResponse.json({ error: 'Failed to update programme' }, { status: 500 })
     }
 
-    // 8. Build response
-    const sportData = updatedProgramme.sports
-      ? (Array.isArray(updatedProgramme.sports) ? updatedProgramme.sports[0] : updatedProgramme.sports)
-      : null
+    // 8. Fetch sport name separately (Fix-65-1 pattern — no nested join)
+    let patchSportName = ''
+    if (updatedProgramme.sport_id) {
+      const { data: sportRow } = await supabase.from('sports').select('name').eq('id', updatedProgramme.sport_id).single()
+      patchSportName = sportRow?.name || ''
+    }
 
     const response: ProgrammeResponse = {
       id: updatedProgramme.id,
       sport_id: updatedProgramme.sport_id,
-      sport_name: sportData?.name || '',
+      sport_name: patchSportName,
       title: updatedProgramme.title,
       description: updatedProgramme.description,
       schedule_type: updatedProgramme.schedule_type,
       day_of_week: updatedProgramme.day_of_week,
       day_name: getDayName(updatedProgramme.day_of_week),
+      days_of_week: (updatedProgramme.days_of_week as number[] | null) ?? null,
       start_time: updatedProgramme.start_time,
       duration_minutes: updatedProgramme.duration_minutes,
       max_spots: updatedProgramme.max_spots,

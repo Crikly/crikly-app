@@ -1372,6 +1372,7 @@ export type Database = {
           currency: string
           current_spots: number
           day_of_week: number | null
+          days_of_week: number[] | null
           deleted_at: string | null
           description: string | null
           duration_minutes: number
@@ -1404,6 +1405,7 @@ export type Database = {
           currency?: string
           current_spots?: number
           day_of_week?: number | null
+          days_of_week?: number[] | null
           deleted_at?: string | null
           description?: string | null
           duration_minutes: number
@@ -1436,6 +1438,7 @@ export type Database = {
           currency?: string
           current_spots?: number
           day_of_week?: number | null
+          days_of_week?: number[] | null
           deleted_at?: string | null
           description?: string | null
           duration_minutes?: number

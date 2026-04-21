@@ -15,6 +15,7 @@ interface ProgrammeResponse {
   schedule_type: string
   day_of_week: number | null
   day_name: string | null
+  days_of_week: number[] | null
   start_time: string | null
   duration_minutes: number
   max_spots: number
@@ -107,7 +108,7 @@ export async function GET(
     const adminSupabase = createAdminClient()
     let query = adminSupabase
       .from('group_programmes')
-      .select('id, sport_id, title, description, schedule_type, day_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at')
+      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at')
       .eq('coach_profile_id', coachProfile.id)
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
@@ -141,6 +142,7 @@ export async function GET(
       schedule_type: prog.schedule_type,
       day_of_week: prog.day_of_week,
       day_name: getDayName(prog.day_of_week),
+      days_of_week: (prog.days_of_week as number[] | null) ?? null,
       start_time: prog.start_time,
       duration_minutes: prog.duration_minutes,
       max_spots: prog.max_spots,
@@ -246,6 +248,16 @@ export async function POST(
       validationErrors.push('day_of_week must be a number between 0 and 6')
     }
 
+    if (body.days_of_week !== undefined && body.days_of_week !== null) {
+      if (!Array.isArray(body.days_of_week)) {
+        validationErrors.push('days_of_week must be an array')
+      } else if (body.days_of_week.length < 1 || body.days_of_week.length > 7) {
+        validationErrors.push('days_of_week must have between 1 and 7 elements')
+      } else if (!body.days_of_week.every((d: unknown) => typeof d === 'number' && d >= 0 && d <= 6)) {
+        validationErrors.push('each value in days_of_week must be a number between 0 and 6')
+      }
+    }
+
     if (!body.start_time || typeof body.start_time !== 'string') {
       validationErrors.push('start_time is required and must be a string (HH:MM format)')
     }
@@ -326,6 +338,7 @@ export async function POST(
       description?: string | null
       schedule_type: string
       day_of_week: number
+      days_of_week?: number[] | null
       start_time: string
       duration_minutes: number
       session_count?: number | null
@@ -373,6 +386,13 @@ export async function POST(
         : (typeof body.session_count === 'number' ? body.session_count : null)
     }
 
+    // Fix-58-DB-api: populate days_of_week — prefer explicit array, fall back to [day_of_week]
+    if (Array.isArray(body.days_of_week) && body.days_of_week.length > 0) {
+      insertData.days_of_week = body.days_of_week
+    } else if (typeof body.day_of_week === 'number') {
+      insertData.days_of_week = [body.day_of_week]
+    }
+
     // Fix-62: Use admin client for INSERT only — user is already authenticated and
     // coach ownership verified above. Bypasses RLS to avoid auth_user_id mapping
     // mismatch on dev DB (same root cause as Fix-19).
@@ -380,28 +400,7 @@ export async function POST(
     const { data: newProgramme, error: insertError } = await adminSupabase
       .from('group_programmes')
       .insert(insertData)
-      .select(`
-        id,
-        sport_id,
-        title,
-        description,
-        schedule_type,
-        day_of_week,
-        start_time,
-        duration_minutes,
-        max_spots,
-        current_spots,
-        payment_type,
-        price_per_session_pence,
-        block_price_pence,
-        block_session_count,
-        currency,
-        status,
-        created_at,
-        sports!inner (
-          name
-        )
-      `)
+      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at')
       .single()
 
     if (insertError) {
@@ -409,20 +408,23 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to create programme' }, { status: 500 })
     }
 
-    // 7. Build response
-    const sportData = newProgramme.sports
-      ? (Array.isArray(newProgramme.sports) ? newProgramme.sports[0] : newProgramme.sports)
-      : null
+    // 7. Fetch sport name separately (Fix-65-1 pattern — no nested join)
+    let postSportName = ''
+    if (newProgramme.sport_id) {
+      const { data: sportRow } = await supabase.from('sports').select('name').eq('id', newProgramme.sport_id).single()
+      postSportName = sportRow?.name || ''
+    }
 
     const response: ProgrammeResponse = {
       id: newProgramme.id,
       sport_id: newProgramme.sport_id,
-      sport_name: sportData?.name || '',
+      sport_name: postSportName,
       title: newProgramme.title,
       description: newProgramme.description,
       schedule_type: newProgramme.schedule_type,
       day_of_week: newProgramme.day_of_week,
       day_name: getDayName(newProgramme.day_of_week),
+      days_of_week: (newProgramme.days_of_week as number[] | null) ?? null,
       start_time: newProgramme.start_time,
       duration_minutes: newProgramme.duration_minutes,
       max_spots: newProgramme.max_spots,
