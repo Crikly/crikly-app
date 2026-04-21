@@ -264,7 +264,7 @@ C-05, C-06, C-07, C-08 are safe to proceed without M-015.
 | CF-03 | Bookings list screen | @FrontendDeveloper | 🟢 | feature/coach-frontend | ✅ |
 | CF-04 | Booking Detail screen | @FrontendDeveloper | 🟢 | feature/coach-frontend | ✅ |
 | CF-05 | Programmes screen | @FrontendDeveloper | 🟢 | feature/coach-frontend | ✅ |
-| CF-05a | Create Programme — full page multi-step flow /coach/programmes/create — design in Figma Make first | ProgrammesManagement.tsx + new route | 🟡 Medium | ⚪ |
+| CF-05a | Create Programme — full page multi-step flow /coach/programmes/create — design in Figma Make first | ProgrammesManagement.tsx + new route | 🟡 Medium | ✅ |
 | CF-05b | Edit Programme UI — locked fields after enrolment + cancel action | @FrontendDeveloper | 🟢 | develop | ⚪ |
 | CF-05c | Programme Roster view — enrolled participants list + manual offline add | @FrontendDeveloper | 🟢 | develop | ⚪ |
 | CF-06 | Availability screen | @FrontendDeveloper | 🟢 | feature/coach-frontend | ✅ |
