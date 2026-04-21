@@ -1,5 +1,5 @@
 'use client'
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { ChevronRight, Calendar, Users, Tag, Plus, BookOpen } from 'lucide-react'
 
@@ -48,68 +48,109 @@ export function ProgrammesManagement() {
   const [programmes, setProgrammes] = useState<Programme[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [actionLoading, setActionLoading] = useState<string | null>(null)
 
-  // CD-08: Fetch programmes on mount
-  useEffect(() => {
-    const fetchProgrammes = async () => {
-      try {
-        setLoading(true)
-        setError(null)
-        
-        const response = await fetch('/api/coaches/programmes')
-        if (!response.ok) {
-          throw new Error('Failed to fetch programmes')
-        }
-        
-        const data = await response.json()
-        
-        // Transform API data to UI format
-        const transformed: Programme[] = (data.programmes || []).map((prog: ProgrammeResponse) => {
-          // Format schedule
-          const dayName = prog.day_name || 'Day'
-          const startTime = prog.start_time ? prog.start_time.substring(0, 5) : '00:00'
-          const endMinutes = prog.duration_minutes
-          const endTime = calculateEndTime(startTime, endMinutes)
-          const schedule = `Every ${dayName.substring(0, 3)} · ${startTime} – ${endTime}`
-          
-          // Format price
-          let price = ''
-          if (prog.payment_type === 'per_session') {
-            price = `£${(prog.price_per_session_pence / 100).toFixed(0)} per session`
-          } else if (prog.payment_type === 'block_upfront' && prog.block_price_pence && prog.block_session_count) {
-            price = `£${(prog.block_price_pence / 100).toFixed(0)} for ${prog.block_session_count} sessions`
-          }
-          
-          // Determine status
-          let status: 'Active' | 'Full' | 'Draft' = 'Draft'
-          if (prog.status === 'active') {
-            status = prog.current_spots >= prog.max_spots ? 'Full' : 'Active'
-          } else if (prog.status === 'draft') {
-            status = 'Draft'
-          }
-          
-          return {
-            id: prog.id,
-            name: prog.title,
-            schedule,
-            spotsFilled: prog.current_spots,
-            spotsTotal: prog.max_spots,
-            price,
-            status
-          }
-        })
-        
-        setProgrammes(transformed)
-      } catch (err) {
-        console.error('Failed to fetch programmes:', err)
-        setError('Failed to load programmes. Please try again.')
-      } finally {
-        setLoading(false)
+  // CD-08: Fetch programmes — useCallback so action handlers can call it
+  const fetchProgrammes = useCallback(async () => {
+    try {
+      setLoading(true)
+      setError(null)
+
+      const response = await fetch('/api/coaches/programmes')
+      if (!response.ok) {
+        throw new Error('Failed to fetch programmes')
       }
+
+      const data = await response.json()
+
+      const transformed: Programme[] = (data.programmes || []).map((prog: ProgrammeResponse) => {
+        const dayName = prog.day_name || 'Day'
+        const startTime = prog.start_time ? prog.start_time.substring(0, 5) : '00:00'
+        const endTime = calculateEndTime(startTime, prog.duration_minutes)
+        const schedule = `Every ${dayName.substring(0, 3)} · ${startTime} – ${endTime}`
+
+        let price = ''
+        if (prog.payment_type === 'per_session') {
+          price = `£${(prog.price_per_session_pence / 100).toFixed(0)} per session`
+        } else if (prog.payment_type === 'block_upfront' && prog.block_price_pence && prog.block_session_count) {
+          price = `£${(prog.block_price_pence / 100).toFixed(0)} for ${prog.block_session_count} sessions`
+        }
+
+        let status: 'Active' | 'Full' | 'Draft' = 'Draft'
+        if (prog.status === 'active') {
+          status = prog.current_spots >= prog.max_spots ? 'Full' : 'Active'
+        } else if (prog.status === 'draft') {
+          status = 'Draft'
+        }
+
+        return {
+          id: prog.id,
+          name: prog.title,
+          schedule,
+          spotsFilled: prog.current_spots,
+          spotsTotal: prog.max_spots,
+          price,
+          status,
+        }
+      })
+
+      setProgrammes(transformed)
+    } catch (err) {
+      console.error('Failed to fetch programmes:', err)
+      setError('Failed to load programmes. Please try again.')
+    } finally {
+      setLoading(false)
     }
-    
-    fetchProgrammes()
   }, [])
+
+  useEffect(() => {
+    fetchProgrammes()
+  }, [fetchProgrammes])
+
+  // Fix-68: Publish a draft programme
+  async function handlePublish(programmeId: string) {
+    if (actionLoading) return
+    setActionLoading(programmeId)
+    try {
+      const res = await fetch(`/api/coaches/programmes/${programmeId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'active' }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        alert(data.error || 'Failed to publish programme')
+        return
+      }
+      await fetchProgrammes()
+    } catch {
+      alert('Something went wrong. Please try again.')
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  // Fix-68: Delete a draft programme
+  async function handleDelete(programmeId: string, title: string) {
+    if (actionLoading) return
+    if (!confirm(`Delete "${title}"? This cannot be undone.`)) return
+    setActionLoading(programmeId)
+    try {
+      const res = await fetch(`/api/coaches/programmes/${programmeId}`, {
+        method: 'DELETE',
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        alert(data.error || 'Failed to delete programme')
+        return
+      }
+      await fetchProgrammes()
+    } catch {
+      alert('Something went wrong. Please try again.')
+    } finally {
+      setActionLoading(null)
+    }
+  }
   
   // Helper to calculate end time
   const calculateEndTime = (startTime: string, durationMinutes: number): string => {
@@ -288,32 +329,34 @@ export function ProgrammesManagement() {
                   {isDraft ? (
                     // Draft programme actions
                     <>
-                      <button 
+                      <button
+                        disabled={actionLoading === programme.id}
                         onClick={(e) => {
                           e.stopPropagation()
-                          // TODO CF-D05: wire Publish action
+                          handlePublish(programme.id)
                         }}
-                        className="flex-1 bg-[#0077CC] text-white rounded-md text-[11px] py-1.5 text-center hover:bg-[#0066AA] transition-all duration-150"
+                        className="flex-1 bg-[#0077CC] text-white rounded-md text-[11px] py-1.5 text-center hover:bg-[#0066AA] transition-all duration-150 disabled:opacity-60 disabled:cursor-not-allowed"
                       >
-                        Publish
+                        {actionLoading === programme.id ? 'Publishing...' : 'Publish'}
                       </button>
-                      <button 
+                      <button
                         onClick={(e) => {
                           e.stopPropagation()
-                          // TODO CF-D05: wire Edit action
+                          // TODO CF-05b: wire Edit action
                         }}
                         className="flex-1 bg-white border border-gray-200 text-gray-600 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 hover:border-gray-300 hover:text-gray-700 transition-all duration-150"
                       >
                         Edit
                       </button>
-                      <button 
+                      <button
+                        disabled={actionLoading === programme.id}
                         onClick={(e) => {
                           e.stopPropagation()
-                          // TODO CF-D05: wire Delete action
+                          handleDelete(programme.id, programme.name)
                         }}
-                        className="flex-1 bg-white border border-gray-200 text-red-600 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 hover:border-gray-300 transition-all duration-150"
+                        className="flex-1 bg-white border border-gray-200 text-red-600 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 hover:border-gray-300 transition-all duration-150 disabled:opacity-60 disabled:cursor-not-allowed"
                       >
-                        Delete
+                        {actionLoading === programme.id ? 'Deleting...' : 'Delete'}
                       </button>
                     </>
                   ) : isFull ? (
