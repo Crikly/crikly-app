@@ -86,7 +86,7 @@ export function CoachLayoutClient({
 
   return (
     <div
-      className="min-h-screen bg-white text-gray-900 flex w-full max-w-[1600px] mx-auto"
+      className="h-screen overflow-hidden bg-white text-gray-900 flex w-full max-w-[1600px] mx-auto"
       style={{ fontFamily: "'DM Sans', sans-serif" }}
     >
       {/* Desktop Sidebar */}
@@ -159,7 +159,7 @@ export function CoachLayoutClient({
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 min-h-screen overflow-y-auto relative bg-white">
+      <main className="flex-1 overflow-y-auto relative bg-white">
         {children}
       </main>
 

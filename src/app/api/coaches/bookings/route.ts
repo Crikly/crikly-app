@@ -7,7 +7,7 @@ type BookingRow = Database['public']['Tables']['bookings']['Row']
 type Tab = 'today' | 'upcoming' | 'past' | 'cancelled' | 'pending_approval'
 
 const VALID_TABS: Tab[] = ['today', 'upcoming', 'past', 'cancelled', 'pending_approval']
-const PAGE_SIZE = 20
+const PAGE_SIZE = 10
 
 // Service-role client for user_profiles lookups.
 // user_profiles RLS is "own record only" — service role bypasses it safely
