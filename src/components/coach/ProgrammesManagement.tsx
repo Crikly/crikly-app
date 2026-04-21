@@ -294,7 +294,13 @@ export function ProgrammesManagement() {
                   e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.06)'
                   e.currentTarget.style.transform = 'scale(1)'
                 }}
-                onClick={() => router.push(`/coach/programmes/${programme.id}`)}
+                onClick={() => {
+                  if (isDraft) {
+                    router.push(`/coach/programmes/${programme.id}/edit`)
+                  } else {
+                    router.push(`/coach/programmes/${programme.id}/roster`)
+                  }
+                }}
               >
                 <div className="p-4">
                   {/* CF-D05 CHANGE 2: Restructured card */}
