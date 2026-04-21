@@ -24,6 +24,8 @@ interface ProgrammeResponse {
   currency: string
   status: string
   created_at: string
+  venue_name: string | null
+  venue_address: string | null
 }
 
 function getDayName(dayOfWeek: number | null): string | null {
@@ -95,7 +97,7 @@ export async function GET(
     // 4. Fetch programme and verify ownership
     const { data: programme, error: programmeError } = await supabase
       .from('group_programmes')
-      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at')
+      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address')
       .eq('id', programmeId)
       .eq('coach_profile_id', coachProfile.id)
       .is('deleted_at', null)
@@ -134,6 +136,8 @@ export async function GET(
       currency: programme.currency,
       status: programme.status,
       created_at: programme.created_at,
+      venue_name: programme.venue_name,
+      venue_address: programme.venue_address,
     }
 
     return NextResponse.json(response, { status: 200 })
@@ -354,6 +358,8 @@ export async function PATCH(
       block_session_count?: number | null
       status?: string
       updated_at: string
+      venue_name?: string | null
+      venue_address?: string | null
     } = {
       updated_at: new Date().toISOString(),
     }
@@ -378,13 +384,16 @@ export async function PATCH(
       updateData.days_of_week = [body.day_of_week]
     }
 
+    if (body.venue_name !== undefined) updateData.venue_name = body.venue_name || null
+    if (body.venue_address !== undefined) updateData.venue_address = body.venue_address || null
+
     // 7. Update programme (adminSupabase already created in step 4)
     const { data: updatedProgramme, error: updateError } = await adminSupabase
       .from('group_programmes')
       .update(updateData)
       .eq('id', programmeId)
       .eq('coach_profile_id', coachProfile.id)
-      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at')
+      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address')
       .single()
 
     if (updateError) {
@@ -421,6 +430,8 @@ export async function PATCH(
       currency: updatedProgramme.currency,
       status: updatedProgramme.status,
       created_at: updatedProgramme.created_at,
+      venue_name: updatedProgramme.venue_name,
+      venue_address: updatedProgramme.venue_address,
     }
 
     return NextResponse.json(response, { status: 200 })

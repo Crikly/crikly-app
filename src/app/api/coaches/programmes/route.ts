@@ -28,6 +28,8 @@ interface ProgrammeResponse {
   currency: string
   status: string
   created_at: string
+  venue_name: string | null
+  venue_address: string | null
 }
 
 /**
@@ -108,7 +110,7 @@ export async function GET(
     const adminSupabase = createAdminClient()
     let query = adminSupabase
       .from('group_programmes')
-      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at')
+      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address')
       .eq('coach_profile_id', coachProfile.id)
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
@@ -155,6 +157,8 @@ export async function GET(
       currency: prog.currency,
       status: prog.status,
       created_at: prog.created_at,
+      venue_name: prog.venue_name,
+      venue_address: prog.venue_address,
     }))
 
     return NextResponse.json({ programmes: response }, { status: 200 })
@@ -352,6 +356,8 @@ export async function POST(
       skill_level: string
       status: string
       currency: string
+      venue_name?: string | null
+      venue_address?: string | null
     } = {
       coach_profile_id: coachProfile.id,
       sport_id: body.sport_id,
@@ -386,6 +392,9 @@ export async function POST(
         : (typeof body.session_count === 'number' ? body.session_count : null)
     }
 
+    if (body.venue_name !== undefined) insertData.venue_name = body.venue_name || null
+    if (body.venue_address !== undefined) insertData.venue_address = body.venue_address || null
+
     // Fix-58-DB-api: populate days_of_week — prefer explicit array, fall back to [day_of_week]
     if (Array.isArray(body.days_of_week) && body.days_of_week.length > 0) {
       insertData.days_of_week = body.days_of_week
@@ -400,7 +409,7 @@ export async function POST(
     const { data: newProgramme, error: insertError } = await adminSupabase
       .from('group_programmes')
       .insert(insertData)
-      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at')
+      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address')
       .single()
 
     if (insertError) {
@@ -437,6 +446,8 @@ export async function POST(
       currency: newProgramme.currency,
       status: newProgramme.status,
       created_at: newProgramme.created_at,
+      venue_name: newProgramme.venue_name,
+      venue_address: newProgramme.venue_address,
     }
 
     return NextResponse.json(response, { status: 201 })

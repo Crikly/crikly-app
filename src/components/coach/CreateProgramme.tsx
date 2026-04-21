@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, Check, Loader2, Calendar, RefreshCw, CreditCard, Layers } from 'lucide-react'
+import { VenueAutocomplete, type VenueSelection } from '@/components/coach/shared/LocationAutocomplete'
 
 // Exported so CoachRightPanel can type the event detail
 export interface ProgrammePreviewEventDetail {
@@ -48,6 +49,9 @@ interface FormData {
   programme_end_date: string      // Fix-58-5: for fixed end-date mode
   rolling_end_date: string        // Fix-58-8: optional rolling end
   excluded_dates: string[]        // Fix-58-6: session exclusions
+  // Step 2 — venue (optional)
+  venue_name: string
+  venue_address: string
   // Step 3
   max_spots: number
   payment_type: 'per_session' | 'block_upfront'
@@ -241,6 +245,9 @@ export function CreateProgramme() {
   const [sports, setSports] = useState<Sport[]>([])
   const [loadingSports, setLoadingSports] = useState(true)
 
+  // Fix-67-UI: venueKey forces VenueAutocomplete remount on clear (uncontrolled input)
+  const [venueKey, setVenueKey] = useState(0)
+
   // Fix-58-3: auto-save state
   const [programmeId, setProgrammeId] = useState<string | null>(null)
   const [autoSaving, setAutoSaving] = useState(false)
@@ -264,6 +271,8 @@ export function CreateProgramme() {
     programme_end_date: '',
     rolling_end_date: '',
     excluded_dates: [],
+    venue_name: '',
+    venue_address: '',
     max_spots: 8,
     payment_type: 'per_session',
     price_pence: 2800,
@@ -378,6 +387,8 @@ export function CreateProgramme() {
       max_spots: form.max_spots,
       payment_type: form.payment_type,
       late_joining_allowed: form.late_joining_allowed,
+      venue_name: form.venue_name || null,
+      venue_address: form.venue_address || null,
       status,
     }
     if (form.schedule_type === 'fixed' && form.fixed_schedule_mode === 'count') {
@@ -422,6 +433,8 @@ export function CreateProgramme() {
           days_of_week: form.days_of_week,
           start_time: form.start_time,
           duration_minutes: form.duration_minutes,
+          venue_name: form.venue_name || null,
+          venue_address: form.venue_address || null,
         }
         const res = await fetch(`/api/coaches/programmes/${programmeId}`, {
           method: 'PATCH',
@@ -790,6 +803,42 @@ export function CreateProgramme() {
                   <p className="text-[12px] text-[#94A3B8] mt-2">Leave blank for an ongoing programme.</p>
                 </div>
               )}
+
+              {/* Fix-67-UI: Venue picker — VenueAutocomplete (establishment+geocode) */}
+              <div className="mb-[22px]">
+                <label className="block text-[12px] font-medium text-[#475569] mb-2">
+                  Venue <span className="text-[11px] text-[#94A3B8] font-normal ml-1">(optional)</span>
+                </label>
+                <VenueAutocomplete
+                  key={venueKey}
+                  value={form.venue_name}
+                  onSelect={(v: VenueSelection) => {
+                    update('venue_name', v.name)
+                    update('venue_address', v.address)
+                  }}
+                  onChange={(val) => update('venue_name', val)}
+                  placeholder="Search for a venue or sports centre"
+                />
+                {form.venue_name && (
+                  <div className="flex items-start justify-between mt-2">
+                    <p className="text-[12px] text-[#64748B] leading-snug">
+                      {form.venue_address || form.venue_name}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        update('venue_name', '')
+                        update('venue_address', '')
+                        setVenueKey((k) => k + 1)
+                      }}
+                      className="ml-3 flex-shrink-0 text-[#94A3B8] hover:text-[#475569] text-[16px] leading-none transition-colors"
+                      aria-label="Clear venue"
+                    >
+                      ×
+                    </button>
+                  </div>
+                )}
+              </div>
 
               {/* Fix-58-6: Session exclusion editor */}
               {sessionDates.length > 0 && (
