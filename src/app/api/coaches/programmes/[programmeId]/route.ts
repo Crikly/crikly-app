@@ -26,6 +26,8 @@ interface ProgrammeResponse {
   created_at: string
   venue_name: string | null
   venue_address: string | null
+  skill_level: string
+  session_count: number | null
 }
 
 function getDayName(dayOfWeek: number | null): string | null {
@@ -95,9 +97,12 @@ export async function GET(
     }
 
     // 4. Fetch programme and verify ownership
-    const { data: programme, error: programmeError } = await supabase
+    // CF-05b: admin client — bypasses RLS auth_user_id mismatch (dev DB).
+    // Ownership enforced explicitly via .eq('coach_profile_id', coachProfile.id).
+    const adminSupabase = createAdminClient()
+    const { data: programme, error: programmeError } = await adminSupabase
       .from('group_programmes')
-      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address')
+      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address, skill_level, session_count')
       .eq('id', programmeId)
       .eq('coach_profile_id', coachProfile.id)
       .is('deleted_at', null)
@@ -138,6 +143,8 @@ export async function GET(
       created_at: programme.created_at,
       venue_name: programme.venue_name,
       venue_address: programme.venue_address,
+      skill_level: programme.skill_level,
+      session_count: programme.session_count,
     }
 
     return NextResponse.json(response, { status: 200 })
@@ -393,7 +400,7 @@ export async function PATCH(
       .update(updateData)
       .eq('id', programmeId)
       .eq('coach_profile_id', coachProfile.id)
-      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address')
+      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address, skill_level, session_count')
       .single()
 
     if (updateError) {
@@ -432,6 +439,8 @@ export async function PATCH(
       created_at: updatedProgramme.created_at,
       venue_name: updatedProgramme.venue_name,
       venue_address: updatedProgramme.venue_address,
+      skill_level: updatedProgramme.skill_level,
+      session_count: updatedProgramme.session_count,
     }
 
     return NextResponse.json(response, { status: 200 })

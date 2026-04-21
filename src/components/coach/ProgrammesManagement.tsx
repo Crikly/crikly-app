@@ -50,6 +50,7 @@ export function ProgrammesManagement() {
   const [error, setError] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
+  const [cancelConfirmId, setCancelConfirmId] = useState<string | null>(null)
   const [actionError, setActionError] = useState<{ id: string; message: string } | null>(null)
 
   // CD-08: Fetch programmes — useCallback so action handlers can call it
@@ -130,6 +131,31 @@ export function ProgrammesManagement() {
       setActionError({ id: programmeId, message: 'Something went wrong. Please try again.' })
     } finally {
       setActionLoading(null)
+    }
+  }
+
+  // CF-05b: Cancel an active/full programme
+  async function handleCancelProgramme(programmeId: string) {
+    if (actionLoading) return
+    setActionError(null)
+    setActionLoading(programmeId)
+    try {
+      const res = await fetch(`/api/coaches/programmes/${programmeId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'cancelled' }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        setActionError({ id: programmeId, message: data.error || 'Failed to cancel programme' })
+        return
+      }
+      await fetchProgrammes()
+    } catch {
+      setActionError({ id: programmeId, message: 'Something went wrong. Please try again.' })
+    } finally {
+      setActionLoading(null)
+      setCancelConfirmId(null)
     }
   }
 
@@ -353,7 +379,7 @@ export function ProgrammesManagement() {
                       <button
                         onClick={(e) => {
                           e.stopPropagation()
-                          // TODO CF-05b: wire Edit action
+                          router.push(`/coach/programmes/${programme.id}/edit`)
                         }}
                         className="flex-1 bg-white border border-gray-200 text-gray-600 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 hover:border-gray-300 hover:text-gray-700 transition-all duration-150"
                       >
@@ -397,25 +423,25 @@ export function ProgrammesManagement() {
                   ) : isFull ? (
                     // Full programme actions
                     <>
-                      <button 
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          router.push(`/coach/programmes/${programme.id}/edit`)
+                        }}
+                        className="flex-1 bg-white border border-gray-200 text-gray-600 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 hover:border-gray-300 hover:text-gray-700 transition-all duration-150"
+                      >
+                        Edit
+                      </button>
+                      <button
                         onClick={(e) => {
                           e.stopPropagation()
                           // TODO CF-D05: wire Open new cohort action
                         }}
                         className="flex-1 bg-[#0077CC] text-white rounded-md text-[11px] py-1.5 text-center hover:bg-[#0066AA] transition-all duration-150"
                       >
-                        Open new cohort ↗
+                        New cohort ↗
                       </button>
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          // TODO CF-D05: wire Duplicate action
-                        }}
-                        className="flex-1 bg-white border border-gray-200 text-gray-600 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 hover:border-gray-300 hover:text-gray-700 transition-all duration-150"
-                      >
-                        Duplicate
-                      </button>
-                      <button 
+                      <button
                         onClick={(e) => {
                           e.stopPropagation()
                           // TODO CF-D05: wire Manage action
@@ -427,35 +453,69 @@ export function ProgrammesManagement() {
                     </>
                   ) : (
                     // Active (not full) programme actions
-                    <>
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          // TODO CF-D05: wire Promote action
-                        }}
-                        className="flex-1 bg-[#0077CC] text-white rounded-md text-[11px] py-1.5 text-center hover:bg-[#0066AA] transition-all duration-150"
-                      >
-                        Promote ↗
-                      </button>
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          // TODO CF-D05: wire Duplicate action
-                        }}
-                        className="flex-1 bg-white border border-gray-200 text-gray-600 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 hover:border-gray-300 hover:text-gray-700 transition-all duration-150"
-                      >
-                        Duplicate
-                      </button>
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          // TODO CF-D05: wire Manage action
-                        }}
-                        className="flex-1 bg-white border border-gray-200 text-gray-600 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 hover:border-gray-300 hover:text-gray-700 transition-all duration-150"
-                      >
-                        Manage →
-                      </button>
-                    </>
+                    cancelConfirmId === programme.id ? (
+                      <>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setCancelConfirmId(null)
+                          }}
+                          className="flex-1 bg-white border border-gray-200 text-gray-600 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 hover:border-gray-300 transition-all duration-150"
+                        >
+                          Keep programme
+                        </button>
+                        <button
+                          disabled={actionLoading === programme.id}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleCancelProgramme(programme.id)
+                          }}
+                          className="flex-1 bg-red-600 text-white rounded-md text-[11px] py-1.5 text-center hover:bg-red-700 transition-all duration-150 disabled:opacity-60 disabled:cursor-not-allowed"
+                        >
+                          {actionLoading === programme.id ? 'Cancelling...' : 'Confirm cancel'}
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            router.push(`/coach/programmes/${programme.id}/edit`)
+                          }}
+                          className="flex-1 bg-white border border-gray-200 text-gray-600 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 hover:border-gray-300 hover:text-gray-700 transition-all duration-150"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            // TODO CF-D05: wire Promote action
+                          }}
+                          className="flex-1 bg-[#0077CC] text-white rounded-md text-[11px] py-1.5 text-center hover:bg-[#0066AA] transition-all duration-150"
+                        >
+                          Promote ↗
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            // TODO CF-D05: wire Manage action
+                          }}
+                          className="flex-1 bg-white border border-gray-200 text-gray-600 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 hover:border-gray-300 hover:text-gray-700 transition-all duration-150"
+                        >
+                          Manage →
+                        </button>
+                        <button
+                          disabled={!!actionLoading}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setCancelConfirmId(programme.id)
+                          }}
+                          className="flex-1 bg-white border border-red-200 text-red-600 rounded-md text-[11px] py-1.5 text-center hover:bg-red-50 hover:border-red-300 transition-all duration-150 disabled:opacity-60 disabled:cursor-not-allowed"
+                        >
+                          Cancel
+                        </button>
+                      </>
+                    )
                   )}
                 </div>
               </div>
