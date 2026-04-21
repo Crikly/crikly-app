@@ -397,6 +397,7 @@ export function CreateProgramme() {
     try {
       if (step === 1) {
         // Create draft with all current form data (defaults included)
+        console.log('[Fix-60 debug] sport_id being sent:', form.sport_id)
         const res = await fetch('/api/coaches/programmes', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -547,11 +548,13 @@ export function CreateProgramme() {
             Step {step} of 4
           </span>
 
+          {/* Fix-60-1: Fixed page-level title — same on all steps */}
+          <h1 className="text-[22px] font-bold text-gray-900 mt-1 mb-1">Create Programme</h1>
+
           {/* ── STEP 1 — Name your programme ── */}
           {step === 1 && (
             <>
-              <h1 className="text-[28px] font-bold text-[#0F172A] tracking-tight mt-1">Name your programme</h1>
-              <p className="text-sm text-[#64748B] mt-1.5 mb-6">Give parents a clear idea of what to expect.</p>
+              <p className="text-[16px] text-gray-500 font-normal mt-0 mb-6">Name your programme</p>
 
               <div className="mb-[22px]">
                 <label className="block text-[12px] font-medium text-[#475569] mb-2">Programme title</label>
@@ -618,8 +621,7 @@ export function CreateProgramme() {
           {/* ── STEP 2 — When does it run ── */}
           {step === 2 && (
             <>
-              <h1 className="text-[28px] font-bold text-[#0F172A] tracking-tight mt-1">When does it run?</h1>
-              <p className="text-sm text-[#64748B] mt-1.5 mb-6">Set the recurring day and time for your sessions.</p>
+              <p className="text-[16px] text-gray-500 font-normal mt-0 mb-6">When does it run?</p>
 
               {/* Schedule type */}
               <div className="mb-[22px]">
@@ -836,8 +838,7 @@ export function CreateProgramme() {
           {/* ── STEP 3 — Spots and payment ── */}
           {step === 3 && (
             <>
-              <h1 className="text-[28px] font-bold text-[#0F172A] tracking-tight mt-1">Spots and payment</h1>
-              <p className="text-sm text-[#64748B] mt-1.5 mb-6">Set how many can join and how they pay.</p>
+              <p className="text-[16px] text-gray-500 font-normal mt-0 mb-6">Spots and payment</p>
 
               <div className="mb-[22px]">
                 <label className="block text-[12px] font-medium text-[#475569] mb-2">Maximum spots</label>
@@ -937,8 +938,7 @@ export function CreateProgramme() {
           {/* ── STEP 4 — Review & save ── */}
           {step === 4 && (
             <>
-              <h1 className="text-[28px] font-bold text-[#0F172A] tracking-tight mt-1">Review &amp; save</h1>
-              <p className="text-sm text-[#64748B] mt-1.5 mb-6">Check everything looks right before saving.</p>
+              <p className="text-[16px] text-gray-500 font-normal mt-0 mb-6">Review &amp; save</p>
 
               <div className="bg-white border border-[#E2E8F0] rounded-2xl overflow-hidden mb-6">
                 {[
