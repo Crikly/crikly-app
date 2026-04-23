@@ -250,7 +250,7 @@ schedule (command centre + 4 event popovers), get paid standalone.
 | C-08 | Create CRUD /api/coaches/photos | @BackendDeveloper | 🟢 | feature/coach | ✅ |
 | C-09 | Create CRUD /api/coaches/availability — template blocks | @BackendDeveloper | 🟡 | feature/coach | ✅ |
 | C-10 | Create CRUD /api/coaches/blocked-dates | @BackendDeveloper | 🟢 | feature/coach | ✅ |
-| C-11 | Create POST /api/payments/connect/onboard — Stripe Connect URL | @PaymentsEngineer | 🔴 | feature/coach | ⚪ |
+| C-11 | Create POST /api/payments/connect/onboard — Stripe Connect URL | @PaymentsEngineer | 🔴 | feature/coach | ✅ |
 | C-12 | Create DBS submission route + £29.99 payment | @BackendDeveloper | 🔴 | feature/coach | ⚪ |
 
 ⚠️ C-09, C-10, C-11, C-12, C-13 are BLOCKED until M-015 is complete.
@@ -433,6 +433,7 @@ Branch: feature/coach-data (open from develop before starting CD-01)
 | Fix-38 | LocationAutocomplete styling — fix Google dropdown border + add postcode support (change types to geocode) | @FrontendDeveloper | 🟢 | develop | ✅ |
 | Fix-38b | Add Google Places autocomplete to all venue fields — availability block + session creation. Types: establishment + geocode. Reuse or extend LocationAutocomplete.tsx | @FrontendDeveloper | 🟢 | develop | ✅ |
 | Fix-38c | Add venue_id FK to availability_templates migration + wire venue saving to coach_venues table | @DatabaseArchitect | 🟡 | develop | ✅ |
+| Fix-42 | Profile photo upload UI in ProfileEdit — click avatar to upload to Supabase Storage coach-photos bucket, PATCH avatar_url on profile | @FrontendDeveloper | 🟡 | develop | ✅ |
 
 ### 3F — Coach Go-Live Gaps (CG tasks)
 
@@ -488,7 +489,7 @@ before going live with real coaches. Ordered by priority.
 | CF-D04 | Booking Detail adjustments | @FrontendDeveloper | 🟢 | ⚪ |
 | CF-D05 | Programmes screen adjustments | @FrontendDeveloper | 🟢 | ⚪ |
 | CF-D06 | Availability adjustments | @FrontendDeveloper | 🟢 | ⚪ |
-| CF-D07 | Profile Hub adjustments — includes Fix-42 photo upload UI | @FrontendDeveloper | 🟢 | ⚪ |
+| CF-D07 | Profile Hub adjustments — Fix-42 photo upload done separately ✅ | @FrontendDeveloper | 🟢 | ⚪ |
 | CF-D08 | Earnings adjustments | @FrontendDeveloper | 🟢 | ⚪ |
 | CF-D09 | Get Paid adjustments | @FrontendDeveloper | 🟢 | ⚪ |
 | CF-D11b | Onboarding Profile step — sticky save bar | @FrontendDeveloper | 🟢 | ⚪ |

@@ -1,7 +1,8 @@
 'use client'
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { Pencil, ChevronRight, User, Tag, Award, Calendar, ShieldCheck, CreditCard, CheckCircle2, Star, Share2, ExternalLink, Circle } from 'lucide-react'
+import { ChevronRight, User, Tag, Award, Calendar, ShieldCheck, CreditCard, CheckCircle2, Star, Share2, ExternalLink, Circle, Camera } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
 
 // CD-10b: API response type
 interface CoachProfileResponse {
@@ -44,6 +45,11 @@ export function ProfileEdit() {
   const [stripeChargesEnabled, setStripeChargesEnabled] = useState(false)
   const [stripePayoutsEnabled, setStripePayoutsEnabled] = useState(false)
   const [stripeConnected, setStripeConnected] = useState(false)
+
+  // Fix-42: Photo upload state
+  const [photoUploading, setPhotoUploading] = useState(false)
+  const [photoError, setPhotoError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // CD-10b: Fetch profile data on mount
   useEffect(() => {
@@ -221,6 +227,54 @@ export function ProfileEdit() {
     return name.substring(0, 2).toUpperCase()
   }
   
+  // Fix-42: Profile photo upload handler
+  const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !profile) return
+    e.target.value = ''
+
+    if (file.size > 5 * 1024 * 1024) {
+      setPhotoError('Photo must be under 5MB.')
+      return
+    }
+
+    setPhotoError(null)
+    setPhotoUploading(true)
+
+    try {
+      const supabase = createClient()
+      const ext = file.name.split('.').pop() ?? 'jpg'
+      const path = `profile/${profile.id}/${Date.now()}.${ext}`
+
+      const { error: uploadError } = await supabase.storage
+        .from('coach-photos')
+        .upload(path, file, { upsert: true, contentType: file.type })
+
+      if (uploadError) throw uploadError
+
+      const { data: urlData } = supabase.storage
+        .from('coach-photos')
+        .getPublicUrl(path)
+
+      const publicUrl = urlData.publicUrl
+
+      const res = await fetch('/api/coaches/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ avatar_url: publicUrl }),
+      })
+
+      if (!res.ok) throw new Error('Failed to update profile')
+
+      setProfile(prev => prev ? { ...prev, avatar_url: publicUrl } : prev)
+    } catch (err) {
+      console.error('[Fix-42] Photo upload error:', err)
+      setPhotoError('Upload failed. Please try again.')
+    } finally {
+      setPhotoUploading(false)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-white font-sans" style={{ fontFamily: "'DM Sans', sans-serif" }}>
       <div className="w-full max-w-2xl mx-auto bg-white min-h-screen relative flex flex-col pb-12">
@@ -262,23 +316,50 @@ export function ProfileEdit() {
             {/* Top row */}
             {/* CF-D07b POLISH 1: Increased gap to 16px */}
             <div className="flex gap-4 items-start mb-3.5">
-              {/* Avatar with edit overlay */}
-              <div className="relative shrink-0">
-                {profile.avatar_url ? (
-                  <img src={profile.avatar_url} alt={profile.full_name} className="w-16 h-16 rounded-full object-cover" />
-                ) : (
-                  <div className="w-16 h-16 bg-[#E6F1FB] rounded-full flex items-center justify-center text-[20px] font-medium text-[#0C447C]">
-                    {getInitials(profile.full_name)}
-                  </div>
-                )}
-                <button 
-                  onClick={() => {
-                    // TODO CF-D07: wire avatar upload
-                  }}
-                  className="absolute bottom-0 right-0 w-5 h-5 bg-[#0077CC] rounded-full flex items-center justify-center border-2 border-white cursor-pointer hover:bg-[#0066AA] transition-colors"
+              {/* Avatar with upload — Fix-42 */}
+              <div className="flex flex-col items-center shrink-0">
+                <div
+                  className={`relative w-16 h-16 rounded-full overflow-hidden group ${photoUploading ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+                  onClick={() => !photoUploading && fileInputRef.current?.click()}
                 >
-                  <Pencil size={10} className="text-white" />
-                </button>
+                  {profile.avatar_url ? (
+                    <img src={profile.avatar_url} alt={profile.full_name} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full bg-[#E6F1FB] flex items-center justify-center text-[20px] font-medium text-[#0C447C]">
+                      {getInitials(profile.full_name)}
+                    </div>
+                  )}
+
+                  {/* Hover overlay */}
+                  {!photoUploading && (
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/45 transition-colors flex flex-col items-center justify-center gap-0.5 opacity-0 group-hover:opacity-100">
+                      <Camera size={14} className="text-white" />
+                      <span className="text-[9px] font-medium text-white leading-none">Change</span>
+                    </div>
+                  )}
+
+                  {/* Upload spinner overlay */}
+                  {photoUploading && (
+                    <div className="absolute inset-0 bg-black/45 flex items-center justify-center">
+                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    </div>
+                  )}
+                </div>
+
+                <p className="text-[9px] text-gray-400 text-center mt-1 leading-snug w-[68px]">
+                  JPG, PNG or WebP · Max 5MB
+                </p>
+                {photoError && (
+                  <p className="text-[9px] text-red-500 text-center mt-0.5 w-[72px] leading-snug">{photoError}</p>
+                )}
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="hidden"
+                  onChange={handlePhotoSelect}
+                />
               </div>
               
               {/* Coach info */}
