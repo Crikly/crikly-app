@@ -259,7 +259,7 @@ export function ProfileEdit() {
       const publicUrl = urlData.publicUrl
 
       const res = await fetch('/api/coaches/profile', {
-        method: 'PATCH',
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ avatar_url: publicUrl }),
       })
