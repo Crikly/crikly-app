@@ -86,7 +86,7 @@ export async function GET(
     // 5. Fetch active enrolments
     const { data: enrolments, error: enrolError } = await adminSupabase
       .from('group_programme_enrolments')
-      .select('id, child_profile_id, booked_by_user_id, payment_type, joined_at_session_number, status, cancellation_reason, created_at')
+      .select('id, child_profile_id, booked_by_user_id, payment_type, joined_at_session_number, status, participant_name, cancellation_reason, created_at')
       .eq('programme_id', programmeId)
       .eq('status', 'active')
       .order('created_at', { ascending: true })
@@ -130,13 +130,12 @@ export async function GET(
       const isOffline = e.payment_type === 'offline'
       const child = e.child_profile_id ? childMap[e.child_profile_id] : null
 
-      // Tech debt: offline participant name stored in cancellation_reason (no name column).
-      // TODO CF-05c-DB: add participant_name column to group_programme_enrolments and use it instead
-      const rawStored = e.cancellation_reason || null
+      // participant_name is the canonical column (migration 020).
+      // Fall back to cancellation_reason for rows that predate the migration.
       const childName = child
         ? child.full_name
         : isOffline
-          ? (rawStored ? rawStored.split('\n')[0] : null)
+          ? (e.participant_name ?? (e.cancellation_reason?.split('\n')[0] ?? null))
           : null
 
       return {
@@ -249,12 +248,8 @@ export async function POST(
     const childName = body.child_name.trim()
     const notes = typeof body.notes === 'string' && body.notes.trim() ? body.notes.trim() : null
 
-    // TODO CF-05c-DB: add participant_name column to group_programme_enrolments and use it instead
-    // Tech debt: storing offline participant name (+ optional notes) in cancellation_reason —
-    // there is no dedicated name column in the schema. First line = name, second line = notes.
-    const storedValue = notes ? `${childName}\n${notes}` : childName
-
-    // 6. Insert enrolment
+    // 6. Insert enrolment — participant_name is the canonical column (migration 020).
+    //    notes stored in cancellation_reason (its proper purpose once name moves out).
     const { data: newEnrolment, error: insertError } = await adminSupabase
       .from('group_programme_enrolments')
       .insert({
@@ -265,7 +260,8 @@ export async function POST(
         payment_model: 'per_session',
         status: 'active',
         joined_at_session_number: 1,
-        cancellation_reason: storedValue,
+        participant_name: childName,
+        cancellation_reason: notes || null,
       })
       .select('id, created_at')
       .single()

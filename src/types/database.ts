@@ -1224,6 +1224,7 @@ export type Database = {
           created_at: string
           id: string
           joined_at_session_number: number
+          participant_name: string | null
           payment_model: string
           payment_type: string
           player_profile_id: string | null
@@ -1242,6 +1243,7 @@ export type Database = {
           created_at?: string
           id?: string
           joined_at_session_number?: number
+          participant_name?: string | null
           payment_model: string
           payment_type: string
           player_profile_id?: string | null
@@ -1260,6 +1262,7 @@ export type Database = {
           created_at?: string
           id?: string
           joined_at_session_number?: number
+          participant_name?: string | null
           payment_model?: string
           payment_type?: string
           player_profile_id?: string | null
