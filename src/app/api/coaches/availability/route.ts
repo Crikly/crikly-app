@@ -15,6 +15,8 @@ interface AvailabilityResponse {
   price_override_pence: number | null
   session_type_id: string | null
   session_type_name: string | null
+  coach_venue_id: string | null
+  venue_name: string | null
   created_at: string
 }
 
@@ -143,7 +145,7 @@ export async function GET(
     const sessionTypeIds = [...new Set((blocks || [])
       .map(b => b.session_type_id)
       .filter((id): id is string => id !== null))]
-    
+
     const { data: sessionTypesData, error: sessionTypesError } = sessionTypeIds.length > 0
       ? await supabase
           .from('coach_session_types')
@@ -156,7 +158,21 @@ export async function GET(
       return NextResponse.json({ error: 'Failed to fetch session types data' }, { status: 500 })
     }
 
-    // 7. Build response by merging data in application code
+    // 7. Fix-16d: Fetch venue data separately
+    const venueIds = [...new Set((blocks || [])
+      .map(b => b.coach_venue_id)
+      .filter((id): id is string => id !== null))]
+
+    const venueMap: Record<string, string> = {}
+    if (venueIds.length > 0) {
+      const { data: venuesData } = await supabase
+        .from('coach_venues')
+        .select('id, name')
+        .in('id', venueIds)
+      venuesData?.forEach(v => { venueMap[v.id] = v.name })
+    }
+
+    // 8. Build response by merging data in application code
     const response: AvailabilityResponse[] = (blocks || []).map((block) => {
       const sportData = (sportsData || []).find(s => s.id === block.sport_id)
       const sessionTypeData = (sessionTypesData || []).find(st => st.id === block.session_type_id)
@@ -172,6 +188,8 @@ export async function GET(
         price_override_pence: block.price_override_pence,
         session_type_id: block.session_type_id,
         session_type_name: sessionTypeData ? `${sessionTypeData.duration_minutes}min` : null,
+        coach_venue_id: block.coach_venue_id,
+        venue_name: block.coach_venue_id ? (venueMap[block.coach_venue_id] ?? null) : null,
         created_at: block.created_at,
       }
     })
@@ -297,6 +315,12 @@ export async function POST(
       }
     }
 
+    if (body.coach_venue_id !== undefined && body.coach_venue_id !== null) {
+      if (typeof body.coach_venue_id !== 'string') {
+        validationErrors.push('coach_venue_id must be a string')
+      }
+    }
+
     if (validationErrors.length > 0) {
       return NextResponse.json(
         { error: 'Validation failed', details: validationErrors },
@@ -413,6 +437,7 @@ export async function POST(
       end_time: string
       price_override_pence?: number | null
       session_type_id?: string | null
+      coach_venue_id?: string | null
     } = {
       coach_profile_id: coachProfile.id,
       day_of_week: body.day_of_week,
@@ -432,6 +457,10 @@ export async function POST(
       insertData.session_type_id = body.session_type_id
     }
 
+    if (body.coach_venue_id !== undefined) {
+      insertData.coach_venue_id = body.coach_venue_id
+    }
+
     // Fix-16d: Upsert instead of insert to handle conflicts on (coach_profile_id, day_of_week, start_time)
     const { data: newBlock, error: insertError } = await supabase
       .from('availability_templates')
@@ -447,7 +476,7 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to add availability block' }, { status: 500 })
     }
 
-    // 9. Fetch sport and session type data separately if needed
+    // 9. Fetch sport, session type, and venue data separately if needed
     let sportData = null
     if (newBlock.sport_id) {
       const { data: sport } = await supabase
@@ -468,6 +497,16 @@ export async function POST(
       sessionTypeData = sessionType
     }
 
+    let venueData = null
+    if (newBlock.coach_venue_id) {
+      const { data: venue } = await supabase
+        .from('coach_venues')
+        .select('name')
+        .eq('id', newBlock.coach_venue_id)
+        .single()
+      venueData = venue
+    }
+
     const response: AvailabilityResponse = {
       id: newBlock.id,
       sport_id: newBlock.sport_id,
@@ -479,6 +518,8 @@ export async function POST(
       price_override_pence: newBlock.price_override_pence,
       session_type_id: newBlock.session_type_id,
       session_type_name: sessionTypeData ? `${sessionTypeData.duration_minutes}min` : null,
+      coach_venue_id: newBlock.coach_venue_id,
+      venue_name: venueData?.name ?? null,
       created_at: newBlock.created_at,
     }
 

@@ -3,7 +3,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Pencil, X, ChevronLeft, ChevronRight, Plus, ChevronDown, AlertTriangle } from 'lucide-react'
-import { VenueAutocomplete, type VenueSelection } from './shared/LocationAutocomplete'
 
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December']
 const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
@@ -29,7 +28,14 @@ interface AvailabilityBlock {
   price_override_pence: number | null
   session_type_id: string | null
   session_type_name: string | null
+  coach_venue_id: string | null
+  venue_name: string | null
   created_at: string
+}
+
+interface VenueItem {
+  id: string
+  name: string
 }
 
 // CD-04: UI display type (transformed from API)
@@ -127,10 +133,12 @@ export function AvailabilityManagement() {
   const [formStartTime, setFormStartTime] = useState('09:00')
   const [formEndTime, setFormEndTime] = useState('10:00')
   const [formRepeat, setFormRepeat] = useState('Weekly')
-  const [formVenue, setFormVenue] = useState('')
-  const [formVenueSelection, setFormVenueSelection] = useState<VenueSelection | null>(null)
+  const [formVenueId, setFormVenueId] = useState<string>('')
   const [formPrice, setFormPrice] = useState('')
   const toggleDay = (day: string) => setFormDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day])
+
+  // Fix-38c: Saved venues for venue selector
+  const [venues, setVenues] = useState<VenueItem[]>([])
   
   // CD-04: Fetch availability data on mount
   useEffect(() => {
@@ -138,31 +146,39 @@ export function AvailabilityManagement() {
       try {
         setLoading(true)
         setError(null)
-        
-        const response = await fetch('/api/coaches/availability')
-        if (!response.ok) {
-          throw new Error('Failed to fetch availability')
+
+        const [availRes, venuesRes] = await Promise.all([
+          fetch('/api/coaches/availability'),
+          fetch('/api/coaches/venues'),
+        ])
+
+        if (!availRes.ok) throw new Error('Failed to fetch availability')
+
+        const data = await availRes.json()
+
+        // Fix-38c: Populate saved venues for selector
+        if (venuesRes.ok) {
+          const venuesData = await venuesRes.json()
+          setVenues((venuesData.venues || []).map((v: { id: string; name: string }) => ({ id: v.id, name: v.name })))
         }
-        
-        const data = await response.json()
-        
+
         // Transform API data to UI format
         const transformed: ScheduleBlock[] = (data.availability || []).map((block: AvailabilityBlock) => {
-          const priceDisplay = block.price_override_pence 
+          const priceDisplay = block.price_override_pence
             ? `£${(block.price_override_pence / 100).toFixed(0)}/${block.session_type_name || '60min'}`
             : 'Default price'
-          
+
           return {
             id: block.id,
             day: DAY_MAP[block.day_of_week] || 'Mon',
             sport: block.sport_name || 'Sport',
             time: `${block.start_time.substring(0, 5)} – ${block.end_time.substring(0, 5)}`,
-            location: 'Location TBC',
+            location: block.venue_name ?? 'No venue set',
             price: priceDisplay,
             rawData: block
           }
         })
-        
+
         setScheduleBlocks(transformed)
       } catch (err) {
         console.error('Error fetching availability:', err)
@@ -171,7 +187,7 @@ export function AvailabilityManagement() {
         setLoading(false)
       }
     }
-    
+
     fetchAvailability()
   }, [])
   
@@ -201,14 +217,13 @@ export function AvailabilityManagement() {
     return null
   }, [formSport, formDays, formStartTime, formEndTime, scheduleBlocks])
   
-  const resetForm = () => { 
+  const resetForm = () => {
     setFormSport(availableSports[0] ?? '')
     setFormDays([])
     setFormStartTime('09:00')
     setFormEndTime('10:00')
     setFormRepeat('Weekly')
-    setFormVenue('')
-    setFormVenueSelection(null)
+    setFormVenueId('')
     setFormPrice('')
     setShowAddForm(false)
     setPreselectedDay(null) // CF-D06b FIX 1: Reset preselected day
@@ -579,20 +594,20 @@ export function AvailabilityManagement() {
                   </div>
                 </div>
                 <div className="mb-4">
-                  <label className="block text-[12px] font-bold text-gray-500 mb-1.5 uppercase tracking-wider">Venue</label>
-                  <VenueAutocomplete
-                    value={formVenue}
-                    placeholder="e.g. Oval Cricket Ground"
-                    data-testid="venue-autocomplete"
-                    onSelect={(venue) => {
-                      setFormVenue(venue.name)
-                      setFormVenueSelection(venue)
-                    }}
-                    onChange={(val) => {
-                      setFormVenue(val)
-                      setFormVenueSelection(null)
-                    }}
-                  />
+                  <label className="block text-[12px] font-bold text-gray-500 mb-1.5 uppercase tracking-wider">Venue <span className="normal-case font-medium text-gray-400">(optional)</span></label>
+                  <div className="relative">
+                    <select
+                      value={formVenueId}
+                      onChange={e => setFormVenueId(e.target.value)}
+                      className="w-full appearance-none bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-[15px] font-medium text-gray-900 focus:outline-none focus:border-[#0077CC] pr-10"
+                    >
+                      <option value="">No specific venue</option>
+                      {venues.map(v => (
+                        <option key={v.id} value={v.id}>{v.name}</option>
+                      ))}
+                    </select>
+                    <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                  </div>
                 </div>
                 <div className="mb-5">
                   <label className="block text-[12px] font-bold text-gray-500 mb-1.5 uppercase tracking-wider">Price override <span className="normal-case font-medium text-gray-400">(optional)</span></label>
@@ -637,8 +652,7 @@ export function AvailabilityManagement() {
                               start_time: formStartTime,
                               end_time: formEndTime,
                               price_override_pence: formPrice ? Math.round(parseFloat(formPrice) * 100) : null,
-                              // STUB: venue_id wiring pending Fix-38c
-                              // formVenueSelection holds { name, address, lat, lng } when a venue is selected
+                              coach_venue_id: formVenueId || null,
                             })
                           })
                           
@@ -652,16 +666,16 @@ export function AvailabilityManagement() {
                         if (refreshResponse.ok) {
                           const data = await refreshResponse.json()
                           const transformed: ScheduleBlock[] = (data.availability || []).map((block: AvailabilityBlock) => {
-                            const priceDisplay = block.price_override_pence 
+                            const priceDisplay = block.price_override_pence
                               ? `£${(block.price_override_pence / 100).toFixed(0)}/${block.session_type_name || '60min'}`
                               : 'Default price'
-                            
+
                             return {
                               id: block.id,
                               day: DAY_MAP[block.day_of_week] || 'Mon',
                               sport: block.sport_name || 'Sport',
                               time: `${block.start_time.substring(0, 5)} – ${block.end_time.substring(0, 5)}`,
-                              location: 'Location TBC',
+                              location: block.venue_name ?? 'No venue set',
                               price: priceDisplay,
                               rawData: block
                             }
