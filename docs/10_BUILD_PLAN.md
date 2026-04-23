@@ -1,8 +1,10 @@
 # Crikly — Comprehensive Build Plan
 
-**Version:** 2.9
-**Last Updated:** 20 April 2026
-**Changed:** SYNC-08 — added Fix-41b, Fix-47–52, CF-R04a–h, CG-06 ✅, CF-02a, CF-05a/b/c, C-06d-create, CD-06-api, CD-09-api. Updated CD-06/CD-07/CD-09 blocker descriptions.
+**Version:** 3.0
+**Last Updated:** 21 April 2026
+**Changed:** SYNC-11 — Coach module go-live checklist added.
+  All CF-D tasks confirmed ⚪ (not committed). CF-05a through
+  Fix-72 series added. CG tasks status corrected.
 **This is the single source of truth for every task in the project.**
 
 ---
@@ -264,30 +266,29 @@ C-05, C-06, C-07, C-08 are safe to proceed without M-015.
 | CF-03 | Bookings list screen | @FrontendDeveloper | 🟢 | feature/coach-frontend | ✅ |
 | CF-04 | Booking Detail screen | @FrontendDeveloper | 🟢 | feature/coach-frontend | ✅ |
 | CF-05 | Programmes screen | @FrontendDeveloper | 🟢 | feature/coach-frontend | ✅ |
-| CF-05a | Create Programme — full page multi-step flow /coach/programmes/create — design in Figma Make first | ProgrammesManagement.tsx + new route | 🟡 Medium | ✅ |
-| Fix-58 | 9 post-review fixes to Create Programme flow — CoachRightPanel preview, bg, step dots, multi-day, session exclusions, fixed schedule modes, auto-save, rolling end date, Step 4 review | CreateProgramme.tsx + CoachRightPanel.tsx | 🟢 Low | ✅ |
-| Fix-59 | Hydration fix (mounted guard on isProgrammeCreateRoute) + programme preview card redesign to parent-facing card with badges, schedule, sessions, capacity, price rows | CoachRightPanel.tsx | 🟢 Low | ✅ |
-| Fix-60 | Page title hierarchy ("Create Programme" fixed h1 + step subheadings demoted to 16px gray) + sport_id debug log before POST | CreateProgramme.tsx | 🟢 Low | ✅ |
-| Fix-61 | Remove nested join (sports!inner) from programme sport validation — simple .select('id') existence check eliminates PGRST200 risk | api/coaches/programmes/route.ts | 🟢 Low | ✅ |
-| Fix-62 | RLS INSERT policy fix for group_programmes (missed in Fix-19 — same auth.uid() mapping bug) + hydration guard in CreateProgramme.tsx | migration 017 + CreateProgramme.tsx | 🟡 Medium | ✅ |
-| Fix-62b | Admin client for group_programmes INSERT to bypass RLS on dev DB auth_user_id mismatch — user already authenticated before insert | admin.ts (new) + programmes/route.ts | 🟡 Medium | ✅ |
-| Fix-63 | Correct model value in group_programmes INSERT: 'group' → 'programme' to satisfy check constraint | api/coaches/programmes/route.ts | 🟢 Low | ✅ |
-| Fix-64 | Admin client for PATCH handler ownership SELECT + UPDATE — same RLS auth_user_id bypass as Fix-62, ownership enforced via explicit WHERE | programmes/[programmeId]/route.ts | 🟢 Low | ✅ |
-| Fix-65 | Admin client for GET programmes (RLS SELECT only allows active — drafts blocked) + remove sports!inner nested join (two-query pattern) | api/coaches/programmes/route.ts | 🟡 Medium | ✅ |
-| Fix-66 | Draft count badge on Draft tab in ProgrammesManagement — shows "Draft (N)" when drafts exist | ProgrammesManagement.tsx | 🟢 Low | ✅ |
-| Fix-58-DB | Add days_of_week integer[] column to group_programmes — supports multi-day programmes, backwards-compatible with existing day_of_week | migration 018 | 🟡 Medium | ✅ |
-| Fix-58-DB-api | Accept + return days_of_week[] in POST/PATCH/GET; backwards compat [day_of_week]→days_of_week; fix remaining sports!inner joins; update database.ts types | programmes/route.ts + [programmeId]/route.ts + types/database.ts | 🟡 Medium | ✅ |
-| Fix-58-FE | Send days_of_week array in buildPostBody + step 2 PATCH; remove stale multi-day helper note | CreateProgramme.tsx | 🟢 Low | ✅ |
-| Fix-67-DB | Add venue_name + venue_address text columns to group_programmes (inline, no FK); update database.ts types | migration 019 + types/database.ts | 🟢 Low | ✅ |
-| Fix-67-UI | Add VenueAutocomplete (establishment+geocode) to Create Programme Step 2; wire venue_name+venue_address to POST/PATCH API; venueKey remount for clear button | CreateProgramme.tsx + programmes routes | 🟡 Medium | ✅ |
-| Fix-68 | Wire Publish + Delete buttons on draft programme cards; fetchProgrammes lifted to useCallback; actionLoading per-card loading state | ProgrammesManagement.tsx | 🟢 Low | ✅ |
-| Fix-69 | Replace all browser dialogs (confirm/alert) with inline confirmation UI + error state in ProgrammesManagement + AvailabilityManagement; DELETE route admin client already done | ProgrammesManagement.tsx + AvailabilityManagement.tsx | 🟡 Medium | ✅ |
-| CF-05b | Edit Programme UI — locked fields after enrolment + cancel action | @FrontendDeveloper | 🟢 | develop | ✅ |
-| Fix-70 | Add min_participants + cancellation_window_hours to Create Programme Step 3 and all API routes (REQ-C-050, REQ-C-057) | CreateProgramme.tsx + programmes routes | 🟢 Low | ✅ |
-| CF-05c | Programme Roster view — enrolled participants list + manual offline add | @FrontendDeveloper + @BackendDeveloper | 🟡 Medium | develop | ✅ |
-| Fix-71 | Programme card click navigated to blank page — fix to /edit for drafts, /roster for active+full | ProgrammesManagement.tsx | 🟢 Low | ✅ |
-| Fix-72 | Replace card click navigation with ProgrammeDetailModal — extended Programme type, share sheet, WhatsApp + clipboard actions | ProgrammesManagement.tsx | 🟢 Low | ✅ |
-| CF-05c | Programme Roster view — enrolled participants list + manual offline add | @FrontendDeveloper | 🟢 | develop | ⚪ |
+| CF-05a | Create Programme — full page multi-step flow /coach/programmes/create | @FrontendDeveloper | 🟢 | develop | ✅ |
+| CF-05b | Edit Programme — single page, locked fields after enrolment, Cancel on active cards | @FrontendDeveloper | 🟢 | develop | ✅ |
+| CF-05c | Programme Roster view — enrolled participants list + manual offline add | @FrontendDeveloper | 🟡 | develop | ✅ |
+| Fix-58 | 9 post-review fixes to Create Programme flow | @FrontendDeveloper | 🟢 | develop | ✅ |
+| Fix-59 | Hydration fix + programme preview card redesign | @FrontendDeveloper | 🟢 | develop | ✅ |
+| Fix-60 | Page title hierarchy + sport_id debug | @FrontendDeveloper | 🟢 | develop | ✅ |
+| Fix-61 | Remove nested join from programme sport validation | @FrontendDeveloper | 🟢 | develop | ✅ |
+| Fix-62 | RLS INSERT policy fix + admin client for group_programmes | @FrontendDeveloper | 🟡 | develop | ✅ |
+| Fix-63 | Correct model value group_programmes INSERT | @FrontendDeveloper | 🟢 | develop | ✅ |
+| Fix-64 | Admin client for PATCH handler | @FrontendDeveloper | 🟢 | develop | ✅ |
+| Fix-65 | Admin client for GET programmes + remove nested join | @FrontendDeveloper | 🟡 | develop | ✅ |
+| Fix-66 | Draft count badge on Draft tab | @FrontendDeveloper | 🟢 | develop | ✅ |
+| Fix-58-DB | Add days_of_week integer[] to group_programmes — migration 018 | @DatabaseArchitect | 🟡 | develop | ✅ |
+| Fix-58-DB-api | Accept + return days_of_week[] in POST/PATCH/GET | @BackendDeveloper | 🟡 | develop | ✅ |
+| Fix-58-FE | Send days_of_week array to API in CreateProgramme | @FrontendDeveloper | 🟢 | develop | ✅ |
+| Fix-67-DB | Add venue_name + venue_address to group_programmes — migration 019 | @DatabaseArchitect | 🟢 | develop | ✅ |
+| Fix-67-UI | Add VenueAutocomplete to Create Programme Step 2 | @FrontendDeveloper | 🟡 | develop | ✅ |
+| Fix-68 | Wire Publish + Delete on draft programme cards | @FrontendDeveloper | 🟢 | develop | ✅ |
+| Fix-69 | Replace all browser dialogs with inline UI in Programmes + Availability | @FrontendDeveloper | 🟡 | develop | ✅ |
+| Fix-70 | Add min_participants + cancellation_window_hours to Create Programme | @FrontendDeveloper | 🟢 | develop | ✅ |
+| Fix-71 | Programme card click navigation fixed | @FrontendDeveloper | 🟢 | develop | ✅ |
+| Fix-72 | Programme detail modal with share sheet | @FrontendDeveloper | 🟢 | develop | ✅ |
+| SYNC-10 | Working ethics v1.4 — Claude Code + Claude Design + no browser dialogs | @TechLead | 🟢 | develop | ✅ |
 | CF-06 | Availability screen | @FrontendDeveloper | 🟢 | feature/coach-frontend | ✅ |
 | CF-07 | Profile Hub screen | @FrontendDeveloper | 🟢 | feature/coach-frontend | ✅ |
 | CF-08 | Earnings screen | @FrontendDeveloper | 🟢 | feature/coach-frontend | ✅ |
@@ -334,7 +335,7 @@ other screens within the same task.
 | CF-R01 | Redesign Dashboard — Track 1 priority (deferred — keeping existing design) | Manual | 🟢 | — | ⚪ |
 | CF-R02 | Redesign Bookings list — Track 1 priority (deferred) | Manual | 🟢 | — | ⚪ |
 | CF-R03 | Redesign You're Live! — Track 1 priority (deferred) | Manual | 🟢 | — | ⚪ |
-| CF-D01 | Dashboard screen adjustments — 10 changes (see Notion CF-D01 for full list) | @FrontendDeveloper | � | develop | ⚪ |
+| CF-D01 | Dashboard screen adjustments — 10 changes (see Notion CF-D01 for full list). **NOT committed — no CF-D commits exist on develop as of 21 Apr 2026.** | @FrontendDeveloper | 🟢 | develop | ⚪ |
 | CF-D02 | Schedule screen adjustments | @FrontendDeveloper | 🟢 | develop | ⚪ |
 | CF-D03 | Bookings list screen adjustments | @FrontendDeveloper | 🟢 | develop | ⚪ |
 | CF-D04 | Booking Detail screen adjustments | @FrontendDeveloper | 🟢 | develop | ⚪ |
@@ -438,28 +439,24 @@ Critical tasks required before any coach can go live on the platform.
 
 | ID | Task | Risk | Depends On | Status |
 |---|---|---|---|---|
-| CG-01 | Coach search API — GET /api/coaches public search route (P-09, P-10, P-11) | 🔴 High | CD-03 | ✅ |
+| CG-01 | Coach search API — GET /api/coaches public search route | 🔴 High | CD-03 | ✅ |
 | CG-01b | Coach profile + availability API — GET /api/coaches/[id] and GET /api/coaches/[id]/availability | 🔴 High | CG-01 | ✅ |
 | CG-02 | Coach public profile page — what parents see | 🔴 High | CG-01b | ✅ |
-| Fix-40 | Coach public profile polish — logo, preview link, mobile gallery (note: logo fix required hard refresh Cmd+Shift+R to clear cached .jpeg) | 🟢 Low | CG-02 | ✅ |
-| Fix-43 | Add reviews to coach public profile — API + frontend review cards | 🟡 Medium | CG-02 | ✅ |
-| Fix-41 | Fallback to avatar_url when coach_photos empty on public profile | 🟢 Low | CG-02 | ✅ |
-| Fix-41b | Upgrade Google avatar URL s96-c → s400-c + add image hostnames to next.config.ts | 🟢 Low | Fix-41 | ✅ |
 | Fix-42 | Build coach photo upload UI in Profile Hub | 🟢 Low | CG-02 | ⚪ |
 | CG-03 | Stripe Connect onboarding — real redirect (C-11, C-19) | 🔴 High | CD-03 | ✅ |
-| Fix-44 | Hide profile completion banner when at 100% on dashboard | 🟢 Low | CG-03 | ✅ |
-| Fix-45 | Sync Payment Setup row in Profile Hub to real Stripe Connect status | 🟢 Low | CG-03 | ✅ |
-| CG-04 | Email notifications — booking received, confirmed (B-17) | 🟡 Medium | CG-01 | ✅ |
+| Fix-44 | Hide profile completion banner when at 100% | 🟢 Low | CG-03 | ✅ |
+| Fix-45 | Sync Payment Setup row to real Stripe Connect status | 🟢 Low | CG-03 | ✅ |
+| CG-04 | Email notifications via Resend | 🟡 Medium | CG-01 | ✅ |
 | Fix-46 | Wire group programmes to coach dashboard | 🟢 Low | CG-02 | ✅ |
-| Fix-47 | Fix reviews query using raw slug in UUID column | 🟢 Low | L-UX01 | ✅ |
-| Fix-48 | Use slug in preview button URL on Profile Hub | 🟢 Low | L-UX01 | ✅ |
-| Fix-49 | Fix location data saved to wrong columns during onboarding | 🟢 Low | CG-02 | ✅ |
-| Fix-50 | Move Where I coach section below Qualifications | 🟢 Low | CF-R04c | ✅ |
-| Fix-51 | Pass coach UUID not slug to availability API fetch | 🟢 Low | L-UX01 | ✅ |
-| Fix-52 | Fix UTC timezone day name bug in availability grid | 🟢 Low | CF-R04g | ✅ |
-| CG-05 | Push notifications via OneSignal (B-18) — BLOCKED: requires production deployment + OneSignal account setup. Deferred to after Step 5 booking flow. | 🟡 Medium | CG-01 | 🔴 |
-| CG-06 | Integration tests — all coach API routes (C-23) | 🟡 Medium | CD-03 | ✅ |
-| CG-07 | E2E test — full coach onboarding to profile live (C-24) | 🟡 Medium | CG-01, CG-02 | ⚪ |
+| Fix-47 | Fix reviews query using raw slug | 🟢 Low | L-UX01 | ✅ |
+| Fix-48 | Use slug in preview button URL | 🟢 Low | L-UX01 | ✅ |
+| Fix-49 | Fix location data saved to wrong columns | 🟢 Low | CG-02 | ✅ |
+| Fix-50 | Move Where I coach below Qualifications | 🟢 Low | CF-R04c | ✅ |
+| Fix-51 | Pass coach UUID not slug to availability API | 🟢 Low | L-UX01 | ✅ |
+| Fix-52 | Fix UTC timezone day name bug | 🟢 Low | CF-R04g | ✅ |
+| CG-05 | Push notifications via OneSignal — BLOCKED: requires production deployment | 🟡 Medium | CG-01 | 🔴 |
+| CG-06 | Integration tests — all coach API routes | 🟡 Medium | CD-03 | ✅ |
+| CG-07 | E2E test — full coach onboarding to profile live | 🟡 Medium | CG-01, CG-02 | ⚪ |
 
 ### 3G — Coach Tests
 
@@ -473,6 +470,60 @@ Critical tasks required before any coach can go live on the platform.
 | ID | Task | Agent | Risk | Branch | Status |
 |---|---|---|---|---|---|
 | Refactor-01 | Extract shared coach components — move ThisWeekStrip and TodayLineup from CoachHomeClient.tsx and CoachRightPanel.tsx into src/components/coach/shared/. Both files import from shared location. No visual or behavioural changes. | @FrontendDeveloper | 🟡 | refactor/extract-shared-coach-components | ⚪ |
+
+### 3I — Coach Go-Live Checklist
+
+These are the remaining tasks to complete the coach module 100%
+before going live with real coaches. Ordered by priority.
+
+**Section A — Screen Polish (must do before go-live)**
+
+| ID | Task | Agent | Risk | Status |
+|---|---|---|---|---|
+| CF-D01 | Dashboard adjustments — clickable stat cards, profile bar tone down blue in expanded state | @FrontendDeveloper | 🟢 | ⚪ |
+| CF-D02 | Schedule adjustments — today column tint, session card status borders, 4-type session popovers on click, available slot treatment, FAB pill shape, right panel route-aware | @FrontendDeveloper | 🟢 | ⚪ |
+| CF-02a | Create Session modal on Schedule — manual 1-on-1 slot creation from FAB | @FrontendDeveloper | 🟡 | ⚪ |
+| CF-D03 | Bookings list adjustments | @FrontendDeveloper | 🟢 | ⚪ |
+| CF-D04 | Booking Detail adjustments | @FrontendDeveloper | 🟢 | ⚪ |
+| CF-D05 | Programmes screen adjustments | @FrontendDeveloper | 🟢 | ⚪ |
+| CF-D06 | Availability adjustments | @FrontendDeveloper | 🟢 | ⚪ |
+| CF-D07 | Profile Hub adjustments — includes Fix-42 photo upload UI | @FrontendDeveloper | 🟢 | ⚪ |
+| CF-D08 | Earnings adjustments | @FrontendDeveloper | 🟢 | ⚪ |
+| CF-D09 | Get Paid adjustments | @FrontendDeveloper | 🟢 | ⚪ |
+| CF-D11b | Onboarding Profile step — sticky save bar | @FrontendDeveloper | 🟢 | ⚪ |
+| CF-D13 | Qualifications step — Lucide icons + tile category selector | @FrontendDeveloper | 🟢 | ⚪ |
+
+**Section B — Database Tech Debt**
+
+| ID | Task | Agent | Risk | Status |
+|---|---|---|---|---|
+| CF-05c-DB | Add participant_name column to group_programme_enrolments + update roster API | @DatabaseArchitect | 🟢 | ⚪ |
+| Fix-38c | Add venue_id FK to availability_templates + wire venue saving | @DatabaseArchitect | 🟡 | ⚪ |
+
+**Section C — Tests**
+
+| ID | Task | Agent | Risk | Status |
+|---|---|---|---|---|
+| CG-07 | E2E test — full coach onboarding to profile live | @QAEngineer | 🟡 | ⚪ |
+| A-15b | E2E test — OAuth sign-up → user_profiles row created | @QAEngineer | 🟢 | ⚪ |
+
+**Section D — Deferred to Step 7 Pre-Launch**
+
+| ID | Task | Status |
+|---|---|---|
+| Fix-72-redesign | Programme detail modal redesign (rated 1/10) | ⚪ Step 7 |
+| CF-R01 | Dashboard full redesign | ⚪ Step 7 |
+| CF-R02 | Bookings list full redesign | ⚪ Step 7 |
+| CF-R03 | You're Live! screen redesign | ⚪ Step 7 |
+| A-06-REDESIGN | Auth screens redesign | ⚪ Step 7 |
+| UI Consistency Audit | Full pass across all screens vs design system | ⚪ Step 7 |
+
+**Section E — Blocked**
+
+| ID | Task | Blocked on |
+|---|---|---|
+| CG-05 | Push notifications via OneSignal | Production deployment |
+| C-12 | DBS submission route | Product decision on Phase 1 scope |
 
 ---
 
@@ -763,7 +814,7 @@ Three-sided marketplace — coaches, parents, and venues.
 | Step 1B — Migrations | Phase 1 | 17 | 17 ✅ | 0 |
 | Step 1C — Design Foundation | Phase 1 | 6 | 6 ✅ | 0 |
 | Step 2 — Auth | Phase 1 | 15 | 15 ✅ | 0 |
-| Step 3 — Coach | Phase 1 | 72 | 60 ✅ | 12 |
+| Step 3 — Coach | Phase 1 | 95 | 72 ✅ | 23 |
 | Step 4 — Parent & Player | Phase 1 | 21 | 0 | 21 |
 | Step 5 — Booking & Payments | Phase 1 | 42 | 0 | 42 |
 | Step 6 — Admin | Phase 1 | 24 | 0 | 24 |
