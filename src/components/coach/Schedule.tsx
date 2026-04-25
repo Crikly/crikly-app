@@ -17,13 +17,20 @@ interface AvailabilityResponse {
   price_override_pence: number | null
   session_type_id: string | null
   session_type_name: string | null
+  is_recurring: boolean
+  specific_date: string | null
   created_at: string
+}
+
+interface SportOption {
+  sport_id: string
+  sport_name: string
 }
 
 interface EventBlockProps {
   top: number
   height: number
-  type: 'confirmed' | 'programme' | 'pending' | 'blocked' | 'available'
+  type: 'confirmed' | 'programme' | 'pending' | 'blocked' | 'available' | 'adhoc'
   title: string
   subtitle?: string
   sessionId?: string
@@ -66,6 +73,11 @@ function EventBlock({ top, height, type, title, subtitle, sessionId, onCardClick
       textClass = 'text-[#0F6E56]'
       borderClass = 'border border-dashed border-[#1D9E75] hover:border-solid hover:bg-[#F0FAF6] cursor-pointer'
       break
+    case 'adhoc':
+      bgClass = 'bg-teal-100'
+      textClass = 'text-teal-900'
+      leftBorderClass = 'border-l-[3px] border-l-teal-500'
+      break
   }
 
   // CF-D02b CHANGE 1 & 2: Handle card click
@@ -84,7 +96,7 @@ function EventBlock({ top, height, type, title, subtitle, sessionId, onCardClick
       onClick={handleClick}
     >
       {/* CHANGE 3: Hover quick actions */}
-      {type !== 'available' && type !== 'blocked' && (
+      {type !== 'available' && type !== 'adhoc' && type !== 'blocked' && (
         <div className="quick-actions absolute top-1 right-1 flex gap-1 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity duration-150">
           <button onClick={() => {/* TODO CF-D02: wire View quick action */}} className="text-[8px] px-1 py-0.5 rounded-sm bg-white/75" style={{ color: 'inherit' }}>View</button>
           <button onClick={() => {/* TODO CF-D02: wire Message quick action */}} className="text-[8px] px-1 py-0.5 rounded-sm bg-white/75" style={{ color: 'inherit' }}>Msg</button>
@@ -96,7 +108,7 @@ function EventBlock({ top, height, type, title, subtitle, sessionId, onCardClick
       ) : (
         <>
           <div className="text-[10px] font-medium leading-tight truncate">{type === 'available' ? '+ Add session' : title}</div>
-          {subtitle && type !== 'available' && <div className="text-[9px] leading-tight truncate mt-0.5" style={{ opacity: 0.75 }}>{subtitle}</div>}
+          {subtitle && type !== 'available' && type !== 'adhoc' && <div className="text-[9px] leading-tight truncate mt-0.5" style={{ opacity: 0.75 }}>{subtitle}</div>}
         </>
       )}
     </div>
@@ -147,18 +159,29 @@ export function Schedule() {
   // CI-01: Increment to force bookings re-fetch after approve/decline
   const [refreshKey, setRefreshKey] = useState(0)
 
-  // CD-12: Fetch availability data on mount
+  // CF-02a: Ad hoc modal state
+  const [adHocStep, setAdHocStep] = useState<'menu' | 'form'>('menu')
+  const [adHocDate, setAdHocDate] = useState('')
+  const [adHocSportId, setAdHocSportId] = useState('')
+  const [adHocStartTime, setAdHocStartTime] = useState('09:00')
+  const [adHocEndTime, setAdHocEndTime] = useState('10:00')
+  const [adHocNotes, setAdHocNotes] = useState('')
+  const [adHocSubmitting, setAdHocSubmitting] = useState(false)
+  const [adHocError, setAdHocError] = useState<string | null>(null)
+  const [sports, setSports] = useState<SportOption[]>([])
+
+  // CD-12: Fetch availability data on mount and after ad hoc submit
   useEffect(() => {
     const fetchAvailability = async () => {
       try {
         setLoading(true)
         setError(null)
-        
+
         const response = await fetch('/api/coaches/availability')
         if (!response.ok) {
           throw new Error('Failed to fetch availability')
         }
-        
+
         const data = await response.json()
         setAvailability(data.availability || [])
       } catch (err) {
@@ -168,9 +191,27 @@ export function Schedule() {
         setLoading(false)
       }
     }
-    
+
     fetchAvailability()
-  }, [])
+  }, [refreshKey])
+
+  // CF-02a: Fetch coach sports when add modal opens
+  useEffect(() => {
+    if (!isAddModalOpen || sports.length > 0) return
+    const fetchSports = async () => {
+      try {
+        const res = await fetch('/api/coaches/sports')
+        if (!res.ok) return
+        const data = await res.json() as { sports: SportOption[] }
+        setSports(data.sports || [])
+        if (data.sports?.length > 0) setAdHocSportId(data.sports[0].sport_id)
+      } catch {
+        // non-critical
+      }
+    }
+    fetchSports()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAddModalOpen])
   
   useEffect(() => {
     if (gridRef.current) {
@@ -321,6 +362,50 @@ export function Schedule() {
     })
   }
 
+  // CF-02a: Submit ad hoc slot
+  const submitAdHoc = async () => {
+    setAdHocError(null)
+    if (!adHocDate) { setAdHocError('Please select a date.'); return }
+    if (!adHocStartTime || !adHocEndTime) { setAdHocError('Please set start and end times.'); return }
+    const [sh, sm] = adHocStartTime.split(':').map(Number)
+    const [eh, em] = adHocEndTime.split(':').map(Number)
+    if (eh * 60 + em <= sh * 60 + sm) { setAdHocError('End time must be after start time.'); return }
+
+    const dateObj = new Date(`${adHocDate}T00:00:00`)
+    const dayOfWeek = dateObj.getDay()
+
+    setAdHocSubmitting(true)
+    try {
+      const res = await fetch('/api/coaches/availability', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          day_of_week: dayOfWeek,
+          start_time: adHocStartTime,
+          end_time: adHocEndTime,
+          sport_id: adHocSportId || null,
+          is_recurring: false,
+          specific_date: adHocDate,
+        }),
+      })
+      const data = await res.json() as { error?: string; message?: string }
+      if (!res.ok) {
+        setAdHocError(data.message ?? data.error ?? 'Failed to save slot.')
+        return
+      }
+      setIsAddModalOpen(false)
+      setAdHocStep('menu')
+      setAdHocDate('')
+      setAdHocNotes('')
+      setAdHocError(null)
+      setRefreshKey(k => k + 1)
+    } catch {
+      setAdHocError('Network error — please try again.')
+    } finally {
+      setAdHocSubmitting(false)
+    }
+  }
+
   const hours = Array.from({ length: 17 }, (_, i) => i + 6)
 
   // Fix-26: Dynamic week calculation based on weekOffset
@@ -419,6 +504,7 @@ export function Schedule() {
                 <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-sm bg-purple-600" /><span className="text-[10px] text-gray-500">Programme</span></div>
                 <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-sm bg-amber-400" /><span className="text-[10px] text-gray-500">Pending</span></div>
                 <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-sm bg-gray-300" /><span className="text-[10px] text-gray-500">Blocked</span></div>
+                <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-sm bg-teal-500" /><span className="text-[10px] text-gray-500">Ad hoc</span></div>
               </div>
             </div>
           </div>
@@ -514,13 +600,18 @@ export function Schedule() {
                           // Fix-26: Dynamic date string with month
                           const dateStr = `${day.name} ${day.date} ${day.fullDate.toLocaleDateString('en-GB', { month: 'short' })}`
                           
+                          const blockType = block.is_recurring === false ? 'adhoc' : 'available'
+                          const blockTitle = block.is_recurring === false
+                            ? (block.sport_name ? `Ad hoc · ${block.sport_name}` : 'Ad hoc slot')
+                            : 'Available'
+
                           return (
                             <EventBlock
                               key={block.id}
                               top={topPosition}
                               height={heightPx}
-                              type="available"
-                              title="Available"
+                              type={blockType}
+                              title={blockTitle}
                               sessionId={`slot-${day.name.toLowerCase()}-${block.id}`}
                               onCardClick={(e) => handleSlotClick(e, dateStr, timeStr)}
                             />
@@ -590,30 +681,9 @@ export function Schedule() {
             <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-white to-transparent pointer-events-none z-20 rounded-b-xl" />
           </div>
           
-          {/* CF-D02b CHANGE 3: Add button below grid */}
+          {/* CF-02a: FAB opens add modal */}
           <button
-            onClick={(e) => {
-              // CF-D02d BUG FIX 3: Set source to 'button' for editable date
-              // CF-D02h FIX 1: Use fixed positioning with viewport coordinates
-              // CF-D02i: Centre in main content area
-              // CF-D02j: Update for 380px popover width
-              
-              // Centre popover in main content area
-              const mainWidth = window.innerWidth - SIDEBAR_WIDTH - RIGHT_PANEL_WIDTH
-              const popoverX = SIDEBAR_WIDTH + (mainWidth / 2) - 190 // 190 = half of 380px popover width
-              const popoverY = window.innerHeight * 0.25
-              
-              // Fix-26: Dynamic today date
-              const todayDay = days.find(d => d.isToday) || days[0]
-              setActivePopover({
-                type: 'creation',
-                source: 'button',
-                date: `${todayDay.name} ${todayDay.date} ${new Date().toLocaleDateString('en-GB', { month: 'short' })}`,
-                time: '09:00',
-                x: popoverX,
-                y: popoverY
-              })
-            }}
+            onClick={() => { setAdHocStep('menu'); setAdHocError(null); setIsAddModalOpen(true) }}
             className="self-end mt-3 mb-2 bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-full px-[18px] py-2 flex items-center gap-2 transition-colors text-[13px] font-medium"
             style={{ boxShadow: '0 2px 8px rgba(0,119,204,0.20)' }}
           >
@@ -648,29 +718,153 @@ export function Schedule() {
 
       {/* ADD MODAL */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 bg-black/40 z-[100] flex items-end sm:items-center justify-center" onClick={() => setIsAddModalOpen(false)}>
+        <div className="fixed inset-0 bg-black/40 z-[100] flex items-end sm:items-center justify-center" onClick={() => { setIsAddModalOpen(false); setAdHocStep('menu'); setAdHocError(null) }}>
           <div className="bg-white w-full max-w-[420px] rounded-t-[24px] sm:rounded-[24px] shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
             <div className="p-6">
-              <h3 className="text-[20px] font-bold text-gray-900 mb-6">What would you like to add?</h3>
-              <div className="space-y-3">
-                {[
-                  { icon: <User size={20} />, title: 'Ad hoc session', sub: 'One-off 1-on-1 or small group', blue: true },
-                  { icon: <RefreshCw size={20} />, title: 'Recurring session', sub: 'Repeats weekly or custom schedule', blue: true },
-                  { icon: <Users size={20} />, title: 'New programme', sub: 'Group sessions with fixed spots', blue: true },
-                  { icon: <Ban size={20} />, title: 'Block time', sub: 'Mark time as unavailable', blue: false },
-                ].map(({ icon, title, sub, blue }) => (
-                  <button key={title} className={`w-full flex items-center text-left p-4 rounded-xl border transition-colors group ${blue ? 'border-gray-100 hover:border-[#0077CC] hover:bg-[#EFF6FF]' : 'border-gray-100 hover:border-gray-300 hover:bg-gray-50'}`}>
-                    <div className={`w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center mr-4 shrink-0 text-gray-600 transition-colors ${blue ? 'group-hover:bg-white group-hover:text-[#0077CC]' : 'group-hover:bg-white'}`}>{icon}</div>
-                    <div>
-                      <div className="text-[15px] font-bold text-gray-900">{title}</div>
-                      <div className="text-[13px] text-gray-500 mt-0.5">{sub}</div>
-                    </div>
+
+              {adHocStep === 'menu' && (
+                <>
+                  <h3 className="text-[20px] font-bold text-gray-900 mb-6">What would you like to add?</h3>
+                  <div className="space-y-3">
+                    <button
+                      onClick={() => setAdHocStep('form')}
+                      className="w-full flex items-center text-left p-4 rounded-xl border border-gray-100 hover:border-[#0077CC] hover:bg-[#EFF6FF] transition-colors group"
+                    >
+                      <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center mr-4 shrink-0 text-gray-600 transition-colors group-hover:bg-white group-hover:text-[#0077CC]"><User size={20} /></div>
+                      <div>
+                        <div className="text-[15px] font-bold text-gray-900">Ad hoc slot</div>
+                        <div className="text-[13px] text-gray-500 mt-0.5">One-off availability on a specific date</div>
+                      </div>
+                    </button>
+
+                    <button disabled className="w-full flex items-center text-left p-4 rounded-xl border border-gray-100 opacity-50 cursor-not-allowed">
+                      <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center mr-4 shrink-0 text-gray-600"><RefreshCw size={20} /></div>
+                      <div>
+                        <div className="text-[15px] font-bold text-gray-900">Recurring session <span className="text-[11px] font-normal text-gray-400 ml-1">Coming soon</span></div>
+                        <div className="text-[13px] text-gray-500 mt-0.5">Repeats weekly or custom schedule</div>
+                      </div>
+                    </button>
+
+                    <button
+                      onClick={() => { setIsAddModalOpen(false); setAdHocStep('menu'); router.push('/coach/programmes/new') }}
+                      className="w-full flex items-center text-left p-4 rounded-xl border border-gray-100 hover:border-[#0077CC] hover:bg-[#EFF6FF] transition-colors group"
+                    >
+                      <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center mr-4 shrink-0 text-gray-600 transition-colors group-hover:bg-white group-hover:text-[#0077CC]"><Users size={20} /></div>
+                      <div>
+                        <div className="text-[15px] font-bold text-gray-900">New programme</div>
+                        <div className="text-[13px] text-gray-500 mt-0.5">Group sessions with fixed spots</div>
+                      </div>
+                    </button>
+
+                    <button
+                      onClick={() => { setIsAddModalOpen(false); setAdHocStep('menu'); router.push('/coach/availability') }}
+                      className="w-full flex items-center text-left p-4 rounded-xl border border-gray-100 hover:border-gray-300 hover:bg-gray-50 transition-colors group"
+                    >
+                      <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center mr-4 shrink-0 text-gray-600 group-hover:bg-white"><Ban size={20} /></div>
+                      <div>
+                        <div className="text-[15px] font-bold text-gray-900">Block time</div>
+                        <div className="text-[13px] text-gray-500 mt-0.5">Mark time as unavailable</div>
+                      </div>
+                    </button>
+                  </div>
+                  <button onClick={() => setIsAddModalOpen(false)} className="w-full mt-6 py-2 text-center text-[15px] font-medium text-gray-500 hover:text-gray-900 transition-colors">
+                    Cancel
                   </button>
-                ))}
-              </div>
-              <button onClick={() => setIsAddModalOpen(false)} className="w-full mt-6 py-2 text-center text-[15px] font-medium text-gray-500 hover:text-gray-900 transition-colors">
-                Cancel
-              </button>
+                </>
+              )}
+
+              {adHocStep === 'form' && (
+                <>
+                  <div className="flex items-center gap-2 mb-5">
+                    <button onClick={() => { setAdHocStep('menu'); setAdHocError(null) }} className="text-gray-400 hover:text-gray-700">
+                      <ChevronLeft size={20} />
+                    </button>
+                    <h3 className="text-[20px] font-bold text-gray-900">Ad hoc slot</h3>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-[12px] font-medium text-gray-700 mb-1">Date</label>
+                      <input
+                        type="date"
+                        value={adHocDate}
+                        min={new Date().toISOString().split('T')[0]}
+                        onChange={e => setAdHocDate(e.target.value)}
+                        className="w-full text-[13px] border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#0077CC]"
+                      />
+                    </div>
+
+                    {sports.length > 0 && (
+                      <div>
+                        <label className="block text-[12px] font-medium text-gray-700 mb-1">Sport</label>
+                        <select
+                          value={adHocSportId}
+                          onChange={e => setAdHocSportId(e.target.value)}
+                          className="w-full text-[13px] border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#0077CC]"
+                        >
+                          {sports.map(s => (
+                            <option key={s.sport_id} value={s.sport_id}>{s.sport_name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    <div className="flex gap-3">
+                      <div className="flex-1">
+                        <label className="block text-[12px] font-medium text-gray-700 mb-1">Start</label>
+                        <input
+                          type="time"
+                          value={adHocStartTime}
+                          onChange={e => setAdHocStartTime(e.target.value)}
+                          className="w-full text-[13px] border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#0077CC]"
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <label className="block text-[12px] font-medium text-gray-700 mb-1">End</label>
+                        <input
+                          type="time"
+                          value={adHocEndTime}
+                          onChange={e => setAdHocEndTime(e.target.value)}
+                          className="w-full text-[13px] border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#0077CC]"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[12px] font-medium text-gray-700 mb-1">Notes <span className="text-gray-400 font-normal">(optional)</span></label>
+                      <input
+                        type="text"
+                        value={adHocNotes}
+                        onChange={e => setAdHocNotes(e.target.value)}
+                        placeholder="e.g. Available at Oval ground only"
+                        className="w-full text-[13px] border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#0077CC]"
+                      />
+                    </div>
+
+                    {adHocError && (
+                      <p className="text-[12px] text-red-600">{adHocError}</p>
+                    )}
+                  </div>
+
+                  <div className="flex gap-3 mt-6">
+                    <button
+                      onClick={() => { setAdHocStep('menu'); setAdHocError(null) }}
+                      className="flex-1 py-2.5 border border-gray-200 rounded-xl text-[14px] font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                    >
+                      Back
+                    </button>
+                    <button
+                      onClick={submitAdHoc}
+                      disabled={adHocSubmitting}
+                      className="flex-1 py-2.5 bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-xl text-[14px] font-medium transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
+                    >
+                      {adHocSubmitting ? <RefreshCw size={14} className="animate-spin" /> : null}
+                      Add slot
+                    </button>
+                  </div>
+                </>
+              )}
+
             </div>
           </div>
         </div>

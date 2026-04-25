@@ -351,7 +351,7 @@ other screens within the same task.
 | CF-D11c | Location field — Google Places autocomplete on ProfileStep and ProfileEdit | @FrontendDeveloper | 🟢 | develop | ✅ |
 | CF-D12 | Onboarding sport selection + pricing — save bar pattern (back left, save right, no border-top) | @FrontendDeveloper | 🟢 | develop | ✅ |
 | CF-D13 | Onboarding qualifications — replace emoji icons with Lucide, replace category dropdown with tiles | @FrontendDeveloper | 🟢 | develop | ⚪ |
-| CF-02a | Create Session UI on Schedule screen — manual 1-on-1 slot creation modal | @FrontendDeveloper | 🟡 | develop | ⚪ |
+| CF-02a | Create Session UI on Schedule screen — manual 1-on-1 slot creation modal | @FrontendDeveloper | 🟡 | develop | ✅ |
 | CF-R04 | Coach public profile design alignment — align hero name typography, subtitle, location display, DBS badge, trust row, about fact sidebar, booking card session picker to Claude Design spec. Read docs/design/coach-profile.html. | @FrontendDeveloper | 🟢 | — | ⚪ |
 | CF-R04a | Coach public profile design alignment Phase 1 — location fallback to postcode, teal DBS pill badge near name, 4-stat trust row grid | @FrontendDeveloper | 🟢 | develop | ✅ |
 | CF-R04b | Coach public profile design alignment Phase 2 — Fraunces serif name, inline meta row, two-column about with fact sidebar, session picker in booking card | @FrontendDeveloper | 🟢 | develop | ✅ |
@@ -485,7 +485,7 @@ before going live with real coaches. Ordered by priority.
 |---|---|---|---|---|
 | CF-D01 | Dashboard adjustments — clickable stat cards, profile bar tone down blue in expanded state | @FrontendDeveloper | 🟢 | ⚪ |
 | CF-D02 | Schedule adjustments — today column tint, session card status borders, 4-type session popovers on click, available slot treatment, FAB pill shape, right panel route-aware | @FrontendDeveloper | 🟢 | ⚪ |
-| CF-02a | Create Session modal on Schedule — manual 1-on-1 slot creation from FAB | @FrontendDeveloper | 🟡 | ⚪ |
+| CF-02a | Create Session modal on Schedule — manual 1-on-1 slot creation from FAB | @FrontendDeveloper | 🟡 | ✅ |
 | CF-D03 | Bookings list adjustments | @FrontendDeveloper | 🟢 | ⚪ |
 | CF-D04 | Booking Detail adjustments | @FrontendDeveloper | 🟢 | ⚪ |
 | CF-D05 | Programmes screen adjustments | @FrontendDeveloper | 🟢 | ⚪ |

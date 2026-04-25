@@ -17,6 +17,8 @@ interface AvailabilityResponse {
   session_type_name: string | null
   coach_venue_id: string | null
   venue_name: string | null
+  is_recurring: boolean
+  specific_date: string | null
   created_at: string
 }
 
@@ -190,6 +192,8 @@ export async function GET(
         session_type_name: sessionTypeData ? `${sessionTypeData.duration_minutes}min` : null,
         coach_venue_id: block.coach_venue_id,
         venue_name: block.coach_venue_id ? (venueMap[block.coach_venue_id] ?? null) : null,
+        is_recurring: block.is_recurring,
+        specific_date: block.specific_date ?? null,
         created_at: block.created_at,
       }
     })
@@ -438,6 +442,8 @@ export async function POST(
       price_override_pence?: number | null
       session_type_id?: string | null
       coach_venue_id?: string | null
+      is_recurring?: boolean
+      specific_date?: string | null
     } = {
       coach_profile_id: coachProfile.id,
       day_of_week: body.day_of_week,
@@ -459,6 +465,14 @@ export async function POST(
 
     if (body.coach_venue_id !== undefined) {
       insertData.coach_venue_id = body.coach_venue_id
+    }
+
+    if (body.is_recurring !== undefined) {
+      insertData.is_recurring = body.is_recurring
+    }
+
+    if (body.specific_date !== undefined) {
+      insertData.specific_date = body.specific_date
     }
 
     // Fix-16d: Upsert instead of insert to handle conflicts on (coach_profile_id, day_of_week, start_time)
@@ -520,6 +534,8 @@ export async function POST(
       session_type_name: sessionTypeData ? `${sessionTypeData.duration_minutes}min` : null,
       coach_venue_id: newBlock.coach_venue_id,
       venue_name: venueData?.name ?? null,
+      is_recurring: newBlock.is_recurring,
+      specific_date: newBlock.specific_date ?? null,
       created_at: newBlock.created_at,
     }
 
