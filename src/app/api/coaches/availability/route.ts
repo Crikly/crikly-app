@@ -336,7 +336,7 @@ export async function POST(
     if (body.sport_id) {
       const { data: coachSport, error: sportCheckError } = await supabase
         .from('coach_sports')
-        .select('id, sports!inner(name)')
+        .select('id')
         .eq('coach_profile_id', coachProfile.id)
         .eq('sport_id', body.sport_id)
         .single()
