@@ -1,8 +1,8 @@
 # Crikly — Working Ethics & Collaboration Standards
 
-**Version:** 1.4
-**Last Updated:** 21 April 2026
-**Changed:** SYNC-10 — Claude Code replaces Windsurf, Claude Design workflow added, browser dialogs rule added
+**Version:** 1.5
+**Last Updated:** 25 April 2026
+**Changed:** SYNC-12 — Plan approval rule added: Claude Code must not self-approve plans
 **Maintainer:** Lasith Jayarathne
 **Review:** After each phase completion
 
@@ -506,6 +506,26 @@ Signs Claude Code is going off track:
 - It modifies files not listed in the prompt
 - It asks questions instead of following the spec
 - Output doesn't match the agent role
+
+### Plan Approval — Non-Negotiable Rule
+
+When a prompt says "tell me your plan, wait for approval" — Claude Code
+MUST stop after presenting the plan and wait for an explicit approval
+message from Lasith before writing any code.
+
+The following do NOT count as approval:
+- Claude Code writing "Approved — building now" in its own plan
+- Claude Code interpreting its own plan as approved
+- Any self-generated approval text
+
+The ONLY valid approval is an explicit message from Lasith such as:
+"approved", "go ahead", "looks good, proceed", or similar.
+
+If Claude Code proceeds without explicit approval it has violated
+this rule. The output must be discarded and the task restarted.
+
+This rule was added after Fix-42b (25 April 2026) when Claude Code
+self-approved its own plan and proceeded without waiting.
 
 What to do:
 1. Stop the session immediately
