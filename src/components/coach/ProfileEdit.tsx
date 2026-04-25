@@ -1,7 +1,7 @@
 'use client'
 import React, { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { ChevronRight, User, Tag, Award, Calendar, ShieldCheck, CreditCard, CheckCircle2, Star, Share2, ExternalLink, Circle, Camera } from 'lucide-react'
+import { ChevronRight, User, Tag, Award, Calendar, ShieldCheck, CreditCard, CheckCircle2, Star, Share2, ExternalLink, Circle, Camera, LayoutGrid, X, Plus } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
 // CD-10b: API response type
@@ -50,6 +50,9 @@ export function ProfileEdit() {
   const [photoUploading, setPhotoUploading] = useState(false)
   const [photoError, setPhotoError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Fix-42b: Gallery modal state
+  const [galleryOpen, setGalleryOpen] = useState(false)
 
   // CD-10b: Fetch profile data on mount
   useEffect(() => {
@@ -401,13 +404,19 @@ export function ProfileEdit() {
                 >
                   Preview <ExternalLink size={10} />
                 </button>
-                <button 
+                <button
                   onClick={() => {
                     // TODO CF-D07: wire to share profile
                   }}
                   className="px-3 py-1.5 bg-white border border-gray-200 text-gray-600 text-[11px] font-medium rounded-full hover:bg-gray-50 transition-colors flex items-center gap-1"
                 >
                   <Share2 size={10} /> Share
+                </button>
+                <button
+                  onClick={() => setGalleryOpen(true)}
+                  className="px-3 py-1.5 bg-white border border-gray-200 text-gray-600 text-[11px] font-medium rounded-full hover:bg-gray-50 transition-colors flex items-center gap-1"
+                >
+                  <LayoutGrid size={10} /> Gallery
                 </button>
               </div>
             </div>
@@ -495,6 +504,14 @@ export function ProfileEdit() {
               )
             })}
           </div>
+          {/* Fix-42b: Gallery modal */}
+          {galleryOpen && (
+            <GalleryModal
+              coachProfileId={profile.id}
+              onClose={() => setGalleryOpen(false)}
+            />
+          )}
+
           {/* CF-D07 CHANGE 3: Account section with calmer tone */}
           {/* CF-D07b POLISH 5: Increased margin-top to 24px for more separation */}
           <div className="bg-white rounded-xl shadow-sm overflow-hidden mt-6">
@@ -525,6 +542,226 @@ export function ProfileEdit() {
           </div>
           </>
           )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Gallery Modal (Fix-42b) ──────────────────────────────────────────────────
+
+interface GalleryPhoto {
+  id: string
+  photo_url: string
+  sort_order: number
+  is_primary: boolean
+}
+
+const MAX_GALLERY_PHOTOS = 10
+
+function GalleryModal({
+  coachProfileId,
+  onClose,
+}: {
+  coachProfileId: string
+  onClose: () => void
+}) {
+  const [photos, setPhotos] = useState<GalleryPhoto[]>([])
+  const [loadingPhotos, setLoadingPhotos] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState<string | null>(null)
+  const galleryFileRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        setLoadingPhotos(true)
+        const res = await fetch('/api/coaches/photos')
+        if (!res.ok) throw new Error()
+        const data = await res.json()
+        setPhotos(data.photos || [])
+      } catch {
+        setLoadError('Failed to load photos.')
+      } finally {
+        setLoadingPhotos(false)
+      }
+    }
+    load()
+  }, [])
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+
+    if (file.size > 5 * 1024 * 1024) {
+      setUploadError('Photo must be under 5MB.')
+      return
+    }
+
+    setUploadError(null)
+    setUploading(true)
+
+    try {
+      const supabase = createClient()
+      const ext = file.name.split('.').pop() ?? 'jpg'
+      const path = `gallery/${coachProfileId}/${Date.now()}.${ext}`
+
+      const { error: uploadErr } = await supabase.storage
+        .from('coach-photos')
+        .upload(path, file, { upsert: false, contentType: file.type })
+
+      if (uploadErr) throw uploadErr
+
+      const { data: urlData } = supabase.storage
+        .from('coach-photos')
+        .getPublicUrl(path)
+
+      const res = await fetch('/api/coaches/photos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ photo_url: urlData.publicUrl, is_primary: false }),
+      })
+
+      if (!res.ok) throw new Error('Failed to save photo')
+
+      const refreshRes = await fetch('/api/coaches/photos')
+      if (refreshRes.ok) {
+        const data = await refreshRes.json()
+        setPhotos(data.photos || [])
+      }
+    } catch (err) {
+      console.error('[GalleryModal] upload error:', err)
+      setUploadError('Upload failed. Please try again.')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const handleDelete = async (photoId: string) => {
+    setDeleting(photoId)
+    try {
+      const res = await fetch('/api/coaches/photos', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ photo_id: photoId }),
+      })
+      if (!res.ok) throw new Error()
+      setPhotos(prev => prev.filter(p => p.id !== photoId))
+      setDeleteConfirmId(null)
+    } catch {
+      setUploadError('Failed to delete photo. Please try again.')
+      setDeleteConfirmId(null)
+    } finally {
+      setDeleting(null)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div
+        className="relative w-full max-w-lg max-h-[85vh] bg-white rounded-2xl flex flex-col shadow-2xl mx-4"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-gray-100">
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-[18px] font-bold text-gray-900">Gallery</h2>
+              <span className="text-[14px] text-gray-400 font-medium">{photos.length} / {MAX_GALLERY_PHOTOS}</span>
+            </div>
+            <p className="text-[12px] text-gray-400 mt-0.5">These photos appear on your public profile</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-colors"
+          >
+            <X size={16} className="text-gray-500" />
+          </button>
+        </div>
+
+        {/* Scrollable body */}
+        <div className="flex-1 overflow-y-auto px-5 py-4">
+          {loadingPhotos ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="w-7 h-7 border-2 border-gray-200 border-t-[#0077CC] rounded-full animate-spin" />
+            </div>
+          ) : loadError ? (
+            <p className="text-[13px] text-red-500 text-center py-8">{loadError}</p>
+          ) : (
+            <div className="grid grid-cols-3 gap-2">
+              {photos.map(photo => (
+                <div key={photo.id} className="relative aspect-square rounded-xl overflow-hidden bg-gray-100">
+                  <img src={photo.photo_url} alt="" className="w-full h-full object-cover" />
+                  {deleteConfirmId === photo.id ? (
+                    <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center gap-2 p-2">
+                      <p className="text-[10px] text-white font-medium text-center">Remove this photo?</p>
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => setDeleteConfirmId(null)}
+                          className="px-2 py-1 text-[10px] font-medium text-white border border-white/50 rounded-md hover:bg-white/20 transition-colors"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={() => handleDelete(photo.id)}
+                          disabled={deleting === photo.id}
+                          className="px-2 py-1 text-[10px] font-medium text-white bg-red-600 rounded-md hover:bg-red-700 transition-colors disabled:opacity-50"
+                        >
+                          {deleting === photo.id ? '…' : 'Remove'}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setDeleteConfirmId(photo.id)}
+                      className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-red-500 flex items-center justify-center hover:bg-red-600 transition-colors shadow-sm"
+                    >
+                      <X size={11} className="text-white" />
+                    </button>
+                  )}
+                </div>
+              ))}
+
+              {photos.length < MAX_GALLERY_PHOTOS && (
+                <button
+                  onClick={() => !uploading && galleryFileRef.current?.click()}
+                  disabled={uploading}
+                  className="aspect-square rounded-xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center gap-1.5 hover:border-[#0077CC] hover:bg-blue-50/50 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {uploading ? (
+                    <div className="w-6 h-6 border-2 border-gray-300 border-t-[#0077CC] rounded-full animate-spin" />
+                  ) : (
+                    <>
+                      <Plus size={20} className="text-gray-400" />
+                      <span className="text-[11px] text-gray-400 font-medium">Add photo</span>
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+          )}
+
+          {uploadError && (
+            <p className="text-[12px] text-red-500 mt-3 text-center">{uploadError}</p>
+          )}
+
+          <input
+            ref={galleryFileRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className="hidden"
+            onChange={handleUpload}
+          />
+        </div>
+
+        {/* Sticky footer */}
+        <div className="px-5 py-3 border-t border-gray-100">
+          <p className="text-[11px] text-gray-400 text-center">Photos appear randomly on your public profile</p>
         </div>
       </div>
     </div>

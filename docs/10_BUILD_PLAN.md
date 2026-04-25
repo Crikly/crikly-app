@@ -434,6 +434,7 @@ Branch: feature/coach-data (open from develop before starting CD-01)
 | Fix-38b | Add Google Places autocomplete to all venue fields — availability block + session creation. Types: establishment + geocode. Reuse or extend LocationAutocomplete.tsx | @FrontendDeveloper | 🟢 | develop | ✅ |
 | Fix-38c | Add venue_id FK to availability_templates migration + wire venue saving to coach_venues table | @DatabaseArchitect | 🟡 | develop | ✅ |
 | Fix-42 | Profile photo upload UI in ProfileEdit — click avatar to upload to Supabase Storage coach-photos bucket, PATCH avatar_url on profile | @FrontendDeveloper | 🟡 | develop | ✅ |
+| Fix-42b | Coach gallery modal — 10 photos max, upload + delete, random shuffle on public profile | @FrontendDeveloper | 🟡 | develop | ✅ |
 
 ### 3F — Coach Go-Live Gaps (CG tasks)
 
@@ -444,7 +445,7 @@ Critical tasks required before any coach can go live on the platform.
 | CG-01 | Coach search API — GET /api/coaches public search route | 🔴 High | CD-03 | ✅ |
 | CG-01b | Coach profile + availability API — GET /api/coaches/[id] and GET /api/coaches/[id]/availability | 🔴 High | CG-01 | ✅ |
 | CG-02 | Coach public profile page — what parents see | 🔴 High | CG-01b | ✅ |
-| Fix-42 | Build coach photo upload UI in Profile Hub | 🟢 Low | CG-02 | ⚪ |
+| Fix-42 | Build coach photo upload UI in Profile Hub | 🟢 Low | CG-02 | ✅ |
 | CG-03 | Stripe Connect onboarding — real redirect (C-11, C-19) | 🔴 High | CD-03 | ✅ |
 | Fix-44 | Hide profile completion banner when at 100% | 🟢 Low | CG-03 | ✅ |
 | Fix-45 | Sync Payment Setup row to real Stripe Connect status | 🟢 Low | CG-03 | ✅ |
