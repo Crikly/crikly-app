@@ -593,12 +593,13 @@ function GalleryModal({
   }, [])
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+    const files = Array.from(e.target.files ?? [])
+    if (files.length === 0) return
     e.target.value = ''
 
-    if (file.size > 5 * 1024 * 1024) {
-      setUploadError('Photo must be under 5MB.')
+    const oversized = files.find(f => f.size > 5 * 1024 * 1024)
+    if (oversized) {
+      setUploadError(`"${oversized.name}" exceeds 5MB. Please choose smaller files.`)
       return
     }
 
@@ -607,26 +608,46 @@ function GalleryModal({
 
     try {
       const supabase = createClient()
-      const ext = file.name.split('.').pop() ?? 'jpg'
-      const path = `gallery/${coachProfileId}/${Date.now()}.${ext}`
+      let failed = false
 
-      const { error: uploadErr } = await supabase.storage
-        .from('coach-photos')
-        .upload(path, file, { upsert: false, contentType: file.type })
+      // Fetch current count once to respect the 10-photo cap
+      const countRes = await fetch('/api/coaches/photos')
+      let currentCount = photos.length
+      if (countRes.ok) {
+        const countData = await countRes.json()
+        currentCount = (countData.photos || []).length
+      }
 
-      if (uploadErr) throw uploadErr
+      // Upload sequentially to avoid sort_order race conditions
+      for (const file of files) {
+        if (currentCount >= 10) break
 
-      const { data: urlData } = supabase.storage
-        .from('coach-photos')
-        .getPublicUrl(path)
+        const ext = file.name.split('.').pop() ?? 'jpg'
+        // Small delay between timestamps to guarantee unique paths
+        const path = `gallery/${coachProfileId}/${Date.now()}-${Math.random().toString(36).slice(2, 7)}.${ext}`
 
-      const res = await fetch('/api/coaches/photos', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ photo_url: urlData.publicUrl, is_primary: false }),
-      })
+        const { error: uploadErr } = await supabase.storage
+          .from('coach-photos')
+          .upload(path, file, { upsert: false, contentType: file.type })
 
-      if (!res.ok) throw new Error('Failed to save photo')
+        if (uploadErr) { failed = true; break }
+
+        const { data: urlData } = supabase.storage
+          .from('coach-photos')
+          .getPublicUrl(path)
+
+        const res = await fetch('/api/coaches/photos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ photo_url: urlData.publicUrl, is_primary: false }),
+        })
+
+        if (!res.ok) { failed = true; break }
+
+        currentCount++
+      }
+
+      if (failed) throw new Error('One or more uploads failed')
 
       const refreshRes = await fetch('/api/coaches/photos')
       if (refreshRes.ok) {
@@ -754,6 +775,7 @@ function GalleryModal({
             ref={galleryFileRef}
             type="file"
             accept="image/jpeg,image/png,image/webp"
+            multiple
             className="hidden"
             onChange={handleUpload}
           />

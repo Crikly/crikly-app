@@ -166,45 +166,22 @@ export async function POST(
       )
     }
 
-    // 5. Check subscription tier and enforce limits
-    // Get active subscription
-    const { data: subscription, error: subError } = await supabase
-      .from('coach_subscriptions')
-      .select(`
-        tier_id,
-        subscription_tiers!inner (
-          name
-        )
-      `)
+    // 5. Enforce global 10-photo limit (all tiers)
+    const { count, error: countError } = await supabase
+      .from('coach_photos')
+      .select('id', { count: 'exact', head: true })
       .eq('coach_profile_id', coachProfile.id)
-      .eq('status', 'active')
-      .single()
 
-    // Determine tier (default to Free if no active subscription)
-    const tierName = subscription && !subError
-      ? (Array.isArray(subscription.subscription_tiers) 
-          ? subscription.subscription_tiers[0]?.name 
-          : subscription.subscription_tiers?.name)
-      : 'Free'
+    if (countError) {
+      console.error('[POST /api/coaches/photos] count error:', countError)
+      return NextResponse.json({ error: 'Failed to check photo limit' }, { status: 500 })
+    }
 
-    // Check photo count for Free tier
-    if (tierName === 'Free') {
-      const { count, error: countError } = await supabase
-        .from('coach_photos')
-        .select('id', { count: 'exact', head: true })
-        .eq('coach_profile_id', coachProfile.id)
-
-      if (countError) {
-        console.error('[POST /api/coaches/photos] count error:', countError)
-        return NextResponse.json({ error: 'Failed to check photo limit' }, { status: 500 })
-      }
-
-      if (count !== null && count >= 1) {
-        return NextResponse.json(
-          { error: 'Upgrade to Premium to add more photos' },
-          { status: 403 }
-        )
-      }
+    if (count !== null && count >= 10) {
+      return NextResponse.json(
+        { error: 'Maximum 10 photos allowed per coach' },
+        { status: 403 }
+      )
     }
 
     // 6. Get current max sort_order and check if this is first photo
