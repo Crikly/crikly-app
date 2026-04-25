@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { ChevronLeft, ChevronRight, Plus, Check, User, RefreshCw, Users, Ban, X, Calendar, MapPin, PoundSterling, AlertCircle, Info } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ChevronDown, Plus, Check, User, RefreshCw, Users, Ban, X, Calendar, MapPin, PoundSterling, AlertCircle, Info } from 'lucide-react'
 
 // CD-12: API response types
 interface AvailabilityResponse {
@@ -169,6 +169,9 @@ export function Schedule() {
   const [adHocSubmitting, setAdHocSubmitting] = useState(false)
   const [adHocError, setAdHocError] = useState<string | null>(null)
   const [sports, setSports] = useState<SportOption[]>([])
+  const [venues, setVenues] = useState<{ id: string; name: string }[]>([])
+  const [adHocVenueId, setAdHocVenueId] = useState('')
+  const [adHocPrice, setAdHocPrice] = useState('')
 
   // CD-12: Fetch availability data on mount and after ad hoc submit
   useEffect(() => {
@@ -195,21 +198,29 @@ export function Schedule() {
     fetchAvailability()
   }, [refreshKey])
 
-  // CF-02a: Fetch coach sports when add modal opens
+  // CF-02a / Fix-74: Fetch coach sports + venues when add modal opens
   useEffect(() => {
-    if (!isAddModalOpen || sports.length > 0) return
-    const fetchSports = async () => {
+    if (!isAddModalOpen) return
+    const fetchData = async () => {
       try {
-        const res = await fetch('/api/coaches/sports')
-        if (!res.ok) return
-        const data = await res.json() as { sports: SportOption[] }
-        setSports(data.sports || [])
-        if (data.sports?.length > 0) setAdHocSportId(data.sports[0].sport_id)
+        const [sportsRes, venuesRes] = await Promise.all([
+          fetch('/api/coaches/sports'),
+          fetch('/api/coaches/venues'),
+        ])
+        if (sportsRes.ok) {
+          const data = await sportsRes.json() as { sports: SportOption[] }
+          setSports(data.sports || [])
+          if (data.sports?.length > 0) setAdHocSportId(data.sports[0].sport_id)
+        }
+        if (venuesRes.ok) {
+          const data = await venuesRes.json() as { venues: { id: string; name: string }[] }
+          setVenues(data.venues || [])
+        }
       } catch {
         // non-critical
       }
     }
-    fetchSports()
+    fetchData()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAddModalOpen])
   
@@ -384,6 +395,8 @@ export function Schedule() {
           start_time: adHocStartTime,
           end_time: adHocEndTime,
           sport_id: adHocSportId || null,
+          coach_venue_id: adHocVenueId || null,
+          price_override_pence: adHocPrice ? Math.round(parseFloat(adHocPrice) * 100) : null,
           is_recurring: false,
           specific_date: adHocDate,
         }),
@@ -397,6 +410,8 @@ export function Schedule() {
       setAdHocStep('menu')
       setAdHocDate('')
       setAdHocNotes('')
+      setAdHocVenueId('')
+      setAdHocPrice('')
       setAdHocError(null)
       setRefreshKey(k => k + 1)
     } catch {
@@ -718,7 +733,7 @@ export function Schedule() {
 
       {/* ADD MODAL */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 bg-black/40 z-[100] flex items-end sm:items-center justify-center" onClick={() => { setIsAddModalOpen(false); setAdHocStep('menu'); setAdHocError(null) }}>
+        <div className="fixed inset-0 bg-black/40 z-[100] flex items-end sm:items-center justify-center" onClick={() => { setIsAddModalOpen(false); setAdHocStep('menu'); setAdHocVenueId(''); setAdHocPrice(''); setAdHocError(null) }}>
           <div className="bg-white w-full max-w-[420px] rounded-t-[24px] sm:rounded-[24px] shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
             <div className="p-6">
 
@@ -809,6 +824,23 @@ export function Schedule() {
                       </div>
                     )}
 
+                    <div>
+                      <label className="block text-[12px] font-medium text-gray-700 mb-1">Venue <span className="text-gray-400 font-normal">(optional)</span></label>
+                      <div className="relative">
+                        <select
+                          value={adHocVenueId}
+                          onChange={e => setAdHocVenueId(e.target.value)}
+                          className="w-full appearance-none text-[13px] border border-gray-200 rounded-lg px-3 py-2 pr-8 focus:outline-none focus:border-[#0077CC]"
+                        >
+                          <option value="">No specific venue</option>
+                          {venues.map(v => (
+                            <option key={v.id} value={v.id}>{v.name}</option>
+                          ))}
+                        </select>
+                        <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                      </div>
+                    </div>
+
                     <div className="flex gap-3">
                       <div className="flex-1">
                         <label className="block text-[12px] font-medium text-gray-700 mb-1">Start</label>
@@ -839,6 +871,23 @@ export function Schedule() {
                         placeholder="e.g. Available at Oval ground only"
                         className="w-full text-[13px] border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#0077CC]"
                       />
+                    </div>
+
+                    <div>
+                      <label className="block text-[12px] font-medium text-gray-700 mb-1">Price <span className="text-gray-400 font-normal">(optional)</span></label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-[13px]">£</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          placeholder="e.g. 35"
+                          value={adHocPrice}
+                          onChange={e => setAdHocPrice(e.target.value)}
+                          className="w-full text-[13px] border border-gray-200 rounded-lg pl-7 pr-3 py-2 focus:outline-none focus:border-[#0077CC]"
+                        />
+                      </div>
+                      <p className="text-[11px] text-gray-400 mt-1">Leave blank to use your default price for this sport</p>
                     </div>
 
                     {adHocError && (
