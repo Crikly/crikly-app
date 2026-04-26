@@ -487,15 +487,26 @@ export async function POST(
       insertData.specific_date = body.specific_date
     }
 
-    // Fix-16d: Upsert instead of insert to handle conflicts on (coach_profile_id, day_of_week, start_time)
-    const { data: newBlock, error: insertError } = await supabase
-      .from('availability_templates')
-      .upsert(insertData, {
-        onConflict: 'coach_profile_id,day_of_week,start_time',
-        ignoreDuplicates: false
-      })
-      .select()
-      .single()
+    // Ad hoc slots use plain insert — must never overwrite a recurring block.
+    // Recurring slots use upsert to handle the unique constraint on (coach_profile_id, day_of_week, start_time).
+    let result
+    if (insertData.is_recurring === false) {
+      result = await supabase
+        .from('availability_templates')
+        .insert(insertData)
+        .select()
+        .single()
+    } else {
+      result = await supabase
+        .from('availability_templates')
+        .upsert(insertData, {
+          onConflict: 'coach_profile_id,day_of_week,start_time',
+          ignoreDuplicates: false,
+        })
+        .select()
+        .single()
+    }
+    const { data: newBlock, error: insertError } = result
 
     if (insertError) {
       console.error('[POST /api/coaches/availability] upsert error:', insertError)

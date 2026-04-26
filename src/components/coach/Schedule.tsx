@@ -162,6 +162,18 @@ export function Schedule() {
   // CI-01: Increment to force bookings re-fetch after approve/decline
   const [refreshKey, setRefreshKey] = useState(0)
 
+  // Fix-76: Ad hoc slot detail popover
+  const [adHocPopover, setAdHocPopover] = useState<{
+    id: string
+    sport: string
+    date: string
+    time: string
+    venue: string | null
+    price: string | null
+    x: number
+    y: number
+  } | null>(null)
+
   // CF-02a: Ad hoc modal state
   const [adHocStep, setAdHocStep] = useState<'menu' | 'form'>('menu')
   const [adHocDate, setAdHocDate] = useState('')
@@ -618,9 +630,6 @@ export function Schedule() {
                           const blockTitle = block.is_recurring === false
                             ? (block.sport_name ? `Ad hoc · ${block.sport_name}` : 'Ad hoc slot')
                             : 'Available'
-                          const blockSubtitle = block.is_recurring === false
-                            ? (block.venue_name ?? undefined)
-                            : undefined
 
                           return (
                             <EventBlock
@@ -629,9 +638,22 @@ export function Schedule() {
                               height={heightPx}
                               type={blockType}
                               title={blockTitle}
-                              subtitle={blockSubtitle}
                               sessionId={`slot-${day.name.toLowerCase()}-${block.id}`}
-                              onCardClick={(e) => handleSlotClick(e, dateStr, timeStr)}
+                              onCardClick={block.is_recurring === false
+                                ? (e) => setAdHocPopover({
+                                    id: block.id,
+                                    sport: block.sport_name ?? 'Slot',
+                                    date: dateStr,
+                                    time: timeStr,
+                                    venue: block.venue_name ?? null,
+                                    price: block.price_override_pence
+                                      ? `£${(block.price_override_pence / 100).toFixed(0)}`
+                                      : null,
+                                    x: e.clientX,
+                                    y: e.clientY,
+                                  })
+                                : (e) => handleSlotClick(e, dateStr, timeStr)
+                              }
                             />
                           )
                         })}
@@ -723,13 +745,20 @@ export function Schedule() {
           />
         )}
         {activePopover?.type === 'creation' && (
-          <CreationPopover 
-            x={activePopover.x} 
-            y={activePopover.y} 
+          <CreationPopover
+            x={activePopover.x}
+            y={activePopover.y}
             source={activePopover.source}
-            date={activePopover.date} 
-            time={activePopover.time} 
-            onClose={() => setActivePopover(null)} 
+            date={activePopover.date}
+            time={activePopover.time}
+            onClose={() => setActivePopover(null)}
+          />
+        )}
+        {adHocPopover && (
+          <AdHocPopover
+            {...adHocPopover}
+            onClose={() => setAdHocPopover(null)}
+            onDeleted={() => { setAdHocPopover(null); setRefreshKey(k => k + 1) }}
           />
         )}
       </div>
@@ -1256,5 +1285,86 @@ function CreationPopover({ x, y, source, date, time, onClose }: { x: number; y: 
         </button>
       </div>
     </div>
+  )
+}
+
+// Fix-76: Ad hoc slot detail popover
+function AdHocPopover({
+  id, sport, date, time, venue, price, x, y, onClose, onDeleted,
+}: {
+  id: string
+  sport: string
+  date: string
+  time: string
+  venue: string | null
+  price: string | null
+  x: number
+  y: number
+  onClose: () => void
+  onDeleted: () => void
+}) {
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+
+  const handleDelete = async () => {
+    setDeleting(true)
+    setDeleteError(null)
+    try {
+      const res = await fetch(`/api/coaches/availability/${id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const data = await res.json() as { error?: string }
+        setDeleteError(data.error ?? 'Failed to delete slot.')
+        return
+      }
+      onDeleted()
+    } catch {
+      setDeleteError('Network error — please try again.')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  return (
+    <>
+      <div className="fixed inset-0 z-[9998]" onClick={onClose} />
+      <div
+        className="fixed z-[9999] bg-white rounded-xl shadow-xl p-4 w-56"
+        style={{ left: `${x}px`, top: `${y}px` }}
+      >
+        <button onClick={onClose} className="absolute top-3 right-3 text-gray-400 hover:text-gray-700">
+          <X size={14} />
+        </button>
+        <p className="text-[14px] font-bold text-gray-900 mb-3">Ad hoc slot</p>
+        <div className="space-y-1.5 mb-4">
+          <div className="flex items-center gap-2 text-[12px] text-gray-600">
+            <User size={12} className="shrink-0" />
+            <span>{sport}</span>
+          </div>
+          <div className="flex items-center gap-2 text-[12px] text-gray-600">
+            <Calendar size={12} className="shrink-0" />
+            <span>{date} · {time}</span>
+          </div>
+          {venue && (
+            <div className="flex items-center gap-2 text-[12px] text-gray-600">
+              <MapPin size={12} className="shrink-0" />
+              <span className="truncate">{venue}</span>
+            </div>
+          )}
+          <div className="flex items-center gap-2 text-[12px] text-gray-600">
+            <PoundSterling size={12} className="shrink-0" />
+            <span>{price ?? 'Default price'}</span>
+          </div>
+        </div>
+        {deleteError && <p className="text-[11px] text-red-600 mb-2">{deleteError}</p>}
+        <button
+          onClick={handleDelete}
+          disabled={deleting}
+          className="w-full py-1.5 border border-red-200 text-red-600 rounded-lg text-[12px] font-medium hover:bg-red-50 transition-colors disabled:opacity-60 flex items-center justify-center gap-1.5"
+        >
+          {deleting ? <RefreshCw size={12} className="animate-spin" /> : null}
+          Delete slot
+        </button>
+      </div>
+    </>
   )
 }
