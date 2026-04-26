@@ -18,9 +18,11 @@ export function ComingSoonModal({ isOpen, onClose }: ComingSoonModalProps) {
   const [email, setEmail] = useState('')
   const [submitState, setSubmitState] = useState<SubmitState>('idle')
   const [emailError, setEmailError] = useState('')
+  const [consentGiven, setConsentGiven] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const isValidEmail = EMAIL_RE.test(email.trim())
+  const canSubmit = isValidEmail && consentGiven
 
   // Escape key
   useEffect(() => {
@@ -41,6 +43,7 @@ export function ComingSoonModal({ isOpen, onClose }: ComingSoonModalProps) {
       setEmail('')
       setSubmitState('idle')
       setEmailError('')
+      setConsentGiven(false)
     }
   }, [isOpen])
 
@@ -63,7 +66,12 @@ export function ComingSoonModal({ isOpen, onClose }: ComingSoonModalProps) {
       const res = await fetch('/api/waitlist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), ...(role ? { role } : {}) }),
+        body: JSON.stringify({
+          email: email.trim(),
+          ...(role ? { role } : {}),
+          consentGiven: true,
+          consentAt: new Date().toISOString(),
+        }),
       })
 
       if (res.ok || res.status === 201) {
@@ -219,7 +227,7 @@ export function ComingSoonModal({ isOpen, onClose }: ComingSoonModalProps) {
                 />
                 <button
                   type="submit"
-                  disabled={!isValidEmail || submitState === 'loading'}
+                  disabled={!canSubmit || submitState === 'loading'}
                   className="font-medium inline-flex items-center justify-center gap-2 flex-shrink-0"
                   style={{
                     height: '44px',
@@ -230,13 +238,13 @@ export function ComingSoonModal({ isOpen, onClose }: ComingSoonModalProps) {
                     borderRadius: '10px',
                     fontFamily: 'inherit',
                     fontSize: '14px',
-                    cursor: isValidEmail && submitState !== 'loading' ? 'pointer' : 'not-allowed',
-                    opacity: isValidEmail && submitState !== 'loading' ? 1 : 0.4,
+                    cursor: canSubmit && submitState !== 'loading' ? 'pointer' : 'not-allowed',
+                    opacity: canSubmit && submitState !== 'loading' ? 1 : 0.4,
                     whiteSpace: 'nowrap',
                     transition: 'background 150ms, opacity 150ms',
                   }}
                   onMouseEnter={e => {
-                    if (isValidEmail && submitState !== 'loading')
+                    if (canSubmit && submitState !== 'loading')
                       (e.currentTarget as HTMLButtonElement).style.background = '#005EA3'
                   }}
                   onMouseLeave={e => {
@@ -266,6 +274,31 @@ export function ComingSoonModal({ isOpen, onClose }: ComingSoonModalProps) {
                   {emailError}
                 </p>
               )}
+
+              {/* GDPR consent */}
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '8px',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  marginBottom: '8px',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={consentGiven}
+                  onChange={e => setConsentGiven(e.target.checked)}
+                  style={{ marginTop: '2px', accentColor: '#0077CC', flexShrink: 0, width: '14px', height: '14px', cursor: 'pointer' }}
+                />
+                <span style={{ fontSize: '11px', color: '#64748B', lineHeight: 1.5 }}>
+                  I agree to be contacted about the Crikly launch. I&apos;ve read the{' '}
+                  <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: '#0077CC' }}>Privacy Policy</a>
+                  {' '}and{' '}
+                  <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: '#0077CC' }}>Terms</a>.
+                </span>
+              </label>
 
               {submitState === 'error' && (
                 <p style={{ fontSize: '12px', color: '#EF4444', marginBottom: '8px', marginTop: '-4px' }}>

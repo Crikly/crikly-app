@@ -7,6 +7,8 @@ type WaitlistRole = (typeof VALID_ROLES)[number]
 interface WaitlistBody {
   email: string
   role?: WaitlistRole
+  consentGiven?: boolean
+  consentAt?: string
 }
 
 type FieldErrors = Partial<Record<keyof WaitlistBody, string>>
@@ -23,7 +25,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const { email, role } = body
+  const { email, role, consentGiven = false, consentAt } = body
 
   const errors: FieldErrors = {}
   if (!email?.trim()) {
@@ -43,7 +45,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   // ON CONFLICT (email) DO NOTHING — idempotent upsert
   const { error: dbError } = await supabase.from('waitlist_emails').upsert(
-    { email: email.trim().toLowerCase(), role: role ?? null },
+    {
+      email: email.trim().toLowerCase(),
+      role: role ?? null,
+      consent_given: consentGiven,
+      consent_at: consentGiven ? (consentAt ?? new Date().toISOString()) : null,
+    },
     { onConflict: 'email', ignoreDuplicates: true },
   )
 

@@ -22,6 +22,8 @@ export type Database = {
           role: string
           sports: string[]
           location: string | null
+          consent_given: boolean
+          consent_at: string | null
           created_at: string
         }
         Insert: {
@@ -31,6 +33,8 @@ export type Database = {
           role: string
           sports?: string[]
           location?: string | null
+          consent_given?: boolean
+          consent_at?: string | null
           created_at?: string
         }
         Update: {
@@ -40,6 +44,8 @@ export type Database = {
           role?: string
           sports?: string[]
           location?: string | null
+          consent_given?: boolean
+          consent_at?: string | null
           created_at?: string
         }
         Relationships: []
@@ -49,18 +55,24 @@ export type Database = {
           id: string
           email: string
           role: string | null
+          consent_given: boolean
+          consent_at: string | null
           created_at: string
         }
         Insert: {
           id?: string
           email: string
           role?: string | null
+          consent_given?: boolean
+          consent_at?: string | null
           created_at?: string
         }
         Update: {
           id?: string
           email?: string
           role?: string | null
+          consent_given?: boolean
+          consent_at?: string | null
           created_at?: string
         }
         Relationships: []

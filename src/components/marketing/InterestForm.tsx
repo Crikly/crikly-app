@@ -229,6 +229,7 @@ export function InterestForm({ mode, onClose, onSuccess }: InterestFormProps) {
   // Submit state
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState('')
+  const [consentGiven, setConsentGiven] = useState(false)
 
   // Escape key for modal
   useEffect(() => {
@@ -284,7 +285,8 @@ export function InterestForm({ mode, onClose, onSuccess }: InterestFormProps) {
     email.trim().length > 0 &&
     validateEmail(email) &&
     sportsValue.some(s => s.trim().length > 0) &&
-    location.trim().length > 0
+    location.trim().length > 0 &&
+    consentGiven
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -303,6 +305,8 @@ export function InterestForm({ mode, onClose, onSuccess }: InterestFormProps) {
           role: 'coach',
           sports: sportsValue.filter(s => s.trim().length > 0),
           location: location.trim(),
+          consentGiven: true,
+          consentAt: new Date().toISOString(),
         }),
       })
 
@@ -455,6 +459,31 @@ export function InterestForm({ mode, onClose, onSuccess }: InterestFormProps) {
                 placeholder="City or postcode"
                 required
               />
+            </div>
+
+            {/* GDPR consent */}
+            <div style={{ marginBottom: '20px' }}>
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '10px',
+                  cursor: 'pointer',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={consentGiven}
+                  onChange={e => setConsentGiven(e.target.checked)}
+                  style={{ marginTop: '2px', accentColor: '#0077CC', flexShrink: 0, width: '16px', height: '16px', cursor: 'pointer' }}
+                />
+                <span style={{ fontSize: '13px', color: '#475569', lineHeight: 1.5 }}>
+                  I agree to Crikly contacting me about my registration and the platform launch. I have read the{' '}
+                  <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: '#0077CC' }}>Privacy Policy</a>
+                  {' '}and{' '}
+                  <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: '#0077CC' }}>Terms &amp; Conditions</a>.
+                </span>
+              </label>
             </div>
 
             {/* Submit */}

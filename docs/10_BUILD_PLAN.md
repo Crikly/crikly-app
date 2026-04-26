@@ -2,7 +2,7 @@
 
 **Version:** 3.1
 **Last Updated:** 26 April 2026
-**Changed:** Added Step 0M (Marketing Site) — MS-01 through MS-17.
+**Changed:** Added Step 0M (Marketing Site) — MS-01 through MS-21.
   Updated build tool references from Windsurf to Claude Code throughout.
 **This is the single source of truth for every task in the project.**
 
@@ -148,6 +148,9 @@ All app flows show a coming soon state — only marketing content is functional.
 |---|---|---|---|---|---|
 | MS-17 | Auth modal overlay (Option A) — extract LoginForm/RegisterForm, AuthModal component, post-auth redirect logic, booking intent preservation | @FrontendDeveloper | 🟡 | feature/marketing-site | ✅ |
 | MS-18 | Middleware guard — redirect /login /register /coach/* /onboarding/* to / when NEXT_PUBLIC_COACH_APP_LIVE !== 'true' | @FrontendDeveloper | 🟡 | feature/marketing-site | ⚪ |
+| MS-19 | Privacy Policy page — static server component, UK GDPR compliant, 10 sections, linked from InterestForm and ComingSoonModal | @FrontendDeveloper | 🟢 | feature/marketing-site | ✅ |
+| MS-20 | Terms & Conditions page — static server component, 11 sections, linked from InterestForm and ComingSoonModal | @FrontendDeveloper | 🟢 | feature/marketing-site | ✅ |
+| MS-21 | GDPR consent checkboxes — DB migration (consent_given + consent_at on interest_registrations + waitlist_emails), InterestForm + ComingSoonModal UI + API route updates | @FrontendDeveloper | 🟡 | feature/marketing-site | ✅ |
 
 **Post-auth redirect logic (MS-17):**
 | Trigger | After auth |

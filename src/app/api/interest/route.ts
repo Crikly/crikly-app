@@ -11,6 +11,8 @@ interface InterestBody {
   role: Role
   sports?: string[]
   location?: string
+  consentGiven?: boolean
+  consentAt?: string
 }
 
 type FieldErrors = Partial<Record<keyof InterestBody, string>>
@@ -32,7 +34,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const { name, email, role, sports = [], location } = body
+  const { name, email, role, sports = [], location, consentGiven = false, consentAt } = body
 
   const errors: FieldErrors = {}
   if (!name?.trim()) errors.name = 'Name is required'
@@ -58,6 +60,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     role,
     sports,
     location: location?.trim() ?? null,
+    consent_given: consentGiven,
+    consent_at: consentGiven ? (consentAt ?? new Date().toISOString()) : null,
   })
 
   if (dbError) {
