@@ -1,22 +1,9 @@
-'use client'
+import { redirect } from 'next/navigation'
 
-import { useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-
-// Root redirect — checks whether user has already selected a role.
-// First visit (no crikly_role_selected) → /splash (funnel entry).
-// Returning visit (role already set) → /home (marketing homepage).
-export default function RootRedirect() {
-  const router = useRouter()
-
-  useEffect(() => {
-    const roleSelected = sessionStorage.getItem('crikly_role_selected')
-    if (roleSelected) {
-      router.replace('/home')
-    } else {
-      router.replace('/splash')
-    }
-  }, [router])
-
-  return null
+// Server-side redirect — no blank flash before hydration.
+// Everyone lands at /splash first.
+// The splash page handles the returning-visitor → /home shortcut
+// by checking sessionStorage on mount.
+export default function RootPage() {
+  redirect('/splash')
 }

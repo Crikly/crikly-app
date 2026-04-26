@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { ClipboardList, Users, User, ArrowRight } from 'lucide-react'
 
@@ -41,6 +41,13 @@ const ROLES: RoleOption[] = [
 export default function RoleSplashPage() {
   const router = useRouter()
   const [hoveredRole, setHoveredRole] = useState<Role | null>(null)
+
+  // Returning visitor shortcut — skip role selection if already set
+  useEffect(() => {
+    if (sessionStorage.getItem('crikly_role_selected')) {
+      router.replace('/home')
+    }
+  }, [router])
 
   function handleSelect(role: Role, href: string) {
     sessionStorage.setItem('crikly_role', role)
