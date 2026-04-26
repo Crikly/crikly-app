@@ -14,6 +14,57 @@ export type Database = {
   }
   public: {
     Tables: {
+      interest_registrations: {
+        Row: {
+          id: string
+          name: string
+          email: string
+          role: string
+          sports: string[]
+          location: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          email: string
+          role: string
+          sports?: string[]
+          location?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          email?: string
+          role?: string
+          sports?: string[]
+          location?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
+      waitlist_emails: {
+        Row: {
+          id: string
+          email: string
+          role: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          email: string
+          role?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          email?: string
+          role?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
       admin_roles: {
         Row: {
           created_at: string

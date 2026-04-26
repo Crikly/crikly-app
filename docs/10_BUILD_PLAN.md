@@ -124,7 +124,7 @@ All app flows show a coming soon state — only marketing content is functional.
 
 | ID | Task | Agent | Risk | Branch | Status |
 |---|---|---|---|---|---|
-| MS-09 | Marketing site scaffold — routing, layouts, API routes (/api/interest, /api/waitlist) | @FrontendDeveloper | 🟢 | feature/marketing-site | ⚪ |
+| MS-09 | Marketing site scaffold — routing, layouts, API routes (/api/interest, /api/waitlist) | @FrontendDeveloper | 🟢 | feature/marketing-site | ✅ |
 
 ### Step 0M — Funnel Screens
 
