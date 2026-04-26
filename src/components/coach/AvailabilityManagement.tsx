@@ -171,8 +171,10 @@ export function AvailabilityManagement() {
           setVenues((venuesData.venues || []).map((v: { id: string; name: string }) => ({ id: v.id, name: v.name })))
         }
 
-        // Transform API data to UI format
-        const transformed: ScheduleBlock[] = (data.availability || []).map((block: AvailabilityBlock) => {
+        // Transform API data to UI format — filter out ad hoc (is_recurring=false) slots
+        const transformed: ScheduleBlock[] = (data.availability || [])
+          .filter((block: AvailabilityBlock) => block.is_recurring !== false)
+          .map((block: AvailabilityBlock) => {
           const priceDisplay = block.price_override_pence
             ? `£${(block.price_override_pence / 100).toFixed(0)}/${block.session_type_name || '60min'}`
             : 'Default price'
@@ -687,7 +689,9 @@ export function AvailabilityManagement() {
                         const refreshResponse = await fetch('/api/coaches/availability')
                         if (refreshResponse.ok) {
                           const data = await refreshResponse.json()
-                          const transformed: ScheduleBlock[] = (data.availability || []).map((block: AvailabilityBlock) => {
+                          const transformed: ScheduleBlock[] = (data.availability || [])
+                            .filter((block: AvailabilityBlock) => block.is_recurring !== false)
+                            .map((block: AvailabilityBlock) => {
                             const priceDisplay = block.price_override_pence
                               ? `£${(block.price_override_pence / 100).toFixed(0)}/${block.session_type_name || '60min'}`
                               : 'Default price'

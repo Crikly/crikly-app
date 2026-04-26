@@ -639,6 +639,9 @@ export function Schedule() {
                               height={heightPx}
                               type={blockType}
                               title={blockTitle}
+                              subtitle={isAdHoc && block.venue_name
+                                ? block.venue_name.substring(0, 15) + (block.venue_name.length > 15 ? '…' : '')
+                                : undefined}
                               sessionId={`slot-${day.name.toLowerCase()}-${block.id}`}
                               onCardClick={isAdHoc
                                 ? (e) => {
@@ -1292,7 +1295,7 @@ function CreationPopover({ x, y, source, date, time, onClose }: { x: number; y: 
   )
 }
 
-// Fix-76: Ad hoc slot detail popover
+// Fix-78: Ad hoc slot detail popover — matches SessionPopover style
 function AdHocPopover({
   id, sport, date, time, venue, price, x, y, onClose, onDeleted,
 }: {
@@ -1332,42 +1335,55 @@ function AdHocPopover({
     <>
       <div className="fixed inset-0 z-[9998]" onClick={onClose} />
       <div
-        className="fixed z-[9999] bg-white rounded-xl shadow-xl p-4 w-56"
-        style={{ left: `${x}px`, top: `${y}px` }}
+        className="session-popover bg-white rounded-xl border border-gray-100 p-4 animate-in fade-in slide-in-from-top-1 duration-150"
+        style={{
+          position: 'fixed',
+          left: `${x}px`,
+          top: `${y}px`,
+          zIndex: 9999,
+          width: '300px',
+          maxWidth: '300px',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+        }}
       >
         <button onClick={onClose} className="absolute top-3 right-3 text-gray-400 hover:text-gray-700">
           <X size={14} />
         </button>
-        <p className="text-[14px] font-bold text-gray-900 mb-3">Ad hoc slot</p>
-        <div className="space-y-1.5 mb-4">
-          <div className="flex items-center gap-2 text-[12px] text-gray-600">
-            <User size={12} className="shrink-0" />
-            <span>{sport}</span>
-          </div>
-          <div className="flex items-center gap-2 text-[12px] text-gray-600">
-            <Calendar size={12} className="shrink-0" />
+        <div className="flex items-start justify-between mb-3">
+          <h3 className="text-[15px] font-medium text-gray-900">Ad hoc slot</h3>
+          <span className="px-2 py-0.5 bg-teal-50 text-teal-700 border border-teal-200 rounded-full text-[11px] font-medium mr-6">Ad hoc</span>
+        </div>
+        <div className="space-y-2 mb-3">
+          <div className="flex items-center gap-2 text-[13px] text-gray-600">
+            <Calendar size={14} />
             <span>{date} · {time}</span>
           </div>
+          <div className="flex items-center gap-2 text-[13px] text-gray-600">
+            <User size={14} />
+            <span>{sport}</span>
+          </div>
           {venue && (
-            <div className="flex items-center gap-2 text-[12px] text-gray-600">
-              <MapPin size={12} className="shrink-0" />
-              <span className="truncate">{venue}</span>
+            <div className="flex items-center gap-2 text-[13px] text-gray-600">
+              <MapPin size={14} className="shrink-0" />
+              <span className="truncate max-w-[200px]">{venue}</span>
             </div>
           )}
-          <div className="flex items-center gap-2 text-[12px] text-gray-600">
-            <PoundSterling size={12} className="shrink-0" />
+          <div className="flex items-center gap-2 text-[13px] text-gray-600">
+            <PoundSterling size={14} />
             <span>{price ?? 'Default price'}</span>
           </div>
         </div>
-        {deleteError && <p className="text-[11px] text-red-600 mb-2">{deleteError}</p>}
-        <button
-          onClick={handleDelete}
-          disabled={deleting}
-          className="w-full py-1.5 border border-red-200 text-red-600 rounded-lg text-[12px] font-medium hover:bg-red-50 transition-colors disabled:opacity-60 flex items-center justify-center gap-1.5"
-        >
-          {deleting ? <RefreshCw size={12} className="animate-spin" /> : null}
-          Delete slot
-        </button>
+        {deleteError && <p className="text-[12px] text-red-600 mb-2">{deleteError}</p>}
+        <div className="flex gap-2 mt-3">
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            className="flex-1 bg-white border border-red-200 text-red-600 rounded-lg py-2 text-[13px] font-medium hover:bg-red-50 flex items-center justify-center gap-1 disabled:opacity-60 transition-colors"
+          >
+            {deleting ? <RefreshCw size={13} className="animate-spin" /> : null}
+            Delete slot
+          </button>
+        </div>
       </div>
     </>
   )

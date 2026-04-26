@@ -294,6 +294,7 @@ C-05, C-06, C-07, C-08 are safe to proceed without M-015.
 | Fix-75 | Add venue_name + venue_address to availability_templates; VenueAutocomplete in ad hoc form | @DatabaseArchitect + @FrontendDeveloper | 🟡 | develop | ✅ |
 | Fix-76 | Ad hoc insert not upsert + click popover + remove venue subtitle | @BackendDeveloper + @FrontendDeveloper | 🟡 | develop | ✅ |
 | Fix-77 | Ad hoc blocks visual distinction in AvailabilityManagement + popover fix in Schedule | @FrontendDeveloper | 🟢 | develop | ✅ |
+| Fix-78 | Filter ad hoc from availability screen + popover redesign + venue truncation on teal blocks | @FrontendDeveloper | 🟢 | develop | ✅ |
 | CF-05c-DB | Add participant_name column to group_programme_enrolments + update roster API | @DatabaseArchitect | 🟢 | develop | ✅ |
 | SYNC-10 | Working ethics v1.4 — Claude Code + Claude Design + no browser dialogs | @TechLead | 🟢 | develop | ✅ |
 | CF-06 | Availability screen | @FrontendDeveloper | 🟢 | feature/coach-frontend | ✅ |
