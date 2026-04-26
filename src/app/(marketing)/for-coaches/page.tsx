@@ -167,6 +167,7 @@ export default function ForCoachesPage() {
 
       {/* ---- How it works ---- */}
       <section
+        id="how"
         style={{
           padding: '72px 40px',
           maxWidth: '1100px',
