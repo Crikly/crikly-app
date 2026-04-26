@@ -94,7 +94,7 @@ function EventBlock({ top, height, type, title, subtitle, sessionId, onCardClick
 
   return (
     <div
-      className={`session-card absolute left-1 right-1 rounded-lg p-2 overflow-visible flex flex-col justify-start group ${bgClass} ${textClass} ${borderClass} ${leftBorderClass}`}
+      className={`session-card absolute left-1 right-1 rounded-lg p-2 overflow-visible flex flex-col justify-start group pointer-events-auto ${bgClass} ${textClass} ${borderClass} ${leftBorderClass}`}
       style={{ top: `${top}px`, height: `${height}px`, ...extraStyles }}
       onClick={handleClick}
     >
@@ -695,7 +695,7 @@ export function Schedule() {
                 </div>
                 
                 {/* CD-12b: Real booking blocks */}
-                <div className="absolute inset-0 flex pointer-events-auto z-[15]">
+                <div className="absolute inset-0 flex pointer-events-none z-[15]">
                   <div className="w-16 shrink-0" />
                   {days.map((day, dayIdx) => {
                     const _pad = (n: number) => String(n).padStart(2, '0')
