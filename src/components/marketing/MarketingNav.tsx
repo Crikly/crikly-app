@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Image from 'next/image'
 import Link from 'next/link'
 import { AuthModal } from './AuthModal'
 
@@ -38,12 +39,14 @@ export function MarketingNav() {
       >
         <div>
           <Link href="/home" style={{ textDecoration: 'none' }}>
-            <span
-              className="font-bold select-none leading-none"
-              style={{ fontSize: '24px', letterSpacing: '-0.035em', color: '#0F172A' }}
-            >
-              crikl<span style={{ color: '#0077CC' }}>y</span>
-            </span>
+            <Image
+              src="/logo.png"
+              alt="Crikly"
+              height={28}
+              width={50}
+              priority
+              style={{ display: 'block' }}
+            />
           </Link>
         </div>
 

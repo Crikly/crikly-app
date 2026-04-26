@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { Play, Pause, Volume2, VolumeX, RotateCcw, ArrowRight } from 'lucide-react'
 
@@ -80,12 +81,14 @@ export default function ParentPlayerIntroPage() {
 
       {/* Logo */}
       <header className="absolute top-0 left-0 right-0 z-10" style={{ padding: '24px 32px' }}>
-        <span
-          className="font-bold select-none leading-none"
-          style={{ fontSize: '22px', letterSpacing: '-0.035em', color: '#fff' }}
-        >
-          crikl<span style={{ color: '#378ADD' }}>y</span>
-        </span>
+        <Image
+          src="/logo.png"
+          alt="Crikly"
+          height={28}
+          width={50}
+          priority
+          style={{ filter: 'brightness(0) invert(1)' }}
+        />
       </header>
 
       {/* Stage */}

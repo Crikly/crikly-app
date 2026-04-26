@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { ClipboardList, Users, User, ArrowRight } from 'lucide-react'
 
@@ -60,16 +61,14 @@ export default function RoleSplashPage() {
       <div className="w-full max-w-[1080px] text-center">
 
         {/* Logo */}
-        <div
-          className="font-bold select-none leading-none"
-          style={{
-            fontSize: 'clamp(44px, 6vw, 56px)',
-            letterSpacing: '-0.035em',
-            color: '#0F172A',
-            marginBottom: '56px',
-          }}
-        >
-          crikl<span style={{ color: '#0077CC' }}>y</span>
+        <div style={{ marginBottom: '56px', display: 'flex', justifyContent: 'center' }}>
+          <Image
+            src="/logo.png"
+            alt="Crikly"
+            height={52}
+            width={93}
+            priority
+          />
         </div>
 
         {/* Heading */}
