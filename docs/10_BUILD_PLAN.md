@@ -1,10 +1,9 @@
 # Crikly — Comprehensive Build Plan
 
-**Version:** 3.0
-**Last Updated:** 21 April 2026
-**Changed:** SYNC-11 — Coach module go-live checklist added.
-  All CF-D tasks confirmed ⚪ (not committed). CF-05a through
-  Fix-72 series added. CG tasks status corrected.
+**Version:** 3.1
+**Last Updated:** 26 April 2026
+**Changed:** Added Step 0M (Marketing Site) — MS-01 through MS-17.
+  Updated build tool references from Windsurf to Claude Code throughout.
 **This is the single source of truth for every task in the project.**
 
 ---
@@ -16,25 +15,25 @@
 | **Product Phase 1** | MVP Web App — the thing you're building now | PRD, Roadmap, stakeholders |
 | **Product Phase 2** | Flutter Mobile App | PRD, Roadmap, stakeholders |
 | **Product Phase 3** | Venue marketplace | PRD, Roadmap, stakeholders |
-| **Step 0–7** | Internal build steps within Product Phase 1 | This build plan, Windsurf |
-| **Step 8** | Internal build steps for Product Phase 2 | This build plan, Windsurf |
-| **Step 9** | Internal build steps for Product Phase 3 | This build plan, Windsurf |
+| **Step 0–7** | Internal build steps within Product Phase 1 | This build plan, Claude Code |
+| **Step 8** | Internal build steps for Product Phase 2 | This build plan, Claude Code |
+| **Step 9** | Internal build steps for Product Phase 3 | This build plan, Claude Code |
 
 **Rule:** When talking to stakeholders or investors — use Product Phases.
-**Rule:** When working in Windsurf — use Steps.
+**Rule:** When working in Claude Code — use Steps.
 
 ---
 
 ## How To Use This File
 
-### Windsurf — At the START of every session:
+### Claude Code — At the START of every session:
 1. Open this file
 2. Find the first 🟡 In Progress task — continue it
 3. If none, find the first ⚪ Planned task — start it
 4. Mark it 🟡 In Progress before touching any code
 5. Also mark it 🟡 in Notion Build Plan
 
-### Windsurf — At the END of every session:
+### Claude Code — At the END of every session:
 1. Mark completed tasks ✅ Complete
 2. Mark blockers 🔴 Blocked with a note explaining why
 3. Commit all work with correct message format
@@ -94,6 +93,74 @@ Everything needed before writing a single line of application code.
 **F-16 commit message:**
 ```
 chore(docs): add all foundation docs, agents, schema and build plan
+```
+
+---
+
+## Step 0M — Marketing Site (Phase 0 Public Launch)
+
+**Purpose:** Deploy crikly.app publicly before the coach module is complete.
+Captures coach interest and parent/player demand before the app is live.
+All app flows show a coming soon state — only marketing content is functional.
+
+**Build tool:** Claude Code
+**Branch:** feature/marketing-site
+**Depends on:** Step 1C complete (design system), MS-16 DB migration
+
+**Key architecture decisions:**
+- Search: Supabase full-text search for MVP. AI intent extraction post-launch.
+- InterestForm: one component, two modes — fullscreen (post-video) and modal
+- AuthModal: Option A modal overlay. Auth forms extracted as reusable components.
+- Sports data: dynamic from DB — never hardcoded in frontend
+- Booking intent preserved in sessionStorage through auth interruption
+
+### Step 0M — DB
+
+| ID | Task | Agent | Risk | Branch | Status |
+|---|---|---|---|---|---|
+| MS-16 | DB migration — interest_registrations + waitlist_emails tables | @DatabaseArchitect | 🟢 | feature/marketing-site | ⚪ |
+
+### Step 0M — Scaffold
+
+| ID | Task | Agent | Risk | Branch | Status |
+|---|---|---|---|---|---|
+| MS-09 | Marketing site scaffold — routing, layouts, API routes (/api/interest, /api/waitlist) | @FrontendDeveloper | 🟢 | feature/marketing-site | ⚪ |
+
+### Step 0M — Funnel Screens
+
+| ID | Task | Agent | Risk | Branch | Status |
+|---|---|---|---|---|---|
+| MS-10 | S-01 Role splash screen — Coach / Parent / Player, sessionStorage role | @FrontendDeveloper | 🟢 | feature/marketing-site | ⚪ |
+| MS-11 | S-02 + S-03 Video screens — coach video → form, parent/player video → CTA, skip → homepage | @FrontendDeveloper | 🟢 | feature/marketing-site | ⚪ |
+| MS-12 | InterestForm component (S-04 + S-05) — fullscreen + modal modes, sports dynamic from DB | @FrontendDeveloper | 🟡 | feature/marketing-site | ⚪ |
+
+### Step 0M — Marketing Pages
+
+| ID | Task | Agent | Risk | Branch | Status |
+|---|---|---|---|---|---|
+| MS-13 | S-06 Homepage — hero, search bar, dynamic coach grid, category tiles, skeleton states | @FrontendDeveloper | 🟢 | feature/marketing-site | ⚪ |
+| MS-14 | S-07 Coming soon modal — email capture, inline confirmation, waitlist API | @FrontendDeveloper | 🟢 | feature/marketing-site | ⚪ |
+| MS-15 | S-08 For coaches page — pitch page, FAQ accordion, both CTAs → InterestForm modal | @FrontendDeveloper | 🟢 | feature/marketing-site | ⚪ |
+
+### Step 0M — Auth Integration
+
+| ID | Task | Agent | Risk | Branch | Status |
+|---|---|---|---|---|---|
+| MS-17 | Auth modal overlay (Option A) — extract LoginForm/RegisterForm, AuthModal component, post-auth redirect logic, booking intent preservation | @FrontendDeveloper | 🟡 | feature/marketing-site | ⚪ |
+
+**Post-auth redirect logic (MS-17):**
+| Trigger | After auth |
+|---|---|
+| Log in nav CTA | Return to current page |
+| Sign up nav CTA | /onboarding/role |
+| Book a session on coach profile | Booking flow directly (slug + slot from sessionStorage) |
+
+**Task execution order:**
+MS-16 → MS-09 → MS-10 → MS-11 → MS-12 → MS-13 → MS-14 → MS-15 → MS-17
+
+**MS-17 commit message:**
+```
+feat(marketing): auth modal overlay Option A — booking intent preserved (MS-17)
 ```
 
 ---
