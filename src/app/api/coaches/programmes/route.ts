@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+
 
 /**
  * Programme response
@@ -13,6 +15,7 @@ interface ProgrammeResponse {
   schedule_type: string
   day_of_week: number | null
   day_name: string | null
+  days_of_week: number[] | null
   start_time: string | null
   duration_minutes: number
   max_spots: number
@@ -25,6 +28,10 @@ interface ProgrammeResponse {
   currency: string
   status: string
   created_at: string
+  venue_name: string | null
+  venue_address: string | null
+  min_participants: number | null
+  cancellation_window_hours: number
 }
 
 /**
@@ -100,36 +107,16 @@ export async function GET(
       return NextResponse.json({ error: 'Coach profile not found' }, { status: 404 })
     }
 
-    // 4. Build query
-    let query = supabase
+    // 4. Fetch programmes — Fix-65-2: admin client bypasses SELECT RLS (only allows
+    // active status); ownership enforced via explicit coach_profile_id filter.
+    const adminSupabase = createAdminClient()
+    let query = adminSupabase
       .from('group_programmes')
-      .select(`
-        id,
-        sport_id,
-        title,
-        description,
-        schedule_type,
-        day_of_week,
-        start_time,
-        duration_minutes,
-        max_spots,
-        current_spots,
-        payment_type,
-        price_per_session_pence,
-        block_price_pence,
-        block_session_count,
-        currency,
-        status,
-        created_at,
-        sports!inner (
-          name
-        )
-      `)
+      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address, min_participants, cancellation_window_hours')
       .eq('coach_profile_id', coachProfile.id)
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
 
-    // Apply status filter if provided
     if (statusFilter) {
       query = query.eq('status', statusFilter)
     }
@@ -141,35 +128,42 @@ export async function GET(
       return NextResponse.json({ error: 'Failed to fetch programmes' }, { status: 500 })
     }
 
-    // 5. Build response
-    const response: ProgrammeResponse[] = (programmes || []).map((prog) => {
-      const sportData = prog.sports
-        ? (Array.isArray(prog.sports) ? prog.sports[0] : prog.sports)
-        : null
+    // 5. Fetch sport names separately — Fix-65-1: remove sports!inner nested join
+    const sportIds = [...new Set((programmes || []).map((p) => p.sport_id).filter(Boolean))]
+    const sportsMap: Record<string, string> = {}
+    if (sportIds.length > 0) {
+      const { data: sportsData } = await supabase.from('sports').select('id, name').in('id', sportIds)
+      sportsData?.forEach((s) => { sportsMap[s.id] = s.name })
+    }
 
-      return {
-        id: prog.id,
-        sport_id: prog.sport_id,
-        sport_name: sportData?.name || '',
-        title: prog.title,
-        description: prog.description,
-        schedule_type: prog.schedule_type,
-        day_of_week: prog.day_of_week,
-        day_name: getDayName(prog.day_of_week),
-        start_time: prog.start_time,
-        duration_minutes: prog.duration_minutes,
-        max_spots: prog.max_spots,
-        current_spots: prog.current_spots,
-        spots_remaining: prog.max_spots - prog.current_spots,
-        payment_type: prog.payment_type,
-        price_per_session_pence: prog.price_per_session_pence,
-        block_price_pence: prog.block_price_pence,
-        block_session_count: prog.block_session_count,
-        currency: prog.currency,
-        status: prog.status,
-        created_at: prog.created_at,
-      }
-    })
+    // 6. Build response
+    const response: ProgrammeResponse[] = (programmes || []).map((prog) => ({
+      id: prog.id,
+      sport_id: prog.sport_id,
+      sport_name: sportsMap[prog.sport_id] || '',
+      title: prog.title,
+      description: prog.description,
+      schedule_type: prog.schedule_type,
+      day_of_week: prog.day_of_week,
+      day_name: getDayName(prog.day_of_week),
+      days_of_week: (prog.days_of_week as number[] | null) ?? null,
+      start_time: prog.start_time,
+      duration_minutes: prog.duration_minutes,
+      max_spots: prog.max_spots,
+      current_spots: prog.current_spots,
+      spots_remaining: prog.max_spots - prog.current_spots,
+      payment_type: prog.payment_type,
+      price_per_session_pence: prog.price_per_session_pence,
+      block_price_pence: prog.block_price_pence,
+      block_session_count: prog.block_session_count,
+      currency: prog.currency,
+      status: prog.status,
+      created_at: prog.created_at,
+      venue_name: prog.venue_name,
+      venue_address: prog.venue_address,
+      min_participants: prog.min_participants,
+      cancellation_window_hours: prog.cancellation_window_hours,
+    }))
 
     return NextResponse.json({ programmes: response }, { status: 200 })
 
@@ -262,6 +256,16 @@ export async function POST(
       validationErrors.push('day_of_week must be a number between 0 and 6')
     }
 
+    if (body.days_of_week !== undefined && body.days_of_week !== null) {
+      if (!Array.isArray(body.days_of_week)) {
+        validationErrors.push('days_of_week must be an array')
+      } else if (body.days_of_week.length < 1 || body.days_of_week.length > 7) {
+        validationErrors.push('days_of_week must have between 1 and 7 elements')
+      } else if (!body.days_of_week.every((d: unknown) => typeof d === 'number' && d >= 0 && d <= 6)) {
+        validationErrors.push('each value in days_of_week must be a number between 0 and 6')
+      }
+    }
+
     if (!body.start_time || typeof body.start_time !== 'string') {
       validationErrors.push('start_time is required and must be a string (HH:MM format)')
     }
@@ -313,7 +317,7 @@ export async function POST(
     // 5. Verify sport_id is in coach's configured sports
     const { data: coachSport, error: sportCheckError } = await supabase
       .from('coach_sports')
-      .select('id, sports!inner(name)')
+      .select('id')
       .eq('coach_profile_id', coachProfile.id)
       .eq('sport_id', body.sport_id)
       .single()
@@ -325,6 +329,15 @@ export async function POST(
       )
     }
 
+    // Validate skill_level if provided
+    const VALID_SKILL_LEVELS = ['beginner', 'intermediate', 'advanced', 'all']
+    const skillLevel: string = body.skill_level && VALID_SKILL_LEVELS.includes(body.skill_level)
+      ? body.skill_level
+      : 'all'
+
+    // Validate status if provided
+    const requestedStatus: string = body.status === 'active' ? 'active' : 'draft'
+
     // 6. Insert new programme
     const insertData: {
       coach_profile_id: string
@@ -333,17 +346,24 @@ export async function POST(
       description?: string | null
       schedule_type: string
       day_of_week: number
+      days_of_week?: number[] | null
       start_time: string
       duration_minutes: number
+      session_count?: number | null
       max_spots: number
       payment_type: string
       price_per_session_pence: number
       block_price_pence?: number | null
       block_session_count?: number | null
+      late_joining_allowed: boolean
+      min_participants?: number | null
+      cancellation_window_hours: number
       model: string
       skill_level: string
       status: string
       currency: string
+      venue_name?: string | null
+      venue_address?: string | null
     } = {
       coach_profile_id: coachProfile.id,
       sport_id: body.sport_id,
@@ -355,46 +375,54 @@ export async function POST(
       max_spots: body.max_spots,
       payment_type: body.payment_type,
       price_per_session_pence: body.price_per_session_pence || 0,
-      model: 'group',
-      skill_level: 'all',
-      status: 'draft',
+      late_joining_allowed: body.late_joining_allowed === true,
+      cancellation_window_hours: typeof body.cancellation_window_hours === 'number' ? body.cancellation_window_hours : 24,
+      model: 'programme',
+      skill_level: skillLevel,
+      status: requestedStatus,
       currency: 'GBP',
+    }
+
+    if (body.min_participants !== undefined) {
+      insertData.min_participants = typeof body.min_participants === 'number' && body.min_participants > 0
+        ? body.min_participants
+        : null
     }
 
     if (body.description !== undefined) {
       insertData.description = body.description
     }
 
-    if (body.payment_type === 'block_upfront') {
-      insertData.block_price_pence = body.block_price_pence
-      insertData.block_session_count = body.block_session_count
+    if (body.schedule_type === 'fixed' && typeof body.session_count === 'number' && body.session_count > 0) {
+      insertData.session_count = body.session_count
     }
 
-    const { data: newProgramme, error: insertError } = await supabase
+    if (body.payment_type === 'block_upfront') {
+      insertData.block_price_pence = body.block_price_pence
+      // Use session_count as block_session_count when not explicitly provided
+      insertData.block_session_count = typeof body.block_session_count === 'number'
+        ? body.block_session_count
+        : (typeof body.session_count === 'number' ? body.session_count : null)
+    }
+
+    if (body.venue_name !== undefined) insertData.venue_name = body.venue_name || null
+    if (body.venue_address !== undefined) insertData.venue_address = body.venue_address || null
+
+    // Fix-58-DB-api: populate days_of_week — prefer explicit array, fall back to [day_of_week]
+    if (Array.isArray(body.days_of_week) && body.days_of_week.length > 0) {
+      insertData.days_of_week = body.days_of_week
+    } else if (typeof body.day_of_week === 'number') {
+      insertData.days_of_week = [body.day_of_week]
+    }
+
+    // Fix-62: Use admin client for INSERT only — user is already authenticated and
+    // coach ownership verified above. Bypasses RLS to avoid auth_user_id mapping
+    // mismatch on dev DB (same root cause as Fix-19).
+    const adminSupabase = createAdminClient()
+    const { data: newProgramme, error: insertError } = await adminSupabase
       .from('group_programmes')
       .insert(insertData)
-      .select(`
-        id,
-        sport_id,
-        title,
-        description,
-        schedule_type,
-        day_of_week,
-        start_time,
-        duration_minutes,
-        max_spots,
-        current_spots,
-        payment_type,
-        price_per_session_pence,
-        block_price_pence,
-        block_session_count,
-        currency,
-        status,
-        created_at,
-        sports!inner (
-          name
-        )
-      `)
+      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address, min_participants, cancellation_window_hours')
       .single()
 
     if (insertError) {
@@ -402,20 +430,23 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to create programme' }, { status: 500 })
     }
 
-    // 7. Build response
-    const sportData = newProgramme.sports
-      ? (Array.isArray(newProgramme.sports) ? newProgramme.sports[0] : newProgramme.sports)
-      : null
+    // 7. Fetch sport name separately (Fix-65-1 pattern — no nested join)
+    let postSportName = ''
+    if (newProgramme.sport_id) {
+      const { data: sportRow } = await supabase.from('sports').select('name').eq('id', newProgramme.sport_id).single()
+      postSportName = sportRow?.name || ''
+    }
 
     const response: ProgrammeResponse = {
       id: newProgramme.id,
       sport_id: newProgramme.sport_id,
-      sport_name: sportData?.name || '',
+      sport_name: postSportName,
       title: newProgramme.title,
       description: newProgramme.description,
       schedule_type: newProgramme.schedule_type,
       day_of_week: newProgramme.day_of_week,
       day_name: getDayName(newProgramme.day_of_week),
+      days_of_week: (newProgramme.days_of_week as number[] | null) ?? null,
       start_time: newProgramme.start_time,
       duration_minutes: newProgramme.duration_minutes,
       max_spots: newProgramme.max_spots,
@@ -428,6 +459,10 @@ export async function POST(
       currency: newProgramme.currency,
       status: newProgramme.status,
       created_at: newProgramme.created_at,
+      venue_name: newProgramme.venue_name,
+      venue_address: newProgramme.venue_address,
+      min_participants: newProgramme.min_participants,
+      cancellation_window_hours: newProgramme.cancellation_window_hours,
     }
 
     return NextResponse.json(response, { status: 201 })

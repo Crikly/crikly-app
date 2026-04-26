@@ -25,13 +25,11 @@ export function CoachDashboard() {
       
       {/* Desktop Sidebar */}
       <aside className="hidden lg:flex w-64 shrink-0 flex-col bg-white border-r border-gray-100 p-6 sticky top-0 h-screen z-10">
-        <div className="w-[160px] h-[40px] border border-dashed border-gray-300 rounded-lg flex items-center justify-center relative mb-6">
-          <span className="absolute -top-1.5 left-2 bg-white px-1 text-[10px] text-gray-400 font-medium uppercase tracking-wider leading-none">Logo</span>
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-md bg-[#0077CC] text-white flex items-center justify-center font-bold text-xs shadow-sm">C</div>
-            <span className="text-lg font-bold text-[#0077CC] tracking-tight">Crikly</span>
-          </div>
-        </div>
+        <img
+          src="/logo.png"
+          alt="Crikly"
+          className="h-8 w-auto object-contain mb-6"
+        />
 
         <div className="flex flex-col gap-4 mb-8">
           <div className="flex items-center gap-3 p-2 -mx-2 rounded-xl hover:bg-gray-50 cursor-pointer transition-colors border border-transparent hover:border-gray-100">
@@ -87,10 +85,11 @@ export function CoachDashboard() {
           
           {/* Mobile Top Bar */}
           <div className="flex justify-between items-center md:hidden mb-2">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-md bg-[#0077CC] text-white flex items-center justify-center font-bold text-sm shadow-sm">C</div>
-              <span className="text-xl font-bold text-[#0077CC] tracking-tight">Crikly</span>
-            </div>
+            <img
+              src="/logo.png"
+              alt="Crikly"
+              className="h-7 w-auto object-contain"
+            />
             <div className="relative">
               <img src={avatarUrl} alt="Ravi" className="w-10 h-10 rounded-full object-cover shadow-sm border border-gray-100" />
               <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 bg-red-500 rounded-full border-2 border-white flex items-center justify-center text-[10px] font-bold text-white shadow-sm">3</span>

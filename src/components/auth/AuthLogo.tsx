@@ -6,15 +6,14 @@ export function AuthLogo() {
       href="/"
       style={{
         display: 'inline-block',
-        fontSize: '24px',
-        fontWeight: 700,
-        color: '#0F172A',
-        letterSpacing: '-0.5px',
-        textDecoration: 'none',
         marginBottom: '32px',
       }}
     >
-      crik<span style={{ color: '#0077CC' }}>ly</span>
+      <img
+        src="/logo.png"
+        alt="Crikly"
+        className="h-8 w-auto object-contain"
+      />
     </Link>
   )
 }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 interface ProgrammeResponse {
   id: string
@@ -10,6 +11,7 @@ interface ProgrammeResponse {
   schedule_type: string
   day_of_week: number | null
   day_name: string | null
+  days_of_week: number[] | null
   start_time: string | null
   duration_minutes: number
   max_spots: number
@@ -22,6 +24,12 @@ interface ProgrammeResponse {
   currency: string
   status: string
   created_at: string
+  venue_name: string | null
+  venue_address: string | null
+  skill_level: string
+  session_count: number | null
+  min_participants: number | null
+  cancellation_window_hours: number
 }
 
 function getDayName(dayOfWeek: number | null): string | null {
@@ -91,30 +99,12 @@ export async function GET(
     }
 
     // 4. Fetch programme and verify ownership
-    const { data: programme, error: programmeError } = await supabase
+    // CF-05b: admin client — bypasses RLS auth_user_id mismatch (dev DB).
+    // Ownership enforced explicitly via .eq('coach_profile_id', coachProfile.id).
+    const adminSupabase = createAdminClient()
+    const { data: programme, error: programmeError } = await adminSupabase
       .from('group_programmes')
-      .select(`
-        id,
-        sport_id,
-        title,
-        description,
-        schedule_type,
-        day_of_week,
-        start_time,
-        duration_minutes,
-        max_spots,
-        current_spots,
-        payment_type,
-        price_per_session_pence,
-        block_price_pence,
-        block_session_count,
-        currency,
-        status,
-        created_at,
-        sports!inner (
-          name
-        )
-      `)
+      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address, skill_level, session_count, min_participants, cancellation_window_hours')
       .eq('id', programmeId)
       .eq('coach_profile_id', coachProfile.id)
       .is('deleted_at', null)
@@ -124,20 +114,23 @@ export async function GET(
       return NextResponse.json({ error: 'Programme not found or access denied' }, { status: 404 })
     }
 
-    // 5. Build response
-    const sportData = programme.sports
-      ? (Array.isArray(programme.sports) ? programme.sports[0] : programme.sports)
-      : null
+    // 5. Fetch sport name separately (Fix-65-1 pattern — no nested join)
+    let getSportName = ''
+    if (programme.sport_id) {
+      const { data: sportRow } = await supabase.from('sports').select('name').eq('id', programme.sport_id).single()
+      getSportName = sportRow?.name || ''
+    }
 
     const response: ProgrammeResponse = {
       id: programme.id,
       sport_id: programme.sport_id,
-      sport_name: sportData?.name || '',
+      sport_name: getSportName,
       title: programme.title,
       description: programme.description,
       schedule_type: programme.schedule_type,
       day_of_week: programme.day_of_week,
       day_name: getDayName(programme.day_of_week),
+      days_of_week: programme.days_of_week ?? null,
       start_time: programme.start_time,
       duration_minutes: programme.duration_minutes,
       max_spots: programme.max_spots,
@@ -150,6 +143,12 @@ export async function GET(
       currency: programme.currency,
       status: programme.status,
       created_at: programme.created_at,
+      venue_name: programme.venue_name,
+      venue_address: programme.venue_address,
+      skill_level: programme.skill_level,
+      session_count: programme.session_count,
+      min_participants: programme.min_participants,
+      cancellation_window_hours: programme.cancellation_window_hours,
     }
 
     return NextResponse.json(response, { status: 200 })
@@ -214,7 +213,10 @@ export async function PATCH(
     }
 
     // 4. Verify coach owns this programme and get current values
-    const { data: existingProgramme, error: programmeCheckError } = await supabase
+    // Fix-64: Use admin client — bypasses RLS auth_user_id mismatch (dev DB).
+    // Ownership enforced explicitly via .eq('coach_profile_id', coachProfile.id).
+    const adminSupabase = createAdminClient()
+    const { data: existingProgramme, error: programmeCheckError } = await adminSupabase
       .from('group_programmes')
       .select('id, status, current_spots, max_spots')
       .eq('id', programmeId)
@@ -261,6 +263,16 @@ export async function PATCH(
     if (body.day_of_week !== undefined) {
       if (typeof body.day_of_week !== 'number' || body.day_of_week < 0 || body.day_of_week > 6) {
         validationErrors.push('day_of_week must be a number between 0 and 6')
+      }
+    }
+
+    if (body.days_of_week !== undefined && body.days_of_week !== null) {
+      if (!Array.isArray(body.days_of_week)) {
+        validationErrors.push('days_of_week must be an array')
+      } else if (body.days_of_week.length < 1 || body.days_of_week.length > 7) {
+        validationErrors.push('days_of_week must have between 1 and 7 elements')
+      } else if (!body.days_of_week.every((d: unknown) => typeof d === 'number' && d >= 0 && d <= 6)) {
+        validationErrors.push('each value in days_of_week must be a number between 0 and 6')
       }
     }
 
@@ -347,6 +359,7 @@ export async function PATCH(
       description?: string | null
       schedule_type?: string
       day_of_week?: number
+      days_of_week?: number[] | null
       start_time?: string
       duration_minutes?: number
       max_spots?: number
@@ -356,6 +369,10 @@ export async function PATCH(
       block_session_count?: number | null
       status?: string
       updated_at: string
+      venue_name?: string | null
+      venue_address?: string | null
+      min_participants?: number | null
+      cancellation_window_hours?: number
     } = {
       updated_at: new Date().toISOString(),
     }
@@ -373,34 +390,31 @@ export async function PATCH(
     if (body.block_session_count !== undefined) updateData.block_session_count = body.block_session_count
     if (body.status !== undefined) updateData.status = body.status
 
-    // 7. Update programme
-    const { data: updatedProgramme, error: updateError } = await supabase
+    // Fix-58-DB-api: populate days_of_week — prefer explicit array, fall back to [day_of_week]
+    if (Array.isArray(body.days_of_week) && body.days_of_week.length > 0) {
+      updateData.days_of_week = body.days_of_week
+    } else if (typeof body.day_of_week === 'number') {
+      updateData.days_of_week = [body.day_of_week]
+    }
+
+    if (body.venue_name !== undefined) updateData.venue_name = body.venue_name || null
+    if (body.venue_address !== undefined) updateData.venue_address = body.venue_address || null
+    if (body.min_participants !== undefined) {
+      updateData.min_participants = typeof body.min_participants === 'number' && body.min_participants > 0
+        ? body.min_participants
+        : null
+    }
+    if (body.cancellation_window_hours !== undefined && typeof body.cancellation_window_hours === 'number') {
+      updateData.cancellation_window_hours = body.cancellation_window_hours
+    }
+
+    // 7. Update programme (adminSupabase already created in step 4)
+    const { data: updatedProgramme, error: updateError } = await adminSupabase
       .from('group_programmes')
       .update(updateData)
       .eq('id', programmeId)
       .eq('coach_profile_id', coachProfile.id)
-      .select(`
-        id,
-        sport_id,
-        title,
-        description,
-        schedule_type,
-        day_of_week,
-        start_time,
-        duration_minutes,
-        max_spots,
-        current_spots,
-        payment_type,
-        price_per_session_pence,
-        block_price_pence,
-        block_session_count,
-        currency,
-        status,
-        created_at,
-        sports!inner (
-          name
-        )
-      `)
+      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address, skill_level, session_count, min_participants, cancellation_window_hours')
       .single()
 
     if (updateError) {
@@ -408,20 +422,23 @@ export async function PATCH(
       return NextResponse.json({ error: 'Failed to update programme' }, { status: 500 })
     }
 
-    // 8. Build response
-    const sportData = updatedProgramme.sports
-      ? (Array.isArray(updatedProgramme.sports) ? updatedProgramme.sports[0] : updatedProgramme.sports)
-      : null
+    // 8. Fetch sport name separately (Fix-65-1 pattern — no nested join)
+    let patchSportName = ''
+    if (updatedProgramme.sport_id) {
+      const { data: sportRow } = await supabase.from('sports').select('name').eq('id', updatedProgramme.sport_id).single()
+      patchSportName = sportRow?.name || ''
+    }
 
     const response: ProgrammeResponse = {
       id: updatedProgramme.id,
       sport_id: updatedProgramme.sport_id,
-      sport_name: sportData?.name || '',
+      sport_name: patchSportName,
       title: updatedProgramme.title,
       description: updatedProgramme.description,
       schedule_type: updatedProgramme.schedule_type,
       day_of_week: updatedProgramme.day_of_week,
       day_name: getDayName(updatedProgramme.day_of_week),
+      days_of_week: (updatedProgramme.days_of_week as number[] | null) ?? null,
       start_time: updatedProgramme.start_time,
       duration_minutes: updatedProgramme.duration_minutes,
       max_spots: updatedProgramme.max_spots,
@@ -434,6 +451,12 @@ export async function PATCH(
       currency: updatedProgramme.currency,
       status: updatedProgramme.status,
       created_at: updatedProgramme.created_at,
+      venue_name: updatedProgramme.venue_name,
+      venue_address: updatedProgramme.venue_address,
+      skill_level: updatedProgramme.skill_level,
+      session_count: updatedProgramme.session_count,
+      min_participants: updatedProgramme.min_participants,
+      cancellation_window_hours: updatedProgramme.cancellation_window_hours,
     }
 
     return NextResponse.json(response, { status: 200 })
@@ -498,7 +521,10 @@ export async function DELETE(
     }
 
     // 4. Verify coach owns this programme and check status/enrolments
-    const { data: existingProgramme, error: programmeCheckError } = await supabase
+    // Fix-69-2: admin client — same RLS auth_user_id mismatch as Fix-64.
+    // Ownership enforced via explicit .eq('coach_profile_id', coachProfile.id).
+    const adminSupabase = createAdminClient()
+    const { data: existingProgramme, error: programmeCheckError } = await adminSupabase
       .from('group_programmes')
       .select('id, status, current_spots')
       .eq('id', programmeId)
@@ -519,7 +545,7 @@ export async function DELETE(
     }
 
     // 5. Soft delete — set deleted_at
-    const { error: deleteError } = await supabase
+    const { error: deleteError } = await adminSupabase
       .from('group_programmes')
       .update({ deleted_at: new Date().toISOString() })
       .eq('id', programmeId)

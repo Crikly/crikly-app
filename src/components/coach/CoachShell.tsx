@@ -25,13 +25,11 @@ export function CoachShell({ children, activeItem = 'home' }: CoachShellProps) {
       
       {/* Desktop Sidebar */}
       <aside className="hidden lg:flex w-64 shrink-0 flex-col bg-white border-r border-gray-100 p-6 sticky top-0 h-screen z-10">
-        <div className="w-[160px] h-[40px] border border-dashed border-gray-300 rounded-lg flex items-center justify-center relative mb-6">
-          <span className="absolute -top-1.5 left-2 bg-white px-1 text-[10px] text-gray-400 font-medium uppercase tracking-wider leading-none">Logo</span>
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-md bg-[#0077CC] text-white flex items-center justify-center font-bold text-xs shadow-sm">C</div>
-            <span className="text-lg font-bold text-[#0077CC] tracking-tight">Crikly</span>
-          </div>
-        </div>
+        <img
+          src="/logo.png"
+          alt="Crikly"
+          className="h-8 w-auto object-contain mb-6"
+        />
 
         <div className="flex flex-col gap-4 mb-8">
           <div className="flex items-center gap-3 p-2 -mx-2 rounded-xl hover:bg-gray-50 cursor-pointer transition-colors border border-transparent hover:border-gray-100">

@@ -10,7 +10,11 @@ export function GoLiveStep() {
     <div className="min-h-full bg-white font-sans text-gray-900 flex flex-col items-center pt-16 pb-32">
       <div className="w-full max-w-[500px] px-6 flex flex-col items-center text-center">
         <div className="mb-10 w-full flex flex-col items-center">
-          <div className="text-[24px] font-bold text-[#0077CC] tracking-tight mb-12">crikly</div>
+          <img
+            src="/logo.png"
+            alt="Crikly"
+            className="w-28 h-auto object-contain mb-12"
+          />
           <div className="w-20 h-20 bg-green-500 rounded-full flex items-center justify-center mb-8 shadow-sm">
             <Check size={40} className="text-white" strokeWidth={3} />
           </div>
