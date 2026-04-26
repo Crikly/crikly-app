@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { ChevronLeft, ChevronRight, Plus, Check, User, RefreshCw, Users, Ban, X, Calendar, MapPin, PoundSterling, AlertCircle, Info } from 'lucide-react'
@@ -99,10 +99,10 @@ function EventBlock({ top, height, type, title, subtitle, sessionId, onCardClick
       onClick={handleClick}
     >
       {/* CHANGE 3: Hover quick actions */}
-      {type !== 'available' && type !== 'adhoc' && type !== 'blocked' && (
+      {type !== 'available' && type !== 'blocked' && (
         <div className="quick-actions absolute top-1 right-1 flex gap-1 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity duration-150">
-          <button onClick={() => {/* TODO CF-D02: wire View quick action */}} className="text-[8px] px-1 py-0.5 rounded-sm bg-white/75" style={{ color: 'inherit' }}>View</button>
-          <button onClick={() => {/* TODO CF-D02: wire Message quick action */}} className="text-[8px] px-1 py-0.5 rounded-sm bg-white/75" style={{ color: 'inherit' }}>Msg</button>
+          <button onClick={(e) => { e.stopPropagation(); onCardClick?.(e, sessionId ?? '', type) }} className="text-[8px] px-1 py-0.5 rounded-sm bg-white/75" style={{ color: 'inherit' }}>View</button>
+          <button onClick={(e) => { e.stopPropagation(); onCardClick?.(e, sessionId ?? '', type) }} className="text-[8px] px-1 py-0.5 rounded-sm bg-white/75" style={{ color: 'inherit' }}>Msg</button>
         </div>
       )}
       {/* CHANGE 3: Typography refinement */}
@@ -361,6 +361,31 @@ export function Schedule() {
       y
     })
   }
+
+  // Fix-83: Named ad hoc click handler — same clamping as handleCardClick
+  const handleAdHocClick = useCallback((
+    e: React.MouseEvent,
+    block: AvailabilityResponse,
+    dateStr: string,
+    timeStr: string,
+  ) => {
+    console.log('[AdHoc click]', block.id)
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    const x = Math.min(rect.right + 8, window.innerWidth - RIGHT_PANEL_WIDTH - 388)
+    const y = Math.min(rect.top, window.innerHeight - 400)
+    setAdHocPopover({
+      id: block.id,
+      sport: block.sport_name ?? 'Slot',
+      date: dateStr,
+      time: timeStr,
+      venue: block.venue_name ?? null,
+      price: block.price_override_pence
+        ? `£${(block.price_override_pence / 100).toFixed(0)}`
+        : null,
+      x,
+      y,
+    })
+  }, [])
 
   // CF-D02c FIX 1: Handle empty/available slot click (single popover)
   // CF-D02d BUG FIX 3: Add source field
@@ -658,23 +683,7 @@ export function Schedule() {
                               })()}
                               sessionId={`slot-${day.name.toLowerCase()}-${block.id}`}
                               onCardClick={isAdHoc
-                                ? (e) => {
-                                    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-                                    const x = Math.min(rect.right + 8, window.innerWidth - 520)
-                                    const y = Math.min(rect.top, window.innerHeight - 300)
-                                    setAdHocPopover({
-                                      id: block.id,
-                                      sport: block.sport_name ?? 'Slot',
-                                      date: dateStr,
-                                      time: timeStr,
-                                      venue: block.venue_name ?? null,
-                                      price: block.price_override_pence
-                                        ? `£${(block.price_override_pence / 100).toFixed(0)}`
-                                        : null,
-                                      x,
-                                      y,
-                                    })
-                                  }
+                                ? (e) => handleAdHocClick(e, block, dateStr, timeStr)
                                 : (e) => handleSlotClick(e, dateStr, timeStr)
                               }
                             />
