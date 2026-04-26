@@ -65,8 +65,8 @@ export default function RoleSplashPage() {
           <Image
             src="/logo.png"
             alt="Crikly"
-            height={52}
-            width={93}
+            height={72}
+            width={128}
             priority
           />
         </div>

@@ -94,8 +94,8 @@ export default function CoachIntroPage() {
         <Image
           src="/logo.png"
           alt="Crikly"
-          height={28}
-          width={50}
+          height={36}
+          width={64}
           priority
           style={{ filter: 'brightness(0) invert(1)' }}
         />
