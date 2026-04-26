@@ -299,6 +299,7 @@ C-05, C-06, C-07, C-08 are safe to proceed without M-015.
 | Fix-80 | Timezone bug — use local date components instead of toISOString() for schedule date comparison | @FrontendDeveloper | 🟢 | develop | ✅ |
 | Fix-81 | Ad hoc popover click using nativeEvent target instead of currentTarget | @FrontendDeveloper | 🟢 | develop | ✅ |
 | Fix-82 | Ad hoc popover anchor to card rect right edge — same pattern as handleCardClick | @FrontendDeveloper | 🟢 | develop | ✅ |
+| Fix-82b | AdHocPopover exact SessionPopover structure + postcode filter on subtitle + outside-click handler | @FrontendDeveloper | 🟢 | develop | ✅ |
 | CF-05c-DB | Add participant_name column to group_programme_enrolments + update roster API | @DatabaseArchitect | 🟢 | develop | ✅ |
 | SYNC-10 | Working ethics v1.4 — Claude Code + Claude Design + no browser dialogs | @TechLead | 🟢 | develop | ✅ |
 | CF-06 | Availability screen | @FrontendDeveloper | 🟢 | feature/coach-frontend | ✅ |
