@@ -539,23 +539,27 @@ Every Claude Code prompt MUST include the relevant agent MD
 file in the context files list. No exceptions — even for
 quick fixes, hotfixes, or single-line changes.
 
-Correct format:
+Required format:
 ```
 Context files:
 1. CLAUDE.md
 2. docs/09_WORKING_ETHICS.md
-3. docs/agents/frontend-developer.md  ← always include this
+3. docs/agents/frontend-developer.md  ← always required
 ```
 
-The agent file tells Claude Code:
-- Which coding standards to follow
-- Which patterns to use
-- What to read before starting
-- How to approach the task
+Which agent file to use:
+- UI/component work → docs/agents/frontend-developer.md
+- API routes → docs/agents/backend-developer.md
+- DB migrations → docs/agents/database-architect.md
+- Payments → docs/agents/payments-engineer.md
+- Tests → docs/agents/qa-engineer.md
+- Infra/deploy → docs/agents/devops-engineer.md
+- Multi-file tasks → include all relevant agent files
 
 Omitting the agent file was identified as a recurring problem
 during the Fix-73 through Fix-82 debug series (April 2026)
-where quick-fix prompts skipped the agent context.
+where quick-fix prompts skipped agent context, leading to
+lower quality output and missed patterns.
 
 This rule was added after SYNC-13 (26 April 2026).
 
