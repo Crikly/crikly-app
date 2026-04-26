@@ -654,14 +654,15 @@ export function Schedule() {
                               sessionId={`slot-${day.name.toLowerCase()}-${block.id}`}
                               onCardClick={isAdHoc
                                 ? (e) => {
-                                    console.log('[AdHoc click]', {
-                                      block_id: block.id,
-                                      clientX: e.clientX,
-                                      clientY: e.clientY,
-                                    })
-                                    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-                                    const x = e.clientX > 0 ? e.clientX : rect.left + rect.width
-                                    const y = e.clientY > 0 ? e.clientY : rect.top
+                                    const target = e.nativeEvent.target as HTMLElement
+                                    const rect = target.closest('.session-card')?.getBoundingClientRect()
+                                      ?? target.getBoundingClientRect()
+                                    const x = e.clientX > 0
+                                      ? Math.min(e.clientX, window.innerWidth - 320)
+                                      : Math.min(rect.right, window.innerWidth - 320)
+                                    const y = e.clientY > 0
+                                      ? Math.min(e.clientY, window.innerHeight - 280)
+                                      : Math.min(rect.bottom, window.innerHeight - 280)
                                     setAdHocPopover({
                                       id: block.id,
                                       sport: block.sport_name ?? 'Slot',
@@ -671,8 +672,8 @@ export function Schedule() {
                                       price: block.price_override_pence
                                         ? `£${(block.price_override_pence / 100).toFixed(0)}`
                                         : null,
-                                      x: Math.min(x, window.innerWidth - 320),
-                                      y: Math.min(y, window.innerHeight - 280),
+                                      x,
+                                      y,
                                     })
                                   }
                                 : (e) => handleSlotClick(e, dateStr, timeStr)
