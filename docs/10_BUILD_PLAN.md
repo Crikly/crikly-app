@@ -147,7 +147,7 @@ All app flows show a coming soon state — only marketing content is functional.
 | ID | Task | Agent | Risk | Branch | Status |
 |---|---|---|---|---|---|
 | MS-17 | Auth modal overlay (Option A) — extract LoginForm/RegisterForm, AuthModal component, post-auth redirect logic, booking intent preservation | @FrontendDeveloper | 🟡 | feature/marketing-site | ✅ |
-| MS-18 | Middleware guard — redirect /login /register /coach/* /onboarding/* to / when NEXT_PUBLIC_COACH_APP_LIVE !== 'true' | @FrontendDeveloper | 🟡 | feature/marketing-site | ⚪ |
+| MS-18 | Middleware guard — redirect /login /register /coach/* /onboarding/* to / when NEXT_PUBLIC_COACH_APP_LIVE !== 'true' | @FrontendDeveloper | 🟡 | feature/marketing-site | ✅ |
 | MS-19 | Privacy Policy page — static server component, UK GDPR compliant, 10 sections, linked from InterestForm and ComingSoonModal | @FrontendDeveloper | 🟢 | feature/marketing-site | ✅ |
 | MS-20 | Terms & Conditions page — static server component, 11 sections, linked from InterestForm and ComingSoonModal | @FrontendDeveloper | 🟢 | feature/marketing-site | ✅ |
 | MS-21 | GDPR consent checkboxes — DB migration (consent_given + consent_at on interest_registrations + waitlist_emails), InterestForm + ComingSoonModal UI + API route updates | @FrontendDeveloper | 🟡 | feature/marketing-site | ✅ |
