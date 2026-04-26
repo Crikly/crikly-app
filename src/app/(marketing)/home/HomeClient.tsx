@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Search, ShieldCheck, Clock, CreditCard, Zap, MapPin, Camera, Plus } from 'lucide-react'
 import { LocationBar } from '@/components/marketing/LocationBar'
 import { ForCoachesBar } from '@/components/marketing/ForCoachesBar'
+import { ComingSoonModal } from '@/components/marketing/ComingSoonModal'
 
 const CYCLE_WORDS = [
   'cricket coach',
@@ -60,6 +61,7 @@ export function HomeClient({ sports }: Props) {
   const [cycleOut, setCycleOut] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
+  const [showComingSoon, setShowComingSoon] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
   // Cycling headline animation
@@ -358,14 +360,21 @@ export function HomeClient({ sports }: Props) {
           >
             {heroTitle}
           </h2>
-          <a
-            href="/coaches"
-            onClick={e => { e.preventDefault(); router.push('/coaches') }}
+          <button
+            onClick={() => setShowComingSoon(true)}
             className="font-medium"
-            style={{ color: '#0077CC', fontSize: '14px', textDecoration: 'none' }}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#0077CC',
+              fontSize: '14px',
+              cursor: 'pointer',
+              padding: 0,
+              fontFamily: 'inherit',
+            }}
           >
             See all →
-          </a>
+          </button>
         </div>
 
         {/* Skeleton cards — displayed while we wait for real data in a future iteration */}
@@ -521,6 +530,8 @@ export function HomeClient({ sports }: Props) {
 
       {/* ---- For coaches bar ---- */}
       <ForCoachesBar />
+
+      <ComingSoonModal isOpen={showComingSoon} onClose={() => setShowComingSoon(false)} />
     </>
   )
 }
