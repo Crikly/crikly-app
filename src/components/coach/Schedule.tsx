@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { ChevronLeft, ChevronRight, Plus, Check, User, RefreshCw, Users, Ban, X, Calendar, MapPin, PoundSterling, AlertCircle, Info } from 'lucide-react'
+import { VenueAutocomplete, type VenueSelection } from '@/components/coach/shared/LocationAutocomplete'
 
 // CD-12: API response types
 interface AvailabilityResponse {
@@ -17,6 +18,8 @@ interface AvailabilityResponse {
   price_override_pence: number | null
   session_type_id: string | null
   session_type_name: string | null
+  venue_name: string | null
+  venue_address: string | null
   is_recurring: boolean
   specific_date: string | null
   created_at: string
@@ -108,7 +111,7 @@ function EventBlock({ top, height, type, title, subtitle, sessionId, onCardClick
       ) : (
         <>
           <div className="text-[10px] font-medium leading-tight truncate">{type === 'available' ? '+ Add session' : title}</div>
-          {subtitle && type !== 'available' && type !== 'adhoc' && <div className="text-[9px] leading-tight truncate mt-0.5" style={{ opacity: 0.75 }}>{subtitle}</div>}
+          {subtitle && type !== 'available' && <div className="text-[9px] leading-tight truncate mt-0.5" style={{ opacity: 0.75 }}>{subtitle}</div>}
         </>
       )}
     </div>
@@ -169,8 +172,9 @@ export function Schedule() {
   const [adHocSubmitting, setAdHocSubmitting] = useState(false)
   const [adHocError, setAdHocError] = useState<string | null>(null)
   const [sports, setSports] = useState<SportOption[]>([])
-  const [venues, setVenues] = useState<{ id: string; name: string }[]>([])
-  const [adHocVenue, setAdHocVenue] = useState('')
+  const [adHocVenueName, setAdHocVenueName] = useState('')
+  const [adHocVenueAddress, setAdHocVenueAddress] = useState('')
+  const [venueKey, setVenueKey] = useState(0)
   const [adHocPrice, setAdHocPrice] = useState('')
 
   // CD-12: Fetch availability data on mount and after ad hoc submit
@@ -198,29 +202,21 @@ export function Schedule() {
     fetchAvailability()
   }, [refreshKey])
 
-  // CF-02a / Fix-74: Fetch coach sports + venues when add modal opens
+  // CF-02a: Fetch coach sports when add modal opens
   useEffect(() => {
     if (!isAddModalOpen) return
-    const fetchData = async () => {
+    const fetchSports = async () => {
       try {
-        const [sportsRes, venuesRes] = await Promise.all([
-          fetch('/api/coaches/sports'),
-          fetch('/api/coaches/venues'),
-        ])
-        if (sportsRes.ok) {
-          const data = await sportsRes.json() as { sports: SportOption[] }
-          setSports(data.sports || [])
-          if (data.sports?.length > 0) setAdHocSportId(data.sports[0].sport_id)
-        }
-        if (venuesRes.ok) {
-          const data = await venuesRes.json() as { venues: { id: string; name: string }[] }
-          setVenues(data.venues || [])
-        }
+        const res = await fetch('/api/coaches/sports')
+        if (!res.ok) return
+        const data = await res.json() as { sports: SportOption[] }
+        setSports(data.sports || [])
+        if (data.sports?.length > 0) setAdHocSportId(data.sports[0].sport_id)
       } catch {
         // non-critical
       }
     }
-    fetchData()
+    fetchSports()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAddModalOpen])
   
@@ -395,7 +391,8 @@ export function Schedule() {
           start_time: adHocStartTime,
           end_time: adHocEndTime,
           sport_id: adHocSportId || null,
-          // TODO: availability API only accepts coach_venue_id (FK) — add venue_name plain text support to route and DB
+          venue_name: adHocVenueName || null,
+          venue_address: adHocVenueAddress || null,
           price_override_pence: adHocPrice ? Math.round(parseFloat(adHocPrice) * 100) : null,
           is_recurring: false,
           specific_date: adHocDate,
@@ -410,7 +407,9 @@ export function Schedule() {
       setAdHocStep('menu')
       setAdHocDate('')
       setAdHocNotes('')
-      setAdHocVenue('')
+      setAdHocVenueName('')
+      setAdHocVenueAddress('')
+      setVenueKey(k => k + 1)
       setAdHocPrice('')
       setAdHocError(null)
       setRefreshKey(k => k + 1)
@@ -619,6 +618,9 @@ export function Schedule() {
                           const blockTitle = block.is_recurring === false
                             ? (block.sport_name ? `Ad hoc · ${block.sport_name}` : 'Ad hoc slot')
                             : 'Available'
+                          const blockSubtitle = block.is_recurring === false
+                            ? (block.venue_name ?? undefined)
+                            : undefined
 
                           return (
                             <EventBlock
@@ -627,6 +629,7 @@ export function Schedule() {
                               height={heightPx}
                               type={blockType}
                               title={blockTitle}
+                              subtitle={blockSubtitle}
                               sessionId={`slot-${day.name.toLowerCase()}-${block.id}`}
                               onCardClick={(e) => handleSlotClick(e, dateStr, timeStr)}
                             />
@@ -733,7 +736,7 @@ export function Schedule() {
 
       {/* ADD MODAL */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 bg-black/40 z-[100] flex items-end sm:items-center justify-center" onClick={() => { setIsAddModalOpen(false); setAdHocStep('menu'); setAdHocVenue(''); setAdHocPrice(''); setAdHocError(null) }}>
+        <div className="fixed inset-0 bg-black/40 z-[100] flex items-end sm:items-center justify-center" onClick={() => { setIsAddModalOpen(false); setAdHocStep('menu'); setAdHocVenueName(''); setAdHocVenueAddress(''); setVenueKey(k => k + 1); setAdHocPrice(''); setAdHocError(null) }}>
           <div className="bg-white w-full max-w-[420px] rounded-t-[24px] sm:rounded-[24px] shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
             <div className="p-6">
 
@@ -826,25 +829,30 @@ export function Schedule() {
 
                     <div>
                       <label className="block text-[12px] font-medium text-gray-700 mb-1">Venue <span className="text-gray-400 font-normal">(optional)</span></label>
-                      <input
-                        type="text"
-                        value={adHocVenue}
-                        onChange={e => setAdHocVenue(e.target.value)}
-                        placeholder="e.g. Oval Cricket Ground"
-                        className="w-full text-[13px] border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#0077CC]"
+                      <VenueAutocomplete
+                        key={venueKey}
+                        value={adHocVenueName}
+                        placeholder="Search for a venue or sports centre"
+                        onSelect={(v: VenueSelection) => {
+                          setAdHocVenueName(v.name)
+                          setAdHocVenueAddress(v.address)
+                        }}
+                        onChange={(val) => setAdHocVenueName(val)}
                       />
-                      {venues.length > 0 && (
-                        <div className="flex flex-wrap gap-1.5 mt-1.5">
-                          {venues.map(v => (
-                            <button
-                              key={v.id}
-                              type="button"
-                              onClick={() => setAdHocVenue(v.name)}
-                              className="text-[11px] px-2 py-0.5 rounded-full border border-gray-200 text-gray-500 hover:border-[#0077CC] hover:text-[#0077CC] transition-colors"
-                            >
-                              {v.name}
-                            </button>
-                          ))}
+                      {adHocVenueName && (
+                        <div className="flex items-center justify-between mt-1.5">
+                          <p className="text-[11px] text-gray-500 truncate">
+                            {adHocVenueAddress || adHocVenueName}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAdHocVenueName('')
+                              setAdHocVenueAddress('')
+                              setVenueKey(k => k + 1)
+                            }}
+                            className="ml-2 text-gray-400 hover:text-gray-600 text-[13px] shrink-0"
+                          >×</button>
                         </div>
                       )}
                     </div>

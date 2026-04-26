@@ -122,6 +122,8 @@ export type Database = {
           sport_id: string | null
           start_time: string
           updated_at: string
+          venue_name: string | null
+          venue_address: string | null
         }
         Insert: {
           coach_profile_id: string
@@ -138,6 +140,8 @@ export type Database = {
           sport_id?: string | null
           start_time: string
           updated_at?: string
+          venue_name?: string | null
+          venue_address?: string | null
         }
         Update: {
           coach_profile_id?: string
@@ -154,6 +158,8 @@ export type Database = {
           sport_id?: string | null
           start_time?: string
           updated_at?: string
+          venue_name?: string | null
+          venue_address?: string | null
         }
         Relationships: [
           {

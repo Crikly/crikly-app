@@ -17,6 +17,7 @@ interface AvailabilityResponse {
   session_type_name: string | null
   coach_venue_id: string | null
   venue_name: string | null
+  venue_address: string | null
   is_recurring: boolean
   specific_date: string | null
   created_at: string
@@ -191,7 +192,8 @@ export async function GET(
         session_type_id: block.session_type_id,
         session_type_name: sessionTypeData ? `${sessionTypeData.duration_minutes}min` : null,
         coach_venue_id: block.coach_venue_id,
-        venue_name: block.coach_venue_id ? (venueMap[block.coach_venue_id] ?? null) : null,
+        venue_name: block.venue_name ?? (block.coach_venue_id ? (venueMap[block.coach_venue_id] ?? null) : null),
+        venue_address: block.venue_address ?? null,
         is_recurring: block.is_recurring,
         specific_date: block.specific_date ?? null,
         created_at: block.created_at,
@@ -442,6 +444,8 @@ export async function POST(
       price_override_pence?: number | null
       session_type_id?: string | null
       coach_venue_id?: string | null
+      venue_name?: string | null
+      venue_address?: string | null
       is_recurring?: boolean
       specific_date?: string | null
     } = {
@@ -465,6 +469,14 @@ export async function POST(
 
     if (body.coach_venue_id !== undefined) {
       insertData.coach_venue_id = body.coach_venue_id
+    }
+
+    if (body.venue_name !== undefined) {
+      insertData.venue_name = body.venue_name
+    }
+
+    if (body.venue_address !== undefined) {
+      insertData.venue_address = body.venue_address
     }
 
     if (body.is_recurring !== undefined) {
@@ -533,7 +545,8 @@ export async function POST(
       session_type_id: newBlock.session_type_id,
       session_type_name: sessionTypeData ? `${sessionTypeData.duration_minutes}min` : null,
       coach_venue_id: newBlock.coach_venue_id,
-      venue_name: venueData?.name ?? null,
+      venue_name: newBlock.venue_name ?? venueData?.name ?? null,
+      venue_address: newBlock.venue_address ?? null,
       is_recurring: newBlock.is_recurring,
       specific_date: newBlock.specific_date ?? null,
       created_at: newBlock.created_at,
