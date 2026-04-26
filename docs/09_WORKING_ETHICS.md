@@ -1,8 +1,8 @@
 # Crikly — Working Ethics & Collaboration Standards
 
-**Version:** 1.6
-**Last Updated:** 26 April 2026
-**Changed:** SYNC-13 — agent MD file always required in prompts
+**Version:** 1.7
+**Last Updated:** 27 April 2026
+**Changed:** Phase 0 closeout — added L-06 (Vercel Framework Preset) and L-07 (production 404 debug order)
 **Maintainer:** Lasith Jayarathne
 **Review:** After each phase completion
 
@@ -982,6 +982,43 @@ before producing any plan or summary.
 
 ---
 
-*Crikly Working Ethics v1.0 — March 2026*
+### L-06 — Vercel Framework Preset must be Next.js for Next.js apps
+
+**What happened:** After merging the marketing site to main and going live publicly,
+www.crikly.app, crikly.app, and the bare .vercel.app URLs all returned `404: NOT_FOUND`
+with the lhr1 edge response. Build logs showed all routes emitted correctly, but zero
+runtime logs appeared because the app was never being invoked.
+
+**Root cause:** The Vercel project's Framework Preset was set to `Other` instead of
+`Next.js`. With "Other", Vercel builds the app but has no routing rules to map URLs
+to the Next.js function output. Every request was served Vercel's default 404 at the
+edge before reaching app code. The Node.js Version was also set to `24.x` instead of
+the documented `20.x` LTS.
+
+**Rule:** Before any production deploy on Vercel, verify in Settings → Build and
+Deployment that Framework Preset is set to "Next.js" and Node.js Version is set to
+"20.x". This must be checked even if the project was auto-detected, because
+auto-detection can fail for projects connected before the framework was added.
+
+---
+
+### L-07 — Production 404 debug order: check Build & Deployment settings FIRST
+
+**What happened:** A production 404 on every route was diagnosed across multiple
+rounds, exploring middleware logic, route groups, sessionStorage redirects, and
+Vercel Authentication settings before finally identifying the Framework Preset
+misconfiguration. Several rounds were wasted on incorrect theories.
+
+**Rule:** When all routes 404 in production with zero runtime logs and a clean
+build log, the cause is almost always framework misconfiguration in Vercel project
+settings. Always check Settings → Build and Deployment FIRST — verify Framework
+Preset, Node.js Version, Root Directory, and Output Directory are correct before
+investigating code, middleware, or domain config. Runtime logs being completely
+empty is the signature symptom: it means the app function is never being invoked,
+which is not a code problem.
+
+---
+
+*Crikly Working Ethics v1.7 — April 2026*
 *Review after each phase completion.*
 *Any process change must be agreed with Lasith first.*
