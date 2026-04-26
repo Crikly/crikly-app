@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Play, Pause, Volume2, VolumeX, RotateCcw, ArrowRight } from 'lucide-react'
+import { InterestForm } from '@/components/marketing/InterestForm'
 
 function fmt(secs: number): string {
   const m = Math.floor(secs / 60)
@@ -27,6 +28,7 @@ export default function CoachIntroPage() {
   const router = useRouter()
   const videoRef = useRef<HTMLVideoElement>(null)
   const [videoError, setVideoError] = useState(false)
+  const [showForm, setShowForm] = useState(false)
   const [isPlaying, setIsPlaying] = useState(false)
   const [isMuted, setIsMuted] = useState(true)
   const [currentTime, setCurrentTime] = useState(0)
@@ -72,11 +74,18 @@ export default function CoachIntroPage() {
   }
 
   function handleEnded() {
-    // TODO MS-12: replace with InterestForm fullscreen component on video end
-    router.push('/home?interest=true')
+    setShowForm(true)
   }
 
   return (
+    <>
+    {showForm && (
+      <InterestForm
+        mode="fullscreen"
+        onClose={() => router.push('/home')}
+        onSuccess={() => router.push('/home')}
+      />
+    )}
     <div className="min-h-screen overflow-x-hidden" style={{ background: '#0F172A', color: '#fff' }}>
 
       {/* Logo */}
@@ -271,5 +280,6 @@ export default function CoachIntroPage() {
         </div>
       </main>
     </div>
+    </>
   )
 }

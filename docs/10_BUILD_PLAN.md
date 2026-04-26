@@ -132,7 +132,7 @@ All app flows show a coming soon state — only marketing content is functional.
 |---|---|---|---|---|---|
 | MS-10 | S-01 Role splash screen — Coach / Parent / Player, sessionStorage role | @FrontendDeveloper | 🟢 | feature/marketing-site | ✅ |
 | MS-11 | S-02 + S-03 Video screens — coach video → form, parent/player video → CTA, skip → homepage | @FrontendDeveloper | 🟢 | feature/marketing-site | ✅ |
-| MS-12 | InterestForm component (S-04 + S-05) — fullscreen + modal modes, sports dynamic from DB | @FrontendDeveloper | 🟡 | feature/marketing-site | ⚪ |
+| MS-12 | InterestForm component (S-04 + S-05) — fullscreen + modal modes, sports dynamic from DB | @FrontendDeveloper | 🟡 | feature/marketing-site | ✅ |
 
 ### Step 0M — Marketing Pages
 
