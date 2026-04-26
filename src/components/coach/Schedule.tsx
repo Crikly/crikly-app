@@ -612,9 +612,16 @@ export function Schedule() {
                   <div className="w-16 shrink-0" />
                   {days.map((day, dayIdx) => {
                     // Filter availability for this day
-                    const dayBlocks = availability.filter(block => 
-                      block.is_active && block.day_of_week === day.dayOfWeek
-                    )
+                    const dayIso = day.fullDate.toISOString().slice(0, 10)
+                    const dayBlocks = availability.filter(block => {
+                      if (!block.is_active) return false
+                      if (block.day_of_week !== day.dayOfWeek) return false
+                      // Ad hoc blocks: only show on their specific date
+                      if (block.is_recurring === false || block.specific_date) {
+                        return block.specific_date === dayIso
+                      }
+                      return true
+                    })
                     
                     return (
                       <div key={dayIdx} className="flex-1 relative border-r border-transparent">
@@ -645,7 +652,14 @@ export function Schedule() {
                               sessionId={`slot-${day.name.toLowerCase()}-${block.id}`}
                               onCardClick={isAdHoc
                                 ? (e) => {
-                                    console.log('[AdHoc click]', { block_id: block.id, is_recurring: block.is_recurring, specific_date: block.specific_date })
+                                    console.log('[AdHoc click]', {
+                                      block_id: block.id,
+                                      clientX: e.clientX,
+                                      clientY: e.clientY,
+                                    })
+                                    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+                                    const x = e.clientX > 0 ? e.clientX : rect.left + rect.width
+                                    const y = e.clientY > 0 ? e.clientY : rect.top
                                     setAdHocPopover({
                                       id: block.id,
                                       sport: block.sport_name ?? 'Slot',
@@ -655,8 +669,8 @@ export function Schedule() {
                                       price: block.price_override_pence
                                         ? `£${(block.price_override_pence / 100).toFixed(0)}`
                                         : null,
-                                      x: Math.min(e.clientX, window.innerWidth - 240),
-                                      y: Math.min(e.clientY, window.innerHeight - 250),
+                                      x: Math.min(x, window.innerWidth - 320),
+                                      y: Math.min(y, window.innerHeight - 280),
                                     })
                                   }
                                 : (e) => handleSlotClick(e, dateStr, timeStr)
