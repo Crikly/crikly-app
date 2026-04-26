@@ -126,7 +126,7 @@ export function LocationAutocomplete(props: LocationAutocompleteProps) {
 }
 
 // ─── VenueAutocomplete ────────────────────────────────────────────────────────
-// Establishments + geocode, UK only. Used in availability blocks.
+// Establishments only, UK only. Used in availability blocks.
 // Shares LIBRARIES reference with LocationAutocomplete — script loads once.
 
 export interface VenueSelection {
@@ -161,7 +161,7 @@ function VenuePlacesInput({
     if (!inputRef.current) return
 
     autocompleteRef.current = new google.maps.places.Autocomplete(inputRef.current, {
-      types: ['establishment', 'geocode'],
+      types: ['establishment'],
       componentRestrictions: { country: 'gb' },
       fields: ['name', 'formatted_address', 'geometry'],
     })

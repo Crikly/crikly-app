@@ -302,6 +302,7 @@ C-05, C-06, C-07, C-08 are safe to proceed without M-015.
 | Fix-82b | AdHocPopover exact SessionPopover structure + postcode filter on subtitle + outside-click handler | @FrontendDeveloper | 🟢 | develop | ✅ |
 | Fix-83 | Ad hoc View/Msg quick actions + named handleAdHocClick with correct clamping + venue restore | @FrontendDeveloper | 🟡 | develop | ✅ |
 | Fix-83b | pointer-events-none on booking layer container so clicks reach z-10 availability/ad hoc blocks | @FrontendDeveloper | 🟢 | develop | ✅ |
+| Fix-84 | Restrict VenueAutocomplete to establishments only — remove geocode type to block raw postcode selection | @FrontendDeveloper | 🟢 | develop | ✅ |
 | CF-05c-DB | Add participant_name column to group_programme_enrolments + update roster API | @DatabaseArchitect | 🟢 | develop | ✅ |
 | SYNC-10 | Working ethics v1.4 — Claude Code + Claude Design + no browser dialogs | @TechLead | 🟢 | develop | ✅ |
 | CF-06 | Availability screen | @FrontendDeveloper | 🟢 | feature/coach-frontend | ✅ |
