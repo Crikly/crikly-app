@@ -1,8 +1,8 @@
 # Crikly — Working Ethics & Collaboration Standards
 
-**Version:** 1.5
-**Last Updated:** 25 April 2026
-**Changed:** SYNC-12 — Plan approval rule added: Claude Code must not self-approve plans
+**Version:** 1.6
+**Last Updated:** 26 April 2026
+**Changed:** SYNC-13 — agent MD file always required in prompts
 **Maintainer:** Lasith Jayarathne
 **Review:** After each phase completion
 
@@ -532,6 +532,32 @@ What to do:
 2. Do not accept the output
 3. Come to Claude with the problem
 4. Get a clearer prompt, then restart Claude Code
+
+### Agent MD File — Always Required
+
+Every Claude Code prompt MUST include the relevant agent MD
+file in the context files list. No exceptions — even for
+quick fixes, hotfixes, or single-line changes.
+
+Correct format:
+```
+Context files:
+1. CLAUDE.md
+2. docs/09_WORKING_ETHICS.md
+3. docs/agents/frontend-developer.md  ← always include this
+```
+
+The agent file tells Claude Code:
+- Which coding standards to follow
+- Which patterns to use
+- What to read before starting
+- How to approach the task
+
+Omitting the agent file was identified as a recurring problem
+during the Fix-73 through Fix-82 debug series (April 2026)
+where quick-fix prompts skipped the agent context.
+
+This rule was added after SYNC-13 (26 April 2026).
 
 ### Prompt Repair — When Output Is Wrong
 If Claude Code produces wrong output, do NOT try to fix it in the same session.
