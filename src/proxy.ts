@@ -2,6 +2,29 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import type { Database } from '@/types/database'
 
+// ── MS-18: App-live guard ─────────────────────────────────────────────────────
+// When NEXT_PUBLIC_COACH_APP_LIVE is not 'true', all authenticated app routes
+// redirect to /home. Flip to 'true' to unlock the full app with no code changes.
+// /coach-intro is intentionally NOT blocked: uses startsWith('/coach/') not '/coach'
+const APP_LIVE_BLOCKED_EXACT = ['/login', '/register', '/verify']
+const APP_LIVE_BLOCKED_ROOTS = [
+  '/onboarding',
+  '/coach',
+  '/parent',
+  '/player',
+  '/dashboard',
+  '/bookings',
+  '/admin',
+]
+
+function isBlockedWhenNotLive(pathname: string): boolean {
+  if (APP_LIVE_BLOCKED_EXACT.includes(pathname)) return true
+  for (const root of APP_LIVE_BLOCKED_ROOTS) {
+    if (pathname === root || pathname.startsWith(root + '/')) return true
+  }
+  return false
+}
+
 const PUBLIC_ROUTES = [
   '/login',
   '/register',
@@ -46,6 +69,13 @@ function isOpenRoute(pathname: string): boolean {
 }
 
 export default async function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl
+
+  // ── App-live guard (MS-18) — runs before any auth logic ───────────────────
+  if (process.env.NEXT_PUBLIC_COACH_APP_LIVE !== 'true' && isBlockedWhenNotLive(pathname)) {
+    return NextResponse.redirect(new URL('/home', request.url))
+  }
+
   const response = NextResponse.next({
     request: { headers: request.headers },
   })
@@ -71,7 +101,6 @@ export default async function proxy(request: NextRequest) {
   )
 
   const { data: { session } } = await supabase.auth.getSession()
-  const { pathname } = request.nextUrl
 
   const isAuthRoute = pathname.startsWith('/login') || pathname.startsWith('/register')
 
