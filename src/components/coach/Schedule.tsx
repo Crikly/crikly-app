@@ -612,7 +612,9 @@ export function Schedule() {
                   <div className="w-16 shrink-0" />
                   {days.map((day, dayIdx) => {
                     // Filter availability for this day
-                    const dayIso = day.fullDate.toISOString().slice(0, 10)
+                    const pad = (n: number) => String(n).padStart(2, '0')
+                    const d = day.fullDate
+                    const dayIso = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
                     const dayBlocks = availability.filter(block => {
                       if (!block.is_active) return false
                       if (block.day_of_week !== day.dayOfWeek) return false
@@ -687,7 +689,9 @@ export function Schedule() {
                 <div className="absolute inset-0 flex pointer-events-auto z-[15]">
                   <div className="w-16 shrink-0" />
                   {days.map((day, dayIdx) => {
-                    const isoDate = day.fullDate.toISOString().slice(0, 10)
+                    const _pad = (n: number) => String(n).padStart(2, '0')
+                    const _d = day.fullDate
+                    const isoDate = `${_d.getFullYear()}-${_pad(_d.getMonth() + 1)}-${_pad(_d.getDate())}`
                     const dayBookings = bookings.filter((b) => b.session_date === isoDate)
                     return (
                       <div key={dayIdx} className="flex-1 relative border-r border-transparent">

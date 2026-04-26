@@ -296,6 +296,7 @@ C-05, C-06, C-07, C-08 are safe to proceed without M-015.
 | Fix-77 | Ad hoc blocks visual distinction in AvailabilityManagement + popover fix in Schedule | @FrontendDeveloper | 🟢 | develop | ✅ |
 | Fix-78 | Filter ad hoc from availability screen + popover redesign + venue truncation on teal blocks | @FrontendDeveloper | 🟢 | develop | ✅ |
 | Fix-79 | Ad hoc date filter + popover click fallback to bounding rect | @FrontendDeveloper | 🟢 | develop | ✅ |
+| Fix-80 | Timezone bug — use local date components instead of toISOString() for schedule date comparison | @FrontendDeveloper | 🟢 | develop | ✅ |
 | CF-05c-DB | Add participant_name column to group_programme_enrolments + update roster API | @DatabaseArchitect | 🟢 | develop | ✅ |
 | SYNC-10 | Working ethics v1.4 — Claude Code + Claude Design + no browser dialogs | @TechLead | 🟢 | develop | ✅ |
 | CF-06 | Availability screen | @FrontendDeveloper | 🟢 | feature/coach-frontend | ✅ |
