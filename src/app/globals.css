@@ -74,3 +74,8 @@ body {
 
 /* Google Places (.pac-container) overrides live in layout.tsx <head>
    so they apply after Google's async style injection. */
+
+@keyframes shimmer {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}

@@ -1,23 +1,30 @@
-// Public marketing layout — no auth checks, no sidebar.
-// MarketingNav and footer are stubs until MS-13.
 import type { ReactNode } from 'react'
-
-function MarketingNav() {
-  // STUB: replaced in MS-13
-  return (
-    <nav className="h-14 border-b border-gray-100 flex items-center px-6">
-      <span className="text-lg font-bold tracking-tight">
-        crik<span className="text-[#0077CC]">ly</span>
-      </span>
-    </nav>
-  )
-}
+import { MarketingNav } from '@/components/marketing/MarketingNav'
 
 function MarketingFooter() {
-  // STUB: replaced in MS-13
   return (
-    <footer className="border-t border-gray-100 py-6 px-6 text-center text-xs text-gray-400">
-      © 2026 Crikly · crikly.app
+    <footer
+      className="flex flex-col md:flex-row justify-between items-center"
+      style={{
+        padding: '32px 40px',
+        borderTop: '1px solid #F1F5F9',
+        color: '#94A3B8',
+        fontSize: '12px',
+        gap: '12px',
+      }}
+    >
+      <span>© 2026 Crikly · crikly.app</span>
+      <div className="flex" style={{ gap: '20px' }}>
+        {['Privacy', 'Terms', 'Contact'].map(link => (
+          <a
+            key={link}
+            href="#"
+            style={{ color: '#94A3B8', textDecoration: 'none' }}
+          >
+            {link}
+          </a>
+        ))}
+      </div>
     </footer>
   )
 }
