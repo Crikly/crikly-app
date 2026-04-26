@@ -654,15 +654,9 @@ export function Schedule() {
                               sessionId={`slot-${day.name.toLowerCase()}-${block.id}`}
                               onCardClick={isAdHoc
                                 ? (e) => {
-                                    const target = e.nativeEvent.target as HTMLElement
-                                    const rect = target.closest('.session-card')?.getBoundingClientRect()
-                                      ?? target.getBoundingClientRect()
-                                    const x = e.clientX > 0
-                                      ? Math.min(e.clientX, window.innerWidth - 320)
-                                      : Math.min(rect.right, window.innerWidth - 320)
-                                    const y = e.clientY > 0
-                                      ? Math.min(e.clientY, window.innerHeight - 280)
-                                      : Math.min(rect.bottom, window.innerHeight - 280)
+                                    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+                                    const x = Math.min(rect.right + 8, window.innerWidth - 520)
+                                    const y = Math.min(rect.top, window.innerHeight - 300)
                                     setAdHocPopover({
                                       id: block.id,
                                       sport: block.sport_name ?? 'Slot',
