@@ -30,6 +30,8 @@ interface AvailabilityBlock {
   session_type_name: string | null
   coach_venue_id: string | null
   venue_name: string | null
+  is_recurring: boolean
+  specific_date: string | null
   created_at: string
 }
 
@@ -39,13 +41,15 @@ interface VenueItem {
 }
 
 // CD-04: UI display type (transformed from API)
-interface ScheduleBlock { 
+interface ScheduleBlock {
   id: string
   day: string
   sport: string
   time: string
   location: string
   price: string
+  is_recurring: boolean
+  specific_date: string | null
   rawData: AvailabilityBlock
 }
 
@@ -98,6 +102,11 @@ function buildCalendar(year: number, month: number): CalDay[] {
 // CD-04: Day mapping helper
 const DAY_MAP: Record<number, string> = {
   0: 'Sun', 1: 'Mon', 2: 'Tue', 3: 'Wed', 4: 'Thu', 5: 'Fri', 6: 'Sat'
+}
+
+function formatAdHocDate(dateStr: string): string {
+  const d = new Date(dateStr + 'T00:00:00')
+  return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
 }
 
 export function AvailabilityManagement() {
@@ -175,6 +184,8 @@ export function AvailabilityManagement() {
             time: `${block.start_time.substring(0, 5)} – ${block.end_time.substring(0, 5)}`,
             location: block.venue_name ?? 'No venue set',
             price: priceDisplay,
+            is_recurring: block.is_recurring,
+            specific_date: block.specific_date ?? null,
             rawData: block
           }
         })
@@ -426,12 +437,23 @@ export function AvailabilityManagement() {
                               
                               {/* Block content */}
                               <div className="flex-1 flex flex-col">
-                                <div className="text-[13px] font-medium text-gray-900">
+                                <div className="text-[13px] font-medium text-gray-900 flex items-center flex-wrap gap-1">
                                   {blockForDay.sport} · {blockForDay.time}
+                                  {blockForDay.is_recurring === false && (
+                                    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-teal-100 text-teal-700 font-semibold">Ad hoc</span>
+                                  )}
                                 </div>
-                                <div className="text-[11px] text-gray-500">
-                                  {blockForDay.location} · {blockForDay.price}
-                                </div>
+                                {blockForDay.is_recurring === false ? (
+                                  <div className="text-[11px] text-gray-500">
+                                    {blockForDay.specific_date ? formatAdHocDate(blockForDay.specific_date) : ''}
+                                    {blockForDay.rawData.venue_name ? ` · ${blockForDay.rawData.venue_name}` : ''}
+                                    {blockForDay.rawData.price_override_pence ? ` · £${(blockForDay.rawData.price_override_pence / 100).toFixed(0)}` : ''}
+                                  </div>
+                                ) : (
+                                  <div className="text-[11px] text-gray-500">
+                                    {blockForDay.location} · {blockForDay.price}
+                                  </div>
+                                )}
                               </div>
                               
                               {/* Edit/delete icons — Fix-69-2: inline confirmation */}
@@ -677,6 +699,8 @@ export function AvailabilityManagement() {
                               time: `${block.start_time.substring(0, 5)} – ${block.end_time.substring(0, 5)}`,
                               location: block.venue_name ?? 'No venue set',
                               price: priceDisplay,
+                              is_recurring: block.is_recurring,
+                              specific_date: block.specific_date ?? null,
                               rawData: block
                             }
                           })

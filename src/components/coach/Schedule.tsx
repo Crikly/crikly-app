@@ -626,8 +626,9 @@ export function Schedule() {
                           // Fix-26: Dynamic date string with month
                           const dateStr = `${day.name} ${day.date} ${day.fullDate.toLocaleDateString('en-GB', { month: 'short' })}`
                           
-                          const blockType = block.is_recurring === false ? 'adhoc' : 'available'
-                          const blockTitle = block.is_recurring === false
+                          const isAdHoc = block.is_recurring === false || (block.is_recurring === null && block.specific_date !== null)
+                          const blockType = isAdHoc ? 'adhoc' : 'available'
+                          const blockTitle = isAdHoc
                             ? (block.sport_name ? `Ad hoc · ${block.sport_name}` : 'Ad hoc slot')
                             : 'Available'
 
@@ -639,19 +640,22 @@ export function Schedule() {
                               type={blockType}
                               title={blockTitle}
                               sessionId={`slot-${day.name.toLowerCase()}-${block.id}`}
-                              onCardClick={block.is_recurring === false
-                                ? (e) => setAdHocPopover({
-                                    id: block.id,
-                                    sport: block.sport_name ?? 'Slot',
-                                    date: dateStr,
-                                    time: timeStr,
-                                    venue: block.venue_name ?? null,
-                                    price: block.price_override_pence
-                                      ? `£${(block.price_override_pence / 100).toFixed(0)}`
-                                      : null,
-                                    x: e.clientX,
-                                    y: e.clientY,
-                                  })
+                              onCardClick={isAdHoc
+                                ? (e) => {
+                                    console.log('[AdHoc click]', { block_id: block.id, is_recurring: block.is_recurring, specific_date: block.specific_date })
+                                    setAdHocPopover({
+                                      id: block.id,
+                                      sport: block.sport_name ?? 'Slot',
+                                      date: dateStr,
+                                      time: timeStr,
+                                      venue: block.venue_name ?? null,
+                                      price: block.price_override_pence
+                                        ? `£${(block.price_override_pence / 100).toFixed(0)}`
+                                        : null,
+                                      x: Math.min(e.clientX, window.innerWidth - 240),
+                                      y: Math.min(e.clientY, window.innerHeight - 250),
+                                    })
+                                  }
                                 : (e) => handleSlotClick(e, dateStr, timeStr)
                               }
                             />
