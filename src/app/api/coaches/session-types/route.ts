@@ -72,8 +72,26 @@ export async function GET(
       return NextResponse.json({ error: 'Coach profile not found' }, { status: 404 })
     }
 
-    // 4. Build query - join through coach_sports to get sport info
-    let query = supabase
+    // 4. Get coach's sport IDs first
+    const { data: coachSports, error: sportsError } = await supabase
+      .from('coach_sports')
+      .select('id')
+      .eq('coach_profile_id', coachProfile.id)
+
+    if (sportsError) {
+      console.error('[GET /api/coaches/session-types] coach sports fetch error:', sportsError)
+      return NextResponse.json({ error: 'Failed to fetch coach sports' }, { status: 500 })
+    }
+
+    // Return empty array if coach has no sports configured yet (valid state)
+    if (!coachSports || coachSports.length === 0) {
+      return NextResponse.json({ session_types: [] }, { status: 200 })
+    }
+
+    const coachSportIds = coachSports.map(cs => cs.id)
+
+    // 5. Query coach_session_types using .in() on coach_sport_id
+    const { data: sessionTypes, error: typesError } = await supabase
       .from('coach_session_types')
       .select(`
         id,
@@ -83,55 +101,36 @@ export async function GET(
         price_group_pence,
         currency,
         is_active,
-        created_at,
-        coach_sports!inner (
-          sport_id,
-          coach_profile_id,
-          sports!inner (
-            name
-          )
-        )
+        created_at
       `)
-      .eq('coach_sports.coach_profile_id', coachProfile.id)
+      .in('coach_sport_id', coachSportIds)
+      .eq('is_active', true)
       .order('duration_minutes', { ascending: true })
-
-    const { data: sessionTypes, error: typesError } = await query
 
     if (typesError) {
       console.error('[GET /api/coaches/session-types] fetch error:', typesError)
       return NextResponse.json({ error: 'Failed to fetch session types' }, { status: 500 })
     }
 
-    // 5. Build response and apply sport filter if needed
-    const response: SessionTypeResponse[] = (sessionTypes || [])
-      .map((type) => {
-        const coachSportData = type.coach_sports
-          ? (Array.isArray(type.coach_sports) ? type.coach_sports[0] : type.coach_sports)
-          : null
-
-        const sportData = coachSportData?.sports
-          ? (Array.isArray(coachSportData.sports) ? coachSportData.sports[0] : coachSportData.sports)
-          : null
-
-        return {
-          id: type.id,
-          coach_sport_id: type.coach_sport_id,
-          sport_id: coachSportData?.sport_id || '',
-          sport_name: sportData?.name || '',
-          duration_minutes: type.duration_minutes,
-          price_individual_pence: type.price_individual_pence,
-          price_group_pence: type.price_group_pence,
-          currency: type.currency,
-          is_active: type.is_active,
-          created_at: type.created_at,
-        }
-      })
-      .filter((type) => {
-        if (sportIdFilter) {
-          return type.sport_id === sportIdFilter
-        }
-        return true
-      })
+    // 6. Build response and apply sport filter if needed
+    const response: SessionTypeResponse[] = (sessionTypes || []).map((type) => ({
+      id: type.id,
+      coach_sport_id: type.coach_sport_id,
+      sport_id: '',
+      sport_name: '',
+      duration_minutes: type.duration_minutes,
+      price_individual_pence: type.price_individual_pence,
+      price_group_pence: type.price_group_pence,
+      currency: type.currency,
+      is_active: type.is_active,
+      created_at: type.created_at,
+    }))
+    .filter((type) => {
+      if (sportIdFilter) {
+        return type.sport_id === sportIdFilter
+      }
+      return true
+    })
 
     return NextResponse.json({ session_types: response }, { status: 200 })
 

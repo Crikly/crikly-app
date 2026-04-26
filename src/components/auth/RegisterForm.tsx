@@ -4,7 +4,11 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { RegisterFormData, AuthError } from '@/types/auth'
 
-export function RegisterForm() {
+interface RegisterFormProps {
+  onSuccess?: () => void
+}
+
+export function RegisterForm({ onSuccess }: RegisterFormProps = {}) {
   const router = useRouter()
   const [formData, setFormData] = useState<RegisterFormData>({
     fullName: '',
@@ -46,7 +50,11 @@ export function RegisterForm() {
         setApiError(data.error ?? { code: 'UNKNOWN_ERROR', message: 'Something went wrong. Please try again.' })
         return
       }
-      router.push(`/verify?email=${encodeURIComponent(formData.email)}`)
+      if (onSuccess) {
+        onSuccess()
+      } else {
+        router.push(`/verify?email=${encodeURIComponent(formData.email)}`)
+      }
     } catch {
       setApiError({ code: 'NETWORK_ERROR', message: 'Connection error. Please check your internet and try again.' })
     } finally {

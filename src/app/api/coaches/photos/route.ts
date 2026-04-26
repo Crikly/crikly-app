@@ -166,45 +166,22 @@ export async function POST(
       )
     }
 
-    // 5. Check subscription tier and enforce limits
-    // Get active subscription
-    const { data: subscription, error: subError } = await supabase
-      .from('coach_subscriptions')
-      .select(`
-        tier_id,
-        subscription_tiers!inner (
-          name
-        )
-      `)
+    // 5. Enforce global 10-photo limit (all tiers)
+    const { count, error: countError } = await supabase
+      .from('coach_photos')
+      .select('id', { count: 'exact', head: true })
       .eq('coach_profile_id', coachProfile.id)
-      .eq('status', 'active')
-      .single()
 
-    // Determine tier (default to Free if no active subscription)
-    const tierName = subscription && !subError
-      ? (Array.isArray(subscription.subscription_tiers) 
-          ? subscription.subscription_tiers[0]?.name 
-          : subscription.subscription_tiers?.name)
-      : 'Free'
+    if (countError) {
+      console.error('[POST /api/coaches/photos] count error:', countError)
+      return NextResponse.json({ error: 'Failed to check photo limit' }, { status: 500 })
+    }
 
-    // Check photo count for Free tier
-    if (tierName === 'Free') {
-      const { count, error: countError } = await supabase
-        .from('coach_photos')
-        .select('id', { count: 'exact', head: true })
-        .eq('coach_profile_id', coachProfile.id)
-
-      if (countError) {
-        console.error('[POST /api/coaches/photos] count error:', countError)
-        return NextResponse.json({ error: 'Failed to check photo limit' }, { status: 500 })
-      }
-
-      if (count !== null && count >= 1) {
-        return NextResponse.json(
-          { error: 'Upgrade to Premium to add more photos' },
-          { status: 403 }
-        )
-      }
+    if (count !== null && count >= 10) {
+      return NextResponse.json(
+        { error: 'Maximum 10 photos allowed per coach' },
+        { status: 403 }
+      )
     }
 
     // 6. Get current max sort_order and check if this is first photo
@@ -269,6 +246,101 @@ export async function POST(
 
   } catch (error) {
     console.error('[POST /api/coaches/photos]', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
+/**
+ * DELETE /api/coaches/photos
+ *
+ * Remove a photo by ID. Deletes from DB and Supabase Storage.
+ * Body: { photo_id: string }
+ */
+export async function DELETE(
+  request: NextRequest
+): Promise<NextResponse<{ success: true } | { error: string }>> {
+  try {
+    const supabase = await createClient()
+
+    // 1. Auth check
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+    }
+
+    // 2. User profile + coach role
+    const { data: userProfile, error: profileError } = await supabase
+      .from('user_profiles')
+      .select('id')
+      .eq('auth_user_id', user.id)
+      .single()
+    if (profileError || !userProfile) {
+      return NextResponse.json({ error: 'User profile not found' }, { status: 404 })
+    }
+
+    const { data: roleCheck, error: roleError } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_profile_id', userProfile.id)
+      .eq('role', 'coach')
+      .single()
+    if (roleError || !roleCheck) {
+      return NextResponse.json({ error: 'Forbidden — coach role required' }, { status: 403 })
+    }
+
+    // 3. Coach profile
+    const { data: coachProfile, error: coachError } = await supabase
+      .from('coach_profiles')
+      .select('id')
+      .eq('user_profile_id', userProfile.id)
+      .single()
+    if (coachError || !coachProfile) {
+      return NextResponse.json({ error: 'Coach profile not found' }, { status: 404 })
+    }
+
+    // 4. Parse body
+    const body = await request.json()
+    if (!body.photo_id || typeof body.photo_id !== 'string') {
+      return NextResponse.json({ error: 'photo_id is required' }, { status: 400 })
+    }
+
+    // 5. Verify ownership and get photo_url
+    const { data: photo, error: fetchError } = await supabase
+      .from('coach_photos')
+      .select('id, photo_url')
+      .eq('id', body.photo_id)
+      .eq('coach_profile_id', coachProfile.id)
+      .single()
+    if (fetchError || !photo) {
+      return NextResponse.json({ error: 'Photo not found or access denied' }, { status: 404 })
+    }
+
+    // 6. Delete from DB
+    const { error: deleteError } = await supabase
+      .from('coach_photos')
+      .delete()
+      .eq('id', photo.id)
+    if (deleteError) {
+      console.error('[DELETE /api/coaches/photos] db delete error:', deleteError)
+      return NextResponse.json({ error: 'Failed to delete photo' }, { status: 500 })
+    }
+
+    // 7. Delete from Storage — extract path after '/coach-photos/'
+    const storagePath = photo.photo_url.split('/coach-photos/')[1]
+    if (storagePath) {
+      const { error: storageError } = await supabase.storage
+        .from('coach-photos')
+        .remove([storagePath])
+      if (storageError) {
+        // Non-fatal — DB row is gone; log and continue
+        console.error('[DELETE /api/coaches/photos] storage delete error:', storageError)
+      }
+    }
+
+    return NextResponse.json({ success: true }, { status: 200 })
+
+  } catch (error) {
+    console.error('[DELETE /api/coaches/photos]', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

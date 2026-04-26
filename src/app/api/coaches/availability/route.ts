@@ -15,6 +15,11 @@ interface AvailabilityResponse {
   price_override_pence: number | null
   session_type_id: string | null
   session_type_name: string | null
+  coach_venue_id: string | null
+  venue_name: string | null
+  venue_address: string | null
+  is_recurring: boolean
+  specific_date: string | null
   created_at: string
 }
 
@@ -79,37 +84,33 @@ export async function GET(
       return NextResponse.json({ error: 'Forbidden — coach role required' }, { status: 403 })
     }
 
-    // 3. Get coach profile
+    // 3. Get or create coach profile
+    // Fix-CD-04b: Upsert coach_profiles on first access instead of returning 404
+    // This supports dashboard-first onboarding where coach_profiles is created progressively
     const { data: coachProfile, error: coachError } = await supabase
       .from('coach_profiles')
+      .upsert(
+        {
+          user_profile_id: userProfile.id,
+          updated_at: new Date().toISOString(),
+        },
+        {
+          onConflict: 'user_profile_id',
+          ignoreDuplicates: false, // Return existing row if present
+        }
+      )
       .select('id')
-      .eq('user_profile_id', userProfile.id)
       .single()
 
     if (coachError || !coachProfile) {
-      return NextResponse.json({ error: 'Coach profile not found' }, { status: 404 })
+      console.error('[GET /api/coaches/availability] coach profile upsert error:', coachError)
+      return NextResponse.json({ error: 'Failed to create coach profile' }, { status: 500 })
     }
 
-    // 4. Build query
+    // 4. Fix-16d: Fetch availability blocks WITHOUT joins
     let query = supabase
       .from('availability_templates')
-      .select(`
-        id,
-        sport_id,
-        day_of_week,
-        start_time,
-        end_time,
-        is_active,
-        price_override_pence,
-        session_type_id,
-        created_at,
-        sports (
-          name
-        ),
-        coach_session_types (
-          duration_minutes
-        )
-      `)
+      .select('*')
       .eq('coach_profile_id', coachProfile.id)
       .order('day_of_week', { ascending: true })
       .order('start_time', { ascending: true })
@@ -126,15 +127,58 @@ export async function GET(
       return NextResponse.json({ error: 'Failed to fetch availability' }, { status: 500 })
     }
 
-    // 5. Build response
-    const response: AvailabilityResponse[] = (blocks || []).map((block) => {
-      const sportData = block.sports
-        ? (Array.isArray(block.sports) ? block.sports[0] : block.sports)
-        : null
+    // 5. Fix-16d: Fetch sport data separately
+    const sportIds = [...new Set((blocks || [])
+      .map(b => b.sport_id)
+      .filter((id): id is string => id !== null))]
+    
+    const { data: sportsData, error: sportsError } = sportIds.length > 0
+      ? await supabase
+          .from('sports')
+          .select('id, name')
+          .in('id', sportIds)
+      : { data: [], error: null }
 
-      const sessionTypeData = block.coach_session_types
-        ? (Array.isArray(block.coach_session_types) ? block.coach_session_types[0] : block.coach_session_types)
-        : null
+    if (sportsError) {
+      console.error('[GET /api/coaches/availability] sports error:', sportsError)
+      return NextResponse.json({ error: 'Failed to fetch sports data' }, { status: 500 })
+    }
+
+    // 6. Fix-16d: Fetch session type data separately
+    const sessionTypeIds = [...new Set((blocks || [])
+      .map(b => b.session_type_id)
+      .filter((id): id is string => id !== null))]
+
+    const { data: sessionTypesData, error: sessionTypesError } = sessionTypeIds.length > 0
+      ? await supabase
+          .from('coach_session_types')
+          .select('id, duration_minutes')
+          .in('id', sessionTypeIds)
+      : { data: [], error: null }
+
+    if (sessionTypesError) {
+      console.error('[GET /api/coaches/availability] session types error:', sessionTypesError)
+      return NextResponse.json({ error: 'Failed to fetch session types data' }, { status: 500 })
+    }
+
+    // 7. Fix-16d: Fetch venue data separately
+    const venueIds = [...new Set((blocks || [])
+      .map(b => b.coach_venue_id)
+      .filter((id): id is string => id !== null))]
+
+    const venueMap: Record<string, string> = {}
+    if (venueIds.length > 0) {
+      const { data: venuesData } = await supabase
+        .from('coach_venues')
+        .select('id, name')
+        .in('id', venueIds)
+      venuesData?.forEach(v => { venueMap[v.id] = v.name })
+    }
+
+    // 8. Build response by merging data in application code
+    const response: AvailabilityResponse[] = (blocks || []).map((block) => {
+      const sportData = (sportsData || []).find(s => s.id === block.sport_id)
+      const sessionTypeData = (sessionTypesData || []).find(st => st.id === block.session_type_id)
 
       return {
         id: block.id,
@@ -147,6 +191,11 @@ export async function GET(
         price_override_pence: block.price_override_pence,
         session_type_id: block.session_type_id,
         session_type_name: sessionTypeData ? `${sessionTypeData.duration_minutes}min` : null,
+        coach_venue_id: block.coach_venue_id,
+        venue_name: block.venue_name ?? (block.coach_venue_id ? (venueMap[block.coach_venue_id] ?? null) : null),
+        venue_address: block.venue_address ?? null,
+        is_recurring: block.is_recurring,
+        specific_date: block.specific_date ?? null,
         created_at: block.created_at,
       }
     })
@@ -199,15 +248,26 @@ export async function POST(
       return NextResponse.json({ error: 'Forbidden — coach role required' }, { status: 403 })
     }
 
-    // 3. Get coach profile
+    // 3. Get or create coach profile
+    // Fix-CD-04b: Upsert coach_profiles on first access instead of returning 404
     const { data: coachProfile, error: coachError } = await supabase
       .from('coach_profiles')
+      .upsert(
+        {
+          user_profile_id: userProfile.id,
+          updated_at: new Date().toISOString(),
+        },
+        {
+          onConflict: 'user_profile_id',
+          ignoreDuplicates: false,
+        }
+      )
       .select('id')
-      .eq('user_profile_id', userProfile.id)
       .single()
 
     if (coachError || !coachProfile) {
-      return NextResponse.json({ error: 'Coach profile not found' }, { status: 404 })
+      console.error('[POST /api/coaches/availability] coach profile upsert error:', coachError)
+      return NextResponse.json({ error: 'Failed to create coach profile' }, { status: 500 })
     }
 
     // 4. Parse and validate body
@@ -261,6 +321,12 @@ export async function POST(
       }
     }
 
+    if (body.coach_venue_id !== undefined && body.coach_venue_id !== null) {
+      if (typeof body.coach_venue_id !== 'string') {
+        validationErrors.push('coach_venue_id must be a string')
+      }
+    }
+
     if (validationErrors.length > 0) {
       return NextResponse.json(
         { error: 'Validation failed', details: validationErrors },
@@ -272,7 +338,7 @@ export async function POST(
     if (body.sport_id) {
       const { data: coachSport, error: sportCheckError } = await supabase
         .from('coach_sports')
-        .select('id, sports!inner(name)')
+        .select('id')
         .eq('coach_profile_id', coachProfile.id)
         .eq('sport_id', body.sport_id)
         .single()
@@ -377,6 +443,11 @@ export async function POST(
       end_time: string
       price_override_pence?: number | null
       session_type_id?: string | null
+      coach_venue_id?: string | null
+      venue_name?: string | null
+      venue_address?: string | null
+      is_recurring?: boolean
+      specific_date?: string | null
     } = {
       coach_profile_id: coachProfile.id,
       day_of_week: body.day_of_week,
@@ -396,41 +467,82 @@ export async function POST(
       insertData.session_type_id = body.session_type_id
     }
 
-    const { data: newBlock, error: insertError } = await supabase
-      .from('availability_templates')
-      .insert(insertData)
-      .select(`
-        id,
-        sport_id,
-        day_of_week,
-        start_time,
-        end_time,
-        is_active,
-        price_override_pence,
-        session_type_id,
-        created_at,
-        sports (
-          name
-        ),
-        coach_session_types (
-          duration_minutes
-        )
-      `)
-      .single()
+    if (body.coach_venue_id !== undefined) {
+      insertData.coach_venue_id = body.coach_venue_id
+    }
+
+    if (body.venue_name !== undefined) {
+      insertData.venue_name = body.venue_name
+    }
+
+    if (body.venue_address !== undefined) {
+      insertData.venue_address = body.venue_address
+    }
+
+    if (body.is_recurring !== undefined) {
+      insertData.is_recurring = body.is_recurring
+    }
+
+    if (body.specific_date !== undefined) {
+      insertData.specific_date = body.specific_date
+    }
+
+    // Ad hoc slots use plain insert — must never overwrite a recurring block.
+    // Recurring slots use upsert to handle the unique constraint on (coach_profile_id, day_of_week, start_time).
+    let result
+    if (insertData.is_recurring === false) {
+      result = await supabase
+        .from('availability_templates')
+        .insert(insertData)
+        .select()
+        .single()
+    } else {
+      result = await supabase
+        .from('availability_templates')
+        .upsert(insertData, {
+          onConflict: 'coach_profile_id,day_of_week,start_time',
+          ignoreDuplicates: false,
+        })
+        .select()
+        .single()
+    }
+    const { data: newBlock, error: insertError } = result
 
     if (insertError) {
-      console.error('[POST /api/coaches/availability] insert error:', insertError)
+      console.error('[POST /api/coaches/availability] upsert error:', insertError)
       return NextResponse.json({ error: 'Failed to add availability block' }, { status: 500 })
     }
 
-    // 9. Build response
-    const sportData = newBlock.sports
-      ? (Array.isArray(newBlock.sports) ? newBlock.sports[0] : newBlock.sports)
-      : null
+    // 9. Fetch sport, session type, and venue data separately if needed
+    let sportData = null
+    if (newBlock.sport_id) {
+      const { data: sport } = await supabase
+        .from('sports')
+        .select('name')
+        .eq('id', newBlock.sport_id)
+        .single()
+      sportData = sport
+    }
 
-    const sessionTypeData = newBlock.coach_session_types
-      ? (Array.isArray(newBlock.coach_session_types) ? newBlock.coach_session_types[0] : newBlock.coach_session_types)
-      : null
+    let sessionTypeData = null
+    if (newBlock.session_type_id) {
+      const { data: sessionType } = await supabase
+        .from('coach_session_types')
+        .select('duration_minutes')
+        .eq('id', newBlock.session_type_id)
+        .single()
+      sessionTypeData = sessionType
+    }
+
+    let venueData = null
+    if (newBlock.coach_venue_id) {
+      const { data: venue } = await supabase
+        .from('coach_venues')
+        .select('name')
+        .eq('id', newBlock.coach_venue_id)
+        .single()
+      venueData = venue
+    }
 
     const response: AvailabilityResponse = {
       id: newBlock.id,
@@ -443,6 +555,11 @@ export async function POST(
       price_override_pence: newBlock.price_override_pence,
       session_type_id: newBlock.session_type_id,
       session_type_name: sessionTypeData ? `${sessionTypeData.duration_minutes}min` : null,
+      coach_venue_id: newBlock.coach_venue_id,
+      venue_name: newBlock.venue_name ?? venueData?.name ?? null,
+      venue_address: newBlock.venue_address ?? null,
+      is_recurring: newBlock.is_recurring,
+      specific_date: newBlock.specific_date ?? null,
       created_at: newBlock.created_at,
     }
 

@@ -1,13 +1,13 @@
 # Crikly — Working Ethics & Collaboration Standards
 
-**Version:** 1.3
-**Last Updated:** March 2026
-**Changed:** Added API stub rule — routes must be wired or explicitly labelled STUB (March 2026)
+**Version:** 1.6
+**Last Updated:** 26 April 2026
+**Changed:** SYNC-13 — agent MD file always required in prompts
 **Maintainer:** Lasith Jayarathne
 **Review:** After each phase completion
 
 This file lives in the project root and is referenced at the
-start of every Windsurf session. Read it before every prompt.
+start of every Claude Code session. Read it before every prompt.
 
 ---
 
@@ -26,25 +26,26 @@ CLAUDE (Strategic Partner — this chat)
   → Reviewing approach and trade-off analysis
   → Debugging complex cross-cutting problems
   → Brainstorming solutions before implementation
-  → Red flag escalation — stop Windsurf, bring here first
+  → Red flag escalation — stop Claude Code, bring here first
 
-WINDSURF (Coding Environment — Agent Team)
+CLAUDE CODE (Coding Agent)
   → Writing all actual code files
   → Following agent role instructions precisely
   → Referencing docs/ folder for context
   → Committing and managing git workflow
-  → One agent, one task, one commit
+  → One task per session, plan shown before coding begins
+  → Never proceeds without explicit approval of plan
 ```
 
-**Rule:** Claude thinks and designs. Windsurf builds.
-Never ask Windsurf to make architectural decisions.
+**Rule:** Claude thinks and designs. Claude Code builds.
+Never ask Claude Code to make architectural decisions.
 Never ask Claude to write production code files.
 
 ---
 
 ## Session Flow
 
-### Starting Every Windsurf Session
+### Starting Every Claude Code Session
 
 ```
 Step 1 → Open docs/10_BUILD_PLAN.md
@@ -69,7 +70,7 @@ Step 8 → Mark task ✅ in Notion Build Plan (same ID)
 Step 9 → Move to next task
 ```
 
-### Standard Windsurf Prompt Template
+### Standard Claude Code Prompt Template
 
 ```
 @[AgentName]
@@ -110,13 +111,44 @@ Risk: 🟢 Low | 🟡 Medium | 🔴 High
 
 ---
 
+## Design Workflow — New UI Screens
+
+For any new screen or major UI component, this order is
+mandatory. Never build a new screen without an approved
+Claude Design output first.
+
+Step 1  — Claude writes a Claude Design prompt in this chat
+Step 2  — Lasith opens Claude Design (new claude.ai
+           conversation → click the paintbrush/design icon)
+           and pastes the prompt
+Step 3  — Claude Design generates the screens as an
+           interactive HTML artifact
+Step 4  — Lasith reviews and approves (7/10 minimum).
+           Feedback shared here. Claude iterates if needed.
+Step 5  — Claude validates the design against requirements
+Step 6  — Claude writes the Claude Code prompt, including
+           the approved HTML as a reference
+Step 7  — Lasith pastes the prompt into Claude Code
+Step 8  — Claude Code builds the Next.js implementation
+Step 9  — Lasith tests in browser, shares screenshot here
+Step 10 — Claude reviews, updates Notion + build plan
+
+Rule: Design artifact must be approved before any Claude
+      Code prompt is written.
+Rule: Copy HTML from the Claude artifact directly when
+      needed — the api.anthropic.com/v1/design/ handshake
+      URL expires immediately and cannot be used.
+Rule: Claude Design replaces Figma Make and v0 entirely.
+
+---
+
 ## Context Optimisation — Golden Rules
 
 These rules exist to minimise context window consumption
-and maximise the quality of every Windsurf prompt.
+and maximise the quality of every Claude Code session.
 
 ### Rule 1 — Always Load Context Files First
-Never assume Windsurf remembers previous sessions.
+Never assume Claude Code remembers previous sessions.
 Every prompt must explicitly reference relevant docs.
 A prompt without context files will produce generic output.
 
@@ -138,7 +170,7 @@ Default is `feature/[feature-name]`. Never `main`.
 
 ### Rule 5 — State What NOT to Touch
 Locked files must be explicitly named.
-Windsurf must not infer what is safe to modify.
+Claude Code must not infer what is safe to modify.
 
 ### Rule 6 — One Commit Per Logical Unit
 Never bundle unrelated changes in one commit.
@@ -217,7 +249,7 @@ Process — no exceptions:
 4. Claude prompt includes "match this design exactly"
 5. Screenshot attached in v0.dev alongside prompt
 6. v0 output verified against approved design
-   before moving to Windsurf
+   before Claude Code implementation
 
 Claude checklist — if any unchecked, STOP:
 □ Screenshot received for this specific screen?
@@ -231,14 +263,14 @@ Claude checklist — if any unchecked, STOP:
 GitHub docs/ = single source of truth for all design decisions
 Notion       = human-readable mirror — Claude keeps updated
 Claude AI    = queries Notion for current state each session
-Windsurf     = reads GitHub docs/ before every UI task
+Claude Code  = reads GitHub docs/ before every UI task
 ```
 
 ---
 
 ## Prompt Quality Checklist
 
-Before sending any Windsurf prompt, verify:
+Before sending any Claude Code prompt, verify:
 
 ```
 □ Agent role specified (@AgentName)?
@@ -289,9 +321,9 @@ Every task must have a risk level assigned.
 
 ---
 
-## Red Flags — Stop Windsurf, Come to Claude First
+## Red Flags — Stop Claude Code, Come to Claude First
 
-Stop Windsurf immediately and bring to Claude if:
+Stop Claude Code immediately and bring to Claude if:
 
 ```
 → Any change to payment processing logic
@@ -453,51 +485,101 @@ Risk: 🔴 High — payment logic
 
 ---
 
-## Windsurf Optimisation — Getting The Best Results
+## Claude Code Optimisation — Getting The Best Results
 
 ### Model Selection
-Always use Claude Sonnet for Windsurf coding tasks.
+Always use Claude Sonnet for Claude Code tasks.
 Use Claude Opus only for complex architectural analysis that Sonnet struggles with.
 Never use Haiku for production code — output quality is insufficient.
 
 ### Session Length Rules
 ```
-Keep each Windsurf session to ONE task (one task ID).
+Keep each Claude Code session to ONE task (one task ID).
 A session that tries to do M-01, M-02, M-03 in one go will degrade.
 Context quality drops after ~30 minutes of coding in one session.
 If a session goes long → commit what's done → start fresh session for next task.
 ```
 
-### When Windsurf Goes Off Track
-Signs Windsurf is going off track:
+### When Claude Code Goes Off Track
+Signs Claude Code is going off track:
 - It starts making architectural decisions
 - It modifies files not listed in the prompt
 - It asks questions instead of following the spec
 - Output doesn't match the agent role
 
+### Plan Approval — Non-Negotiable Rule
+
+When a prompt says "tell me your plan, wait for approval" — Claude Code
+MUST stop after presenting the plan and wait for an explicit approval
+message from Lasith before writing any code.
+
+The following do NOT count as approval:
+- Claude Code writing "Approved — building now" in its own plan
+- Claude Code interpreting its own plan as approved
+- Any self-generated approval text
+
+The ONLY valid approval is an explicit message from Lasith such as:
+"approved", "go ahead", "looks good, proceed", or similar.
+
+If Claude Code proceeds without explicit approval it has violated
+this rule. The output must be discarded and the task restarted.
+
+This rule was added after Fix-42b (25 April 2026) when Claude Code
+self-approved its own plan and proceeded without waiting.
+
 What to do:
 1. Stop the session immediately
 2. Do not accept the output
 3. Come to Claude with the problem
-4. Get a clearer prompt, then restart Windsurf
+4. Get a clearer prompt, then restart Claude Code
+
+### Agent MD File — Always Required
+
+Every Claude Code prompt MUST include the relevant agent MD
+file in the context files list. No exceptions — even for
+quick fixes, hotfixes, or single-line changes.
+
+Required format:
+```
+Context files:
+1. CLAUDE.md
+2. docs/09_WORKING_ETHICS.md
+3. docs/agents/frontend-developer.md  ← always required
+```
+
+Which agent file to use:
+- UI/component work → docs/agents/frontend-developer.md
+- API routes → docs/agents/backend-developer.md
+- DB migrations → docs/agents/database-architect.md
+- Payments → docs/agents/payments-engineer.md
+- Tests → docs/agents/qa-engineer.md
+- Infra/deploy → docs/agents/devops-engineer.md
+- Multi-file tasks → include all relevant agent files
+
+Omitting the agent file was identified as a recurring problem
+during the Fix-73 through Fix-82 debug series (April 2026)
+where quick-fix prompts skipped agent context, leading to
+lower quality output and missed patterns.
+
+This rule was added after SYNC-13 (26 April 2026).
 
 ### Prompt Repair — When Output Is Wrong
-If Windsurf produces wrong output, do NOT try to fix it in the same session.
+If Claude Code produces wrong output, do NOT try to fix it in the same session.
 Instead:
 ```
 1. Reject the output (Ctrl+Z or discard)
 2. Identify WHY the prompt was unclear
 3. Rewrite the prompt with the missing clarity
-4. Start a fresh Windsurf session
+4. Start a fresh Claude Code session
 ```
-Trying to correct Windsurf mid-session produces worse results than starting clean.
+Trying to correct Claude Code mid-session produces worse results than starting clean.
 
 ### Context Window Management
-Windsurf has no memory between sessions.
+Claude Code has no memory between sessions.
 Every session must re-establish context via the context files in the prompt.
 
 ```
-NEVER assume Windsurf remembers:
+NEVER assume Claude Code remembers:
 → What was built last session
 → Any decisions made in previous sessions
 → Why something was done a certain way
@@ -514,10 +596,10 @@ A bloated context produces generic, unfocused output.
 ### Signs A Prompt Needs Improving
 ```
 Bad prompt symptoms:
-→ Windsurf asks "what do you want me to do?"
+→ Claude Code asks "what do you want me to do?"
 → Output is generic (not Crikly-specific)
 → Wrong file paths used
-→ Windsurf modifies unrelated files
+→ Claude Code modifies unrelated files
 → Output doesn't match the agent's role
 
 Good prompt characteristics:
@@ -631,8 +713,8 @@ unmerged while new work started on develop. This caused:
 - Duplicate route files surviving because cleanup on feature/auth
   was invisible to develop
 
-**The fix at end of every Windsurf session:**
-Before closing Windsurf, always run:
+**The fix at end of every Claude Code session:**
+Before closing Claude Code, always run:
 git checkout develop
 git merge feature/[current-branch] --no-ff
 git push origin develop
@@ -657,7 +739,59 @@ Only THEN start the next feature branch.
 □ Commit message follows convention
 □ RLS policies in place for any new DB tables
 □ No secrets or keys in code
+□ If this task adds or modifies an auth path (email, OAuth, magic link,
+  SSO) — verify that user_profiles row is created for the new user
+  before marking complete. Auth path is not complete until
+  user_profiles creation is confirmed in the database.
 ```
+
+## UI Standards — Non-Negotiable Rules
+
+### No Browser Dialogs — Ever
+window.confirm() and window.alert() are FORBIDDEN in all
+UI code. No exceptions.
+
+Confirmations must use inline UI:
+- First click: show inline [Cancel] + [Confirm action]
+  buttons replacing the original button
+- Cancel: gray outlined button, dismisses confirmation
+- Confirm: red filled button for destructive actions,
+  blue for non-destructive
+- Only the affected item shows the confirmation state
+- Other items remain interactive
+
+Errors must show inline near the relevant action:
+- Small red text below the action area, OR
+- Dismissible red banner with × close button
+- Never use alert() for errors
+
+This rule was established after Fix-69 (21 April 2026)
+when window.confirm() was used in Fix-68 and had to be
+fixed immediately.
+
+---
+
+## Auth Path Rule — Non-Negotiable
+
+Every authentication path must create a user_profiles row on
+first sign-in. No exceptions.
+
+Paths that must create user_profiles:
+- Email + password registration → /api/auth/register
+- Google OAuth → /auth/callback
+- Apple OAuth → /auth/callback
+- Magic link (future) → /auth/callback
+- SSO (future) → /auth/callback
+
+How to verify:
+1. Sign up via the auth path being tested
+2. Open Supabase → Table Editor → user_profiles
+3. Confirm row exists with correct auth_user_id and full_name
+4. If row missing → task is NOT complete
+
+This rule exists because in April 2026, OAuth users had no
+user_profiles rows created, causing all data queries to fail
+silently and showing fallback data throughout the app.
 
 ## Security Gate — Payments & Child Data
 
@@ -713,7 +847,7 @@ https://www.notion.so/b288473c2a4f47ebad99bf6bf3f7b041
 
 ---
 
-### Every Windsurf Session — Exact Steps
+### Every Claude Code Session — Exact Steps
 
 **START of session (before touching any code):**
 1. Open `docs/10_BUILD_PLAN.md`
@@ -723,7 +857,7 @@ https://www.notion.so/b288473c2a4f47ebad99bf6bf3f7b041
 5. Change Notion status to 🟡 In Progress
 6. Only then start coding
 
-**END of session (before closing Windsurf):**
+**END of session (before closing Claude Code):**
 1. Mark completed tasks ✅ Complete in `docs/10_BUILD_PLAN.md`
 2. Open Notion Build Plan → find each completed task by ID
 3. Change Notion status to ✅ Complete
@@ -763,13 +897,13 @@ Notion:               | M-01 — Migration 001 — user_profiles | ✅ Complete 
 
 ### What Lasith Uses Notion For
 
-Lasith tracks progress in Notion — not in Windsurf or GitHub.
+Lasith tracks progress in Notion — not in Claude Code or GitHub.
 This means:
 - Notion is what Lasith opens to check what's been done
 - Notion is what Lasith opens to see what's in progress
 - Notion is what Lasith opens to raise blockers and questions
 
-If a task is done in code but not marked in Notion — **it doesn't exist to Lasith.**
+If a task is done in Claude Code but not marked in Notion — **it doesn't exist to Lasith.**
 
 ---
 
@@ -800,6 +934,51 @@ Doc version format:
 **Last Updated:** March 2026
 **Changed:** Added training_passport table in Section 4
 ```
+
+---
+
+## Process Lessons
+
+These lessons were learned during development and validation sessions.
+They document specific failures and the rules created to prevent recurrence.
+
+---
+
+### L-04 — Claude must always read current sources before summarising
+
+**What happened:** Claude gave repeated incomplete and wrong status
+summaries in a session — missed completed sprints, dropped the
+Programmes module, gave stale task counts.
+
+**Root cause:** Claude read the stale project knowledge file
+(docs/10_BUILD_PLAN.md v2.0 from March 2026) instead of the actual
+current source. Project knowledge attached to the chat was 2 versions
+behind the develop branch.
+
+**Rule:** Claude must always verify against Notion or the document
+explicitly shared in the current conversation before giving any plan
+or status summary. If project knowledge appears stale (version mismatch
+or date mismatch), flag it immediately and do not use it as a source.
+Never summarise from memory.
+
+---
+
+### L-05 — Claude must check Notion Fix Tracker before stating what is fixed
+
+**What happened:** Claude listed Sprint 1 onboarding issues (Issues 2–10)
+as remaining work when they had already been fixed and verified in the
+Fix-16 and Fix-17 series before the session started.
+
+**Root cause:** Claude did not check the Notion Fix Tracker before making
+statements about what was or was not fixed. Lasith had explicitly stated
+at session start that Fix-16 and Fix-17 series were all resolved, but
+Claude did not cross-reference this against the tracker.
+
+**Rule:** At the start of every session, Claude must check the Notion
+Fix Tracker before making any statements about open or closed issues.
+Lasith's verbal confirmation of completed work must be cross-referenced
+against Notion — do not override it, but verify it is reflected correctly
+before producing any plan or summary.
 
 ---
 

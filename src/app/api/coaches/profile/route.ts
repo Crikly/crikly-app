@@ -1,6 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
+// ─── Slug helpers ─────────────────────────────────────────────────────────────
+
+type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>
+
+function generateSlug(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9-]/g, '')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+}
+
+async function findUniqueSlug(
+  supabase: SupabaseServerClient,
+  name: string,
+  excludeId?: string,
+): Promise<string> {
+  const base = generateSlug(name)
+  let candidate = base
+  let suffix = 2
+
+  for (;;) {
+    let q = supabase.from('coach_profiles').select('id').eq('slug', candidate)
+    if (excludeId) q = q.neq('id', excludeId)
+    const { data } = await q.maybeSingle()
+    if (!data) return candidate
+    candidate = `${base}-${suffix++}`
+  }
+}
+
 /**
  * Coach profile response shape
  */
@@ -23,6 +54,8 @@ interface CoachProfileResponse {
   rating_count: number
   sessions_completed: number
   gender: string | null
+  languages?: string[]
+  slug: string | null
   created_at: string
   updated_at: string
 }
@@ -84,6 +117,8 @@ export async function GET(): Promise<NextResponse<CoachProfileResponse | { error
         rating_count,
         sessions_completed,
         gender,
+        languages,
+        slug,
         created_at,
         updated_at,
         user_profiles!inner (
@@ -101,9 +136,19 @@ export async function GET(): Promise<NextResponse<CoachProfileResponse | { error
     }
 
     // 4. Flatten response
-    const userProfileData = Array.isArray(coachProfile.user_profiles) 
-      ? coachProfile.user_profiles[0] 
+    const userProfileData = Array.isArray(coachProfile.user_profiles)
+      ? coachProfile.user_profiles[0]
       : coachProfile.user_profiles
+
+    // 5. Backfill slug if missing
+    let slug: string | null = coachProfile.slug ?? null
+    if (!slug && userProfileData.full_name) {
+      slug = await findUniqueSlug(supabase, userProfileData.full_name, coachProfile.id)
+      await supabase
+        .from('coach_profiles')
+        .update({ slug })
+        .eq('id', coachProfile.id)
+    }
 
     const response: CoachProfileResponse = {
       id: coachProfile.id,
@@ -124,6 +169,8 @@ export async function GET(): Promise<NextResponse<CoachProfileResponse | { error
       rating_count: coachProfile.rating_count,
       sessions_completed: coachProfile.sessions_completed,
       gender: coachProfile.gender,
+      languages: coachProfile.languages || [],
+      slug,
       created_at: coachProfile.created_at,
       updated_at: coachProfile.updated_at,
     }
@@ -252,9 +299,34 @@ export async function POST(
       }
     }
 
+    if (body.location_lat !== undefined && body.location_lat !== null) {
+      if (typeof body.location_lat !== 'number' || !isFinite(body.location_lat)) {
+        validationErrors.push('location_lat must be a number')
+      } else if (body.location_lat < -90 || body.location_lat > 90) {
+        validationErrors.push('location_lat must be between -90 and 90')
+      }
+    }
+
+    if (body.location_lng !== undefined && body.location_lng !== null) {
+      if (typeof body.location_lng !== 'number' || !isFinite(body.location_lng)) {
+        validationErrors.push('location_lng must be a number')
+      } else if (body.location_lng < -180 || body.location_lng > 180) {
+        validationErrors.push('location_lng must be between -180 and 180')
+      }
+    }
+
     if (body.avatar_url !== undefined && body.avatar_url !== null) {
       if (typeof body.avatar_url !== 'string') {
         validationErrors.push('avatar_url must be a string')
+      }
+    }
+
+    // Fix-16e: Validate languages if provided
+    if (body.languages !== undefined && body.languages !== null) {
+      if (!Array.isArray(body.languages)) {
+        validationErrors.push('languages must be an array')
+      } else if (body.languages.some((lang: unknown) => typeof lang !== 'string')) {
+        validationErrors.push('languages must be an array of strings')
       }
     }
 
@@ -270,6 +342,8 @@ export async function POST(
     if (body.full_name !== undefined) userProfileUpdates.full_name = body.full_name
     if (body.location_city !== undefined) userProfileUpdates.location_city = body.location_city
     if (body.location_postcode !== undefined) userProfileUpdates.location_postcode = body.location_postcode
+    if (body.location_lat !== undefined) userProfileUpdates.location_lat = body.location_lat
+    if (body.location_lng !== undefined) userProfileUpdates.location_lng = body.location_lng
     if (body.avatar_url !== undefined) userProfileUpdates.avatar_url = body.avatar_url
 
     if (Object.keys(userProfileUpdates).length > 0) {
@@ -292,6 +366,7 @@ export async function POST(
       bio?: string | null
       years_experience?: number | null
       gender?: string | null
+      languages?: string[]
       cancellation_window_hours?: number
       min_advance_hours?: number
       max_advance_days?: number
@@ -304,6 +379,8 @@ export async function POST(
     if (body.bio !== undefined) coachProfileUpdates.bio = body.bio
     if (body.years_experience !== undefined) coachProfileUpdates.years_experience = body.years_experience
     if (body.gender !== undefined) coachProfileUpdates.gender = body.gender
+    // Fix-16e: Add languages to coach profile updates
+    if (body.languages !== undefined && Array.isArray(body.languages)) coachProfileUpdates.languages = body.languages
     if (body.cancellation_window_hours !== undefined) coachProfileUpdates.cancellation_window_hours = body.cancellation_window_hours
     if (body.min_advance_hours !== undefined) coachProfileUpdates.min_advance_hours = body.min_advance_hours
     if (body.max_advance_days !== undefined) coachProfileUpdates.max_advance_days = body.max_advance_days
@@ -337,6 +414,8 @@ export async function POST(
         rating_count,
         sessions_completed,
         gender,
+        languages,
+        slug,
         created_at,
         updated_at,
         user_profiles!inner (
@@ -355,9 +434,19 @@ export async function POST(
     }
 
     // 7. Flatten response
-    const userProfileData = Array.isArray(updatedProfile.user_profiles) 
-      ? updatedProfile.user_profiles[0] 
+    const userProfileData = Array.isArray(updatedProfile.user_profiles)
+      ? updatedProfile.user_profiles[0]
       : updatedProfile.user_profiles
+
+    // 8. Generate or regenerate slug when name changed or slug is missing
+    let slug: string | null = updatedProfile.slug ?? null
+    if ((body.full_name !== undefined || !slug) && userProfileData.full_name) {
+      slug = await findUniqueSlug(supabase, userProfileData.full_name, updatedProfile.id)
+      await supabase
+        .from('coach_profiles')
+        .update({ slug })
+        .eq('id', updatedProfile.id)
+    }
 
     const response: CoachProfileResponse = {
       id: updatedProfile.id,
@@ -378,6 +467,8 @@ export async function POST(
       rating_count: updatedProfile.rating_count,
       sessions_completed: updatedProfile.sessions_completed,
       gender: updatedProfile.gender,
+      languages: updatedProfile.languages || [],
+      slug,
       created_at: updatedProfile.created_at,
       updated_at: updatedProfile.updated_at,
     }

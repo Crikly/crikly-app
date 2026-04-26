@@ -1,20 +1,131 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, ChevronDown, Check, X, Plus } from 'lucide-react'
+import { Check, X, Plus } from 'lucide-react'
+
+interface Sport {
+  id: string
+  name: string
+  slug: string
+}
+
+interface CoachSportResponse {
+  id: string
+  sport_id: string
+  sport_name: string
+  sport_slug: string
+  session_types: string[]
+  skill_levels: string[]
+  age_groups?: string[]
+  price_individual_pence: number | null
+  price_group_pence: number | null
+  max_group_size: number | null
+  session_duration_minutes: number
+  currency: string
+  is_active: boolean
+}
 
 export function PricingStep() {
   const router = useRouter()
-  const [sessionTypes, setSessionTypes] = useState({ individual: true, group: true })
-  const [skillLevels, setSkillLevels] = useState<string[]>(['Beginner', 'Intermediate'])
+  const [selectedSports, setSelectedSports] = useState<string[]>([])
+  const [sessionTypes, setSessionTypes] = useState({ individual: true, group: false })
+  const [skillLevels, setSkillLevels] = useState<string[]>([])
   const [ageGroups, setAgeGroups] = useState<string[]>([])
   const [pricingRows, setPricingRows] = useState([
-    { id: '1', duration: '30 min', price: '' },
-    { id: '2', duration: '60 min', price: '' },
-    { id: '3', duration: '90 min', price: '' },
+    { id: '1', duration: '60 min', price: '' },
   ])
   const [saving, setSaving] = useState(false)
+  const [sports, setSports] = useState<Sport[]>([])
+  const [loadingError, setLoadingError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [coachName, setCoachName] = useState('')
+  const [coachAvatarUrl, setCoachAvatarUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    // Fix-16c: Fetch sports list, selected sports, and saved pricing data
+    const fetchData = async () => {
+      try {
+        // Fetch sports list
+        const sportsResponse = await fetch('/api/sports')
+        if (!sportsResponse.ok) {
+          throw new Error('Failed to fetch sports')
+        }
+        const sportsData = await sportsResponse.json()
+        setSports(sportsData.sports || [])
+
+        // Fix-23 & Fix-24b: Fetch coach profile for name and avatar
+        const profileResponse = await fetch('/api/coaches/profile')
+        if (profileResponse.ok) {
+          const profileData = await profileResponse.json()
+          setCoachName(profileData.full_name || '')
+          if (profileData.avatar_url) {
+            setCoachAvatarUrl(profileData.avatar_url)
+          }
+        }
+
+        // Get selected sports from sessionStorage
+        const stored = sessionStorage.getItem('selectedSports')
+        if (stored) {
+          setSelectedSports(JSON.parse(stored))
+        }
+
+        // Fix-16c: Fetch saved coach sports data
+        const coachSportsResponse = await fetch('/api/coaches/sports')
+        if (coachSportsResponse.ok) {
+          const coachSportsData = await coachSportsResponse.json()
+          if (coachSportsData.sports && coachSportsData.sports.length > 0) {
+            const savedSport = coachSportsData.sports[0] as CoachSportResponse
+            
+            // Pre-populate session types
+            setSessionTypes({
+              individual: savedSport.session_types.includes('individual'),
+              group: savedSport.session_types.includes('group')
+            })
+            
+            // Pre-populate skill levels (capitalize first letter)
+            const capitalizedSkillLevels = savedSport.skill_levels.map(
+              level => level.charAt(0).toUpperCase() + level.slice(1)
+            )
+            setSkillLevels(capitalizedSkillLevels)
+            
+            // Pre-populate price (convert from pence to pounds)
+            if (savedSport.price_individual_pence) {
+              const priceInPounds = (savedSport.price_individual_pence / 100).toFixed(0)
+              setPricingRows([{
+                id: '1',
+                duration: `${savedSport.session_duration_minutes} min`,
+                price: priceInPounds
+              }])
+            }
+            
+            // Fix-16f: Pre-populate age_groups (convert API format to UI format)
+            if (savedSport.age_groups && savedSport.age_groups.length > 0) {
+              const uiAgeGroups = savedSport.age_groups.map((group: string) => {
+                const mapping: Record<string, string> = {
+                  'under_8': 'Under 8',
+                  'under_10': 'Under 10',
+                  'under_12': 'Under 12',
+                  'under_14': 'Under 14',
+                  'under_16': 'Under 16',
+                  'adults': 'Adults (17+)'
+                }
+                return mapping[group] || group
+              })
+              setAgeGroups(uiAgeGroups)
+            }
+          }
+        }
+      } catch (error) {
+        console.error('[PricingStep] Error fetching data:', error)
+        setLoadingError('Failed to load data. Please refresh the page.')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchData()
+  }, [])
 
   const toggleSkillLevel = (level: string) => {
     setSkillLevels(prev =>
@@ -43,68 +154,163 @@ export function PricingStep() {
   const handleSave = async () => {
     setSaving(true)
     try {
-      await fetch('/api/coaches/sports', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          session_types: sessionTypes,
-          skill_levels: skillLevels,
-          age_groups: ageGroups,
-          pricing_rows: pricingRows.map(r => ({
-            duration: r.duration,
-            price_pence: Math.round(parseFloat(r.price || '0') * 100)
-          }))
-        })
+      // CD-04: wired - PricingStep saves to coach_sports table with real sport_id lookup
+      // Maps to: sport_id, session_types[], skill_levels[], price_individual_pence, price_group_pence
+      
+      // CD-04: Lookup sport_id by matching selected sport name from sessionStorage
+      if (selectedSports.length === 0) {
+        setLoadingError('No sport selected. Please go back and select a sport.')
+        setSaving(false)
+        return
+      }
+
+      // Fix-17b: Loop through ALL selected sports and save each one
+      // First, validate all sports exist
+      const sportMatches = selectedSports.map(sportName => {
+        const matchedSport = sports.find(s => s.name === sportName)
+        if (!matchedSport) {
+          setLoadingError(`Sport "${sportName}" not found. Please go back and select a valid sport.`)
+          setSaving(false)
+          return null
+        }
+        return { name: sportName, id: matchedSport.id }
       })
+
+      // If any sport not found, stop
+      if (sportMatches.some(match => match === null)) {
+        return
+      }
+      
+      // Convert session types to array format
+      const sessionTypesArray: string[] = []
+      if (sessionTypes.individual) sessionTypesArray.push('individual')
+      if (sessionTypes.group) sessionTypesArray.push('group')
+      
+      // Convert skill levels to lowercase array
+      const skillLevelsArray = skillLevels.map(l => l.toLowerCase())
+      
+      // Fix-16f: Convert age_groups from UI format to API format
+      const ageGroupsArray = ageGroups.map(group => {
+        const mapping: Record<string, string> = {
+          'Under 8': 'under_8',
+          'Under 10': 'under_10',
+          'Under 12': 'under_12',
+          'Under 14': 'under_14',
+          'Under 16': 'under_16',
+          'Adults (17+)': 'adults'
+        }
+        return mapping[group] || group.toLowerCase().replace(' ', '_')
+      })
+      
+      // Get lowest price as individual price (pence)
+      const lowestPricePence = pricingRows.length > 0
+        ? Math.round(Math.min(...pricingRows.map(r => parseFloat(r.price || '0'))) * 100)
+        : 0
+      
+      // Fix-17b: Save all sports using Promise.all
+      const savePromises = sportMatches.map(match => 
+        fetch('/api/coaches/sports', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sport_id: match!.id, // CD-04: coach_sports.sport_id (real UUID FK to sports table)
+            session_types: sessionTypesArray, // CD-03: coach_sports.session_types (text[])
+            skill_levels: skillLevelsArray, // CD-03: coach_sports.skill_levels (text[])
+            age_groups: ageGroupsArray, // Fix-16f: coach_sports.age_groups (text[])
+            price_individual_pence: lowestPricePence, // CD-03: coach_sports.price_individual_pence (integer)
+            price_group_pence: null, // CD-03: coach_sports.price_group_pence (not configured in UI yet)
+            max_group_size: null, // CD-03: coach_sports.max_group_size (not configured in UI yet)
+            session_duration_minutes: 60, // CD-03: default duration
+          })
+        })
+      )
+
+      // Wait for all saves to complete
+      await Promise.all(savePromises)
+      
       router.push('/coach/onboarding/qualifications')
     } finally {
       setSaving(false)
     }
   }
 
+  // Calculate minimum price for summary
+  const minPrice = pricingRows.length > 0 
+    ? Math.min(...pricingRows.map(r => parseFloat(r.price || '0')).filter(p => p > 0))
+    : 0
+
   return (
-    <div className="min-h-full bg-white font-sans text-gray-900 flex flex-col items-center pb-32">
-      <div className="w-full max-w-[640px] px-6 pt-10">
+    <div className="flex-1 overflow-y-auto bg-transparent font-sans text-gray-900 flex">
+      <div className="flex-1 flex justify-center">
+        <div className="w-full max-w-3xl px-8 pt-10">
 
         {/* TOP */}
         <div className="mb-10">
-          <button
-            onClick={() => router.push('/coach/onboarding/sport')}
-            className="flex items-center gap-2 text-[#0077CC] hover:text-blue-800 font-bold text-[15px] mb-8 transition-colors"
-          >
-            <ArrowLeft size={18} />
-            <span>Dashboard</span>
-          </button>
+          {/* CF-D12 CHANGE 3A: Step indicator - Step 3 of 5 */}
+          <div className="mb-4">
+            <div className="flex items-center gap-1.5 mb-2">
+              <div className="w-2 h-2 rounded-full bg-[#E2E8F0]"></div>
+              <div className="w-2 h-2 rounded-full bg-[#E2E8F0]"></div>
+              <div className="w-6 h-2 rounded-full bg-[#0077CC]"></div>
+              <div className="w-2 h-2 rounded-full bg-[#E2E8F0]"></div>
+              <div className="w-2 h-2 rounded-full bg-[#E2E8F0]"></div>
+            </div>
+            <p className="text-[11px] text-gray-400">Step 3 of 5</p>
+          </div>
+          
           <h1 className="text-[32px] font-bold text-gray-900 leading-tight mb-2">Sport & pricing</h1>
-          <p className="text-[16px] text-gray-500 font-medium">Set up the sport you coach and your session prices</p>
+          <p className="text-[16px] text-gray-500 font-medium">Set up your session types and pricing</p>
         </div>
 
-        <div className="flex flex-col gap-6">
-
-          {/* Sport */}
-          <div className="bg-white border border-gray-100 shadow-sm rounded-[24px] p-8">
-            <h2 className="text-[18px] font-bold text-gray-900 mb-6">Sport</h2>
-            <div className="flex flex-col gap-2">
-              <div className="relative">
-                <select className="w-full px-4 py-3.5 rounded-xl border border-gray-200 text-[15px] text-gray-900 bg-white appearance-none focus:border-[#0077CC] focus:ring-1 focus:ring-[#0077CC] outline-none transition-all cursor-pointer font-medium">
-                  <option value="" disabled>Select a sport</option>
-                  <option>Cricket</option>
-                  <option>Football</option>
-                  <option>Tennis</option>
-                  <option>Swimming</option>
-                  <option>Rugby</option>
-                  <option>Basketball</option>
-                </select>
-                <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
-                  <ChevronDown size={18} className="text-gray-400" />
-                </div>
-              </div>
-              <p className="text-[13px] text-gray-500 font-medium mt-1">You can add more sports later</p>
+        {/* Fix-16c: Loading state */}
+        {loading ? (
+          <div className="bg-white rounded-xl p-5" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+            <div className="py-16 flex flex-col items-center justify-center">
+              <div className="w-8 h-8 border-3 border-gray-200 border-t-[#0077CC] rounded-full animate-spin mb-3" />
+              <p className="text-[14px] text-gray-500">Loading your pricing...</p>
             </div>
           </div>
+        ) : (
+          <div className="page-content-enter">
+        {/* CD-04: Error display for sport lookup failures */}
+        {loadingError && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
+            <p className="text-[14px] font-medium text-red-700">{loadingError}</p>
+          </div>
+        )}
 
-          {/* Session types */}
-          <div className="bg-white border border-gray-100 shadow-sm rounded-[24px] p-8">
+        <div className="flex flex-col gap-3">
+
+          {/* CF-D12 CHANGE 2C: Sport context display */}
+          {selectedSports.length === 1 ? (
+            <p className="text-[13px] text-gray-500 mb-4">Setting up: {selectedSports[0]}</p>
+          ) : selectedSports.length > 1 ? (
+            <div className="mb-4">
+              <div className="flex items-center gap-4 mb-2">
+                {selectedSports.map((sport, idx) => (
+                  <button
+                    key={sport}
+                    className={idx === 0 ? 'text-[13px] font-medium text-[#0077CC] border-b-2 border-[#0077CC] pb-1' : 'text-[13px] text-gray-500 pb-1'}
+                  >
+                    {sport}
+                    <span className="ml-2">
+                      {idx === 0 ? (
+                        <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-[#DCFCE7] text-[#166534]">✓</span>
+                      ) : (
+                        <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full border-[1.5px] border-[#E2E8F0]"></span>
+                      )}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] text-gray-400">1 of {selectedSports.length} sports configured</p>
+            </div>
+          ) : (
+            <p className="text-[13px] text-gray-500 mb-4">Setting up: Cricket</p>
+          )}
+
+          {/* CF-D12 CHANGE 2D: Session types */}
+          <div className="bg-white rounded-xl p-5" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
             <h2 className="text-[18px] font-bold text-gray-900 mb-6">Session types</h2>
             <div className="flex flex-col gap-4">
               {(['individual', 'group'] as const).map((type) => (
@@ -128,8 +334,8 @@ export function PricingStep() {
           </div>
 
           {/* Skill levels */}
-          <div className="bg-white border border-gray-100 shadow-sm rounded-[24px] p-8">
-            <h2 className="text-[18px] font-bold text-gray-900 mb-6">Skill levels you coach</h2>
+          <div className="bg-white rounded-xl p-5" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+            <h2 className="text-[13px] font-medium text-gray-900 mb-3.5">Skill levels you coach</h2>
             <div className="flex flex-wrap gap-2.5">
               {['Beginner', 'Intermediate', 'Advanced', 'Elite'].map((level) => (
                 <button
@@ -148,8 +354,8 @@ export function PricingStep() {
           </div>
 
           {/* Age groups */}
-          <div className="bg-white border border-gray-100 shadow-sm rounded-[24px] p-8">
-            <h2 className="text-[18px] font-bold text-gray-900 mb-6">Age groups</h2>
+          <div className="bg-white rounded-xl p-5" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+            <h2 className="text-[13px] font-medium text-gray-900 mb-3.5">Age groups</h2>
             <div className="flex flex-wrap gap-2.5">
               {['Under 8', 'Under 10', 'Under 12', 'Under 14', 'Under 16', 'Adults (17+)'].map((group) => (
                 <button
@@ -168,10 +374,10 @@ export function PricingStep() {
           </div>
 
           {/* 1-on-1 pricing */}
-          <div className="bg-white border border-gray-100 shadow-sm rounded-[24px] p-8">
-            <div className="mb-6">
-              <h2 className="text-[18px] font-bold text-gray-900">1-on-1 session pricing</h2>
-              <p className="text-[14px] text-gray-500 font-medium mt-1">Set your price for each session length</p>
+          <div className="bg-white rounded-xl p-5" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+            <div className="mb-4">
+              <h2 className="text-[13px] font-medium text-gray-900">1-on-1 session pricing</h2>
+              <p className="text-[12px] text-gray-500 mt-1">Set your price for each session length</p>
             </div>
             <div className="flex flex-col gap-4">
               {pricingRows.map((row) => (
@@ -203,26 +409,131 @@ export function PricingStep() {
           </div>
 
         </div>
-      </div>
 
-      {/* STICKY BOTTOM */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-md border-t border-gray-100 p-6 flex justify-center z-50">
-        <div className="w-full max-w-[640px] flex flex-col gap-3">
+        {/* CF-D12 CHANGE 3B: Save bar - SAVE BAR PATTERN (step 2+: back left, save right) */}
+        <div className="flex justify-between items-center py-3 mt-6">
+          <button
+            onClick={() => router.push('/coach/onboarding/sport')}
+            className="text-[13px] text-gray-500 hover:text-gray-900 transition-colors"
+          >
+            ← Back
+          </button>
           <button
             onClick={handleSave}
-            disabled={saving}
-            className="w-full py-4 bg-[#0077CC] hover:bg-[#0066AA] disabled:opacity-60 text-white rounded-xl font-bold text-[16px] transition-colors shadow-sm flex items-center justify-center gap-2"
+            disabled={saving || !!loadingError}
+            className="px-7 py-2.5 bg-[#0077CC] hover:bg-[#0066AA] disabled:opacity-60 text-white rounded-full text-[13px] font-medium transition-colors"
           >
             {saving ? 'Saving...' : 'Save & continue →'}
           </button>
-          <button
-            onClick={() => router.push('/coach/dashboard')}
-            className="w-full py-3 text-gray-500 hover:text-gray-900 font-bold text-[14px] transition-colors"
-          >
-            Save & go back to dashboard
-          </button>
+        </div>
+        </div>
+        )}
         </div>
       </div>
+
+      {/* Fix-23: Right panel - Coach preview + Your offer summary */}
+      <aside className="hidden xl:flex w-80 shrink-0 flex-col bg-white p-6 h-screen overflow-y-auto border-l border-gray-100">
+        <div className="sticky top-6">
+          {/* SECTION 1: Coach preview card */}
+          <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-4" style={{ letterSpacing: '0.05em' }}>
+            WHAT PARENTS SEE
+          </p>
+          
+          <div className="bg-white border border-gray-100 shadow-sm rounded-xl p-5 mb-4">
+            {/* Avatar + Name */}
+            <div className="flex items-start gap-3 mb-4">
+              {coachAvatarUrl ? (
+                <img
+                  src={coachAvatarUrl}
+                  alt={coachName}
+                  className="w-16 h-16 rounded-full object-cover shrink-0"
+                />
+              ) : (
+                <div className="w-16 h-16 bg-[#E6F1FB] rounded-full flex items-center justify-center shrink-0">
+                  <span className="text-[#0C447C] text-[20px] font-bold">
+                    {coachName
+                      .split(' ')
+                      .map(n => n[0])
+                      .join('')
+                      .toUpperCase()
+                      .substring(0, 2) || 'C'}
+                  </span>
+                </div>
+              )}
+              <div className="flex-1">
+                <h3 className="text-[16px] font-bold text-gray-900 mb-0.5">
+                  {coachName || <span className="text-gray-300">Your name</span>}
+                </h3>
+                <p className="text-[13px] text-gray-500">
+                  {selectedSports.length > 0 ? `${selectedSports[0]} Coach` : 'Cricket Coach'}
+                </p>
+              </div>
+            </div>
+            
+            {/* Star rating */}
+            <div className="flex items-center gap-1 mb-3">
+              <span className="text-amber-400 text-[15px]">★★★★★</span>
+              <span className="text-[12px] text-gray-500 ml-1">New coach</span>
+            </div>
+            
+            {/* Price */}
+            <div className={`text-[15px] font-bold mb-4 ${minPrice > 0 ? 'text-gray-900' : 'text-gray-400'}`}>
+              from £{minPrice > 0 ? minPrice : '--'} / session
+            </div>
+            
+            {/* Book button */}
+            <button 
+              className="w-full bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-full py-3 text-[14px] font-bold transition-colors pointer-events-none"
+              disabled
+            >
+              Book a session
+            </button>
+          </div>
+
+          {/* SECTION 2: Your offer summary */}
+          <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-4 mt-6" style={{ letterSpacing: '0.05em' }}>
+            YOUR OFFER
+          </p>
+          
+          <div className="bg-white border border-gray-100 shadow-sm rounded-xl p-4">
+            <h3 className="text-[13px] font-semibold text-gray-900 mb-3">
+              {selectedSports.length > 0 ? selectedSports[0] : 'Cricket'}
+            </h3>
+            
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span className="text-[11px] text-gray-500">Session types</span>
+                <span className="text-[11px] text-gray-900 font-medium text-right max-w-[140px]">
+                  {sessionTypes.individual && sessionTypes.group ? 'Individual · Group' : 
+                   sessionTypes.individual ? 'Individual' : 
+                   sessionTypes.group ? 'Group' : 'None'}
+                </span>
+              </div>
+              
+              <div className="flex justify-between">
+                <span className="text-[11px] text-gray-500">Skill levels</span>
+                <span className="text-[11px] text-gray-900 font-medium text-right max-w-[140px]">
+                  {skillLevels.length > 0 ? skillLevels.join(', ') : 'None'}
+                </span>
+              </div>
+              
+              <div className="flex justify-between">
+                <span className="text-[11px] text-gray-500">Age groups</span>
+                <span className="text-[11px] text-gray-900 font-medium text-right max-w-[140px]">
+                  {ageGroups.length > 0 ? `U${ageGroups[0].replace('Under ', '')} – U${ageGroups[ageGroups.length - 1].replace('Under ', '')}` : 'None'}
+                </span>
+              </div>
+            </div>
+          </div>
+          
+          {/* Warning for multiple sports */}
+          {selectedSports.length > 1 && (
+            <div className="bg-[#FFFBEB] border-l-[3px] border-[#F59E0B] rounded-r-lg px-3 py-2 mt-4">
+              <p className="text-[11px] text-[#78350F]">{selectedSports[1]} still needs setup</p>
+            </div>
+          )}
+        </div>
+      </aside>
     </div>
   )
 }

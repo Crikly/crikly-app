@@ -1,169 +1,457 @@
 'use client'
 
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, ChevronDown, Upload, Award, FileText, Trash2, X } from 'lucide-react'
+import { Upload, FileText, X } from 'lucide-react'
+import { OnboardingPreviewPanel } from '../OnboardingPreviewPanel'
 
 interface Qualification {
   id: string
+  category: string
   name: string
-  body: string
+  provider: string
   year: string
-  file: string | null
+  status: 'uploaded' | 'pending'
 }
+
+interface QualificationResponse {
+  id: string
+  qualification_type_id: string | null
+  type_name: string | null
+  issuing_body: string | null
+  custom_name: string | null
+  issued_date: string | null
+  expiry_date: string | null
+  notes: string | null
+  is_custom: boolean
+  created_at: string
+}
+
+type CategoryType = 'coaching' | 'dbs' | 'firstaid' | 'safeguarding' | 'other' | ''
 
 export function QualificationsStep() {
   const router = useRouter()
-  const [selectedQual, setSelectedQual] = useState('')
-  const [body, setBody] = useState('')
+  const [category, setCategory] = useState<CategoryType>('')
+  const [qualTitle, setQualTitle] = useState('')
+  const [provider, setProvider] = useState('')
   const [year, setYear] = useState('')
   const [fileName, setFileName] = useState<string | null>(null)
   const [qualifications, setQualifications] = useState<Qualification[]>([])
+  const [loading, setLoading] = useState(true)
+  const [coachName, setCoachName] = useState<string>('Your name')
   const [saving, setSaving] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null)
+  const [confirmRemoveName, setConfirmRemoveName] = useState<string>('')
   const fileInputRef = useRef<HTMLInputElement>(null)
+  
+  // Fix-17e: Extract fetchQualifications into reusable function
+  const fetchQualifications = async () => {
+    try {
+      const qualsResponse = await fetch('/api/coaches/qualifications')
+      if (qualsResponse.ok) {
+        const data = await qualsResponse.json()
+        const savedQuals = data.qualifications.map((q: QualificationResponse) => ({
+          id: q.id,
+          category: q.is_custom ? 'other' : 'coaching',
+          name: q.custom_name || q.type_name || '',
+          provider: q.issuing_body || '',
+          year: q.issued_date ? new Date(q.issued_date).getFullYear().toString() : '',
+          status: 'uploaded' as const
+        }))
+        setQualifications(savedQuals)
+      }
+    } catch (error) {
+      console.error('[QualificationsStep] Failed to fetch qualifications:', error)
+    }
+  }
+  
+  // Fix-16c: Fetch saved qualifications on mount
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        // Fetch qualifications
+        await fetchQualifications()
+        
+        // Fix-16e: Fetch coach profile for name
+        const profileResponse = await fetch('/api/coaches/profile')
+        if (profileResponse.ok) {
+          const profileData = await profileResponse.json()
+          setCoachName(profileData.full_name || 'Your name')
+        }
+      } catch (error) {
+        console.error('[QualificationsStep] Failed to fetch data:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchData()
+  }, [])
+
+  const hasDBS = qualifications.some(q => q.category === 'dbs')
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) setFileName(file.name)
   }
 
-  const handleAddQualification = () => {
-    if (!selectedQual) return
-    setQualifications([...qualifications, {
-      id: Math.random().toString(36).substr(2, 9),
-      name: selectedQual,
-      body: body.trim(),
-      year: year.trim(),
-      file: fileName
-    }])
-    setSelectedQual('')
-    setBody('')
+  const handleEdit = (qual: Qualification) => {
+    setQualTitle(qual.name)
+    setProvider(qual.provider || '')
+    setYear(qual.year || '')
+    setEditingId(qual.id)
+  }
+
+  const handleCancelEdit = () => {
+    setEditingId(null)
+    setQualTitle('')
+    setProvider('')
     setYear('')
     setFileName(null)
   }
 
-  const removeQualification = (id: string) => {
-    setQualifications(qualifications.filter(q => q.id !== id))
+  const handleAddQualification = async () => {
+    // CD-03: wired - Add qualification to coach_qualifications table
+    // Maps to: custom_name, issuing_body, issued_date (coach_qualifications)
+    if (!qualTitle.trim()) return
+    
+    try {
+      if (editingId) {
+        // Fix-17g: Update existing qualification (DELETE + POST since PATCH doesn't allow custom_name change)
+        await fetch(`/api/coaches/qualifications/${editingId}`, {
+          method: 'DELETE',
+        })
+        
+        const response = await fetch('/api/coaches/qualifications', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            custom_name: qualTitle,
+            issuing_body: provider || null,
+            issued_date: year ? `${year}-01-01` : null,
+          })
+        })
+        
+        if (response.ok) {
+          await fetchQualifications()
+          setEditingId(null)
+        }
+      } else {
+        // Add new qualification
+        const response = await fetch('/api/coaches/qualifications', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            custom_name: qualTitle, // CD-03: coach_qualifications.custom_name
+            issuing_body: provider || null, // CD-03: coach_qualifications.issuing_body
+            issued_date: year ? `${year}-01-01` : null, // CD-03: coach_qualifications.issued_date (ISO date)
+            // Note: qualification_type_id null for custom qualifications
+            // Note: file upload not implemented yet - skipped
+          })
+        })
+        
+        // Fix-17e: Refetch qualifications to update state
+        if (response.ok) {
+          await fetchQualifications()
+        }
+      }
+      
+      // Reset form
+      setQualTitle('')
+      setProvider('')
+      setYear('')
+      setFileName(null)
+    } catch (error) {
+      console.error('Failed to add qualification:', error)
+    }
+  }
+
+  // Fix-33: Confirmation handlers
+  const handleRemoveWithConfirm = (qualId: string, qualName: string) => {
+    setConfirmRemoveId(qualId)
+    setConfirmRemoveName(qualName)
+  }
+
+  const handleConfirmRemove = async () => {
+    if (!confirmRemoveId) return
+    await handleRemove(confirmRemoveId)
+    setConfirmRemoveId(null)
+    setConfirmRemoveName('')
+  }
+
+  // Fix-16e: Add handleRemove function to delete qualification and update local state
+  const handleRemove = async (qualId: string) => {
+    try {
+      const response = await fetch(`/api/coaches/qualifications/${qualId}`, {
+        method: 'DELETE',
+      })
+      
+      // Fix-16e: Remove from local state immediately after successful deletion
+      if (response.ok) {
+        setQualifications(prev => prev.filter(q => q.id !== qualId))
+      }
+    } catch (error) {
+      console.error('[QualificationsStep] Failed to remove qualification:', error)
+    }
   }
 
   const handleSave = async () => {
     setSaving(true)
-    try {
-      await fetch('/api/coaches/qualifications', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ qualifications })
-      })
-      router.push('/coach/onboarding/availability')
-    } finally {
-      setSaving(false)
-    }
+    // CD-03: verified - Qualifications already saved via handleAddQualification
+    // This step just navigates to next step
+    router.push('/coach/onboarding/availability')
+    setSaving(false)
+  }
+  
+  const handleSkip = () => {
+    // TODO CF-D13: wire skip to next step route
+    router.push('/coach/onboarding/availability')
   }
 
   return (
-    <div className="min-h-full bg-white font-sans text-gray-900 flex flex-col items-center pb-32">
-      <div className="w-full max-w-[640px] px-6 pt-10">
+    <div className="flex-1 overflow-y-auto bg-transparent font-sans text-gray-900 flex">
+      <div className="flex-1 flex justify-center">
+        <div className="w-full max-w-3xl px-8 pt-10">
+
+        {/* TOP */}
         <div className="mb-10">
-          <button onClick={() => router.push('/coach/onboarding/pricing')} className="flex items-center gap-2 text-[#0077CC] hover:text-blue-800 font-bold text-[15px] mb-8 transition-colors">
-            <ArrowLeft size={18} /><span>Dashboard</span>
-          </button>
+          {/* CF-D13 CHANGE 1: Step indicator - Step 4 of 5 (v1.1: all non-active dots grey) */}
+          <div className="mb-4">
+            <div className="flex items-center gap-1.5 mb-2">
+              <div className="w-2 h-2 rounded-full bg-[#E2E8F0]"></div>
+              <div className="w-2 h-2 rounded-full bg-[#E2E8F0]"></div>
+              <div className="w-2 h-2 rounded-full bg-[#E2E8F0]"></div>
+              <div className="w-6 h-2 rounded-full bg-[#0077CC]"></div>
+              <div className="w-2 h-2 rounded-full bg-[#E2E8F0]"></div>
+            </div>
+            <p className="text-[11px] text-[#94A3B8]">Step 4 of 5</p>
+          </div>
+          
           <h1 className="text-[32px] font-bold text-gray-900 leading-tight mb-2">Your qualifications</h1>
-          <p className="text-[16px] text-gray-500 font-medium">Add your coaching qualifications and certificates</p>
+          <p className="text-[16px] text-gray-500 font-medium">Add credentials that build parent trust and increase your bookings</p>
+          
+          {/* CF-D13 CHANGE 2: Trust motivator banner */}
+          <div className="bg-[#E6F1FB] rounded-lg px-3.5 py-2.5">
+            <p className="text-[12px] text-[#0C447C] font-medium">
+              Coaches with a DBS check get 2× more parent enquiries
+            </p>
+          </div>
         </div>
 
-        <div className="flex flex-col gap-6">
-          <div className="bg-white border border-gray-100 shadow-sm rounded-[24px] p-8">
-            <h2 className="text-[18px] font-bold text-gray-900 mb-6">Add a qualification</h2>
-            <div className="flex flex-col gap-6">
-              <div className="relative">
-                <select value={selectedQual} onChange={(e) => setSelectedQual(e.target.value)} className={`w-full px-4 py-3.5 rounded-xl border border-gray-200 text-[15px] bg-white appearance-none focus:border-[#0077CC] focus:ring-1 focus:ring-[#0077CC] outline-none transition-all cursor-pointer font-medium ${selectedQual ? 'text-gray-900' : 'text-gray-500'}`}>
-                  <option value="" disabled hidden>Select a qualification</option>
-                  <option value="ECB Level 1">ECB Level 1</option>
-                  <option value="ECB Level 2">ECB Level 2</option>
-                  <option value="FA Level 2">FA Level 2</option>
-                  <option value="LTA Level 3">LTA Level 3</option>
-                  <option value="First Aid">First Aid</option>
-                  <option value="Safeguarding">Safeguarding</option>
-                  <option value="Other...">Other...</option>
-                </select>
-                <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none"><ChevronDown size={18} className="text-gray-400" /></div>
-              </div>
+        {/* CF-D13c: Simple form with dropdown (matches Sport & pricing pattern) */}
+        <div className="bg-white rounded-xl p-4 flex flex-col gap-4" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+          <div>
+            <label className="block text-[12px] font-medium text-[#0F172A] mb-1.5">Category</label>
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value as CategoryType)}
+              className="w-full px-3.5 py-2.5 rounded-lg border border-[#E2E8F0] text-[13px] text-[#0F172A] focus:border-[#0077CC] focus:ring-1 focus:ring-[#0077CC] outline-none transition-all"
+            >
+              <option value="">Select a category</option>
+              <option value="coaching">Coaching qualification</option>
+              <option value="dbs">DBS check</option>
+              <option value="firstaid">First aid</option>
+              <option value="safeguarding">Safeguarding</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
 
-              {selectedQual && (
-                <div className="flex flex-col gap-6">
-                  <div className="flex flex-col gap-2">
-                    <label className="text-[14px] font-bold text-gray-900">Issuing body</label>
-                    <input type="text" value={body} onChange={(e) => setBody(e.target.value)} placeholder="e.g. ECB, FA, LTA" className="w-full px-4 py-3.5 rounded-xl border border-gray-200 text-[15px] text-gray-900 placeholder:text-gray-400 focus:border-[#0077CC] focus:ring-1 focus:ring-[#0077CC] outline-none transition-all" />
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <label className="text-[14px] font-bold text-gray-900">Year issued <span className="text-gray-400 font-normal ml-1">(optional)</span></label>
-                    <input type="text" value={year} onChange={(e) => setYear(e.target.value)} placeholder="e.g. 2021" className="w-full px-4 py-3.5 rounded-xl border border-gray-200 text-[15px] text-gray-900 placeholder:text-gray-400 focus:border-[#0077CC] focus:ring-1 focus:ring-[#0077CC] outline-none transition-all" />
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <label className="text-[14px] font-bold text-gray-900">Upload certificate <span className="text-gray-400 font-normal ml-1">(optional)</span></label>
-                    <input ref={fileInputRef} type="file" accept=".pdf,.jpg,.png" onChange={handleFileSelect} className="hidden" />
-                    {fileName ? (
-                      <div className="flex items-center justify-between p-3.5 rounded-xl border border-gray-200 bg-gray-50/50">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center"><FileText size={16} className="text-[#0077CC]" /></div>
-                          <span className="text-[14px] font-bold text-gray-900">{fileName}</span>
+          <div>
+            <label className="block text-[12px] font-medium text-[#0F172A] mb-1.5">Title</label>
+            <input
+              type="text"
+              value={qualTitle}
+              onChange={(e) => setQualTitle(e.target.value)}
+              placeholder="e.g. ECB Level 2 Coaching"
+              className="w-full px-3.5 py-2.5 rounded-lg border border-[#E2E8F0] text-[13px] text-[#0F172A] placeholder:text-gray-400 focus:border-[#0077CC] focus:ring-1 focus:ring-[#0077CC] outline-none transition-all"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[12px] text-[#94A3B8] mb-1.5">Issuer / Provider (optional)</label>
+            <input
+              type="text"
+              value={provider}
+              onChange={(e) => setProvider(e.target.value)}
+              placeholder="e.g. England & Wales Cricket Board"
+              className="w-full px-3.5 py-2.5 rounded-lg border border-[#E2E8F0] text-[13px] text-[#0F172A] placeholder:text-gray-400 focus:border-[#0077CC] focus:ring-1 focus:ring-[#0077CC] outline-none transition-all"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[12px] text-[#94A3B8] mb-1.5">Year (optional)</label>
+            <input
+              type="text"
+              value={year}
+              onChange={(e) => setYear(e.target.value)}
+              placeholder="e.g. 2022"
+              className="w-full px-3.5 py-2.5 rounded-lg border border-[#E2E8F0] text-[13px] text-[#0F172A] placeholder:text-gray-400 focus:border-[#0077CC] focus:ring-1 focus:ring-[#0077CC] outline-none transition-all"
+            />
+          </div>
+
+          <div className="flex gap-2 ml-auto">
+            {editingId && (
+              <button
+                onClick={handleCancelEdit}
+                className="px-5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-full text-[12px] font-medium transition-colors"
+              >
+                Cancel
+              </button>
+            )}
+            <button
+              onClick={handleAddQualification}
+              className="px-5 py-2 bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-full text-[12px] font-medium transition-colors"
+            >
+              {editingId ? 'Update qualification' : 'Add qualification'}
+            </button>
+          </div>
+        </div>
+
+          {/* Fix-16c: Loading state */}
+          {loading ? (
+            <div className="bg-white rounded-xl p-5" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+              <div className="py-16 flex flex-col items-center justify-center">
+                <div className="w-8 h-8 border-3 border-gray-200 border-t-[#0077CC] rounded-full animate-spin mb-3" />
+                <p className="text-[14px] text-gray-500">Loading your qualifications...</p>
+              </div>
+            </div>
+          ) : (
+          <div className="page-content-enter">
+          {/* CF-D13 CHANGE 4: Qualification cards (v1.1: shadow, no border) */}
+          {qualifications.length > 0 && (
+            <div className="flex flex-col gap-4">
+              {qualifications.map((qual) => (
+                <div key={qual.id}
+                  className="qual-card-enter bg-white rounded-xl p-4 border border-gray-100"
+                  style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}
+                >
+                  <div className="flex items-start gap-3">
+                    {/* Status icon */}
+                    <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 text-[16px] ${
+                      qual.status === 'uploaded'
+                        ? 'bg-[#DCFCE7] text-[#166534]'
+                        : 'bg-[#FEF3C7] text-[#92400E]'
+                    }`}>
+                      {qual.status === 'uploaded' ? '✓' : '⏱'}
+                    </div>
+
+                    {/* Content */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-[14px] font-bold text-gray-900 leading-tight">
+                          {qual.name}
+                        </p>
+                        <div className="flex gap-3 shrink-0">
+                          <button
+                            onClick={() => handleEdit(qual)}
+                            className="text-[11px] font-medium text-gray-400 hover:text-gray-700 transition-colors"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleRemoveWithConfirm(qual.id, qual.name)}
+                            className="text-[11px] font-medium text-red-400 hover:text-red-600 transition-colors"
+                          >
+                            Remove
+                          </button>
                         </div>
-                        <button onClick={() => setFileName(null)} className="p-1.5 text-gray-400 hover:text-red-500 transition-colors rounded-lg hover:bg-red-50"><Trash2 size={16} /></button>
                       </div>
-                    ) : (
-                      <button onClick={() => fileInputRef.current?.click()} className="w-fit px-5 py-3 rounded-xl border-2 border-gray-200 text-gray-600 font-bold text-[14px] hover:border-gray-300 hover:bg-gray-50 transition-colors flex items-center gap-2">
-                        <Upload size={18} strokeWidth={2.5} className="text-gray-400" />Upload file
-                      </button>
-                    )}
-                    <p className="text-[13px] text-gray-500 font-medium mt-1">Not shown publicly · admin review only</p>
+
+                      {/* Meta row */}
+                      <p className="text-[12px] text-gray-500 mt-1">
+                        {[qual.provider, qual.year].filter(Boolean).join(' · ')}
+                      </p>
+
+                      {/* Status badge */}
+                      <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium mt-2 ${
+                        qual.status === 'uploaded'
+                          ? 'bg-[#DCFCE7] text-[#166534]'
+                          : 'bg-[#FEF3C7] text-[#92400E]'
+                      }`}>
+                        {qual.status === 'uploaded' ? '✓ Uploaded' : '⏱ Pending review'}
+                      </div>
+                    </div>
                   </div>
                 </div>
-              )}
+              ))}
+            </div>
+          )}
 
-              <button onClick={handleAddQualification} disabled={!selectedQual} className={`mt-2 w-full py-4 rounded-xl border-2 font-bold text-[15px] transition-colors flex items-center justify-center gap-2 ${selectedQual ? 'border-[#0077CC] text-[#0077CC] hover:bg-blue-50' : 'border-gray-200 text-gray-400 cursor-not-allowed'}`}>
-                Add qualification
+          {/* CF-D13 CHANGE 5: Empty state (v1.1: no Skip link inside, only in save bar) */}
+          {qualifications.length === 0 && (
+            <div className="border-[1.5px] border-dashed border-[#E2E8F0] rounded-xl px-4 py-7 text-center">
+              <p className="text-[13px] font-medium text-[#0F172A] mb-1">No qualifications added yet</p>
+              <p className="text-[11px] text-[#94A3B8]">You can add credentials later from your profile</p>
+            </div>
+          )}
+          </div>
+          )}
+
+        {/* CF-D13 CHANGE 7: Save bar (v1.1: per onboarding patterns) */}
+        <div className="flex justify-between items-center py-4 mt-4">
+          <button
+            onClick={() => router.push('/coach/onboarding/pricing')}
+            className="text-[13px] text-[#64748B] hover:text-[#0F172A] transition-colors"
+          >
+            ← Back
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="px-5.5 py-2.5 bg-[#0077CC] hover:bg-[#0066AA] disabled:opacity-60 text-white rounded-full text-[13px] font-medium transition-colors"
+          >
+            {saving ? 'Saving...' : 'Save & continue →'}
+          </button>
+        </div>
+        </div>
+      </div>
+
+      {/* Right panel - What parents see */}
+      <OnboardingPreviewPanel
+        coachName={coachName}
+        sport={undefined}
+        location={undefined}
+        availabilityDays={undefined}
+        priceFromPence={undefined}
+        isDbs={hasDBS}
+        infoBox={hasDBS ? {
+          type: 'success',
+          message: '✓ DBS badge now visible to parents',
+          subMessage: 'Parents can see your credentials in search results'
+        } : undefined}
+      />
+
+      {/* Fix-33: Confirmation modal */}
+      {confirmRemoveId && (
+        <div className="fixed inset-0 bg-black/40 z-[100] flex items-center justify-center p-4"
+          onClick={() => setConfirmRemoveId(null)}
+        >
+          <div className="bg-white rounded-2xl p-6 w-full max-w-[360px] shadow-xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <h3 className="text-[17px] font-bold text-gray-900 mb-2">
+              Remove qualification?
+            </h3>
+            <p className="text-[14px] text-gray-500 mb-6">
+              "{confirmRemoveName}" will be permanently removed from your profile.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirmRemoveId(null)}
+                className="flex-1 py-2.5 rounded-xl bg-[#0077CC] hover:bg-[#0066AA] text-white text-[14px] font-medium transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmRemove}
+                className="flex-1 py-2.5 rounded-xl bg-white border border-red-200 text-red-600 hover:bg-red-50 text-[14px] font-medium transition-colors"
+              >
+                Remove
               </button>
             </div>
           </div>
-
-          <div className="bg-white border border-gray-100 shadow-sm rounded-[24px] p-8 mb-20">
-            <h2 className="text-[18px] font-bold text-gray-900 mb-6">Your qualifications</h2>
-            {qualifications.length === 0 ? (
-              <div className="py-10 flex flex-col items-center justify-center text-center">
-                <div className="w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center mb-4"><Award size={24} className="text-gray-300" /></div>
-                <p className="text-[15px] font-bold text-gray-900 mb-1">No qualifications added yet.</p>
-                <p className="text-[14px] text-gray-500 font-medium mb-6">You can skip this step and add<br/>qualifications later.</p>
-                <button onClick={() => router.push('/coach/onboarding/availability')} className="text-[14px] font-bold text-[#475569] hover:text-gray-900 transition-colors flex items-center gap-1">Skip for now <ArrowLeft size={16} className="rotate-180" /></button>
-              </div>
-            ) : (
-              <div className="flex flex-col gap-3">
-                {qualifications.map((qual) => (
-                  <div key={qual.id} className="flex items-center justify-between p-4 rounded-xl border border-gray-100 bg-gray-50/50">
-                    <div className="flex flex-col gap-1">
-                      <span className="font-bold text-gray-900 text-[15px]">{qual.name}</span>
-                      <div className="flex items-center gap-2 text-[14px]">
-                        {qual.body && <><span className="text-gray-600 font-medium">{qual.body}</span>{(qual.year || qual.file) && <span className="text-gray-300">•</span>}</>}
-                        {qual.year && <><span className="text-gray-600 font-medium">{qual.year}</span>{qual.file && <span className="text-gray-300">•</span>}</>}
-                        {qual.file && <span className="text-[#0077CC] font-bold flex items-center gap-1"><FileText size={14} /> File uploaded</span>}
-                      </div>
-                    </div>
-                    <button onClick={() => removeQualification(qual.id)} className="p-1.5 text-gray-400 hover:text-red-500 transition-colors rounded-lg hover:bg-red-50 shrink-0 ml-2 self-start"><X size={18} /></button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
         </div>
-      </div>
-
-      <div className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-md border-t border-gray-100 p-6 flex justify-center z-50 shadow-[0_-10px_40px_rgba(0,0,0,0.03)]">
-        <div className="w-full max-w-[640px] flex flex-col gap-3">
-          <button onClick={handleSave} disabled={saving} className="w-full py-4 bg-[#0077CC] hover:bg-[#0066AA] disabled:opacity-60 text-white rounded-xl font-bold text-[16px] transition-colors shadow-sm flex items-center justify-center gap-2">
-            {saving ? 'Saving...' : 'Save & continue →'}
-          </button>
-          <button onClick={() => router.push('/coach/dashboard')} className="w-full py-3 text-gray-500 hover:text-gray-900 font-bold text-[14px] transition-colors">Save & go back to dashboard</button>
-        </div>
-      </div>
+      )}
     </div>
   )
 }

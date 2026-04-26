@@ -12,6 +12,7 @@ interface CoachSportResponse {
   sport_slug: string
   session_types: string[]
   skill_levels: string[]
+  age_groups: string[]
   price_individual_pence: number | null
   price_group_pence: number | null
   max_group_size: number | null
@@ -76,25 +77,10 @@ export async function GET(): Promise<NextResponse<{ sports: CoachSportResponse[]
       return NextResponse.json({ error: 'Coach profile not found' }, { status: 404 })
     }
 
-    // 4. Fetch coach sports with sport details
+    // 4. Fix-16d: Fetch coach sports WITHOUT joins (no sports!inner syntax)
     const { data: coachSports, error: sportsError } = await supabase
       .from('coach_sports')
-      .select(`
-        id,
-        sport_id,
-        session_types,
-        skill_levels,
-        price_individual_pence,
-        price_group_pence,
-        max_group_size,
-        session_duration_minutes,
-        currency,
-        is_active,
-        sports!inner (
-          name,
-          slug
-        )
-      `)
+      .select('*')
       .eq('coach_profile_id', coachProfile.id)
 
     if (sportsError) {
@@ -102,15 +88,29 @@ export async function GET(): Promise<NextResponse<{ sports: CoachSportResponse[]
       return NextResponse.json({ error: 'Failed to fetch sports' }, { status: 500 })
     }
 
-    // 5. Fetch session type variants for all sports
-    // Note: coach_session_types links via coach_sport_id, need to get sport IDs first
-    const sportIds = (coachSports || []).map(cs => cs.id)
+    // 5. Fix-16d: Fetch sport details separately for each coach sport
+    const sportIds = [...new Set((coachSports || []).map(cs => cs.sport_id).filter(Boolean))]
     
-    const { data: sessionTypes, error: typesError } = sportIds.length > 0
+    const { data: sportsData, error: sportsDataError } = sportIds.length > 0
+      ? await supabase
+          .from('sports')
+          .select('id, name, slug')
+          .in('id', sportIds)
+      : { data: [], error: null }
+
+    if (sportsDataError) {
+      console.error('[GET /api/coaches/sports] sports data error:', sportsDataError)
+      return NextResponse.json({ error: 'Failed to fetch sports data' }, { status: 500 })
+    }
+
+    // 6. Fetch session type variants for all coach sports
+    const coachSportIds = (coachSports || []).map(cs => cs.id)
+    
+    const { data: sessionTypes, error: typesError } = coachSportIds.length > 0
       ? await supabase
           .from('coach_session_types')
           .select('id, coach_sport_id, duration_minutes, price_individual_pence, price_group_pence, is_active')
-          .in('coach_sport_id', sportIds)
+          .in('coach_sport_id', coachSportIds)
       : { data: [], error: null }
 
     if (typesError) {
@@ -118,9 +118,9 @@ export async function GET(): Promise<NextResponse<{ sports: CoachSportResponse[]
       return NextResponse.json({ error: 'Failed to fetch session types' }, { status: 500 })
     }
 
-    // 6. Build response with nested session types
+    // 7. Build response by merging sport data in application code
     const sports: CoachSportResponse[] = (coachSports || []).map((cs) => {
-      const sportData = Array.isArray(cs.sports) ? cs.sports[0] : cs.sports
+      const sportData = (sportsData || []).find(s => s.id === cs.sport_id)
       
       const variants = (sessionTypes || [])
         .filter((st) => st.coach_sport_id === cs.id)
@@ -135,10 +135,11 @@ export async function GET(): Promise<NextResponse<{ sports: CoachSportResponse[]
       return {
         id: cs.id,
         sport_id: cs.sport_id,
-        sport_name: sportData.name,
-        sport_slug: sportData.slug,
+        sport_name: sportData?.name || 'Unknown Sport',
+        sport_slug: sportData?.slug || 'unknown',
         session_types: cs.session_types,
         skill_levels: cs.skill_levels,
+        age_groups: cs.age_groups || [],
         price_individual_pence: cs.price_individual_pence,
         price_group_pence: cs.price_group_pence,
         max_group_size: cs.max_group_size,
@@ -229,10 +230,23 @@ export async function POST(
     if (!Array.isArray(body.skill_levels) || body.skill_levels.length === 0) {
       validationErrors.push('skill_levels is required and must be a non-empty array')
     } else {
-      const validSkillLevels = ['beginner', 'intermediate', 'advanced']
+      const validSkillLevels = ['beginner', 'intermediate', 'advanced', 'elite']
       const invalidLevels = body.skill_levels.filter((l: unknown) => !validSkillLevels.includes(l as string))
       if (invalidLevels.length > 0) {
-        validationErrors.push('skill_levels must only contain: beginner, intermediate, advanced')
+        validationErrors.push('skill_levels must only contain: beginner, intermediate, advanced, elite')
+      }
+    }
+
+    // Fix-16e: Validate age_groups if provided
+    if (body.age_groups !== undefined && body.age_groups !== null) {
+      if (!Array.isArray(body.age_groups)) {
+        validationErrors.push('age_groups must be an array')
+      } else {
+        const validAgeGroups = ['under_8', 'under_10', 'under_12', 'under_14', 'under_16', 'under_18', 'adults']
+        const invalidGroups = body.age_groups.filter((g: unknown) => !validAgeGroups.includes(g as string))
+        if (invalidGroups.length > 0) {
+          validationErrors.push('age_groups must only contain: under_8, under_10, under_12, under_14, under_16, under_18, adults')
+        }
       }
     }
 
@@ -245,16 +259,15 @@ export async function POST(
       }
     }
 
-    if (body.session_types && (body.session_types.includes('group') || body.session_types.includes('both'))) {
-      if (body.price_group_pence === undefined || body.price_group_pence === null) {
-        validationErrors.push('price_group_pence is required when offering group sessions')
-      } else if (typeof body.price_group_pence !== 'number' || body.price_group_pence < 100) {
+    // Fix-15b: Make group pricing optional - can be set later
+    if (body.price_group_pence !== undefined && body.price_group_pence !== null) {
+      if (typeof body.price_group_pence !== 'number' || body.price_group_pence < 100) {
         validationErrors.push('price_group_pence must be a number >= 100 (£1.00)')
       }
+    }
 
-      if (body.max_group_size === undefined || body.max_group_size === null) {
-        validationErrors.push('max_group_size is required when offering group sessions')
-      } else if (typeof body.max_group_size !== 'number' || body.max_group_size < 2 || body.max_group_size > 50) {
+    if (body.max_group_size !== undefined && body.max_group_size !== null) {
+      if (typeof body.max_group_size !== 'number' || body.max_group_size < 2 || body.max_group_size > 50) {
         validationErrors.push('max_group_size must be a number between 2 and 50')
       }
     }
@@ -289,6 +302,7 @@ export async function POST(
       sport_id: string
       session_types: string[]
       skill_levels: string[]
+      age_groups?: string[]
       price_individual_pence?: number | null
       price_group_pence?: number | null
       max_group_size?: number | null
@@ -298,6 +312,11 @@ export async function POST(
       sport_id: body.sport_id,
       session_types: body.session_types,
       skill_levels: body.skill_levels,
+    }
+
+    // Fix-16e: Add age_groups to insert data
+    if (body.age_groups !== undefined && Array.isArray(body.age_groups)) {
+      insertData.age_groups = body.age_groups
     }
 
     if (body.price_individual_pence !== undefined) {
@@ -313,46 +332,70 @@ export async function POST(
       insertData.session_duration_minutes = body.session_duration_minutes
     }
 
-    const { data: newSport, error: insertError } = await supabase
+    // Fix-16a: Upsert instead of insert to allow repeat saves
+    const { data: newSport, error: upsertError } = await supabase
       .from('coach_sports')
-      .insert(insertData)
-      .select(`
-        id,
-        sport_id,
-        session_types,
-        skill_levels,
-        price_individual_pence,
-        price_group_pence,
-        max_group_size,
-        session_duration_minutes,
-        currency,
-        is_active,
-        sports!inner (
-          name,
-          slug
-        )
-      `)
+      .upsert(insertData, {
+        onConflict: 'coach_profile_id,sport_id',
+        ignoreDuplicates: false
+      })
+      .select()
       .single()
 
-    if (insertError) {
-      // Check for unique constraint violation
-      if (insertError.code === '23505') {
-        return NextResponse.json({ error: 'You have already added this sport' }, { status: 409 })
-      }
-      console.error('[POST /api/coaches/sports] insert error:', insertError)
-      return NextResponse.json({ error: 'Failed to add sport' }, { status: 500 })
+    if (upsertError) {
+      console.error('[POST /api/coaches/sports] upsert error:', upsertError)
+      return NextResponse.json({ error: 'Failed to save sport' }, { status: 500 })
     }
 
-    // 7. Build response
-    const sportData = Array.isArray(newSport.sports) ? newSport.sports[0] : newSport.sports
+    // Fix-18b: Insert/upsert session type into coach_session_types table
+    // This replaces the deprecated price columns in coach_sports
+    if (body.session_duration_minutes && (body.price_individual_pence || body.price_group_pence)) {
+      const sessionTypeData: {
+        coach_sport_id: string
+        duration_minutes: number
+        price_individual_pence: number | null
+        price_group_pence: number | null
+        currency: string
+        is_active: boolean
+      } = {
+        coach_sport_id: newSport.id,
+        duration_minutes: body.session_duration_minutes,
+        price_individual_pence: body.price_individual_pence || null,
+        price_group_pence: body.price_group_pence || null,
+        currency: 'GBP',
+        is_active: true
+      }
+
+      const { error: sessionTypeError } = await supabase
+        .from('coach_session_types')
+        .upsert(sessionTypeData, {
+          onConflict: 'coach_sport_id,duration_minutes',
+          ignoreDuplicates: false
+        })
+        .select()
+        .single()
+
+      if (sessionTypeError) {
+        console.error('[POST /api/coaches/sports] session type upsert error:', sessionTypeError)
+        // Don't fail the whole request - coach_sports was saved successfully
+      }
+    }
+
+    // 7. Fetch sport name and slug separately
+    const { data: sportData } = await supabase
+      .from('sports')
+      .select('name, slug')
+      .eq('id', newSport.sport_id)
+      .single()
 
     const response: CoachSportResponse = {
       id: newSport.id,
       sport_id: newSport.sport_id,
-      sport_name: sportData.name,
-      sport_slug: sportData.slug,
+      sport_name: sportData?.name || '',
+      sport_slug: sportData?.slug || '',
       session_types: newSport.session_types,
       skill_levels: newSport.skill_levels,
+      age_groups: newSport.age_groups || [],
       price_individual_pence: newSport.price_individual_pence,
       price_group_pence: newSport.price_group_pence,
       max_group_size: newSport.max_group_size,

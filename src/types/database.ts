@@ -14,6 +14,69 @@ export type Database = {
   }
   public: {
     Tables: {
+      interest_registrations: {
+        Row: {
+          id: string
+          name: string
+          email: string
+          role: string
+          sports: string[]
+          location: string | null
+          consent_given: boolean
+          consent_at: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          email: string
+          role: string
+          sports?: string[]
+          location?: string | null
+          consent_given?: boolean
+          consent_at?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          email?: string
+          role?: string
+          sports?: string[]
+          location?: string | null
+          consent_given?: boolean
+          consent_at?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
+      waitlist_emails: {
+        Row: {
+          id: string
+          email: string
+          role: string | null
+          consent_given: boolean
+          consent_at: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          email: string
+          role?: string | null
+          consent_given?: boolean
+          consent_at?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          email?: string
+          role?: string | null
+          consent_given?: boolean
+          consent_at?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
       admin_roles: {
         Row: {
           created_at: string
@@ -122,6 +185,8 @@ export type Database = {
           sport_id: string | null
           start_time: string
           updated_at: string
+          venue_name: string | null
+          venue_address: string | null
         }
         Insert: {
           coach_profile_id: string
@@ -138,6 +203,8 @@ export type Database = {
           sport_id?: string | null
           start_time: string
           updated_at?: string
+          venue_name?: string | null
+          venue_address?: string | null
         }
         Update: {
           coach_profile_id?: string
@@ -154,6 +221,8 @@ export type Database = {
           sport_id?: string | null
           start_time?: string
           updated_at?: string
+          venue_name?: string | null
+          venue_address?: string | null
         }
         Relationships: [
           {
@@ -507,6 +576,7 @@ export type Database = {
           rating_count: number
           requires_manual_approval: boolean
           sessions_completed: number
+          slug: string | null
           stripe_account_id: string | null
           stripe_onboarding_complete: boolean
           subscription_tier_id: string | null
@@ -539,6 +609,7 @@ export type Database = {
           rating_count?: number
           requires_manual_approval?: boolean
           sessions_completed?: number
+          slug?: string | null
           stripe_account_id?: string | null
           stripe_onboarding_complete?: boolean
           subscription_tier_id?: string | null
@@ -571,6 +642,7 @@ export type Database = {
           rating_count?: number
           requires_manual_approval?: boolean
           sessions_completed?: number
+          slug?: string | null
           stripe_account_id?: string | null
           stripe_onboarding_complete?: boolean
           subscription_tier_id?: string | null
@@ -1221,6 +1293,7 @@ export type Database = {
           created_at: string
           id: string
           joined_at_session_number: number
+          participant_name: string | null
           payment_model: string
           payment_type: string
           player_profile_id: string | null
@@ -1239,6 +1312,7 @@ export type Database = {
           created_at?: string
           id?: string
           joined_at_session_number?: number
+          participant_name?: string | null
           payment_model: string
           payment_type: string
           player_profile_id?: string | null
@@ -1257,6 +1331,7 @@ export type Database = {
           created_at?: string
           id?: string
           joined_at_session_number?: number
+          participant_name?: string | null
           payment_model?: string
           payment_type?: string
           player_profile_id?: string | null
@@ -1369,6 +1444,7 @@ export type Database = {
           currency: string
           current_spots: number
           day_of_week: number | null
+          days_of_week: number[] | null
           deleted_at: string | null
           description: string | null
           duration_minutes: number
@@ -1389,6 +1465,8 @@ export type Database = {
           status: string
           title: string
           updated_at: string
+          venue_address: string | null
+          venue_name: string | null
         }
         Insert: {
           age_groups?: string[]
@@ -1401,6 +1479,7 @@ export type Database = {
           currency?: string
           current_spots?: number
           day_of_week?: number | null
+          days_of_week?: number[] | null
           deleted_at?: string | null
           description?: string | null
           duration_minutes: number
@@ -1421,6 +1500,8 @@ export type Database = {
           status?: string
           title: string
           updated_at?: string
+          venue_address?: string | null
+          venue_name?: string | null
         }
         Update: {
           age_groups?: string[]
@@ -1433,6 +1514,7 @@ export type Database = {
           currency?: string
           current_spots?: number
           day_of_week?: number | null
+          days_of_week?: number[] | null
           deleted_at?: string | null
           description?: string | null
           duration_minutes?: number
@@ -1453,6 +1535,8 @@ export type Database = {
           status?: string
           title?: string
           updated_at?: string
+          venue_address?: string | null
+          venue_name?: string | null
         }
         Relationships: [
           {
