@@ -42,8 +42,8 @@ export function MarketingNav() {
             <Image
               src="/logo.png"
               alt="Crikly"
-              height={36}
-              width={64}
+              height={44}
+              width={120}
               priority
               style={{ display: 'block' }}
             />
