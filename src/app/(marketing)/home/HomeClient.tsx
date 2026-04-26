@@ -6,6 +6,7 @@ import { Search, ShieldCheck, Clock, CreditCard, Zap, MapPin, Camera, Plus } fro
 import { LocationBar } from '@/components/marketing/LocationBar'
 import { ForCoachesBar } from '@/components/marketing/ForCoachesBar'
 import { ComingSoonModal } from '@/components/marketing/ComingSoonModal'
+import { AuthModal } from '@/components/marketing/AuthModal'
 
 const CYCLE_WORDS = [
   'cricket coach',
@@ -62,6 +63,8 @@ export function HomeClient({ sports }: Props) {
   const [searchQuery, setSearchQuery] = useState('')
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
   const [showComingSoon, setShowComingSoon] = useState(false)
+  const [authOpen, setAuthOpen] = useState(false)
+  const [bookingCtx, setBookingCtx] = useState<{ coachSlug: string; selectedSlot?: string } | undefined>()
   const inputRef = useRef<HTMLInputElement>(null)
 
   // Cycling headline animation
@@ -532,6 +535,13 @@ export function HomeClient({ sports }: Props) {
       <ForCoachesBar />
 
       <ComingSoonModal isOpen={showComingSoon} onClose={() => setShowComingSoon(false)} />
+      <AuthModal
+        isOpen={authOpen}
+        onClose={() => setAuthOpen(false)}
+        defaultMode="login"
+        postAuthAction="booking"
+        bookingContext={bookingCtx}
+      />
     </>
   )
 }

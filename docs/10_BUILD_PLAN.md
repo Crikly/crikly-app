@@ -146,7 +146,8 @@ All app flows show a coming soon state — only marketing content is functional.
 
 | ID | Task | Agent | Risk | Branch | Status |
 |---|---|---|---|---|---|
-| MS-17 | Auth modal overlay (Option A) — extract LoginForm/RegisterForm, AuthModal component, post-auth redirect logic, booking intent preservation | @FrontendDeveloper | 🟡 | feature/marketing-site | ⚪ |
+| MS-17 | Auth modal overlay (Option A) — extract LoginForm/RegisterForm, AuthModal component, post-auth redirect logic, booking intent preservation | @FrontendDeveloper | 🟡 | feature/marketing-site | ✅ |
+| MS-18 | Middleware guard — redirect /login /register /coach/* /onboarding/* to / when NEXT_PUBLIC_COACH_APP_LIVE !== 'true' | @FrontendDeveloper | 🟡 | feature/marketing-site | ⚪ |
 
 **Post-auth redirect logic (MS-17):**
 | Trigger | After auth |

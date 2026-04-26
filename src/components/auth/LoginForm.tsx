@@ -5,7 +5,11 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import type { LoginFormData, AuthError } from '@/types/auth'
 
-export function LoginForm() {
+interface LoginFormProps {
+  onSuccess?: () => void
+}
+
+export function LoginForm({ onSuccess }: LoginFormProps = {}) {
   const router = useRouter()
   const [formData, setFormData] = useState<LoginFormData>({
     email: '',
@@ -42,7 +46,11 @@ export function LoginForm() {
         setApiError(data.error ?? { code: 'UNKNOWN_ERROR', message: 'Something went wrong. Please try again.' })
         return
       }
-      router.push('/dashboard')
+      if (onSuccess) {
+        onSuccess()
+      } else {
+        router.push('/dashboard')
+      }
     } catch {
       setApiError({ code: 'NETWORK_ERROR', message: 'Connection error. Please check your internet and try again.' })
     } finally {
