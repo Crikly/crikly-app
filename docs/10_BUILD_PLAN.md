@@ -140,7 +140,7 @@ All app flows show a coming soon state — only marketing content is functional.
 |---|---|---|---|---|---|
 | MS-13 | S-06 Homepage — hero, search bar, dynamic coach grid, category tiles, skeleton states | @FrontendDeveloper | 🟢 | feature/marketing-site | ✅ |
 | MS-14 | S-07 Coming soon modal — email capture, inline confirmation, waitlist API | @FrontendDeveloper | 🟢 | feature/marketing-site | ✅ |
-| MS-15 | S-08 For coaches page — pitch page, FAQ accordion, both CTAs → InterestForm modal | @FrontendDeveloper | 🟢 | feature/marketing-site | ⚪ |
+| MS-15 | S-08 For coaches page — pitch page, FAQ accordion, both CTAs → InterestForm modal | @FrontendDeveloper | 🟢 | feature/marketing-site | ✅ |
 
 ### Step 0M — Auth Integration
 
