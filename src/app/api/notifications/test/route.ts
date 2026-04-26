@@ -1,13 +1,17 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import {
-  sendBookingConfirmationToParent,
-  sendNewBookingToCoach,
-} from '@/lib/resend/emails'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://crikly.app'
 
 export async function POST(request: Request) {
+  // Check key at request time — not at module load (avoids build-time throw)
+  if (!process.env.RESEND_API_KEY) {
+    return NextResponse.json(
+      { error: 'RESEND_API_KEY is not configured' },
+      { status: 500 },
+    )
+  }
+
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
@@ -24,6 +28,11 @@ export async function POST(request: Request) {
       { status: 400 },
     )
   }
+
+  // Dynamic import keeps @/lib/resend/emails out of the module-evaluation
+  // graph so its RESEND_API_KEY check only runs when this route is called.
+  const { sendBookingConfirmationToParent, sendNewBookingToCoach } =
+    await import('@/lib/resend/emails')
 
   const dummyRef = 'CRK-TEST-001'
   const dummyDate = '26 Apr 2026'
