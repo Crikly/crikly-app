@@ -118,7 +118,7 @@ All app flows show a coming soon state — only marketing content is functional.
 
 | ID | Task | Agent | Risk | Branch | Status |
 |---|---|---|---|---|---|
-| MS-16 | DB migration — interest_registrations + waitlist_emails tables | @DatabaseArchitect | 🟢 | feature/marketing-site | ⚪ |
+| MS-16 | DB migration — interest_registrations + waitlist_emails tables | @DatabaseArchitect | 🟢 | feature/marketing-site | ✅ |
 
 ### Step 0M — Scaffold
 
