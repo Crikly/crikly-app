@@ -1,10 +1,10 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { X, Check } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { LocationAutocomplete } from '@/components/coach/shared/LocationAutocomplete'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -82,14 +82,11 @@ function ThankYouView({
   role,
   firstName,
   onClose,
-  onSuccess,
 }: {
   role: Role
   firstName: string
   onClose?: () => void
-  onSuccess?: () => void
 }) {
-  const router = useRouter()
   const [copied, setCopied] = useState(false)
 
   function handleCopy() {
@@ -100,8 +97,6 @@ function ThankYouView({
 
   function handleClose() {
     onClose?.()
-    onSuccess?.()
-    router.push('/home')
   }
 
   const greeting = firstName ? `, ${firstName}` : ''
@@ -412,7 +407,6 @@ export function InterestForm({ mode, initialRole, onClose, onSuccess }: Interest
 
       if (res.status === 201) {
         setView('thankyou')
-        onSuccess?.()
       } else {
         setSubmitError('Something went wrong. Please try again.')
         setSubmitting(false)
@@ -449,7 +443,6 @@ export function InterestForm({ mode, initialRole, onClose, onSuccess }: Interest
           role={role ?? 'coach'}
           firstName={firstName}
           onClose={onClose}
-          onSuccess={onSuccess}
         />
       ) : (
         <>
@@ -591,14 +584,14 @@ export function InterestForm({ mode, initialRole, onClose, onSuccess }: Interest
             {/* Location */}
             <div style={{ marginBottom: '18px' }}>
               <label style={FIELD_LABEL}>Your location</label>
-              <input
-                style={INPUT_BASE}
-                type="text"
-                name="location"
+              <LocationAutocomplete
                 value={location}
-                onChange={e => setLocation(e.target.value)}
-                placeholder="City or postcode"
-                required
+                onChange={val => setLocation(val)}
+                onSelect={place => {
+                  const formatted = [place.city, place.postcode].filter(Boolean).join(', ')
+                  setLocation(formatted)
+                }}
+                placeholder="City, town, or postcode"
               />
             </div>
 
