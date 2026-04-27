@@ -3,18 +3,16 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { Search, ShieldCheck, Clock, CreditCard, Zap, MapPin, Camera, Plus } from 'lucide-react'
-import { LocationBar } from '@/components/marketing/LocationBar'
 import { ForCoachesBar } from '@/components/marketing/ForCoachesBar'
 import { ComingSoonModal } from '@/components/marketing/ComingSoonModal'
 import { AuthModal } from '@/components/marketing/AuthModal'
 
 const CYCLE_WORDS = [
   'cricket coach',
-  'football coach',
-  'tennis coach',
-  'swimming coach',
-  'yoga teacher',
-  'martial arts coach',
+  'junior cricket coach',
+  'weekend cricket coaching',
+  '1-to-1 cricket coach',
+  "women's cricket coach",
 ]
 
 const SPORT_COLORS: Record<string, { bg: string; fg: string }> = {
@@ -74,8 +72,8 @@ export function HomeClient({ sports }: Props) {
       setTimeout(() => {
         setCycleIdx(i => (i + 1) % CYCLE_WORDS.length)
         setCycleOut(false)
-      }, 300)
-    }, 2800)
+      }, 350)
+    }, 3000)
     return () => clearInterval(interval)
   }, [])
 
@@ -114,8 +112,6 @@ export function HomeClient({ sports }: Props) {
 
   return (
     <>
-      <LocationBar />
-
       {/* ---- Hero ---- */}
       <section
         className="relative text-center overflow-hidden"
@@ -143,53 +139,39 @@ export function HomeClient({ sports }: Props) {
           }}
         />
 
-        <div
-          className="text-xs font-medium tracking-wide uppercase"
-          style={{ color: '#64748B', marginBottom: '18px' }}
-        >
-          Coaches across sport, fitness &amp; skills
-        </div>
-
         <h1
           className="font-medium m-0 mx-auto"
           style={{
             fontSize: 'clamp(38px, 5vw, 60px)',
             letterSpacing: '-0.03em',
-            lineHeight: 1.05,
+            lineHeight: 1.1,
             color: '#0F172A',
-            marginBottom: '20px',
+            marginBottom: '32px',
             maxWidth: '880px',
           }}
         >
-          Find a{' '}
-          <span className="inline-block relative">
+          Find a
+          <br />
+          <span
+            style={{
+              display: 'inline-block',
+              minHeight: '1.2em',
+            }}
+          >
             <span
               style={{
                 color: '#0077CC',
                 display: 'inline-block',
-                transition: 'opacity 280ms cubic-bezier(0.22,1,0.36,1), transform 280ms cubic-bezier(0.22,1,0.36,1)',
+                transition: 'opacity 350ms ease-out',
                 opacity: cycleOut ? 0 : 1,
-                transform: cycleOut ? 'translateY(6px)' : 'translateY(0)',
               }}
             >
-              {activeCategory ? `${activeCategory.toLowerCase()} coach` : CYCLE_WORDS[cycleIdx]}
+              {CYCLE_WORDS[cycleIdx]}
             </span>
           </span>
-          <br />near you
+          <br />
+          near you
         </h1>
-
-        <p
-          className="mx-auto"
-          style={{
-            fontSize: '17px',
-            color: '#334155',
-            lineHeight: 1.55,
-            maxWidth: '480px',
-            margin: '0 auto 32px',
-          }}
-        >
-          Book verified, DBS-checked coaches for your child or yourself — whatever the sport, whatever the skill.
-        </p>
 
         {/* Search bar */}
         <div className="mx-auto" style={{ maxWidth: '580px' }}>
@@ -236,43 +218,12 @@ export function HomeClient({ sports }: Props) {
             </button>
           </div>
 
-          {/* Hint chips */}
-          <div
-            className="flex flex-wrap justify-center"
-            style={{ gap: '6px 14px', marginTop: '14px', fontSize: '12px', color: '#64748B' }}
+          <p
+            className="m-0 text-center"
+            style={{ marginTop: '14px', fontSize: '13px', color: '#64748B' }}
           >
-            <span>Try:</span>
-            {[
-              'cricket coach Kingston',
-              'yoga for kids near me',
-              'tennis lessons Wimbledon',
-            ].map(hint => (
-              <button
-                key={hint}
-                onClick={() => handleHint(hint)}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  borderBottom: '1px dashed #CBD5E1',
-                  color: '#334155',
-                  fontFamily: 'inherit',
-                  fontSize: '12px',
-                  cursor: 'pointer',
-                  padding: 0,
-                }}
-                onMouseEnter={e => {
-                  ;(e.currentTarget as HTMLButtonElement).style.color = '#0077CC'
-                  ;(e.currentTarget as HTMLButtonElement).style.borderBottomColor = '#0077CC'
-                }}
-                onMouseLeave={e => {
-                  ;(e.currentTarget as HTMLButtonElement).style.color = '#334155'
-                  ;(e.currentTarget as HTMLButtonElement).style.borderBottomColor = '#CBD5E1'
-                }}
-              >
-                &ldquo;{hint}&rdquo;
-              </button>
-            ))}
-          </div>
+            We&apos;re starting with cricket. More sports coming this year.
+          </p>
         </div>
       </section>
 
@@ -462,6 +413,45 @@ export function HomeClient({ sports }: Props) {
             <div className="font-medium" style={{ fontSize: '15px', color: '#64748B' }}>More soon</div>
             <div style={{ fontSize: '11px', color: '#94A3B8', marginTop: '-4px' }}>Adding sports weekly</div>
           </div>
+        </div>
+      </section>
+
+      {/* ---- Parent / player value band ---- */}
+      <section
+        style={{
+          background: '#F8FAFC',
+          borderTop: '1px solid #F1F5F9',
+          borderBottom: '1px solid #F1F5F9',
+          padding: '80px 40px',
+        }}
+      >
+        <div className="mx-auto text-center" style={{ maxWidth: '640px' }}>
+          <h2
+            className="font-medium m-0"
+            style={{
+              fontSize: 'clamp(24px, 3.5vw, 34px)',
+              letterSpacing: '-0.025em',
+              color: '#0F172A',
+              marginBottom: '20px',
+            }}
+          >
+            Coaching shouldn&apos;t be a guessing game.
+          </h2>
+          <p
+            className="m-0 mx-auto"
+            style={{ fontSize: '16px', color: '#475569', lineHeight: 1.65, maxWidth: '560px' }}
+          >
+            Trying to find a good coach for your child or yourself means asking around the parent
+            group chat, hoping someone has a recommendation, then chasing the coach by text to
+            confirm times and payment.
+          </p>
+          <p
+            className="m-0 mx-auto"
+            style={{ fontSize: '16px', color: '#475569', lineHeight: 1.65, maxWidth: '560px', marginTop: '16px' }}
+          >
+            Crikly puts verified coaches in front of you, lets you book and pay in one place, and
+            stays out of the way.
+          </p>
         </div>
       </section>
 

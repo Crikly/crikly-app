@@ -31,7 +31,7 @@ export function ForCoachesBar() {
             Are you a coach?
           </div>
           <div style={{ fontSize: '12px', color: '#475569', marginTop: '2px' }}>
-            Join Crikly — list for free, keep 90%, get paid in 48 hours.
+            Free to list. We bring the bookings. You focus on coaching.
           </div>
         </div>
         <button
