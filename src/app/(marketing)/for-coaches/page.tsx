@@ -92,7 +92,6 @@ export default function ForCoachesPage() {
         <InterestForm
           mode="modal"
           onClose={() => setShowInterest(false)}
-          onSuccess={() => setShowInterest(false)}
         />
       )}
 

@@ -1,8 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
-import { X, Check, Copy, Link } from 'lucide-react'
+import { X, Check, Link } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -15,7 +14,6 @@ interface Sport {
 export interface InterestFormProps {
   mode: 'fullscreen' | 'modal'
   onClose?: () => void
-  onSuccess?: () => void
 }
 
 type FormView = 'form' | 'thankyou'
@@ -59,8 +57,7 @@ function SkeletonPill() {
 
 // ─── Thank You view ───────────────────────────────────────────────────────────
 
-function ThankYouView({ onClose, onSuccess }: { onClose?: () => void; onSuccess?: () => void }) {
-  const router = useRouter()
+function ThankYouView({ onClose }: { onClose?: () => void }) {
   const [copied, setCopied] = useState(false)
 
   function handleCopy() {
@@ -71,8 +68,6 @@ function ThankYouView({ onClose, onSuccess }: { onClose?: () => void; onSuccess?
 
   function handleExplore() {
     onClose?.()
-    onSuccess?.()
-    router.push('/home')
   }
 
   return (
@@ -210,7 +205,7 @@ function ThankYouView({ onClose, onSuccess }: { onClose?: () => void; onSuccess?
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function InterestForm({ mode, onClose, onSuccess }: InterestFormProps) {
+export function InterestForm({ mode, onClose }: InterestFormProps) {
   const [view, setView] = useState<FormView>('form')
 
   // Form fields
@@ -312,7 +307,6 @@ export function InterestForm({ mode, onClose, onSuccess }: InterestFormProps) {
 
       if (res.status === 201) {
         setView('thankyou')
-        onSuccess?.()
       } else {
         setSubmitError('Something went wrong. Please try again.')
         setSubmitting(false)
@@ -343,7 +337,7 @@ export function InterestForm({ mode, onClose, onSuccess }: InterestFormProps) {
       )}
 
       {view === 'thankyou' ? (
-        <ThankYouView onClose={onClose} onSuccess={onSuccess} />
+        <ThankYouView onClose={onClose} />
       ) : (
         <>
           <h2

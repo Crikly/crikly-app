@@ -3,27 +3,10 @@
 import { useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { AuthModal } from './AuthModal'
-
-type AuthMode = 'login' | 'register'
-type PostAction = 'return' | 'onboarding'
+import { InterestForm } from './InterestForm'
 
 export function MarketingNav() {
-  const [authOpen, setAuthOpen] = useState(false)
-  const [authMode, setAuthMode] = useState<AuthMode>('login')
-  const [postAction, setPostAction] = useState<PostAction>('return')
-
-  function openLogin() {
-    setAuthMode('login')
-    setPostAction('return')
-    setAuthOpen(true)
-  }
-
-  function openSignup() {
-    setAuthMode('register')
-    setPostAction('onboarding')
-    setAuthOpen(true)
-  }
+  const [showInterest, setShowInterest] = useState(false)
 
   return (
     <>
@@ -97,27 +80,7 @@ export function MarketingNav() {
           </Link>
 
           <button
-            onClick={openLogin}
-            className="font-medium"
-            style={{
-              height: '40px',
-              padding: '0 16px',
-              fontSize: '14px',
-              background: '#fff',
-              color: '#0077CC',
-              border: '1.5px solid #0077CC',
-              borderRadius: '10px',
-              cursor: 'pointer',
-              marginLeft: '4px',
-              transition: 'background 150ms',
-            }}
-            onMouseEnter={e => ((e.currentTarget as HTMLButtonElement).style.background = '#E6F3FB')}
-            onMouseLeave={e => ((e.currentTarget as HTMLButtonElement).style.background = '#fff')}
-          >
-            Log in
-          </button>
-          <button
-            onClick={openSignup}
+            onClick={() => setShowInterest(true)}
             className="font-medium"
             style={{
               height: '40px',
@@ -133,17 +96,17 @@ export function MarketingNav() {
             onMouseEnter={e => ((e.currentTarget as HTMLButtonElement).style.background = '#005EA3')}
             onMouseLeave={e => ((e.currentTarget as HTMLButtonElement).style.background = '#0077CC')}
           >
-            Sign up
+            Register interest
           </button>
         </div>
       </nav>
 
-      <AuthModal
-        isOpen={authOpen}
-        onClose={() => setAuthOpen(false)}
-        defaultMode={authMode}
-        postAuthAction={postAction}
-      />
+      {showInterest && (
+        <InterestForm
+          mode="modal"
+          onClose={() => setShowInterest(false)}
+        />
+      )}
     </>
   )
 }
