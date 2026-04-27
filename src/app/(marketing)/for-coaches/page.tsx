@@ -20,7 +20,7 @@ const STEPS = [
   {
     num: 'Step 3',
     title: 'Start earning',
-    body: 'You keep 90% of every booking. Paid to your bank within 48 hours of each session.',
+    body: 'Paid directly to your bank within 48 hours of each session. No chasing payments.',
   },
 ]
 
@@ -31,9 +31,9 @@ const EARN = [
     label: 'At £75 per session, eight sessions a week.',
   },
   {
-    stat: '90%',
-    statSmall: '',
-    label: 'Of every booking goes to you. We take 10%, transparently.',
+    stat: '£0',
+    statSmall: '/ mo',
+    label: 'Monthly fee. Free to list, no setup costs, no contracts.',
   },
   {
     stat: '48 hr',
@@ -68,7 +68,7 @@ const FAQS = [
   },
   {
     q: 'How does payment work?',
-    a: 'Parents pay at booking. You receive 90% within 48 hours of each session completing, directly to your bank via Stripe.',
+    a: 'Parents pay at booking. You receive your full fee within 48 hours of each session completing, directly to your bank via Stripe.',
   },
   {
     q: 'Can I set my own prices?',
@@ -91,6 +91,7 @@ export default function ForCoachesPage() {
       {showInterest && (
         <InterestForm
           mode="modal"
+          initialRole="coach"
           onClose={() => setShowInterest(false)}
           onSuccess={() => setShowInterest(false)}
         />
@@ -110,25 +111,37 @@ export default function ForCoachesPage() {
           style={{
             fontSize: 'clamp(36px, 5vw, 56px)',
             letterSpacing: '-0.03em',
-            lineHeight: 1.05,
+            lineHeight: 1.1,
             color: '#0F172A',
-            margin: '0 0 20px',
+            margin: '0 0 28px',
             maxWidth: '640px',
           }}
         >
-          Your coaching business,<br />on one platform.
+          For coaches who shape players.
         </h1>
 
         <p
           style={{
             fontSize: '17px',
             color: '#475569',
-            lineHeight: 1.55,
-            maxWidth: '460px',
-            margin: '0 0 32px',
+            lineHeight: 1.65,
+            maxWidth: '520px',
+            margin: '0 0 16px',
           }}
         >
-          Set your prices. Manage your schedule. Get paid within 48 hours. Crikly handles the booking, payments, and admin — you just coach.
+          You spend your evenings coaching, your mornings replying to &ldquo;is Saturday still on?&rdquo;, your weekends chasing payments and refunds. The admin eats the time you should be spending on the players in front of you.
+        </p>
+
+        <p
+          style={{
+            fontSize: '17px',
+            color: '#475569',
+            lineHeight: 1.65,
+            maxWidth: '520px',
+            margin: '0 0 36px',
+          }}
+        >
+          Crikly handles the rest. Bookings, payments, schedules, no-shows — managed automatically so your time goes back to the work that actually matters.
         </p>
 
         <div className="flex items-center flex-wrap" style={{ gap: '18px' }}>
@@ -160,7 +173,7 @@ export default function ForCoachesPage() {
             {' · '}
             <strong style={{ fontWeight: 500, color: '#64748B' }}>No monthly fees</strong>
             {' · '}
-            <strong style={{ fontWeight: 500, color: '#64748B' }}>You keep 90%</strong>
+            <strong style={{ fontWeight: 500, color: '#64748B' }}>Paid within 48 hours</strong>
           </span>
         </div>
       </section>

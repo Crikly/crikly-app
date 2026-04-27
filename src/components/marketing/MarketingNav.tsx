@@ -3,30 +3,21 @@
 import { useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { AuthModal } from './AuthModal'
-
-type AuthMode = 'login' | 'register'
-type PostAction = 'return' | 'onboarding'
+import { InterestForm } from './InterestForm'
 
 export function MarketingNav() {
-  const [authOpen, setAuthOpen] = useState(false)
-  const [authMode, setAuthMode] = useState<AuthMode>('login')
-  const [postAction, setPostAction] = useState<PostAction>('return')
-
-  function openLogin() {
-    setAuthMode('login')
-    setPostAction('return')
-    setAuthOpen(true)
-  }
-
-  function openSignup() {
-    setAuthMode('register')
-    setPostAction('onboarding')
-    setAuthOpen(true)
-  }
+  const [showInterest, setShowInterest] = useState(false)
 
   return (
     <>
+      {showInterest && (
+        <InterestForm
+          mode="fullscreen"
+          onClose={() => setShowInterest(false)}
+          onSuccess={() => setShowInterest(false)}
+        />
+      )}
+
       <nav
         className="sticky top-0 z-30 flex items-center justify-between border-b border-neutral-100"
         style={{
@@ -97,7 +88,7 @@ export function MarketingNav() {
           </Link>
 
           <button
-            onClick={openLogin}
+            onClick={() => setShowInterest(true)}
             className="font-medium"
             style={{
               height: '40px',
@@ -117,7 +108,7 @@ export function MarketingNav() {
             Log in
           </button>
           <button
-            onClick={openSignup}
+            onClick={() => setShowInterest(true)}
             className="font-medium"
             style={{
               height: '40px',
@@ -133,17 +124,10 @@ export function MarketingNav() {
             onMouseEnter={e => ((e.currentTarget as HTMLButtonElement).style.background = '#005EA3')}
             onMouseLeave={e => ((e.currentTarget as HTMLButtonElement).style.background = '#0077CC')}
           >
-            Sign up
+            Register interest
           </button>
         </div>
       </nav>
-
-      <AuthModal
-        isOpen={authOpen}
-        onClose={() => setAuthOpen(false)}
-        defaultMode={authMode}
-        postAuthAction={postAction}
-      />
     </>
   )
 }
