@@ -1,10 +1,10 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { X, Check } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { LocationAutocomplete } from '@/components/coach/shared/LocationAutocomplete'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -19,7 +19,6 @@ export interface InterestFormProps {
   mode: 'fullscreen' | 'modal'
   initialRole?: Role
   onClose?: () => void
-  onSuccess?: () => void
 }
 
 type FormView = 'form' | 'thankyou'
@@ -82,14 +81,11 @@ function ThankYouView({
   role,
   firstName,
   onClose,
-  onSuccess,
 }: {
   role: Role
   firstName: string
   onClose?: () => void
-  onSuccess?: () => void
 }) {
-  const router = useRouter()
   const [copied, setCopied] = useState(false)
 
   function handleCopy() {
@@ -100,8 +96,6 @@ function ThankYouView({
 
   function handleClose() {
     onClose?.()
-    onSuccess?.()
-    router.push('/home')
   }
 
   const greeting = firstName ? `, ${firstName}` : ''
@@ -306,7 +300,7 @@ function ThankYouView({
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function InterestForm({ mode, initialRole, onClose, onSuccess }: InterestFormProps) {
+export function InterestForm({ mode, initialRole, onClose }: InterestFormProps) {
   const [view, setView] = useState<FormView>('form')
 
   // Form fields
@@ -412,7 +406,6 @@ export function InterestForm({ mode, initialRole, onClose, onSuccess }: Interest
 
       if (res.status === 201) {
         setView('thankyou')
-        onSuccess?.()
       } else {
         setSubmitError('Something went wrong. Please try again.')
         setSubmitting(false)
@@ -449,7 +442,6 @@ export function InterestForm({ mode, initialRole, onClose, onSuccess }: Interest
           role={role ?? 'coach'}
           firstName={firstName}
           onClose={onClose}
-          onSuccess={onSuccess}
         />
       ) : (
         <>
@@ -591,14 +583,13 @@ export function InterestForm({ mode, initialRole, onClose, onSuccess }: Interest
             {/* Location */}
             <div style={{ marginBottom: '18px' }}>
               <label style={FIELD_LABEL}>Your location</label>
-              <input
-                style={INPUT_BASE}
-                type="text"
-                name="location"
+              <LocationAutocomplete
                 value={location}
-                onChange={e => setLocation(e.target.value)}
-                placeholder="City or postcode"
-                required
+                onChange={val => setLocation(val)}
+                onSelect={place =>
+                  setLocation([place.city, place.postcode].filter(Boolean).join(', '))
+                }
+                placeholder="City, town or postcode"
               />
             </div>
 

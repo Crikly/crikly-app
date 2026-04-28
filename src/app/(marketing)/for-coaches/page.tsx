@@ -93,7 +93,6 @@ export default function ForCoachesPage() {
           mode="modal"
           initialRole="coach"
           onClose={() => setShowInterest(false)}
-          onSuccess={() => setShowInterest(false)}
         />
       )}
 
