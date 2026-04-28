@@ -12,9 +12,8 @@ export function MarketingNav() {
     <>
       {showInterest && (
         <InterestForm
-          mode="fullscreen"
+          mode="modal"
           onClose={() => setShowInterest(false)}
-          onSuccess={() => setShowInterest(false)}
         />
       )}
 

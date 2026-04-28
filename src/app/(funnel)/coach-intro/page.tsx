@@ -84,7 +84,6 @@ export default function CoachIntroPage() {
       <InterestForm
         mode="fullscreen"
         onClose={() => router.push('/home')}
-        onSuccess={() => router.push('/home')}
       />
     )}
     <div className="min-h-screen overflow-x-hidden" style={{ background: '#0F172A', color: '#fff' }}>

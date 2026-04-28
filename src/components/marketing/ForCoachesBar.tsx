@@ -13,7 +13,6 @@ export function ForCoachesBar() {
         <InterestForm
           mode="modal"
           onClose={() => setOpen(false)}
-          onSuccess={() => setOpen(false)}
         />
       )}
       <div
