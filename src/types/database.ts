@@ -235,6 +235,7 @@ export type Database = {
       }
       bookings: {
         Row: {
+          availability_template_id: string | null
           booked_by_user_id: string
           booking_reference: string
           cancellation_reason: string | null
@@ -267,8 +268,12 @@ export type Database = {
           sport_id: string
           status: string
           updated_at: string
+          venue_address: string | null
+          venue_id: string | null
+          venue_name: string | null
         }
         Insert: {
+          availability_template_id?: string | null
           booked_by_user_id: string
           booking_reference: string
           cancellation_reason?: string | null
@@ -301,8 +306,12 @@ export type Database = {
           sport_id: string
           status?: string
           updated_at?: string
+          venue_address?: string | null
+          venue_id?: string | null
+          venue_name?: string | null
         }
         Update: {
+          availability_template_id?: string | null
           booked_by_user_id?: string
           booking_reference?: string
           cancellation_reason?: string | null
@@ -335,8 +344,18 @@ export type Database = {
           sport_id?: string
           status?: string
           updated_at?: string
+          venue_address?: string | null
+          venue_id?: string | null
+          venue_name?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "bookings_availability_template_id_fkey"
+            columns: ["availability_template_id"]
+            isOneToOne: false
+            referencedRelation: "availability_templates"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "bookings_booked_by_user_id_fkey"
             columns: ["booked_by_user_id"]
@@ -377,6 +396,13 @@ export type Database = {
             columns: ["sport_id"]
             isOneToOne: false
             referencedRelation: "sports"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bookings_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "coach_venues"
             referencedColumns: ["id"]
           },
         ]

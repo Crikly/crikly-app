@@ -120,6 +120,8 @@ export async function GET(
     status: b.status,
     sport_id: b.sport_id,
     coach_price_pence: b.coach_price_pence,
+    commission_pence: b.commission_pence,
+    commission_rate: b.commission_rate,
     parent_total_pence: b.parent_total_pence,
     currency: b.currency,
     messaging_unlocked: b.messaging_unlocked,
@@ -130,6 +132,13 @@ export async function GET(
     completed_at: b.completed_at,
     notes_for_coach: b.notes_for_coach,
     created_at: b.created_at,
+    venue: b.venue_name
+      ? {
+          id: b.venue_id,
+          name: b.venue_name,
+          address: b.venue_address ?? null,
+        }
+      : null,
     booker: {
       user_profile_id: b.booked_by_user_id,
       full_name: (bookerProfile as Pick<UserProfileRow, 'full_name'> | null)?.full_name ?? null,

@@ -78,7 +78,7 @@ export async function GET(request: Request) {
   const todayIso = new Date().toISOString().slice(0, 10)
   const base = supabase
     .from('bookings')
-    .select('id, booking_reference, session_date, session_start_time, session_end_time, session_type, status, sport_id, coach_price_pence, parent_total_pence, currency, booked_by_user_id, child_profile_id, messaging_unlocked, created_at')
+    .select('id, booking_reference, session_date, session_start_time, session_end_time, session_type, status, sport_id, coach_price_pence, parent_total_pence, currency, booked_by_user_id, child_profile_id, messaging_unlocked, created_at, venue_name')
     .eq('coach_profile_id', coachProfile.id)
     .is('deleted_at', null)
 
@@ -146,6 +146,7 @@ export async function GET(request: Request) {
     child_profile_id: b.child_profile_id,
     child_name: b.child_profile_id ? (childNameMap[b.child_profile_id] ?? null) : null,
     messaging_unlocked: b.messaging_unlocked,
+    venue_name: b.venue_name ?? null,
     created_at: b.created_at,
   }))
 

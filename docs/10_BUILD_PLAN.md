@@ -618,6 +618,8 @@ The most critical phase. Every 🔴 task requires Lasith sign-off before impleme
 
 ### 5C — Booking Backend
 
+> ⚠️ **B-11 contract (per Fix-86):** must populate `bookings.venue_id`, `venue_name`, `venue_address` from the source — `availability_templates.venue_id` for 1-on-1 bookings, `group_programmes.venue_name` + `venue_address` for programme bookings, ad-hoc form input for coach-created sessions. Set `availability_template_id` for 1-on-1 bookings only.
+
 | ID | Task | Agent | Risk | Branch | Status |
 |---|---|---|---|---|---|
 | B-11 | POST /api/bookings — create booking + trigger payment intent | @BackendDeveloper | 🔴 | feature/bookings | ⚪ |
