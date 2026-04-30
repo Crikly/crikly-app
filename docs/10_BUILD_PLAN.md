@@ -1,10 +1,10 @@
 # Crikly — Comprehensive Build Plan
 
-**Version:** 3.0
-**Last Updated:** 21 April 2026
-**Changed:** SYNC-11 — Coach module go-live checklist added.
-  All CF-D tasks confirmed ⚪ (not committed). CF-05a through
-  Fix-72 series added. CG tasks status corrected.
+**Version:** 3.1
+**Last Updated:** 30 April 2026
+**Changed:** SYNC-13 — reconciled CF-D status with verified develop state.
+  CF-D01–D03, D05–D09, D11b, D13 confirmed shipped via Claude Code git
+  audit. CF-D04 remains genuinely open.
 **This is the single source of truth for every task in the project.**
 
 ---
@@ -351,21 +351,21 @@ other screens within the same task.
 | CF-R01 | Redesign Dashboard — Track 1 priority (deferred — keeping existing design) | Manual | 🟢 | — | ⚪ |
 | CF-R02 | Redesign Bookings list — Track 1 priority (deferred) | Manual | 🟢 | — | ⚪ |
 | CF-R03 | Redesign You're Live! — Track 1 priority (deferred) | Manual | 🟢 | — | ⚪ |
-| CF-D01 | Dashboard screen adjustments — 10 changes (see Notion CF-D01 for full list). **NOT committed — no CF-D commits exist on develop as of 21 Apr 2026.** | @FrontendDeveloper | 🟢 | develop | ⚪ |
-| CF-D02 | Schedule screen adjustments | @FrontendDeveloper | 🟢 | develop | ⚪ |
-| CF-D03 | Bookings list screen adjustments | @FrontendDeveloper | 🟢 | develop | ⚪ |
+| CF-D01 | Dashboard screen adjustments — 10 changes (see Notion CF-D01 for full list). Shipped: 42c5efb + aff3cba (CF-D01b). | @FrontendDeveloper | 🟢 | develop | ✅ |
+| CF-D02 | Schedule screen adjustments. Shipped: ef06528 + CF-D02b–CF-D02j (10 commits). | @FrontendDeveloper | 🟢 | develop | ✅ |
+| CF-D03 | Bookings list screen adjustments. Shipped: fd79dbe + CF-D03b–CF-D03e. | @FrontendDeveloper | 🟢 | develop | ✅ |
 | CF-D04 | Booking Detail screen adjustments | @FrontendDeveloper | 🟢 | develop | ⚪ |
-| CF-D05 | Programmes screen adjustments | @FrontendDeveloper | 🟢 | develop | ⚪ |
-| CF-D06 | Availability screen adjustments | @FrontendDeveloper | 🟢 | develop | ⚪ |
-| CF-D07 | Profile Hub screen adjustments | @FrontendDeveloper | 🟢 | develop | ⚪ |
-| CF-D08 | Earnings screen adjustments | @FrontendDeveloper | 🟢 | develop | ⚪ |
-| CF-D09 | Get Paid screen adjustments | @FrontendDeveloper | � | develop | ⚪ |
+| CF-D05 | Programmes screen adjustments. Shipped: a4da343 + 78938b6 (CF-D05a). | @FrontendDeveloper | 🟢 | develop | ✅ |
+| CF-D06 | Availability screen adjustments. Shipped: 708aaab + 363bd18 (CF-D06b) + 06c590c (CF-D06c). | @FrontendDeveloper | 🟢 | develop | ✅ |
+| CF-D07 | Profile Hub screen adjustments. Shipped: d4dbe2d + 0aefed6 (CF-D07b). | @FrontendDeveloper | 🟢 | develop | ✅ |
+| CF-D08 | Earnings screen adjustments. Shipped: 169a561. | @FrontendDeveloper | 🟢 | develop | ✅ |
+| CF-D09 | Get Paid screen adjustments. Shipped: a9b7716. | @FrontendDeveloper | 🟢 | develop | ✅ |
 | CF-D10 | Onboarding screens adjustments — all 6 steps + You're Live | @FrontendDeveloper | 🟢 | develop | ✅ |
 | CF-D11a | Dashboard onboarding banner — hierarchy, Do next badge, guidance copy, % in expanded state | @FrontendDeveloper | 🟢 | develop | ✅ |
-| CF-D11b | Onboarding Profile step — sticky save bar, no white card wrapper behind button | @FrontendDeveloper | 🟢 | develop | ⚪ |
+| CF-D11b | Onboarding Profile step — sticky save bar, no white card wrapper behind button. Shipped: 0f3b397 — sticky behaviour generalised at layout level via CF-D12 SAVE BAR PATTERN (3e7115a). | @FrontendDeveloper | 🟢 | develop | ✅ |
 | CF-D11c | Location field — Google Places autocomplete on ProfileStep and ProfileEdit | @FrontendDeveloper | 🟢 | develop | ✅ |
 | CF-D12 | Onboarding sport selection + pricing — save bar pattern (back left, save right, no border-top) | @FrontendDeveloper | 🟢 | develop | ✅ |
-| CF-D13 | Onboarding qualifications — replace emoji icons with Lucide, replace category dropdown with tiles | @FrontendDeveloper | 🟢 | develop | ⚪ |
+| CF-D13 | Onboarding qualifications — replace emoji icons with Lucide, replace category dropdown with tiles. Shipped: 125d1e0 + 98001db + 0d33192 — Lucide icons applied. Tile-cards plan abandoned in favour of dropdown via CF-D13c (be61ee1) to match Sport & Pricing pattern. | @FrontendDeveloper | 🟢 | develop | ✅ |
 | CF-02a | Create Session UI on Schedule screen — manual 1-on-1 slot creation modal | @FrontendDeveloper | 🟡 | develop | ✅ |
 | CF-R04 | Coach public profile design alignment — align hero name typography, subtitle, location display, DBS badge, trust row, about fact sidebar, booking card session picker to Claude Design spec. Read docs/design/coach-profile.html. | @FrontendDeveloper | 🟢 | — | ⚪ |
 | CF-R04a | Coach public profile design alignment Phase 1 — location fallback to postcode, teal DBS pill badge near name, 4-stat trust row grid | @FrontendDeveloper | 🟢 | develop | ✅ |
@@ -498,18 +498,18 @@ before going live with real coaches. Ordered by priority.
 
 | ID | Task | Agent | Risk | Status |
 |---|---|---|---|---|
-| CF-D01 | Dashboard adjustments — clickable stat cards, profile bar tone down blue in expanded state | @FrontendDeveloper | 🟢 | ⚪ |
-| CF-D02 | Schedule adjustments — today column tint, session card status borders, 4-type session popovers on click, available slot treatment, FAB pill shape, right panel route-aware | @FrontendDeveloper | 🟢 | ⚪ |
+| CF-D01 | Dashboard adjustments — clickable stat cards, profile bar tone down blue in expanded state | @FrontendDeveloper | 🟢 | ✅ |
+| CF-D02 | Schedule adjustments — today column tint, session card status borders, 4-type session popovers on click, available slot treatment, FAB pill shape, right panel route-aware | @FrontendDeveloper | 🟢 | ✅ |
 | CF-02a | Create Session modal on Schedule — manual 1-on-1 slot creation from FAB | @FrontendDeveloper | 🟡 | ✅ |
-| CF-D03 | Bookings list adjustments | @FrontendDeveloper | 🟢 | ⚪ |
+| CF-D03 | Bookings list adjustments | @FrontendDeveloper | 🟢 | ✅ |
 | CF-D04 | Booking Detail adjustments | @FrontendDeveloper | 🟢 | ⚪ |
-| CF-D05 | Programmes screen adjustments | @FrontendDeveloper | 🟢 | ⚪ |
-| CF-D06 | Availability adjustments | @FrontendDeveloper | 🟢 | ⚪ |
-| CF-D07 | Profile Hub adjustments — Fix-42 photo upload done separately ✅ | @FrontendDeveloper | 🟢 | ⚪ |
-| CF-D08 | Earnings adjustments | @FrontendDeveloper | 🟢 | ⚪ |
-| CF-D09 | Get Paid adjustments | @FrontendDeveloper | 🟢 | ⚪ |
-| CF-D11b | Onboarding Profile step — sticky save bar | @FrontendDeveloper | 🟢 | ⚪ |
-| CF-D13 | Qualifications step — Lucide icons + tile category selector | @FrontendDeveloper | 🟢 | ⚪ |
+| CF-D05 | Programmes screen adjustments | @FrontendDeveloper | 🟢 | ✅ |
+| CF-D06 | Availability adjustments | @FrontendDeveloper | 🟢 | ✅ |
+| CF-D07 | Profile Hub adjustments — Fix-42 photo upload done separately ✅ | @FrontendDeveloper | 🟢 | ✅ |
+| CF-D08 | Earnings adjustments | @FrontendDeveloper | 🟢 | ✅ |
+| CF-D09 | Get Paid adjustments | @FrontendDeveloper | 🟢 | ✅ |
+| CF-D11b | Onboarding Profile step — sticky save bar | @FrontendDeveloper | 🟢 | ✅ |
+| CF-D13 | Qualifications step — Lucide icons + tile category selector | @FrontendDeveloper | 🟢 | ✅ |
 
 **Section B — Database Tech Debt**
 
@@ -832,14 +832,15 @@ Three-sided marketplace — coaches, parents, and venues.
 | Step 1B — Migrations | Phase 1 | 17 | 17 ✅ | 0 |
 | Step 1C — Design Foundation | Phase 1 | 6 | 6 ✅ | 0 |
 | Step 2 — Auth | Phase 1 | 15 | 15 ✅ | 0 |
-| Step 3 — Coach | Phase 1 | 95 | 72 ✅ | 23 |
+| Step 3 — Coach | Phase 1 | 95 | 92 ✅ | 3 |
 | Step 4 — Parent & Player | Phase 1 | 21 | 0 | 21 |
 | Step 5 — Booking & Payments | Phase 1 | 42 | 0 | 42 |
 | Step 6 — Admin | Phase 1 | 24 | 0 | 24 |
 | Step 7 — Pre-Launch | Phase 1 | 19 | 0 | 19 |
+| **Phase 1 Total** | Phase 1 | **269** | **160** ✅ | **109** |
 | Step 8 — Mobile App | **Product Phase 2** | 20 | 0 | 20 |
 | Step 9 — Venues | **Product Phase 3** | 11 | 0 | 11 |
-| **Total** | | **277** | **128** | **149** |
+| **Total** | | **277** | **148** | **129** |
 
 ---
 
@@ -864,5 +865,5 @@ Notion: https://www.notion.so/b288473c2a4f47ebad99bf6bf3f7b041
 
 ---
 
-*Crikly Build Plan v2.2 — April 2026*
+*Crikly Build Plan v3.1 — 30 April 2026 — SYNC-13: reconciled CF-D status with verified develop state.*
 *207 tasks across all 3 phases. Follow in order. No skipping. No guessing.*
