@@ -1,10 +1,12 @@
 # Crikly — Comprehensive Build Plan
 
-**Version:** 3.1
-**Last Updated:** 30 April 2026
-**Changed:** SYNC-13 — reconciled CF-D status with verified develop state.
-  CF-D01–D03, D05–D09, D11b, D13 confirmed shipped via Claude Code git
-  audit. CF-D04 remains genuinely open.
+**Version:** 3.2
+**Last Updated:** 1 May 2026
+**Changed:** SYNC-15 — removed 47 macOS Finder duplicates across the
+  repo (10 in supabase/migrations/, 17 marketing UI orphans, 20 across
+  src/). Local Supabase migration apply unblocked. tsc "Cannot find
+  module" noise reduced 12 → 9 (remainder are stale .next cache only).
+  SYNC-14 marketing backport pending separate commit.
 **This is the single source of truth for every task in the project.**
 
 ---
@@ -867,5 +869,5 @@ Notion: https://www.notion.so/b288473c2a4f47ebad99bf6bf3f7b041
 
 ---
 
-*Crikly Build Plan v3.1 — 30 April 2026 — SYNC-13: reconciled CF-D status with verified develop state.*
+*Crikly Build Plan v3.2 — 1 May 2026 — SYNC-15: removed 47 Finder dupes across the repo. Local Supabase unblocked. tsc noise materially reduced.*
 *207 tasks across all 3 phases. Follow in order. No skipping. No guessing.*
