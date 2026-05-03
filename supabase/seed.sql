@@ -8,11 +8,10 @@
 -- ============================================
 -- Cricket as the first sport
 
-INSERT INTO sports (name, slug, description, is_active)
+INSERT INTO sports (name, slug, is_active)
 VALUES (
     'Cricket',
     'cricket',
-    'Cricket coaching for all ages and skill levels',
     true
 )
 ON CONFLICT (slug) DO NOTHING;
@@ -22,7 +21,7 @@ ON CONFLICT (slug) DO NOTHING;
 -- ============================================
 -- United Kingdom as the first country
 
-INSERT INTO countries (code, name, currency, is_active)
+INSERT INTO countries (code, name, currency_code, is_active)
 VALUES (
     'GB',
     'United Kingdom',
@@ -34,22 +33,25 @@ ON CONFLICT (code) DO NOTHING;
 -- ============================================
 -- Platform Config
 -- ============================================
--- Default platform configuration values
+-- Single-row config table with named columns. Values mirror the
+-- DEFAULT clauses on each column in CREATE TABLE platform_config
+-- (supabase/migrations/20260328065139_003_platform_config.sql).
+-- Idempotent: WHERE NOT EXISTS skips re-insertion on reseed.
 
 INSERT INTO platform_config (
-    key,
-    value,
-    description
+    default_commission_rate,
+    default_payout_delay_hours,
+    default_cancellation_hours,
+    default_min_advance_hours,
+    default_max_advance_days,
+    dbs_verification_fee_pence,
+    dbs_fee_currency,
+    max_featured_coaches_per_page,
+    child_transition_age,
+    child_transition_window_days
 )
-VALUES
-    ('default_commission_rate', '0.1000', 'Default commission rate (10%)'),
-    ('default_payout_delay_hours', '48', 'Hours after session completion before payout is eligible'),
-    ('default_cancellation_hours', '24', 'Default cancellation window in hours'),
-    ('default_min_advance_hours', '24', 'Minimum hours in advance for booking'),
-    ('default_max_advance_days', '56', 'Maximum days in advance for booking'),
-    ('dbs_verification_fee_pence', '2999', 'DBS verification fee in pence (£29.99)'),
-    ('child_transition_age', '16', 'Age at which child transitions to player')
-ON CONFLICT (key) DO NOTHING;
+SELECT 0.1000, 48, 24, 24, 56, 2999, 'GBP', 3, 16, 30
+WHERE NOT EXISTS (SELECT 1 FROM platform_config);
 
 -- ============================================
 -- Feature Flags
@@ -58,7 +60,7 @@ ON CONFLICT (key) DO NOTHING;
 
 INSERT INTO feature_flags (
     key,
-    is_enabled,
+    enabled,
     description
 )
 VALUES
