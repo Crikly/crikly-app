@@ -1,13 +1,12 @@
 # Crikly — Comprehensive Build Plan
 
-**Version:** 3.4
+**Version:** 3.5
 **Last Updated:** 3 May 2026
-**Changed:** SYNC-16 — docs/09_WORKING_ETHICS.md restructured: added
-  Local Development Environment + Local-First Migration Discipline +
-  Common Pitfalls sections, made Step 0 plan-approval gate structural
-  in the Standard Prompt Template, added cross-reference to CLAUDE.md.
-  Working Ethics v1.6 → v1.7. Builds on SYNC-14 (marketing backport),
-  SYNC-15 (47 Finder dupes removed), Fix-87 (seed aligned with schema).
+**Changed:** SYNC-18 — working ethics expanded with migration
+  verification gate (Step 9), Studio creation rule + recovery path,
+  and Fix ID lookup rule. Working Ethics v1.7 → v1.8. Codifies
+  process improvements from the 3 May 2026 cleanup session
+  (SYNC-13 through SYNC-17 + 3-phase hosted-dev migration alignment).
 **This is the single source of truth for every task in the project.**
 
 ---
@@ -870,5 +869,5 @@ Notion: https://www.notion.so/b288473c2a4f47ebad99bf6bf3f7b041
 
 ---
 
-*Crikly Build Plan v3.4 — 3 May 2026 — SYNC-16: working ethics restructured (local dev environment, local-first migration discipline, common pitfalls, structural plan-approval gate, CLAUDE.md cross-reference).*
+*Crikly Build Plan v3.5 — 3 May 2026 — SYNC-18: working ethics expanded (migration verification gate, Studio creation rule + recovery, Fix ID lookup).*
 *207 tasks across all 3 phases. Follow in order. No skipping. No guessing.*

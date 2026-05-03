@@ -1,11 +1,12 @@
 # Crikly — Working Ethics & Collaboration Standards
 
-**Version:** 1.7
+**Version:** 1.8
 **Last Updated:** 3 May 2026
-**Changed:** SYNC-16 — added Local Development Environment + Local-First
-  Migration Discipline + Common Pitfalls sections. Updated Standard
-  Prompt Template to make plan-approval gate structural. Added cross-
-  reference to CLAUDE.md.
+**Changed:** SYNC-18 — added migration verification gate (Step 9 in
+  Local-First Migration Discipline), Studio creation rule (new
+  Anti-pattern subsection with recovery path), and Fix ID lookup rule
+  (new Common Pitfalls subsection). Codifies process improvements
+  from 3 May 2026 cleanup session.
 **Maintainer:** Lasith Jayarathne
 **Review:** After each phase completion
 
@@ -99,6 +100,9 @@ Step 5 → Verify the schema change with docker exec or Supabase Studio
 Step 6 → Run any related app code locally — confirm no errors
 Step 7 → ONLY THEN: supabase db push (to hosted dev) or commit + push to develop
 Step 8 → Stop containers: supabase stop
+Step 9 → Verify hosted dev got it: supabase migration list — confirm
+         local and remote columns match for every migration. If they
+         don't match, STOP and reconcile before continuing.
 ```
 
 ### Why this matters
@@ -112,6 +116,45 @@ Step 8 → Stop containers: supabase stop
 - Pushing migration SQL straight to hosted dev with `supabase db push` as a primary flow.
 - Skipping `supabase migration up` because "it'll be fine."
 - Running migrations against production directly. Never.
+
+### Studio is for inspection, not creation
+
+Never create tables, columns, or RLS policies in hosted Supabase
+via the Studio web UI (Table Editor or SQL Editor).
+
+Why: Studio writes to the database directly without going through
+a migration file. The schema_migrations bookkeeping table doesn't
+reflect the change. Result: drift between what migrations say is
+applied and what's actually in the DB. This drift is invisible
+until someone runs `supabase migration list` weeks later (see
+3 May 2026 session — 11 migrations had to be repaired via
+`supabase migration repair --status applied <timestamp>`).
+
+Acceptable Studio uses (read-only):
+
+- Inspecting table schemas
+- Running SELECT queries to debug
+- Browsing data
+- Reading RLS policies
+
+Forbidden Studio uses:
+
+- CREATE TABLE / ALTER TABLE / DROP TABLE
+- CREATE / DROP INDEX
+- CREATE / DROP POLICY
+- INSERT / UPDATE / DELETE on production data (use migrations or
+  explicit one-off SQL with audit trail)
+
+Recovery if Studio was used (urgency exception):
+
+1. Immediately write the corresponding migration file in
+   `supabase/migrations/` with the SQL that was executed
+2. Apply locally via `supabase migration up` to verify it matches
+3. Run `supabase migration repair --status applied <timestamp>`
+   against hosted to align bookkeeping
+4. Confirm via `supabase migration list` that local + remote agree
+5. Commit the migration file with a Fix-NN entry in Notion noting
+   the Studio-then-repair flow
 
 ---
 
@@ -1118,8 +1161,34 @@ backup/pre-[task-id]`) if something goes wrong.
 
 See "Rule on approval gates" in Standard Claude Code Prompt Template above.
 
+### Fix ID assignment
+
+Before assigning a Fix-NN number to any new bug fix, ALWAYS check
+Notion's Bug & Fix Log for the highest existing Fix-NN. The next
+number is highest + 1.
+
+Why: Memory-based assignment causes ID collisions. Tonight's
+Fix-91 and Fix-92 (venue lineage and seed alignment) were
+committed to git as "Fix-86" and "Fix-87" because earlier sessions
+assumed those numbers were available — but MS-23 marketing fixes
+on 28 April had already claimed them. Result: git commit messages
+reference one Fix ID, Notion canonical ID is different. Audit
+trail confused.
+
+How to check (30 seconds):
+
+- Open https://www.notion.so/2fe61720904e4640a01378039e6b088a
+- Sort by Fix ID descending
+- First row = highest existing
+- Your new Fix = highest + 1
+
+If there's an ID collision in git commits already (like Fix-91/92
+in develop history), document it explicitly in the Notion Notes
+field: "Git commit XXX says 'Fix-NN' due to collision with [other
+Fix]. Canonical Fix ID is Fix-MM in this log."
+
 ---
 
-*Crikly Working Ethics v1.7 — 3 May 2026 — SYNC-16*
+*Crikly Working Ethics v1.8 — 3 May 2026 — SYNC-18*
 *Review after each phase completion.*
 *Any process change must be agreed with Lasith first.*
