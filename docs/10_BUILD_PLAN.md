@@ -1,13 +1,13 @@
 # Crikly — Comprehensive Build Plan
 
-**Version:** 3.3
+**Version:** 3.4
 **Last Updated:** 3 May 2026
-**Changed:** SYNC-14 — backported marketing migrations 023 + 024 from
-  main to develop along with /api/interest, /api/waitlist routes and
-  the matching TypeScript table types. Develop now compiles clean of
-  the pre-existing interest/waitlist/consent type errors. Also added
-  supabase/.branches/ to .gitignore. Builds on SYNC-15 (47 Finder
-  duplicates removed) and Fix-87 (seed.sql aligned with schema).
+**Changed:** SYNC-16 — docs/09_WORKING_ETHICS.md restructured: added
+  Local Development Environment + Local-First Migration Discipline +
+  Common Pitfalls sections, made Step 0 plan-approval gate structural
+  in the Standard Prompt Template, added cross-reference to CLAUDE.md.
+  Working Ethics v1.6 → v1.7. Builds on SYNC-14 (marketing backport),
+  SYNC-15 (47 Finder dupes removed), Fix-87 (seed aligned with schema).
 **This is the single source of truth for every task in the project.**
 
 ---
@@ -870,5 +870,5 @@ Notion: https://www.notion.so/b288473c2a4f47ebad99bf6bf3f7b041
 
 ---
 
-*Crikly Build Plan v3.3 — 3 May 2026 — SYNC-14: backported marketing migrations + routes + types from main to develop. develop now compiles clean.*
+*Crikly Build Plan v3.4 — 3 May 2026 — SYNC-16: working ethics restructured (local dev environment, local-first migration discipline, common pitfalls, structural plan-approval gate, CLAUDE.md cross-reference).*
 *207 tasks across all 3 phases. Follow in order. No skipping. No guessing.*

@@ -1,13 +1,18 @@
 # Crikly — Working Ethics & Collaboration Standards
 
-**Version:** 1.6
-**Last Updated:** 26 April 2026
-**Changed:** SYNC-13 — agent MD file always required in prompts
+**Version:** 1.7
+**Last Updated:** 3 May 2026
+**Changed:** SYNC-16 — added Local Development Environment + Local-First
+  Migration Discipline + Common Pitfalls sections. Updated Standard
+  Prompt Template to make plan-approval gate structural. Added cross-
+  reference to CLAUDE.md.
 **Maintainer:** Lasith Jayarathne
 **Review:** After each phase completion
 
-This file lives in the project root and is referenced at the
-start of every Claude Code session. Read it before every prompt.
+This document complements **CLAUDE.md** (Claude Code's session
+briefing). Both must be read at the start of every session.
+CLAUDE.md governs how Claude Code starts; this file governs how
+Claude Code behaves throughout. Read this file before every prompt.
 
 ---
 
@@ -43,6 +48,73 @@ Never ask Claude to write production code files.
 
 ---
 
+## Local Development Environment
+
+These tools are required for local development. Some workflows
+(UI polish, docs) don't need them; database and migration work
+always does.
+
+| Tool | Purpose | When required |
+|---|---|---|
+| Node 20 LTS | Run Next.js, run npm scripts | Always |
+| Docker Desktop | Hosts local Supabase containers | Migrations, seed, API testing against local DB |
+| Supabase CLI | Manages local Supabase stack | Same as Docker |
+| psql (optional) | Direct DB queries from terminal | Optional — `docker exec` works as fallback |
+
+### Verifying each tool works
+
+```
+node --version       # Expect: v20.x.x
+docker ps            # Expect: empty list (no containers) or list (containers running)
+supabase --version   # Expect: any 2.x version
+```
+
+### When Docker is needed
+
+- Applying migrations locally: `supabase migration up` requires Docker
+- Running tests against local DB: required
+- API smoke testing against local DB: required
+- UI-only polish work (no DB writes): NOT required
+- Documentation-only commits: NOT required
+
+### Stopping Docker when done
+
+Always run `supabase stop` after a session that started Supabase.
+Containers continue consuming RAM until explicitly stopped.
+
+---
+
+## Local-First Migration Discipline
+
+Every migration runs locally first. This is non-negotiable.
+
+### The flow
+
+```
+Step 1 → Write migration SQL in supabase/migrations/
+Step 2 → Start Docker Desktop
+Step 3 → Run: supabase start (or supabase db reset to wipe + reapply)
+Step 4 → Run: supabase migration up
+Step 5 → Verify the schema change with docker exec or Supabase Studio
+Step 6 → Run any related app code locally — confirm no errors
+Step 7 → ONLY THEN: supabase db push (to hosted dev) or commit + push to develop
+Step 8 → Stop containers: supabase stop
+```
+
+### Why this matters
+
+- Hosted dev is shared. A broken migration breaks every preview deployment.
+- Local Postgres is disposable. You can wipe and rebuild it without consequences.
+- The fastest path to "shipped" is the path that catches problems early.
+
+### Anti-patterns
+
+- Pushing migration SQL straight to hosted dev with `supabase db push` as a primary flow.
+- Skipping `supabase migration up` because "it'll be fine."
+- Running migrations against production directly. Never.
+
+---
+
 ## Session Flow
 
 ### Starting Every Claude Code Session
@@ -72,19 +144,36 @@ Step 9 → Move to next task
 
 ### Standard Claude Code Prompt Template
 
+Every prompt to Claude Code follows this structure. The Step 0
+plan-approval gate is mandatory. Do not skip it.
+
 ```
 @[AgentName]
-
-Task ID: [e.g. M-01, A-03, C-14] ← from docs/10_BUILD_PLAN.md
+Task ID: [from docs/10_BUILD_PLAN.md]
 
 Context files:
 - CLAUDE.md
 - docs/09_WORKING_ETHICS.md
-- docs/[relevant doc only]
-- docs/[relevant doc only]
+- docs/agents/[matching-agent-file].md
+- docs/[task-specific docs]
 
 Task:
-[One clear paragraph describing exactly what to build]
+[One paragraph describing what to build/fix/change]
+
+━━━ STEP 0 — PLAN APPROVAL GATE ━━━
+
+Before any file changes, output a plan covering:
+- Files you will create or modify
+- Files you will read for context only
+- Order of operations
+- Any deviations from this prompt's spec, with reasons
+- Anything ambiguous that needs Lasith's clarification
+
+Then STOP. Do NOT proceed until Lasith replies "approved" or
+equivalent. If Lasith requests changes, revise the plan and
+re-submit.
+
+━━━ STEP 1 onward — execution ━━━
 
 File(s) to create or modify:
 - src/[exact/file/path.ts]
@@ -105,9 +194,23 @@ On completion:
 3. Add a note in Notion: what was done, any decisions made
 4. Commit docs/10_BUILD_PLAN.md in the same commit as the code
 
-Commit to: feature/[name] branch
+Branch: [target branch]
 Risk: 🟢 Low | 🟡 Medium | 🔴 High
+
+PAUSE before push.
 ```
+
+### Rule on approval gates
+
+Claude Code approval popups will sometimes offer:
+
+1. Yes
+2. Yes, and don't ask again for X
+3. No
+
+ALWAYS pick option 1. Never pick option 2 ("don't ask again").
+Each operation gets reviewed individually. Speed gains from
+blanket-allows are not worth the discipline loss.
 
 ---
 
@@ -982,6 +1085,41 @@ before producing any plan or summary.
 
 ---
 
-*Crikly Working Ethics v1.0 — March 2026*
+## Common Pitfalls — Lessons from real sessions
+
+### macOS Finder duplicates
+
+macOS sometimes creates duplicate files with " 2.tsx" / " 3.sql"
+/ " 4.png" naming when files are moved or copied. These are junk
+but they break tools that glob directories.
+
+Symptom: `supabase start` fails with "duplicate key value violates
+unique constraint schema_migrations_pkey".
+
+Fix: Find them with `find . -type f \( -name "* 2.*" -o -name "* 3.*"
+-o -name "* 4.*" \)` and delete after verifying byte-identity to
+the canonical file.
+
+Reference: SYNC-15 (3 May 2026) cleaned up 47 dupes across the repo.
+
+### Backup branch before risky operations
+
+Before any cleanup task that deletes 10+ files, create a safety
+branch:
+
+```
+git branch backup/pre-[task-id]
+```
+
+Costs nothing. Provides a one-command rollback (`git reset --hard
+backup/pre-[task-id]`) if something goes wrong.
+
+### Never blanket-allow Claude Code approvals
+
+See "Rule on approval gates" in Standard Claude Code Prompt Template above.
+
+---
+
+*Crikly Working Ethics v1.7 — 3 May 2026 — SYNC-16*
 *Review after each phase completion.*
 *Any process change must be agreed with Lasith first.*
