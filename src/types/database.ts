@@ -1525,6 +1525,42 @@ export type Database = {
           },
         ]
       }
+      interest_registrations: {
+        Row: {
+          id: string
+          name: string
+          email: string
+          role: string
+          sports: string[]
+          location: string | null
+          consent_given: boolean
+          consent_at: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          email: string
+          role: string
+          sports?: string[]
+          location?: string | null
+          consent_given?: boolean
+          consent_at?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          email?: string
+          role?: string
+          sports?: string[]
+          location?: string | null
+          consent_given?: boolean
+          consent_at?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
       notification_preferences: {
         Row: {
           created_at: string
@@ -2544,6 +2580,33 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      waitlist_emails: {
+        Row: {
+          id: string
+          email: string
+          role: string | null
+          consent_given: boolean
+          consent_at: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          email: string
+          role?: string | null
+          consent_given?: boolean
+          consent_at?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          email?: string
+          role?: string | null
+          consent_given?: boolean
+          consent_at?: string | null
+          created_at?: string
+        }
+        Relationships: []
       }
     }
     Views: {
