@@ -31,6 +31,11 @@ function PlacesInput({
   const inputRef = useRef<HTMLInputElement>(null)
   const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null)
 
+  // Fix-94: keep onSelect in a ref so the Autocomplete instance only
+  // initialises once on mount, regardless of parent re-renders.
+  const onSelectRef = useRef(onSelect)
+  useEffect(() => { onSelectRef.current = onSelect }, [onSelect])
+
   useEffect(() => {
     if (!inputRef.current) return
 
@@ -51,7 +56,7 @@ function PlacesInput({
       const city = find('postal_town') ?? find('locality') ?? place.name ?? ''
       const postcode = find('postal_code')
 
-      onSelect({
+      onSelectRef.current({
         city,
         postcode,
         lat: place.geometry.location.lat(),
@@ -62,7 +67,7 @@ function PlacesInput({
     return () => {
       google.maps.event.removeListener(listener)
     }
-  }, [onSelect])
+  }, []) // Fix-94: empty deps — Autocomplete created once on mount; latest onSelect read via ref
 
   return (
     <div className="relative">
@@ -157,6 +162,11 @@ function VenuePlacesInput({
   const inputRef = useRef<HTMLInputElement>(null)
   const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null)
 
+  // Fix-94: keep onSelect in a ref so the Autocomplete instance only
+  // initialises once on mount, regardless of parent re-renders.
+  const onSelectRef = useRef(onSelect)
+  useEffect(() => { onSelectRef.current = onSelect }, [onSelect])
+
   useEffect(() => {
     if (!inputRef.current) return
 
@@ -170,7 +180,7 @@ function VenuePlacesInput({
       const place = autocompleteRef.current?.getPlace()
       if (!place?.geometry?.location) return
 
-      onSelect({
+      onSelectRef.current({
         name: place.name ?? '',
         address: place.formatted_address ?? '',
         lat: place.geometry.location.lat(),
@@ -181,7 +191,7 @@ function VenuePlacesInput({
     return () => {
       google.maps.event.removeListener(listener)
     }
-  }, [onSelect])
+  }, []) // Fix-94: empty deps — Autocomplete created once on mount; latest onSelect read via ref
 
   return (
     <input
