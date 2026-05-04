@@ -3,6 +3,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Pencil, X, ChevronLeft, ChevronRight, Plus, ChevronDown, AlertTriangle } from 'lucide-react'
+import { VenueAutocomplete, type VenueSelection } from '@/components/coach/shared/LocationAutocomplete'
 
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December']
 const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
@@ -30,14 +31,10 @@ interface AvailabilityBlock {
   session_type_name: string | null
   coach_venue_id: string | null
   venue_name: string | null
+  venue_address: string | null
   is_recurring: boolean
   specific_date: string | null
   created_at: string
-}
-
-interface VenueItem {
-  id: string
-  name: string
 }
 
 // CD-04: UI display type (transformed from API)
@@ -142,12 +139,20 @@ export function AvailabilityManagement() {
   const [formStartTime, setFormStartTime] = useState('09:00')
   const [formEndTime, setFormEndTime] = useState('10:00')
   const [formRepeat, setFormRepeat] = useState('Weekly')
-  const [formVenueId, setFormVenueId] = useState<string>('')
+  // Fix-93: snapshot venue model (venue_name + venue_address text on the block)
+  const [formVenueName, setFormVenueName] = useState<string>('')
+  const [formVenueAddress, setFormVenueAddress] = useState<string>('')
   const [formPrice, setFormPrice] = useState('')
-  const toggleDay = (day: string) => setFormDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day])
-
-  // Fix-38c: Saved venues for venue selector
-  const [venues, setVenues] = useState<VenueItem[]>([])
+  // Fix-93: edit mode — when set, save uses PATCH against this block id; null = add mode
+  const [editingBlockId, setEditingBlockId] = useState<string | null>(null)
+  // Fix-93: in edit mode, day selection is single-pick (clicking a different day MOVES the block)
+  const toggleDay = (day: string) => {
+    if (editingBlockId) {
+      setFormDays([day])
+      return
+    }
+    setFormDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day])
+  }
   
   // CD-04: Fetch availability data on mount
   useEffect(() => {
@@ -156,20 +161,11 @@ export function AvailabilityManagement() {
         setLoading(true)
         setError(null)
 
-        const [availRes, venuesRes] = await Promise.all([
-          fetch('/api/coaches/availability'),
-          fetch('/api/coaches/venues'),
-        ])
+        const availRes = await fetch('/api/coaches/availability')
 
         if (!availRes.ok) throw new Error('Failed to fetch availability')
 
         const data = await availRes.json()
-
-        // Fix-38c: Populate saved venues for selector
-        if (venuesRes.ok) {
-          const venuesData = await venuesRes.json()
-          setVenues((venuesData.venues || []).map((v: { id: string; name: string }) => ({ id: v.id, name: v.name })))
-        }
 
         // Transform API data to UI format — filter out ad hoc (is_recurring=false) slots
         const transformed: ScheduleBlock[] = (data.availability || [])
@@ -212,7 +208,8 @@ export function AvailabilityManagement() {
   
   const conflict = useMemo(() => {
     for (const day of formDays) {
-      const existingBlocks = scheduleBlocks.filter(b => b.day === day)
+      // Fix-93: in edit mode, exclude the block being edited from conflict detection
+      const existingBlocks = scheduleBlocks.filter(b => b.day === day && b.id !== editingBlockId)
       for (const existing of existingBlocks) {
         // Parse existing time range (format: "09:00 – 12:00")
         const [existStartStr, existEndStr] = existing.time.split(' – ')
@@ -220,7 +217,7 @@ export function AvailabilityManagement() {
         const existEnd = timeToMinutes(existEndStr)
         const newStart = timeToMinutes(formStartTime)
         const newEnd = timeToMinutes(formEndTime)
-        
+
         // Check for overlap: newStart < existEnd AND newEnd > existStart
         if (newStart < existEnd && newEnd > existStart) {
           return { day, block: existing, message: 'This slot overlaps with an existing block. Choose a different time.' }
@@ -228,18 +225,66 @@ export function AvailabilityManagement() {
       }
     }
     return null
-  }, [formSport, formDays, formStartTime, formEndTime, scheduleBlocks])
-  
+  }, [formSport, formDays, formStartTime, formEndTime, scheduleBlocks, editingBlockId])
+
   const resetForm = () => {
     setFormSport(availableSports[0] ?? '')
     setFormDays([])
     setFormStartTime('09:00')
     setFormEndTime('10:00')
     setFormRepeat('Weekly')
-    setFormVenueId('')
+    setFormVenueName('')
+    setFormVenueAddress('')
     setFormPrice('')
+    setEditingBlockId(null)
     setShowAddForm(false)
     setPreselectedDay(null) // CF-D06b FIX 1: Reset preselected day
+  }
+
+  // Fix-93: shared transform + refresh helper used by both POST (add) and PATCH (edit)
+  const refreshAvailability = async () => {
+    const refreshResponse = await fetch('/api/coaches/availability')
+    if (!refreshResponse.ok) return
+    const data = await refreshResponse.json()
+    const transformed: ScheduleBlock[] = (data.availability || [])
+      .filter((block: AvailabilityBlock) => block.is_recurring !== false)
+      .map((block: AvailabilityBlock) => {
+        const priceDisplay = block.price_override_pence
+          ? `£${(block.price_override_pence / 100).toFixed(0)}/${block.session_type_name || '60min'}`
+          : 'Default price'
+        return {
+          id: block.id,
+          day: DAY_MAP[block.day_of_week] || 'Mon',
+          sport: block.sport_name || 'Sport',
+          time: `${block.start_time.substring(0, 5)} – ${block.end_time.substring(0, 5)}`,
+          location: block.venue_name ?? 'No venue set',
+          price: priceDisplay,
+          is_recurring: block.is_recurring,
+          specific_date: block.specific_date ?? null,
+          rawData: block,
+        }
+      })
+    setScheduleBlocks(transformed)
+  }
+
+  // Fix-93: enter edit mode — populate form fields from the existing block
+  const openEditForm = (block: ScheduleBlock) => {
+    setEditingBlockId(block.id)
+    setFormSport(block.sport)
+    setFormDays([DAY_MAP[block.rawData.day_of_week] || 'Mon'])
+    setFormStartTime(block.rawData.start_time.substring(0, 5))
+    setFormEndTime(block.rawData.end_time.substring(0, 5))
+    setFormVenueName(block.rawData.venue_name ?? '')
+    // venue_address isn't in the list-summary AvailabilityBlock interface; load from rawData if present
+    setFormVenueAddress(block.rawData.venue_address ?? '')
+    setFormPrice(
+      block.rawData.price_override_pence != null
+        ? (block.rawData.price_override_pence / 100).toFixed(2)
+        : ''
+    )
+    setFormRepeat('Weekly') // existing form sends nothing for repeat anyway; pre-existing gap
+    setShowAddForm(true)
+    setTimeout(() => addFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
   }
   
   // CF-D06b FIX 1: Effect to preselect day when form opens
@@ -500,7 +545,7 @@ export function AvailabilityManagement() {
                                     <button
                                       onClick={(e) => {
                                         e.stopPropagation()
-                                        // TODO CF-D06: wire edit action
+                                        openEditForm(blockForDay)
                                       }}
                                       className="w-7 h-7 flex items-center justify-center border-[0.5px] border-gray-100 bg-white rounded-md hover:bg-gray-50 transition-colors"
                                     >
@@ -577,7 +622,9 @@ export function AvailabilityManagement() {
             {/* CF-D06 CHANGE 5: Refined add button */}
             {showAddForm ? (
               <div ref={addFormRef} className="border border-gray-200 rounded-xl p-5 bg-white shadow-sm">
-                <h3 className="text-[16px] font-bold text-gray-900 mb-5">New availability block</h3>
+                <h3 className="text-[16px] font-bold text-gray-900 mb-5">
+                  {editingBlockId ? 'Edit availability block' : 'New availability block'}
+                </h3>
                 <div className="mb-4">
                   <label className="block text-[12px] font-bold text-gray-500 mb-1.5 uppercase tracking-wider">Sport</label>
                   <div className="relative">
@@ -619,19 +666,19 @@ export function AvailabilityManagement() {
                 </div>
                 <div className="mb-4">
                   <label className="block text-[12px] font-bold text-gray-500 mb-1.5 uppercase tracking-wider">Venue <span className="normal-case font-medium text-gray-400">(optional)</span></label>
-                  <div className="relative">
-                    <select
-                      value={formVenueId}
-                      onChange={e => setFormVenueId(e.target.value)}
-                      className="w-full appearance-none bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-[15px] font-medium text-gray-900 focus:outline-none focus:border-[#0077CC] pr-10"
-                    >
-                      <option value="">No specific venue</option>
-                      {venues.map(v => (
-                        <option key={v.id} value={v.id}>{v.name}</option>
-                      ))}
-                    </select>
-                    <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                  </div>
+                  <VenueAutocomplete
+                    value={formVenueName}
+                    onChange={(v) => {
+                      setFormVenueName(v)
+                      // Free-text typing clears the address; user must pick from Places to repopulate
+                      if (formVenueAddress) setFormVenueAddress('')
+                    }}
+                    onSelect={(venue: VenueSelection) => {
+                      setFormVenueName(venue.name)
+                      setFormVenueAddress(venue.address)
+                    }}
+                    placeholder="Search for a venue (or leave blank for no specific venue)"
+                  />
                 </div>
                 <div className="mb-5">
                   <label className="block text-[12px] font-bold text-gray-500 mb-1.5 uppercase tracking-wider">Price override <span className="normal-case font-medium text-gray-400">(optional)</span></label>
@@ -654,73 +701,66 @@ export function AvailabilityManagement() {
                 )}
                 <div className="flex items-center justify-between">
                   <button onClick={resetForm} className="text-[14px] font-bold text-gray-400 hover:text-gray-700 transition-colors">Cancel</button>
-                  <button 
+                  <button
                     onClick={async () => {
-                      // CD-04: Wire add block to POST /api/coaches/availability
+                      // Fix-93: branch on edit mode — PATCH single block vs POST per day
                       if (conflict || formDays.length === 0) return
-                      
+
+                      const dayMap: Record<string, number> = {
+                        'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6,
+                      }
+
                       try {
-                        // Convert day abbreviations to day_of_week numbers
-                        const dayMap: Record<string, number> = {
-                          'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6
-                        }
-                        
-                        // Add each selected day as a separate block
-                        for (const dayAbbr of formDays) {
-                          const response = await fetch('/api/coaches/availability', {
-                            method: 'POST',
+                        if (editingBlockId) {
+                          // Edit: PATCH the single block
+                          const response = await fetch(`/api/coaches/availability/${editingBlockId}`, {
+                            method: 'PATCH',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
-                              sport_id: null,
-                              day_of_week: dayMap[dayAbbr],
+                              day_of_week: dayMap[formDays[0]],
                               start_time: formStartTime,
                               end_time: formEndTime,
                               price_override_pence: formPrice ? Math.round(parseFloat(formPrice) * 100) : null,
-                              coach_venue_id: formVenueId || null,
-                            })
+                              venue_name: formVenueName.trim() || null,
+                              venue_address: formVenueAddress.trim() || null,
+                            }),
                           })
-                          
-                          if (!response.ok) {
-                            throw new Error('Failed to add availability block')
+                          if (!response.ok) throw new Error('Failed to update availability block')
+                        } else {
+                          // Add: one POST per selected day
+                          for (const dayAbbr of formDays) {
+                            const response = await fetch('/api/coaches/availability', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                sport_id: null,
+                                day_of_week: dayMap[dayAbbr],
+                                start_time: formStartTime,
+                                end_time: formEndTime,
+                                price_override_pence: formPrice ? Math.round(parseFloat(formPrice) * 100) : null,
+                                venue_name: formVenueName.trim() || null,
+                                venue_address: formVenueAddress.trim() || null,
+                              }),
+                            })
+                            if (!response.ok) throw new Error('Failed to add availability block')
                           }
                         }
-                        
-                        // Refresh the list
-                        const refreshResponse = await fetch('/api/coaches/availability')
-                        if (refreshResponse.ok) {
-                          const data = await refreshResponse.json()
-                          const transformed: ScheduleBlock[] = (data.availability || [])
-                            .filter((block: AvailabilityBlock) => block.is_recurring !== false)
-                            .map((block: AvailabilityBlock) => {
-                            const priceDisplay = block.price_override_pence
-                              ? `£${(block.price_override_pence / 100).toFixed(0)}/${block.session_type_name || '60min'}`
-                              : 'Default price'
 
-                            return {
-                              id: block.id,
-                              day: DAY_MAP[block.day_of_week] || 'Mon',
-                              sport: block.sport_name || 'Sport',
-                              time: `${block.start_time.substring(0, 5)} – ${block.end_time.substring(0, 5)}`,
-                              location: block.venue_name ?? 'No venue set',
-                              price: priceDisplay,
-                              is_recurring: block.is_recurring,
-                              specific_date: block.specific_date ?? null,
-                              rawData: block
-                            }
-                          })
-                          setScheduleBlocks(transformed)
-                        }
-                        
+                        await refreshAvailability()
                         resetForm()
                       } catch (err) {
-                        console.error('Error adding block:', err)
-                        setAddBlockError('Failed to add availability block. Please try again.')
+                        console.error('Error saving block:', err)
+                        setAddBlockError(
+                          editingBlockId
+                            ? 'Failed to save changes. Please try again.'
+                            : 'Failed to add availability block. Please try again.'
+                        )
                       }
                     }}
-                    disabled={!!conflict || formDays.length === 0} 
+                    disabled={!!conflict || formDays.length === 0}
                     className={`px-6 py-3 rounded-xl text-[14px] font-bold transition-colors flex items-center gap-2 ${conflict || formDays.length === 0 ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-[#0077CC] text-white hover:bg-[#0066AA]'}`}
                   >
-                    <Plus size={16} />Add this block
+                    {editingBlockId ? 'Save changes' : (<><Plus size={16} />Add this block</>)}
                   </button>
                 </div>
               </div>

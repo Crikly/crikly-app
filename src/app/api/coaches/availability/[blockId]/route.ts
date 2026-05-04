@@ -110,6 +110,14 @@ export async function PATCH(
       validationErrors.push('end_time must be a string (HH:MM format)')
     }
 
+    // Fix-93: venue snapshot fields (text on the block, nullable)
+    if (body.venue_name !== undefined && body.venue_name !== null && typeof body.venue_name !== 'string') {
+      validationErrors.push('venue_name must be a string or null')
+    }
+    if (body.venue_address !== undefined && body.venue_address !== null && typeof body.venue_address !== 'string') {
+      validationErrors.push('venue_address must be a string or null')
+    }
+
     // Validate times
     const finalStartTime = body.start_time !== undefined ? body.start_time : existingBlock.start_time
     const finalEndTime = body.end_time !== undefined ? body.end_time : existingBlock.end_time
@@ -268,6 +276,8 @@ export async function PATCH(
       is_active?: boolean
       price_override_pence?: number | null
       session_type_id?: string | null
+      venue_name?: string | null
+      venue_address?: string | null
       updated_at: string
     } = {
       updated_at: new Date().toISOString(),
@@ -280,6 +290,9 @@ export async function PATCH(
     if (body.is_active !== undefined) updateData.is_active = body.is_active
     if (body.price_override_pence !== undefined) updateData.price_override_pence = body.price_override_pence
     if (body.session_type_id !== undefined) updateData.session_type_id = body.session_type_id
+    // Fix-93: venue snapshot fields
+    if (body.venue_name !== undefined) updateData.venue_name = body.venue_name
+    if (body.venue_address !== undefined) updateData.venue_address = body.venue_address
 
     // 10. Update block
     const { data: updatedBlock, error: updateError } = await supabase
