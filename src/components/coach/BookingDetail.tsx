@@ -1,7 +1,7 @@
 'use client'
 import React, { useState, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
-import { ArrowLeft, Mail, MessageSquare, CalendarDays, Activity, User, Clock } from 'lucide-react'
+import { ArrowLeft, Mail, CalendarDays, Activity, User, Clock, MapPin } from 'lucide-react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -15,6 +15,8 @@ interface BookingDetailData {
   status: string
   sport_id: string
   coach_price_pence: number
+  commission_pence: number
+  commission_rate: number
   parent_total_pence: number
   currency: string
   messaging_unlocked: boolean
@@ -25,6 +27,11 @@ interface BookingDetailData {
   completed_at: string | null
   notes_for_coach: string | null
   created_at: string
+  venue: {
+    id: string | null
+    name: string
+    address: string | null
+  } | null
   booker: {
     user_profile_id: string
     full_name: string | null
@@ -92,6 +99,7 @@ function initials(name: string | null): string {
 
 function statusBadge(status: string): { bg: string; text: string; label: string } {
   switch (status) {
+    case 'pending_approval': return { bg: '#FFFBEB', text: '#92400E', label: 'Pending approval' }
     case 'confirmed':        return { bg: '#E0F6F8', text: '#0099AA', label: 'Confirmed' }
     case 'completed':        return { bg: '#DCFCE7', text: '#15803D', label: 'Completed' }
     case 'no_show':          return { bg: '#FEE2E2', text: '#B91C1C', label: 'No show' }
@@ -101,12 +109,22 @@ function statusBadge(status: string): { bg: string; text: string; label: string 
   }
 }
 
+function calculateCanCancel(
+  sessionDate: string,
+  sessionStartTime: string,
+  cancellationWindowHours: number,
+): boolean {
+  const sessionDt = new Date(`${sessionDate}T${sessionStartTime}`)
+  const hoursUntilSession = (sessionDt.getTime() - Date.now()) / (1000 * 60 * 60)
+  return cancellationWindowHours > 0 && hoursUntilSession > cancellationWindowHours
+}
+
 // ─── Skeleton ─────────────────────────────────────────────────────────────────
 
 function BookingDetailSkeleton() {
   return (
     <div className="flex-1 px-5 py-6 space-y-4 animate-pulse">
-      <div className="bg-white border border-[#E2E8F0] rounded-[16px] p-5 shadow-sm space-y-4">
+      <div className="bg-white rounded-[16px] p-5 shadow-sm space-y-4">
         {[1, 2, 3, 4].map((i) => (
           <div key={i} className="flex items-center gap-3">
             <div className="w-5 h-5 bg-gray-200 rounded shrink-0" />
@@ -114,7 +132,7 @@ function BookingDetailSkeleton() {
           </div>
         ))}
       </div>
-      <div className="bg-white border border-[#E2E8F0] rounded-[16px] p-5 shadow-sm space-y-3">
+      <div className="bg-white rounded-[16px] p-5 shadow-sm space-y-3">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 rounded-full bg-gray-200 shrink-0" />
           <div className="space-y-2">
@@ -124,7 +142,7 @@ function BookingDetailSkeleton() {
         </div>
         <div className="h-10 bg-gray-100 rounded" />
       </div>
-      <div className="bg-white border border-[#E2E8F0] rounded-[16px] p-5 shadow-sm space-y-3">
+      <div className="bg-white rounded-[16px] p-5 shadow-sm space-y-3">
         {[1, 2, 3].map((i) => (
           <div key={i} className="flex justify-between">
             <div className="h-4 bg-gray-200 rounded w-24" />
@@ -149,7 +167,6 @@ export function BookingDetail() {
   const [sportsMap, setSportsMap] = useState<Record<string, string>>({})
 
   useEffect(() => {
-    // Fetch sports and booking detail in parallel
     Promise.all([
       fetch('/api/sports').then((r) => r.json()).catch(() => ({ sports: [] })),
       bookingId
@@ -173,11 +190,10 @@ export function BookingDetail() {
   }, [bookingId])
 
   const badge = booking ? statusBadge(booking.status) : null
-  const isPending = booking ? !['confirmed', 'completed', 'cancelled_parent', 'cancelled_coach', 'no_show'].includes(booking.status) : false
 
   return (
-    <div className="min-h-screen bg-gray-50 font-sans" style={{ fontFamily: "'DM Sans', sans-serif" }}>
-      <div className="w-full max-w-2xl mx-auto bg-gray-50 min-h-screen relative flex flex-col pb-12">
+    <div className="min-h-screen font-sans" style={{ fontFamily: "'DM Sans', sans-serif" }}>
+      <div className="w-full max-w-2xl mx-auto min-h-screen relative flex flex-col pb-12">
         {/* Header */}
         <div className="px-5 py-4 bg-white sticky top-0 z-10 border-b border-gray-100 flex items-center justify-between">
           <button
@@ -220,7 +236,7 @@ export function BookingDetail() {
         {!loading && booking && (
           <div className="flex-1 px-5 py-6 space-y-4">
             {/* Session details card */}
-            <div className="bg-white border border-[#E2E8F0] rounded-[16px] p-5 shadow-sm space-y-4">
+            <div className="bg-white rounded-[16px] p-5 shadow-sm space-y-4">
               <div className="flex items-start gap-3">
                 <CalendarDays size={18} className="text-gray-400 mt-0.5 shrink-0" />
                 <div>
@@ -248,8 +264,24 @@ export function BookingDetail() {
               </div>
             </div>
 
+            {/* Venue card — render only when name is truthy */}
+            {booking.venue?.name && (
+              <div className="bg-white rounded-[16px] p-5 shadow-sm">
+                <div className="flex items-start gap-3">
+                  <MapPin size={18} className="text-gray-400 mt-0.5 shrink-0" />
+                  <div>
+                    <div className="text-[12px] font-medium text-gray-500 uppercase tracking-wide mb-1">Venue</div>
+                    <div className="text-[15px] font-bold text-gray-900">{booking.venue.name}</div>
+                    {booking.venue.address && (
+                      <div className="text-[13px] text-gray-500 mt-0.5">{booking.venue.address}</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Booker / contact card */}
-            <div className="bg-white border border-[#E2E8F0] rounded-[16px] p-0 shadow-sm overflow-hidden">
+            <div className="bg-white rounded-[16px] p-0 shadow-sm overflow-hidden">
               <div className="p-5 flex items-center gap-4 border-b border-gray-100">
                 <div className="w-12 h-12 rounded-full bg-[#E6F3FB] text-[#0077CC] flex items-center justify-center text-[16px] font-bold shrink-0">
                   {initials(booking.booker.full_name)}
@@ -275,31 +307,15 @@ export function BookingDetail() {
               )}
             </div>
 
-            {/* Payment card */}
-            <div className="bg-white border border-[#E2E8F0] rounded-[16px] p-5 shadow-sm space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-[15px] text-gray-600 font-medium">Session price</span>
-                <span className="text-[15px] text-gray-900 font-medium">{formatPence(booking.coach_price_pence)}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-[15px] text-gray-500 font-medium">Platform fee</span>
-                <span className="text-[15px] text-gray-500 font-medium">
-                  – {formatPence(booking.parent_total_pence - booking.coach_price_pence)}
-                </span>
-              </div>
-              <div className="h-px bg-gray-100 w-full" />
-              <div className="flex items-center justify-between">
-                <span className="text-[16px] font-bold text-gray-900">You receive</span>
-                <span className="text-[18px] font-bold text-[#0077CC]">{formatPence(booking.coach_price_pence)}</span>
-              </div>
-              <div className="pt-1">
-                <p className="text-[12px] text-gray-400 italic">Payment released 48 hours after session</p>
-              </div>
+            {/* Earnings card — coach receives the full coach_price (BR-01: commission added on top, never deducted) */}
+            <div className="bg-white rounded-[16px] p-5 shadow-sm flex items-center justify-between">
+              <span className="text-[15px] text-gray-600 font-medium">Your earnings</span>
+              <span className="text-[18px] font-bold text-[#0077CC]">{formatPence(booking.coach_price_pence)}</span>
             </div>
 
             {/* Session notes card (shown only if note exists) */}
             {booking.session_note && (
-              <div className="bg-white border border-[#E2E8F0] rounded-[16px] p-5 shadow-sm space-y-2">
+              <div className="bg-white rounded-[16px] p-5 shadow-sm space-y-2">
                 <div className="text-[14px] font-semibold text-gray-900">Session notes</div>
                 <p className="text-[14px] text-gray-700 leading-relaxed">{booking.session_note.notes}</p>
                 {booking.session_note.is_shared_with_parent && (
@@ -308,54 +324,52 @@ export function BookingDetail() {
               </div>
             )}
 
-            {/* Policy card */}
-            <div className="bg-white border border-[#E2E8F0] rounded-[16px] p-5 shadow-sm space-y-3">
-              <div className="text-[14px] text-gray-700 font-medium">
-                Cancellation policy:{' '}
-                <span className="text-gray-900">{booking.cancellation_window_hours} hours notice required</span>
-              </div>
+            {/* Policy card — dynamic cancellation copy */}
+            <div className="bg-white rounded-[16px] p-5 shadow-sm space-y-3">
+              {booking.cancellation_window_hours != null && (
+                <div className="text-[14px] text-gray-700 font-medium">
+                  {booking.cancellation_window_hours === 0
+                    ? 'No cancellations'
+                    : `Cancel up to ${booking.cancellation_window_hours} hours before the session`}
+                </div>
+              )}
               <div className="text-[14px] text-gray-500 font-medium">
                 Booked on: {formatCreatedAt(booking.created_at)}
               </div>
             </div>
 
-            {/* Action buttons */}
-            <div className="pt-4 pb-6 space-y-3">
-              {isPending ? (
-                <>
+            {/* Action buttons — state-aware on booking.status */}
+            {booking.status === 'pending_approval' && (
+              <div className="pt-4 pb-6 space-y-3">
+                <button
+                  className="w-full py-3.5 flex items-center justify-center gap-2 bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-xl text-[15px] font-bold transition-colors"
+                  onClick={() => { /* TODO: wire Approve in Step 5 */ }}
+                >
+                  Approve
+                </button>
+                <button
+                  className="w-full py-3.5 flex items-center justify-center gap-2 border border-red-600 text-red-600 rounded-xl text-[15px] font-bold hover:bg-red-50 transition-colors bg-white"
+                  onClick={() => { /* TODO: wire Decline in Step 5 */ }}
+                >
+                  Decline
+                </button>
+              </div>
+            )}
+            {booking.status === 'confirmed' &&
+              calculateCanCancel(
+                booking.session_date,
+                booking.session_start_time,
+                booking.cancellation_window_hours,
+              ) && (
+                <div className="pt-4 pb-6 space-y-3">
                   <button
-                    className="w-full py-3.5 flex items-center justify-center gap-2 bg-green-600 text-white rounded-xl text-[15px] font-bold hover:bg-green-700 transition-colors"
-                    onClick={() => { /* TODO: wire Approve in Step 5 */ }}
+                    className="w-full py-3.5 flex items-center justify-center gap-2 border border-red-600 text-red-600 rounded-xl text-[15px] font-bold hover:bg-red-50 transition-colors bg-white"
+                    onClick={() => { /* TODO: wire Cancel Booking in Step 5 */ }}
                   >
-                    Approve
+                    Cancel booking
                   </button>
-                  <button
-                    className="w-full py-3.5 flex items-center justify-center gap-2 border border-red-200 text-red-600 rounded-xl text-[15px] font-bold hover:bg-red-50 transition-colors bg-white"
-                    onClick={() => { /* TODO: wire Decline in Step 5 */ }}
-                  >
-                    Decline
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button
-                    className="w-full py-3.5 flex items-center justify-center gap-2 border-2 border-[#0077CC] text-[#0077CC] rounded-xl text-[15px] font-bold hover:bg-[#E6F3FB] transition-colors bg-white"
-                    onClick={() => { /* TODO: wire Message in Step 5 */ }}
-                  >
-                    <MessageSquare size={18} />
-                    {booking.booker.full_name ? `Message ${booking.booker.full_name.split(' ')[0]}` : 'Message'}
-                  </button>
-                  {booking.status === 'confirmed' && (
-                    <button
-                      className="w-full py-3.5 flex items-center justify-center gap-2 border border-red-200 text-red-600 rounded-xl text-[15px] font-bold hover:bg-red-50 transition-colors bg-white"
-                      onClick={() => { /* TODO: wire Cancel Booking in Step 5 */ }}
-                    >
-                      Cancel Booking
-                    </button>
-                  )}
-                </>
+                </div>
               )}
-            </div>
           </div>
         )}
       </div>
