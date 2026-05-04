@@ -31,7 +31,7 @@ export function CoachBottomNav({ activePath, pendingBookingsCount = 0 }: CoachBo
       icon: BookOpen,
       showBadge: pendingBookingsCount > 0,
     },
-    { label: 'Profile', href: '/coach/profile', icon: User },
+    { label: 'Profile', href: '/coach/profile/edit', icon: User },
     { label: 'More', href: '/coach/more', icon: MoreHorizontal },
   ]
 

@@ -75,7 +75,7 @@ export function CoachSidebar({
       items: [
         { label: 'Availability', href: '/coach/availability', icon: Clock },
         { label: 'Earnings', href: '/coach/earnings', icon: TrendingUp },
-        { label: 'My Profile', href: '/coach/profile', icon: User },
+        { label: 'My Profile', href: '/coach/profile/edit', icon: User },
       ],
     },
     {

@@ -327,6 +327,33 @@ export async function POST(
       }
     }
 
+    // Fix-113: validation for venue snapshot + recurrence fields (previously inserted unchecked)
+    if (body.venue_name !== undefined && body.venue_name !== null) {
+      if (typeof body.venue_name !== 'string') {
+        validationErrors.push('venue_name must be a string or null')
+      } else if (body.venue_name.length > 200) {
+        validationErrors.push('venue_name must be 200 characters or less')
+      }
+    }
+
+    if (body.venue_address !== undefined && body.venue_address !== null) {
+      if (typeof body.venue_address !== 'string') {
+        validationErrors.push('venue_address must be a string or null')
+      } else if (body.venue_address.length > 500) {
+        validationErrors.push('venue_address must be 500 characters or less')
+      }
+    }
+
+    if (body.is_recurring !== undefined && typeof body.is_recurring !== 'boolean') {
+      validationErrors.push('is_recurring must be a boolean')
+    }
+
+    if (body.specific_date !== undefined && body.specific_date !== null) {
+      if (typeof body.specific_date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(body.specific_date)) {
+        validationErrors.push('specific_date must be a string in YYYY-MM-DD format')
+      }
+    }
+
     if (validationErrors.length > 0) {
       return NextResponse.json(
         { error: 'Validation failed', details: validationErrors },

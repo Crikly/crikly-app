@@ -267,6 +267,62 @@ export function AvailabilityManagement() {
     setScheduleBlocks(transformed)
   }
 
+  // Fix-107: extracted save handler — shared by inline save button and sticky bar
+  const handleSaveBlock = async () => {
+    if (conflict || formDays.length === 0) return
+
+    const dayMap: Record<string, number> = {
+      'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6,
+    }
+
+    try {
+      if (editingBlockId) {
+        // Edit: PATCH the single block
+        const response = await fetch(`/api/coaches/availability/${editingBlockId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            day_of_week: dayMap[formDays[0]],
+            start_time: formStartTime,
+            end_time: formEndTime,
+            price_override_pence: formPrice ? Math.round(parseFloat(formPrice) * 100) : null,
+            venue_name: formVenueName.trim() || null,
+            venue_address: formVenueAddress.trim() || null,
+          }),
+        })
+        if (!response.ok) throw new Error('Failed to update availability block')
+      } else {
+        // Add: one POST per selected day
+        for (const dayAbbr of formDays) {
+          const response = await fetch('/api/coaches/availability', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sport_id: null,
+              day_of_week: dayMap[dayAbbr],
+              start_time: formStartTime,
+              end_time: formEndTime,
+              price_override_pence: formPrice ? Math.round(parseFloat(formPrice) * 100) : null,
+              venue_name: formVenueName.trim() || null,
+              venue_address: formVenueAddress.trim() || null,
+            }),
+          })
+          if (!response.ok) throw new Error('Failed to add availability block')
+        }
+      }
+
+      await refreshAvailability()
+      resetForm()
+    } catch (err) {
+      console.error('Error saving block:', err)
+      setAddBlockError(
+        editingBlockId
+          ? 'Failed to save changes. Please try again.'
+          : 'Failed to add availability block. Please try again.'
+      )
+    }
+  }
+
   // Fix-93: enter edit mode — populate form fields from the existing block
   const openEditForm = (block: ScheduleBlock) => {
     setEditingBlockId(block.id)
@@ -332,14 +388,15 @@ export function AvailabilityManagement() {
   }, [activeTab])
   
   // Blocked dates calendar state
-  const [currentMonth, setCurrentMonth] = useState(3)
-  const [currentYear, setCurrentYear] = useState(2026)
+  // Fix-115: dynamic dates — was hardcoded to April 2026
+  const [currentMonth, setCurrentMonth] = useState(() => new Date().getMonth())
+  const [currentYear, setCurrentYear] = useState(() => new Date().getFullYear())
   const [rangeStart, setRangeStart] = useState<Date | null>(null)
   const [rangeEnd, setRangeEnd] = useState<Date | null>(null)
   const [hoverDate, setHoverDate] = useState<Date | null>(null)
   const [blockLabel, setBlockLabel] = useState('')
   const calendarDays = useMemo(() => buildCalendar(currentYear, currentMonth), [currentYear, currentMonth])
-  const TODAY = new Date(2026, 3, 8)
+  const TODAY = useMemo(() => new Date(), [])
   const navigatePrev = () => { if (currentMonth === 0) { setCurrentYear(y => y - 1); setCurrentMonth(11) } else setCurrentMonth(m => m - 1) }
   const navigateNext = () => { if (currentMonth === 11) { setCurrentYear(y => y + 1); setCurrentMonth(0) } else setCurrentMonth(m => m + 1) }
   const handleDayClick = (day: CalDay) => {
@@ -702,61 +759,7 @@ export function AvailabilityManagement() {
                 <div className="flex items-center justify-between">
                   <button onClick={resetForm} className="text-[14px] font-bold text-gray-400 hover:text-gray-700 transition-colors">Cancel</button>
                   <button
-                    onClick={async () => {
-                      // Fix-93: branch on edit mode — PATCH single block vs POST per day
-                      if (conflict || formDays.length === 0) return
-
-                      const dayMap: Record<string, number> = {
-                        'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6,
-                      }
-
-                      try {
-                        if (editingBlockId) {
-                          // Edit: PATCH the single block
-                          const response = await fetch(`/api/coaches/availability/${editingBlockId}`, {
-                            method: 'PATCH',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                              day_of_week: dayMap[formDays[0]],
-                              start_time: formStartTime,
-                              end_time: formEndTime,
-                              price_override_pence: formPrice ? Math.round(parseFloat(formPrice) * 100) : null,
-                              venue_name: formVenueName.trim() || null,
-                              venue_address: formVenueAddress.trim() || null,
-                            }),
-                          })
-                          if (!response.ok) throw new Error('Failed to update availability block')
-                        } else {
-                          // Add: one POST per selected day
-                          for (const dayAbbr of formDays) {
-                            const response = await fetch('/api/coaches/availability', {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({
-                                sport_id: null,
-                                day_of_week: dayMap[dayAbbr],
-                                start_time: formStartTime,
-                                end_time: formEndTime,
-                                price_override_pence: formPrice ? Math.round(parseFloat(formPrice) * 100) : null,
-                                venue_name: formVenueName.trim() || null,
-                                venue_address: formVenueAddress.trim() || null,
-                              }),
-                            })
-                            if (!response.ok) throw new Error('Failed to add availability block')
-                          }
-                        }
-
-                        await refreshAvailability()
-                        resetForm()
-                      } catch (err) {
-                        console.error('Error saving block:', err)
-                        setAddBlockError(
-                          editingBlockId
-                            ? 'Failed to save changes. Please try again.'
-                            : 'Failed to add availability block. Please try again.'
-                        )
-                      }
-                    }}
+                    onClick={handleSaveBlock}
                     disabled={!!conflict || formDays.length === 0}
                     className={`px-6 py-3 rounded-xl text-[14px] font-bold transition-colors flex items-center gap-2 ${conflict || formDays.length === 0 ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-[#0077CC] text-white hover:bg-[#0066AA]'}`}
                   >
@@ -794,15 +797,21 @@ export function AvailabilityManagement() {
               </button>
             )}
             
-            {/* CF-D06 CHANGE 6: Save changes bar - right-aligned pill */}
-            <div 
-              className="sticky bottom-0 bg-white border-t-[0.5px] border-gray-100 px-6 py-3 flex justify-end"
-              style={{ boxShadow: '0 -2px 8px rgba(0,0,0,0.04)' }}
-            >
-              <button className="bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-full px-7 py-2.5 text-[13px] font-medium transition-colors">
-                Save changes
-              </button>
-            </div>
+            {/* Fix-107: Save changes sticky bar — only renders when the form is open; reuses handleSaveBlock */}
+            {showAddForm && (
+              <div
+                className="sticky bottom-0 bg-white border-t-[0.5px] border-gray-100 px-6 py-3 flex justify-end"
+                style={{ boxShadow: '0 -2px 8px rgba(0,0,0,0.04)' }}
+              >
+                <button
+                  onClick={handleSaveBlock}
+                  disabled={!!conflict || formDays.length === 0}
+                  className={`rounded-full px-7 py-2.5 text-[13px] font-medium transition-colors ${conflict || formDays.length === 0 ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-[#0077CC] hover:bg-[#0066AA] text-white'}`}
+                >
+                  Save changes
+                </button>
+              </div>
+            )}
             </>
             )}
           </div>

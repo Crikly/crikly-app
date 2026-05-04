@@ -144,8 +144,6 @@ export default async function CoachDashboardPage() {
     }
 
     // 3. Pending approvals count
-    // STUB: bookings table doesn't have 'pending' status or 'approval_type' column yet
-    // For now, show 0 pending approvals
     dashboardData.pendingApprovalsCount = 0
 
     // 4. Up next session
@@ -214,7 +212,7 @@ export default async function CoachDashboardPage() {
       .from('bookings')
       .select('*', { count: 'exact', head: true })
       .eq('coach_profile_id', coachProfile.id)
-      .eq('status', 'pending')
+      .eq('status', 'pending_approval')
 
     dashboardData.weeklyStats.bookingsPending = pendingBookingsCount || 0
 

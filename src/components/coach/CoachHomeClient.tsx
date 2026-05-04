@@ -301,7 +301,7 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
               <p className="text-xs text-gray-500">Sessions this week</p>
               <p className="text-2xl font-medium text-gray-900">{data.weeklyStats.sessionsThisWeek}</p>
             </Link>
-            <Link href="/coach/bookings?tab=pending" className="bg-white border border-gray-100 rounded-[10px] p-4 flex flex-col gap-1 cursor-pointer hover:border-gray-300 hover:scale-[1.01] transition-all duration-150">
+            <Link href="/coach/bookings?tab=pending_approval" className="bg-white border border-gray-100 rounded-[10px] p-4 flex flex-col gap-1 cursor-pointer hover:border-gray-300 hover:scale-[1.01] transition-all duration-150">
               <Clock size={16} className="text-amber-600 mb-1" />
               <p className="text-xs text-gray-500">Bookings pending</p>
               <p className="text-2xl font-medium text-gray-900">{data.weeklyStats.bookingsPending}</p>

@@ -346,6 +346,35 @@ export async function PATCH(
       }
     }
 
+    // Fix-112: validation for venue + numeric programme fields (previously written unchecked)
+    if (body.venue_name !== undefined && body.venue_name !== null) {
+      if (typeof body.venue_name !== 'string') {
+        validationErrors.push('venue_name must be a string or null')
+      } else if (body.venue_name.length > 200) {
+        validationErrors.push('venue_name must be 200 characters or less')
+      }
+    }
+
+    if (body.venue_address !== undefined && body.venue_address !== null) {
+      if (typeof body.venue_address !== 'string') {
+        validationErrors.push('venue_address must be a string or null')
+      } else if (body.venue_address.length > 500) {
+        validationErrors.push('venue_address must be 500 characters or less')
+      }
+    }
+
+    if (body.min_participants !== undefined && body.min_participants !== null) {
+      if (typeof body.min_participants !== 'number' || !Number.isInteger(body.min_participants) || body.min_participants < 1 || body.min_participants > 100) {
+        validationErrors.push('min_participants must be an integer between 1 and 100')
+      }
+    }
+
+    if (body.cancellation_window_hours !== undefined && body.cancellation_window_hours !== null) {
+      if (typeof body.cancellation_window_hours !== 'number' || !Number.isInteger(body.cancellation_window_hours) || body.cancellation_window_hours < 0 || body.cancellation_window_hours > 168) {
+        validationErrors.push('cancellation_window_hours must be an integer between 0 and 168')
+      }
+    }
+
     if (validationErrors.length > 0) {
       return NextResponse.json(
         { error: 'Validation failed', details: validationErrors },
@@ -399,14 +428,8 @@ export async function PATCH(
 
     if (body.venue_name !== undefined) updateData.venue_name = body.venue_name || null
     if (body.venue_address !== undefined) updateData.venue_address = body.venue_address || null
-    if (body.min_participants !== undefined) {
-      updateData.min_participants = typeof body.min_participants === 'number' && body.min_participants > 0
-        ? body.min_participants
-        : null
-    }
-    if (body.cancellation_window_hours !== undefined && typeof body.cancellation_window_hours === 'number') {
-      updateData.cancellation_window_hours = body.cancellation_window_hours
-    }
+    if (body.min_participants !== undefined) updateData.min_participants = body.min_participants
+    if (body.cancellation_window_hours !== undefined) updateData.cancellation_window_hours = body.cancellation_window_hours
 
     // 7. Update programme (adminSupabase already created in step 4)
     const { data: updatedProgramme, error: updateError } = await adminSupabase
