@@ -11,6 +11,7 @@ interface Programme {
 
 interface DashboardData {
   coachName: string
+  coachAvatarUrl: string | null
   profileCompletion: {
     percentage: number
     completedSteps: boolean[]
@@ -50,6 +51,7 @@ export default async function CoachDashboardPage() {
   // Initialize with empty defaults
   const dashboardData: DashboardData = {
     coachName: '',
+    coachAvatarUrl: null,
     profileCompletion: {
       percentage: 0,
       completedSteps: [false, false, false, false, false, false, false]
@@ -78,14 +80,15 @@ export default async function CoachDashboardPage() {
     // Get user profile
     const { data: userProfile } = await supabase
       .from('user_profiles')
-      .select('id, full_name')
+      .select('id, full_name, avatar_url')
       .eq('auth_user_id', user.id)
       .single()
 
     if (!userProfile) return <CoachHomeClient data={dashboardData} />
 
-    // 1. Coach name - set immediately after userProfile fetch
+    // 1. Coach name + avatar - set immediately after userProfile fetch
     dashboardData.coachName = userProfile.full_name || ''
+    dashboardData.coachAvatarUrl = userProfile.avatar_url ?? null
 
     // Get coach profile
     const { data: coachProfile } = await supabase
@@ -143,8 +146,6 @@ export default async function CoachDashboardPage() {
       completedSteps: completionChecks
     }
 
-    // 3. Pending approvals count
-    dashboardData.pendingApprovalsCount = 0
 
     // 4. Up next session
     // STUB: bookings table doesn't have 'title' or 'venue_name' columns yet
@@ -214,6 +215,7 @@ export default async function CoachDashboardPage() {
       .eq('coach_profile_id', coachProfile.id)
       .eq('status', 'pending_approval')
 
+    dashboardData.pendingApprovalsCount = pendingBookingsCount || 0
     dashboardData.weeklyStats.bookingsPending = pendingBookingsCount || 0
 
     // Revenue this week (completed bookings)

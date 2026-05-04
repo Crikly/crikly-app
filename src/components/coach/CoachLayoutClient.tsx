@@ -2,9 +2,10 @@
 
 import React, { useState, useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
+import Link from 'next/link'
 import {
   Home, Calendar, Inbox, Users, Clock, User,
-  TrendingUp, CreditCard, Settings, Share2,
+  TrendingUp, CreditCard, Share2,
   MoreHorizontal, X, Copy, QrCode, Mail
 } from 'lucide-react'
 import { CoachRightPanel } from '@/components/coach/CoachRightPanel'
@@ -91,41 +92,41 @@ export function CoachLayoutClient({
     >
       {/* Desktop Sidebar */}
       <aside className="hidden lg:flex w-72 shrink-0 flex-col bg-white border-r border-gray-100 p-6 sticky top-0 h-screen z-10">
-        <div className="mb-6 flex justify-center">
+        <Link href="/coach/dashboard" className="mb-6 flex justify-center">
           <img
             src="/logo.png"
             alt="Crikly"
             className="w-36 h-auto object-contain"
           />
-        </div>
+        </Link>
 
         <div className="flex flex-col gap-4 mb-8">
-          <div className="flex items-center gap-3 p-2 -mx-2 rounded-xl hover:bg-gray-50 cursor-pointer transition-colors border border-transparent hover:border-gray-100">
-            <div className="relative">
-              {initialAvatarUrl && initialAvatarUrl.trim() !== '' ? (
-                <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 shadow-sm">
-                  <img src={initialAvatarUrl} alt={initialCoachName} className="w-full h-full object-cover" />
-                </div>
-              ) : (
-                <div className="w-10 h-10 bg-[#E6F1FB] rounded-full flex items-center justify-center shrink-0">
-                  <span className="text-[#0C447C] text-[14px] font-bold">{initials}</span>
-                </div>
-              )}
-              {notificationCount > 0 && (
-                <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 bg-red-500 rounded-full border-2 border-white flex items-center justify-center text-[10px] font-bold text-white shadow-sm">
-                  {notificationBadge}
-                </span>
-              )}
-            </div>
-            <div className="flex items-center justify-between flex-1 pr-1">
-              <p className="text-base font-bold text-gray-900 leading-tight">{initialCoachName}</p>
-              <button
-                onClick={(e) => { e.stopPropagation(); setIsShareModalOpen(true) }}
-                className="text-gray-400 hover:text-[#0077CC] transition-colors p-1.5 rounded-md hover:bg-white border border-transparent hover:border-gray-200 hover:shadow-sm group"
-              >
-                <Share2 size={14} className="group-hover:scale-110 transition-transform" />
-              </button>
-            </div>
+          <div className="flex items-center gap-3 p-2 -mx-2 rounded-xl hover:bg-gray-50 transition-colors border border-transparent hover:border-gray-100">
+            <Link href="/coach/dashboard" className="flex items-center gap-3 flex-1 min-w-0">
+              <div className="relative">
+                {initialAvatarUrl && initialAvatarUrl.trim() !== '' ? (
+                  <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 shadow-sm">
+                    <img src={initialAvatarUrl} alt={initialCoachName} className="w-full h-full object-cover" />
+                  </div>
+                ) : (
+                  <div className="w-10 h-10 bg-[#E6F1FB] rounded-full flex items-center justify-center shrink-0">
+                    <span className="text-[#0C447C] text-[14px] font-bold">{initials}</span>
+                  </div>
+                )}
+                {notificationCount > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 bg-red-500 rounded-full border-2 border-white flex items-center justify-center text-[10px] font-bold text-white shadow-sm">
+                    {notificationBadge}
+                  </span>
+                )}
+              </div>
+              <p className="text-base font-bold text-gray-900 leading-tight truncate">{initialCoachName}</p>
+            </Link>
+            <button
+              onClick={() => setIsShareModalOpen(true)}
+              className="text-gray-400 hover:text-[#0077CC] transition-colors p-1.5 rounded-md hover:bg-white border border-transparent hover:border-gray-200 hover:shadow-sm group shrink-0"
+            >
+              <Share2 size={14} className="group-hover:scale-110 transition-transform" />
+            </button>
           </div>
 
           <div className="bg-gray-100 p-1 rounded-lg flex items-center w-full">
@@ -153,9 +154,6 @@ export function CoachLayoutClient({
           </div>
         </nav>
 
-        <div className="mt-auto pt-6 border-t border-gray-100">
-          <SidebarItem icon={<Settings size={20} />} label="Settings" active={isActive('/coach/settings')} onClick={() => nav('/coach/settings')} />
-        </div>
       </aside>
 
       {/* Main content */}

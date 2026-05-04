@@ -11,7 +11,6 @@ import {
   TrendingUp,
   User,
   CreditCard,
-  Settings,
 } from 'lucide-react'
 
 import { Avatar } from '@/components/ui/Avatar'
@@ -87,7 +86,6 @@ export function CoachSidebar({
           icon: CreditCard,
           showWarningDot: hasStripeWarning,
         },
-        { label: 'Settings', href: '/coach/settings', icon: Settings },
       ],
     },
   ]
@@ -95,27 +93,27 @@ export function CoachSidebar({
   return (
     <aside className="w-60 h-full bg-white border-r border-neutral-100 flex flex-col">
       {/* Logo */}
-      <div className="flex items-center px-6 py-4" style={{ height: 40 }}>
+      <Link href="/coach/dashboard" className="flex items-center px-6 py-4" style={{ height: 40 }}>
         <span className="text-xl font-bold text-brand-600" style={{ fontFamily: 'DM Sans, sans-serif' }}>
           Crikly
         </span>
-      </div>
+      </Link>
 
       {/* Profile Block */}
       <div className="px-6 py-4 border-b border-neutral-100">
-        <div className="flex items-start gap-3">
+        <Link href="/coach/dashboard" className="flex items-start gap-3">
           <Avatar src={coachPhotoUrl} name={coachName} size="md" />
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-neutral-900 truncate">{coachName}</p>
             <p className="text-xs text-neutral-400 truncate">{coachRole}</p>
-            <div className="mt-2">
-              <RoleSwitcher
-                activeRole="coach"
-                availableRoles={['coach', 'parent'] as UserRole[]}
-                onSwitch={onRoleSwitch}
-              />
-            </div>
           </div>
+        </Link>
+        <div className="mt-2">
+          <RoleSwitcher
+            activeRole="coach"
+            availableRoles={['coach', 'parent'] as UserRole[]}
+            onSwitch={onRoleSwitch}
+          />
         </div>
       </div>
 

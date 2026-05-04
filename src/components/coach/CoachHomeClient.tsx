@@ -10,7 +10,6 @@ import {
 } from 'lucide-react'
 import { CoachRightPanel } from '@/components/coach/CoachRightPanel'
 
-const avatarUrl = "https://images.unsplash.com/photo-1741363863033-2d68f0bd9fde?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxpbmRpYW4lMjBtYW4lMjBzbWlsaW5nJTIwcG9ydHJhaXR8ZW58MXx8fHwxNzc1NDg3OTc5fDA&ixlib=rb-4.1.0&q=80&w=1080"
 const upNextUrl = "https://images.unsplash.com/photo-1771909713672-4e351f1f8b62?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjcmlja2V0JTIwdHJhaW5pbmclMjBzcG9ydHN8ZW58MXx8fHwxNzc1NDg3OTc5fDA&ixlib=rb-4.1.0&q=80&w=1080"
 const group1Url = "https://images.unsplash.com/photo-1761039807856-9f412d0e0a3d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxzcG9ydHMlMjB0cmFpbmluZyUyMGdyb3VwfGVufDF8fHx8MTc3NTQ4Nzk3OXww&ixlib=rb-4.1.0&q=80&w=1080"
 const group2Url = "https://images.unsplash.com/photo-1609422644211-a85c36ee36a7?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxraWRzJTIwcGxheWluZyUyMHNwb3J0c3xlbnwxfHx8fDE3NzU0ODc5Nzl8MA&ixlib=rb-4.1.0&q=80&w=1080"
@@ -26,6 +25,7 @@ interface Programme {
 
 interface DashboardData {
   coachName: string
+  coachAvatarUrl: string | null
   profileCompletion: {
     percentage: number
     completedSteps: boolean[]
@@ -124,15 +124,27 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
         
         {/* Mobile Top Bar */}
         <div className="flex justify-between items-center md:hidden mb-2">
-          <img
-            src="/logo.png"
-            alt="Crikly"
-            className="h-7 w-auto object-contain"
-          />
-          <div className="relative">
-            <img src={avatarUrl} alt="Ravi" className="w-10 h-10 rounded-full object-cover shadow-sm border border-gray-100" />
-            <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 bg-red-500 rounded-full border-2 border-white flex items-center justify-center text-[10px] font-bold text-white shadow-sm">3</span>
-          </div>
+          <Link href="/coach/dashboard">
+            <img
+              src="/logo.png"
+              alt="Crikly"
+              className="h-7 w-auto object-contain"
+            />
+          </Link>
+          <Link href="/coach/dashboard" className="relative">
+            {data.coachAvatarUrl && data.coachAvatarUrl.trim() !== '' ? (
+              <img src={data.coachAvatarUrl} alt={data.coachName || 'Coach'} className="w-10 h-10 rounded-full object-cover shadow-sm border border-gray-100" />
+            ) : (
+              <div className="w-10 h-10 rounded-full bg-[#0077CC] text-white flex items-center justify-center text-[14px] font-bold shadow-sm border border-gray-100">
+                {(data.coachName || 'C').charAt(0).toUpperCase()}
+              </div>
+            )}
+            {data.pendingApprovalsCount > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 bg-red-500 rounded-full border-2 border-white flex items-center justify-center text-[10px] font-bold text-white shadow-sm">
+                {data.pendingApprovalsCount > 9 ? '9+' : data.pendingApprovalsCount}
+              </span>
+            )}
+          </Link>
         </div>
 
         {/* Desktop Greeting - CHANGE 1: emoji + subtitle */}
