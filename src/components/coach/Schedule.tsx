@@ -80,7 +80,7 @@ function EventBlock({ top, height, type, title, subtitle, sessionId, onCardClick
       // CHANGE 4: Opportunity treatment for available slots
       bgClass = 'bg-[#E8F5F0]'
       textClass = 'text-[#0F6E56]'
-      borderClass = 'border border-dashed border-[#1D9E75] hover:border-solid hover:bg-[#F0FAF6] cursor-pointer'
+      borderClass = 'border border-dashed border-teal-600 hover:border-solid hover:bg-[#F0FAF6] cursor-pointer'
       break
     case 'adhoc':
       bgClass = 'bg-teal-100'
@@ -582,10 +582,10 @@ export function Schedule() {
             <div className="flex items-center justify-between px-5 pt-2">
               <div className="flex items-center gap-2">
                 <button className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-800 text-[11px] font-medium hover:bg-blue-100 transition-colors">
-                  🏏 Cricket <Check size={12} strokeWidth={3} />
+                  Cricket <Check size={12} strokeWidth={3} />
                 </button>
                 <button className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-green-50 border border-green-200 text-green-800 text-[11px] font-medium hover:bg-green-100 transition-colors">
-                  ⚽ Football <Check size={12} strokeWidth={3} />
+                  Football <Check size={12} strokeWidth={3} />
                 </button>
               </div>
               <div className="flex items-center gap-3">

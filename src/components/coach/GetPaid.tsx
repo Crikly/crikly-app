@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useCallback } from 'react'
-import { Building2, FileText, Info, ExternalLink, ChevronRight, AlertCircle, CheckCircle2 } from 'lucide-react'
+import { Building2, FileText, Info, ExternalLink, ChevronRight, AlertCircle, CheckCircle2, Check } from 'lucide-react'
 
 // CG-03: Stripe Connect status from GET /api/payments/connect/onboard
 interface StripeConnectStatus {
@@ -72,7 +72,7 @@ export function GetPaid() {
 
   const partiallyConnected = stripeStatus.connected && !fullyConnected
   return (
-    <div className="min-h-screen flex justify-center font-sans p-6 lg:p-10" style={{ fontFamily: "'DM Sans', sans-serif" }}>
+    <div className="min-h-screen flex justify-center font-sans p-6 lg:p-10">
       <div className="w-full max-w-3xl flex flex-col gap-8 pb-20">
 
         <div>
@@ -227,8 +227,8 @@ export function GetPaid() {
           <div className="flex items-center w-full mb-3">
             {/* Step 1: Done */}
             <div className="flex flex-col items-center">
-              <div className="w-[26px] h-[26px] rounded-full bg-[#DCFCE7] text-[#166534] flex items-center justify-center text-[14px] font-medium">
-                ✓
+              <div className="w-[26px] h-[26px] rounded-full bg-[#DCFCE7] text-[#166534] flex items-center justify-center font-medium">
+                <Check size={14} />
               </div>
               <div className="text-[9px] text-gray-500 text-center mt-1.5 leading-tight" style={{ maxWidth: '70px' }}>
                 Session completed

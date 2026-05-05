@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Upload, FileText, X } from 'lucide-react'
+import { Upload, FileText, X, Check, Clock } from 'lucide-react'
 import { OnboardingPreviewPanel } from '../OnboardingPreviewPanel'
 import { fetchCoachProfileCached } from '@/lib/onboarding-cache'
 
@@ -330,7 +330,7 @@ export function QualificationsStep() {
                         ? 'bg-[#DCFCE7] text-[#166534]'
                         : 'bg-[#FEF3C7] text-[#92400E]'
                     }`}>
-                      {qual.status === 'uploaded' ? '✓' : '⏱'}
+                      {qual.status === 'uploaded' ? <Check size={16} /> : <Clock size={16} />}
                     </div>
 
                     {/* Content */}
@@ -366,7 +366,11 @@ export function QualificationsStep() {
                           ? 'bg-[#DCFCE7] text-[#166534]'
                           : 'bg-[#FEF3C7] text-[#92400E]'
                       }`}>
-                        {qual.status === 'uploaded' ? '✓ Uploaded' : '⏱ Pending review'}
+                        {qual.status === 'uploaded' ? (
+                          <><Check size={12} /> Uploaded</>
+                        ) : (
+                          <><Clock size={12} /> Pending review</>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -414,7 +418,7 @@ export function QualificationsStep() {
         isDbs={hasDBS}
         infoBox={hasDBS ? {
           type: 'success',
-          message: '✓ DBS badge now visible to parents',
+          message: 'DBS badge now visible to parents',
           subMessage: 'Parents can see your credentials in search results'
         } : undefined}
       />

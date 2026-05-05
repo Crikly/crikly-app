@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { MapPin, Calendar } from 'lucide-react'
+import { MapPin, Calendar, ShieldCheck } from 'lucide-react'
 
 interface PublicProfilePreviewProps {
   displayName?: string
@@ -60,8 +60,8 @@ export function PublicProfilePreview({
       
       {/* DBS badge */}
       {hasDBS && (
-        <div className="inline-block px-2 py-0.5 bg-[#E0F6F8] text-[#006677] text-[10px] font-medium rounded-full mb-2.5">
-          ✓ DBS checked
+        <div className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#E0F6F8] text-[#006677] text-[10px] font-medium rounded-full mb-2.5">
+          <ShieldCheck size={11} /> DBS checked
         </div>
       )}
       

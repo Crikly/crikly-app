@@ -163,7 +163,7 @@ export function BookingsManagement() {
   const pendingCount: number = 0 // BR-06: auto-confirmed
 
   return (
-    <div className="min-h-screen bg-white" style={{ fontFamily: "'DM Sans', sans-serif" }}>
+    <div className="min-h-screen bg-white">
       <div className="w-full max-w-2xl mx-auto bg-white min-h-screen relative flex flex-col">
         <div className="px-5 pt-8 pb-2 bg-white sticky top-0 z-10">
           <h1 className="text-[28px] font-bold text-gray-900 tracking-tight">Bookings</h1>

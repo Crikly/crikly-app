@@ -291,7 +291,7 @@ export function PricingStep() {
                     {sport}
                     <span className="ml-2">
                       {idx === 0 ? (
-                        <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-[#DCFCE7] text-[#166534]">✓</span>
+                        <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-[#DCFCE7] text-[#166534]"><Check size={10} strokeWidth={3} /></span>
                       ) : (
                         <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full border-[1.5px] border-[#E2E8F0]"></span>
                       )}

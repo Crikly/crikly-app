@@ -86,10 +86,7 @@ export function CoachLayoutClient({
   const notificationBadge = notificationCount > 9 ? '9+' : notificationCount.toString()
 
   return (
-    <div
-      className="h-screen overflow-hidden bg-white text-gray-900 flex w-full max-w-[1600px] mx-auto"
-      style={{ fontFamily: "'DM Sans', sans-serif" }}
-    >
+    <div className="h-screen overflow-hidden bg-white text-gray-900 flex w-full max-w-[1600px] mx-auto">
       {/* Desktop Sidebar */}
       <aside className="hidden lg:flex w-72 shrink-0 flex-col bg-white border-r border-gray-100 p-6 sticky top-0 h-screen z-10">
         <Link href="/coach/dashboard" className="mb-6 flex justify-center">

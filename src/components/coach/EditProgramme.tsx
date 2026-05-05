@@ -274,7 +274,7 @@ export function EditProgramme({ programmeId }: { programmeId: string }) {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-white" style={{ fontFamily: "'DM Sans', sans-serif" }}>
+      <div className="min-h-screen bg-white">
         <div className="max-w-[760px] mx-auto px-8 py-6 pb-16">
           <div className="bg-white border border-[#E2E8F0] rounded-[20px] px-10 py-8">
             <div className="h-4 bg-[#F1F5F9] rounded-full w-28 mb-6 animate-pulse" />
@@ -293,7 +293,7 @@ export function EditProgramme({ programmeId }: { programmeId: string }) {
 
   if (fetchError) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center" style={{ fontFamily: "'DM Sans', sans-serif" }}>
+      <div className="min-h-screen bg-white flex items-center justify-center">
         <div className="text-center px-4">
           <p className="text-[16px] font-medium text-gray-900 mb-2">Failed to load programme</p>
           <p className="text-[14px] text-gray-500 mb-6">{fetchError}</p>
@@ -312,7 +312,7 @@ export function EditProgramme({ programmeId }: { programmeId: string }) {
   const priceDisplay = form.price_pence > 0 ? `£${penceToDisplay(form.price_pence)}` : '£—'
 
   return (
-    <div className="min-h-screen bg-white" style={{ fontFamily: "'DM Sans', sans-serif" }}>
+    <div className="min-h-screen bg-white">
       <div className="max-w-[760px] mx-auto px-8 py-6 pb-24">
         <div className="bg-white border border-[#E2E8F0] rounded-[20px] px-10 py-8 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
 

@@ -151,7 +151,7 @@ export function SportStep() {
                     className={`flex items-center gap-2.5 px-3 py-2.5 rounded-[10px] text-[14px] transition-all ${
                       isSelected
                         ? 'bg-[#EFF7FF] border-[1.5px] border-[#0077CC] text-[#0C447C] font-medium'
-                        : 'bg-white border border-[#E2E8F0] text-gray-600 hover:border-gray-300 hover:bg-gray-50'
+                        : 'bg-white border border-neutral-100 text-gray-600 hover:border-gray-300 hover:bg-gray-50'
                     }`}
                   >
                     <Icon size={16} className={isSelected ? 'text-[#0077CC]' : 'text-gray-400'} strokeWidth={2.5} />

@@ -814,7 +814,7 @@ export function AvailabilityStep() {
         isDbs={false}
         infoBox={scheduleBlocks.length > 0 ? {
           type: 'success',
-          message: '✓ Your availability is visible to parents',
+          message: 'Your availability is visible to parents',
           subMessage: 'Parents can see your available days in search results'
         } : {
           type: 'neutral',

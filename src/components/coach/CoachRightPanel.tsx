@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { ChevronRight, ChevronLeft, MapPin, Star, PoundSterling, Calendar, Loader2 } from 'lucide-react'
+import { ChevronRight, ChevronLeft, MapPin, Star, PoundSterling, Calendar, Loader2, Check, X, ShieldCheck } from 'lucide-react'
 import type { ProgrammePreviewEventDetail } from './CreateProgramme'
 
 type ProgrammePreviewState = ProgrammePreviewEventDetail
@@ -224,7 +224,7 @@ function GetPaidReassurance() {
   return (
     <div className="bg-[#F0FDF4] rounded-[10px] p-3">
       <div className="flex items-start gap-2 mb-1">
-        <div className="text-[#16A34A] text-[16px] shrink-0">✓</div>
+        <Check size={16} className="text-[#16A34A] shrink-0" />
         <div className="text-[12px] font-medium text-[#166534]">Everything looks good</div>
       </div>
       <p className="text-[11px] text-[#166534] leading-relaxed">
@@ -423,8 +423,8 @@ function ProfilePublicPreview({ profile }: { profile: CoachProfileResponse }) {
         
         {/* Fix-14C: Real DBS status */}
         {profile.dbs_status === 'verified' && (
-          <div className="inline-block px-2 py-0.5 bg-[#E0F6F8] text-[#006677] text-[10px] font-medium rounded-full mb-2.5">
-            ✓ DBS checked
+          <div className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#E0F6F8] text-[#006677] text-[10px] font-medium rounded-full mb-2.5">
+            <ShieldCheck size={11} /> DBS checked
           </div>
         )}
         
@@ -988,14 +988,14 @@ function BookingsPendingApprovals({ sportsMap }: { sportsMap: Record<string, str
                     disabled={actionLoadingId !== null}
                     className="flex-1 bg-[#0077CC] text-white text-[11px] font-medium rounded-md py-1.5 text-center hover:bg-[#0066AA] transition-colors disabled:opacity-60 flex items-center justify-center gap-1"
                   >
-                    {isActing && actionLoadingId === booking.id ? <Loader2 size={11} className="animate-spin" /> : '✓'} Approve
+                    {isActing && actionLoadingId === booking.id ? <Loader2 size={11} className="animate-spin" /> : <Check size={11} />} Approve
                   </button>
                   <button
                     onClick={() => handleAction(booking.id, 'decline')}
                     disabled={actionLoadingId !== null}
                     className="flex-1 bg-white border border-[#F09595] text-red-700 text-[11px] font-medium rounded-md py-1.5 text-center hover:bg-red-50 transition-colors disabled:opacity-60 flex items-center justify-center gap-1"
                   >
-                    {isActing && actionLoadingId === booking.id ? <Loader2 size={11} className="animate-spin" /> : '✗'} Decline
+                    {isActing && actionLoadingId === booking.id ? <Loader2 size={11} className="animate-spin" /> : <X size={11} />} Decline
                   </button>
                 </div>
               </div>
@@ -1149,7 +1149,7 @@ function ProgrammeCreatePreviewPanel({ preview }: { preview: ProgrammePreviewSta
                   isCurrent ? 'bg-white border-2 border-[#0077CC] text-[#0077CC]' :
                   'bg-gray-100 text-gray-400'
                 }`}>
-                  {isDone ? '✓' : stepNum}
+                  {isDone ? <Check size={12} strokeWidth={3} /> : stepNum}
                 </div>
                 <span className={`text-[12px] ${
                   isDone ? 'text-[#0077CC] font-medium' :
