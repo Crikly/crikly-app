@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { requireCoachRole } from '@/lib/auth/require-coach'
 
 // ─── Slug helpers ─────────────────────────────────────────────────────────────
 
@@ -72,34 +73,9 @@ export async function GET(): Promise<NextResponse<CoachProfileResponse | { error
   try {
     const supabase = await createClient()
     
-    // 1. Auth check
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
-    }
-
-    // 2. Check coach role exists
-    const { data: userProfile, error: profileError } = await supabase
-      .from('user_profiles')
-      .select('id, auth_user_id')
-      .eq('auth_user_id', user.id)
-      .single()
-
-    if (profileError || !userProfile) {
-      return NextResponse.json({ error: 'User profile not found' }, { status: 404 })
-    }
-
-    const { data: roleCheck, error: roleError } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_profile_id', userProfile.id)
-      .eq('role', 'coach')
-      .single()
-
-    if (roleError || !roleCheck) {
-      return NextResponse.json({ error: 'Forbidden — coach role required' }, { status: 403 })
-    }
+    const { context, error } = await requireCoachRole(supabase)
+    if (error) return error
+    const { userProfile } = context
 
     // 3. Fetch coach profile with user_profiles join
     const { data: coachProfile, error: coachError } = await supabase
@@ -201,34 +177,9 @@ export async function POST(
   try {
     const supabase = await createClient()
     
-    // 1. Auth check
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
-    }
-
-    // 2. Check coach role exists
-    const { data: userProfile, error: profileError } = await supabase
-      .from('user_profiles')
-      .select('id, auth_user_id')
-      .eq('auth_user_id', user.id)
-      .single()
-
-    if (profileError || !userProfile) {
-      return NextResponse.json({ error: 'User profile not found' }, { status: 404 })
-    }
-
-    const { data: roleCheck, error: roleError } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_profile_id', userProfile.id)
-      .eq('role', 'coach')
-      .single()
-
-    if (roleError || !roleCheck) {
-      return NextResponse.json({ error: 'Forbidden — coach role required' }, { status: 403 })
-    }
+    const { context, error } = await requireCoachRole(supabase)
+    if (error) return error
+    const { userProfile } = context
 
     // 3. Parse and validate body
     const body = await request.json()

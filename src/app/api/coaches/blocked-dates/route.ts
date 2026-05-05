@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { requireCoachContextOrCreate } from '@/lib/auth/require-coach'
 
 /**
  * Blocked date response
@@ -55,56 +56,9 @@ export async function GET(): Promise<NextResponse<{ blocked_dates: BlockedDateRe
   try {
     const supabase = await createClient()
     
-    // 1. Auth check
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
-    }
-
-    // 2. Get user profile and check coach role
-    const { data: userProfile, error: profileError } = await supabase
-      .from('user_profiles')
-      .select('id')
-      .eq('auth_user_id', user.id)
-      .single()
-
-    if (profileError || !userProfile) {
-      return NextResponse.json({ error: 'User profile not found' }, { status: 404 })
-    }
-
-    const { data: roleCheck, error: roleError } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_profile_id', userProfile.id)
-      .eq('role', 'coach')
-      .single()
-
-    if (roleError || !roleCheck) {
-      return NextResponse.json({ error: 'Forbidden — coach role required' }, { status: 403 })
-    }
-
-    // 3. Get or create coach profile
-    // Fix-CD-04b: Upsert coach_profiles on first access instead of returning 404
-    const { data: coachProfile, error: coachError } = await supabase
-      .from('coach_profiles')
-      .upsert(
-        {
-          user_profile_id: userProfile.id,
-          updated_at: new Date().toISOString(),
-        },
-        {
-          onConflict: 'user_profile_id',
-          ignoreDuplicates: false,
-        }
-      )
-      .select('id')
-      .single()
-
-    if (coachError || !coachProfile) {
-      console.error('[GET /api/coaches/blocked-dates] coach profile upsert error:', coachError)
-      return NextResponse.json({ error: 'Failed to create coach profile' }, { status: 500 })
-    }
+    const { context, error: authError } = await requireCoachContextOrCreate(supabase)
+    if (authError) return authError
+    const { coachProfile } = context
 
     // 4. Fetch blocked dates
     const { data: blockedDates, error: blockedError } = await supabase
@@ -149,56 +103,9 @@ export async function POST(
   try {
     const supabase = await createClient()
     
-    // 1. Auth check
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
-    }
-
-    // 2. Get user profile and check coach role
-    const { data: userProfile, error: profileError } = await supabase
-      .from('user_profiles')
-      .select('id')
-      .eq('auth_user_id', user.id)
-      .single()
-
-    if (profileError || !userProfile) {
-      return NextResponse.json({ error: 'User profile not found' }, { status: 404 })
-    }
-
-    const { data: roleCheck, error: roleError } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_profile_id', userProfile.id)
-      .eq('role', 'coach')
-      .single()
-
-    if (roleError || !roleCheck) {
-      return NextResponse.json({ error: 'Forbidden — coach role required' }, { status: 403 })
-    }
-
-    // 3. Get or create coach profile
-    // Fix-CD-04b: Upsert coach_profiles on first access instead of returning 404
-    const { data: coachProfile, error: coachError } = await supabase
-      .from('coach_profiles')
-      .upsert(
-        {
-          user_profile_id: userProfile.id,
-          updated_at: new Date().toISOString(),
-        },
-        {
-          onConflict: 'user_profile_id',
-          ignoreDuplicates: false,
-        }
-      )
-      .select('id')
-      .single()
-
-    if (coachError || !coachProfile) {
-      console.error('[POST /api/coaches/blocked-dates] coach profile upsert error:', coachError)
-      return NextResponse.json({ error: 'Failed to create coach profile' }, { status: 500 })
-    }
+    const { context, error: authError } = await requireCoachContextOrCreate(supabase)
+    if (authError) return authError
+    const { coachProfile } = context
 
     // 4. Parse and validate body
     const body = await request.json()
