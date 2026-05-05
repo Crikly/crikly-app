@@ -6,6 +6,12 @@ import Link from 'next/link'
 import { ChevronLeft, ChevronRight, Plus, Check, User, RefreshCw, Users, Ban, X, Calendar, MapPin, PoundSterling, AlertCircle, Info } from 'lucide-react'
 import { VenueAutocomplete, type VenueSelection } from '@/components/coach/shared/LocationAutocomplete'
 
+// AF-P-03a: Local-time YYYY-MM-DD formatter — avoids toISOString() UTC drift.
+// Used for week-bounds filter and per-day grid filtering.
+const pad = (n: number) => String(n).padStart(2, '0')
+const fmtDate = (d: Date) =>
+  `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+
 // CD-12: API response types
 interface AvailabilityResponse {
   id: string
@@ -162,8 +168,11 @@ export function Schedule() {
 
   // CD-12b: State for booking blocks
   const [bookings, setBookings] = useState<BookingBlock[]>([])
-  // CI-01: Increment to force bookings re-fetch after approve/decline
-  const [refreshKey, setRefreshKey] = useState(0)
+  // AF-P-02: split refresh keys — approve/decline only triggers bookings refresh.
+  const [bookingsRefreshKey, setBookingsRefreshKey] = useState(0)
+  const [availabilityRefreshKey, setAvailabilityRefreshKey] = useState(0)
+  // AF-P-03b: track first-load completion to suppress skeleton on subsequent refreshes
+  const hasLoadedRef = useRef(false)
   // AF-C-01: Sport id → name lookup for booking popovers
   const [sportsMap, setSportsMap] = useState<Record<string, string>>({})
 
@@ -194,11 +203,12 @@ export function Schedule() {
   const [venueKey, setVenueKey] = useState(0)
   const [adHocPrice, setAdHocPrice] = useState('')
 
-  // CD-12: Fetch availability data on mount and after ad hoc submit
+  // CD-12: Fetch availability data on mount + ad-hoc create/delete only.
+  // AF-P-02: split key. AF-P-03b: silent refresh after first load.
   useEffect(() => {
     const fetchAvailability = async () => {
       try {
-        setLoading(true)
+        if (!hasLoadedRef.current) setLoading(true)
         setError(null)
 
         const response = await fetch('/api/coaches/availability')
@@ -212,12 +222,15 @@ export function Schedule() {
         console.error('Failed to fetch availability:', err)
         setError('Failed to load schedule. Please try again.')
       } finally {
-        setLoading(false)
+        if (!hasLoadedRef.current) {
+          setLoading(false)
+          hasLoadedRef.current = true
+        }
       }
     }
 
     fetchAvailability()
-  }, [refreshKey])
+  }, [availabilityRefreshKey])
 
   // AF-C-01: Fetch sports map once on mount for booking popover sport names
   useEffect(() => {
@@ -255,11 +268,13 @@ export function Schedule() {
     }
   }, [])
 
-  // CD-12b / Fix-54: Fetch bookings for the visible week (today + upcoming + past + pending_approval)
+  // CD-12b / Fix-54: Fetch bookings for the visible week.
+  // AF-P-02: split key. AF-P-03a: local-date weekStart/weekEnd (was toISOString —
+  // dropped UK boundary days under BST). AF-P-03b: silent refresh after first load.
   useEffect(() => {
     const fetchBookings = async () => {
       try {
-        setLoading(true)
+        if (!hasLoadedRef.current) setLoading(true)
         const [todayRes, upcomingRes, pastRes, pendingRes] = await Promise.all([
           fetch('/api/coaches/bookings?tab=today'),
           fetch('/api/coaches/bookings?tab=upcoming'),
@@ -286,8 +301,8 @@ export function Schedule() {
           return true
         })
 
-        const weekStart = days[0].fullDate.toISOString().slice(0, 10)
-        const weekEnd = days[6].fullDate.toISOString().slice(0, 10)
+        const weekStart = fmtDate(days[0].fullDate)
+        const weekEnd = fmtDate(days[6].fullDate)
         const visible = deduped.filter(
           (b) =>
             b.session_date >= weekStart &&
@@ -299,13 +314,16 @@ export function Schedule() {
       } catch {
         // non-critical — grid still shows availability
       } finally {
-        setLoading(false)
+        if (!hasLoadedRef.current) {
+          setLoading(false)
+          hasLoadedRef.current = true
+        }
       }
     }
 
     fetchBookings()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [weekOffset, refreshKey])
+  }, [weekOffset, bookingsRefreshKey])
 
   // Fix-20: Auto-open New Session popover when ?action=new-session
   useEffect(() => {
@@ -468,7 +486,8 @@ export function Schedule() {
       setVenueKey(k => k + 1)
       setAdHocPrice('')
       setAdHocError(null)
-      setRefreshKey(k => k + 1)
+      // AF-P-02: ad-hoc create only adds an availability slot; bookings unchanged
+      setAvailabilityRefreshKey(k => k + 1)
     } catch {
       setAdHocError('Network error — please try again.')
     } finally {
@@ -655,10 +674,8 @@ export function Schedule() {
                 <div className="absolute inset-0 flex pointer-events-auto z-10">
                   <div className="w-16 shrink-0" />
                   {days.map((day, dayIdx) => {
-                    // Filter availability for this day
-                    const pad = (n: number) => String(n).padStart(2, '0')
-                    const d = day.fullDate
-                    const dayIso = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+                    // Filter availability for this day — uses module-scoped fmtDate
+                    const dayIso = fmtDate(day.fullDate)
                     const dayBlocks = availability.filter(block => {
                       if (!block.is_active) return false
                       if (block.day_of_week !== day.dayOfWeek) return false
@@ -715,9 +732,7 @@ export function Schedule() {
                 <div className="absolute inset-0 flex pointer-events-none z-[15]">
                   <div className="w-16 shrink-0" />
                   {days.map((day, dayIdx) => {
-                    const _pad = (n: number) => String(n).padStart(2, '0')
-                    const _d = day.fullDate
-                    const isoDate = `${_d.getFullYear()}-${_pad(_d.getMonth() + 1)}-${_pad(_d.getDate())}`
+                    const isoDate = fmtDate(day.fullDate)
                     const dayBookings = bookings.filter((b) => b.session_date === isoDate)
                     return (
                       <div key={dayIdx} className="flex-1 relative border-r border-transparent">
@@ -793,7 +808,7 @@ export function Schedule() {
             booking={bookings.find((b) => b.id === activePopover.sessionId) ?? null}
             sportsMap={sportsMap}
             onClose={() => setActivePopover(null)}
-            onRefresh={() => { setActivePopover(null); setRefreshKey((k) => k + 1) }}
+            onRefresh={() => { setActivePopover(null); setBookingsRefreshKey((k) => k + 1) }}
           />
         )}
         {activePopover?.type === 'creation' && (
@@ -810,7 +825,7 @@ export function Schedule() {
           <AdHocPopover
             {...adHocPopover}
             onClose={() => setAdHocPopover(null)}
-            onDeleted={() => { setAdHocPopover(null); setRefreshKey(k => k + 1) }}
+            onDeleted={() => { setAdHocPopover(null); setAvailabilityRefreshKey(k => k + 1) }}
           />
         )}
       </div>
