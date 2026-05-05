@@ -1,6 +1,7 @@
 'use client'
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { CheckCircle2, Circle } from 'lucide-react'
 import { OnboardingPreviewPanel } from '../OnboardingPreviewPanel'
 
 export function BookingPolicyStep() {
@@ -8,7 +9,8 @@ export function BookingPolicyStep() {
   const [cancellationWindow, setCancellationWindow] = useState('48 hours')
   const [earliestBooking, setEarliestBooking] = useState('24 hours')
   const [latestBooking, setLatestBooking] = useState('8 weeks')
-  // Fix-106 (AF-C-14): Manual approval removed per BR-06 ("Bookings auto-confirmed")
+  // Fix-AC-14: Manual approval is opt-in per updated BR-06
+  const [bookingApproval, setBookingApproval] = useState<'Instant' | 'Manual'>('Instant')
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -53,6 +55,11 @@ export function BookingPolicyStep() {
           else if (days === 28) setLatestBooking('4 weeks')
           else if (days === 56) setLatestBooking('8 weeks')
           else if (days === 84) setLatestBooking('12 weeks')
+        }
+
+        // Fix-AC-14: pre-populate booking approval mode
+        if (data.requires_manual_approval !== undefined) {
+          setBookingApproval(data.requires_manual_approval ? 'Manual' : 'Instant')
         }
       } catch (err) {
         console.error('Failed to fetch booking policy:', err)
@@ -99,10 +106,12 @@ export function BookingPolicyStep() {
           cancellation_window_hours: cancellationHours,
           min_advance_hours: minAdvanceHours,
           max_advance_days: maxAdvanceDays,
+          // Fix-AC-14: persist manual-approval opt-in
+          requires_manual_approval: bookingApproval === 'Manual',
         })
       })
 
-      // Fix-106 (AF-C-14): surface API errors instead of silently navigating
+      // Fix-AC-14: surface API errors instead of silently navigating
       if (!response.ok) {
         setSaveError('Failed to save booking policy. Please try again.')
         return
@@ -204,12 +213,36 @@ export function BookingPolicyStep() {
             </div>
           </div>
 
-          {/* Fix-106 (AF-C-14): Booking approval section removed.
-              BR-06 mandates auto-confirmed bookings; Manual mode contradicted
-              the rule and caused silent data loss. */}
+          {/* Fix-AC-14: Booking approval — opt-in per updated BR-06 */}
+          <div className="bg-white border border-gray-100 shadow-sm rounded-[24px] p-8 mb-6">
+            <h2 className="text-[18px] font-bold text-gray-900 mb-6">Booking approval</h2>
+            <div className="flex flex-col gap-3">
+              <label className="text-[14px] font-bold text-gray-900 mb-2">How do you want to confirm bookings?</label>
+              <div className="flex flex-col gap-3">
+                {[
+                  { key: 'Instant' as const, desc: 'Bookings confirmed automatically on payment', helper: 'Parents get instant confirmation' },
+                  { key: 'Manual' as const, desc: 'You review and approve each booking request', helper: 'You review each request before confirming' }
+                ].map(({ key, desc, helper }) => (
+                  <button key={key} onClick={() => setBookingApproval(key)} className={`flex items-start gap-4 p-5 rounded-xl border-2 transition-all text-left ${bookingApproval === key ? 'border-[#0077CC] bg-blue-50/50' : 'border-gray-100 hover:border-gray-200 hover:bg-gray-50'}`}>
+                    <div className="mt-0.5 shrink-0">
+                      {bookingApproval === key
+                        ? <CheckCircle2 size={20} className="text-[#0077CC] fill-blue-100" />
+                        : <Circle size={20} className="text-gray-300" />
+                      }
+                    </div>
+                    <div className="flex flex-col">
+                      <span className={`text-[15px] font-bold mb-1 ${bookingApproval === key ? 'text-[#0077CC]' : 'text-gray-900'}`}>{key}</span>
+                      <span className="text-[14px] text-gray-600 font-medium mb-1">{desc}</span>
+                      <span className="text-[12px] text-gray-500">{helper}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
 
-          {/* Fix-106 (AF-C-14): inline save error */}
+          {/* Fix-AC-14: inline save error */}
           {saveError && (
             <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-xl">
               <p className="text-[13px] font-medium text-red-700">{saveError}</p>
@@ -252,7 +285,7 @@ export function BookingPolicyStep() {
           cancellationWindow: cancellationWindow,
           minimumNotice: earliestBooking,
           bookingHorizon: latestBooking,
-          approvalType: 'instant'
+          approvalType: bookingApproval.toLowerCase() as 'instant' | 'manual'
         }}
       />
     </div>

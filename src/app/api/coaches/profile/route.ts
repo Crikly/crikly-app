@@ -50,6 +50,7 @@ interface CoachProfileResponse {
   cancellation_window_hours: number
   min_advance_hours: number
   max_advance_days: number
+  requires_manual_approval: boolean
   travel_radius_miles: number | null
   rating_avg: number | null
   rating_count: number
@@ -114,6 +115,7 @@ export async function GET(): Promise<NextResponse<CoachProfileResponse | { error
         cancellation_window_hours,
         min_advance_hours,
         max_advance_days,
+        requires_manual_approval,
         travel_radius_miles,
         rating_avg,
         rating_count,
@@ -167,6 +169,7 @@ export async function GET(): Promise<NextResponse<CoachProfileResponse | { error
       cancellation_window_hours: coachProfile.cancellation_window_hours,
       min_advance_hours: coachProfile.min_advance_hours,
       max_advance_days: coachProfile.max_advance_days,
+      requires_manual_approval: coachProfile.requires_manual_approval,
       travel_radius_miles: coachProfile.travel_radius_miles,
       rating_avg: coachProfile.rating_avg,
       rating_count: coachProfile.rating_count,
@@ -331,6 +334,13 @@ export async function POST(
       }
     }
 
+    // Fix-AC-14: requires_manual_approval validation
+    if (body.requires_manual_approval !== undefined) {
+      if (typeof body.requires_manual_approval !== 'boolean') {
+        validationErrors.push('requires_manual_approval must be a boolean')
+      }
+    }
+
     // Fix-16e: Validate languages if provided
     if (body.languages !== undefined && body.languages !== null) {
       if (!Array.isArray(body.languages)) {
@@ -381,6 +391,7 @@ export async function POST(
       min_advance_hours?: number
       max_advance_days?: number
       travel_radius_miles?: number | null
+      requires_manual_approval?: boolean
       updated_at: string
     } = {
       user_profile_id: userProfile.id,
@@ -397,6 +408,8 @@ export async function POST(
     if (body.max_advance_days !== undefined) coachProfileUpdates.max_advance_days = body.max_advance_days
     // Fix-129 (AF-H-15): travel_radius_miles assignment
     if (body.travel_radius_miles !== undefined) coachProfileUpdates.travel_radius_miles = body.travel_radius_miles
+    // Fix-AC-14: requires_manual_approval assignment
+    if (body.requires_manual_approval !== undefined) coachProfileUpdates.requires_manual_approval = body.requires_manual_approval
 
     const { error: coachUpsertError } = await supabase
       .from('coach_profiles')
@@ -423,6 +436,7 @@ export async function POST(
         cancellation_window_hours,
         min_advance_hours,
         max_advance_days,
+        requires_manual_approval,
         travel_radius_miles,
         rating_avg,
         rating_count,
@@ -477,6 +491,7 @@ export async function POST(
       cancellation_window_hours: updatedProfile.cancellation_window_hours,
       min_advance_hours: updatedProfile.min_advance_hours,
       max_advance_days: updatedProfile.max_advance_days,
+      requires_manual_approval: updatedProfile.requires_manual_approval,
       travel_radius_miles: updatedProfile.travel_radius_miles,
       rating_avg: updatedProfile.rating_avg,
       rating_count: updatedProfile.rating_count,
