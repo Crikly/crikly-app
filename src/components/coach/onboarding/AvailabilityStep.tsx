@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Pencil, X, Plus, ChevronDown, AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react'
 import { OnboardingPreviewPanel } from '../OnboardingPreviewPanel'
 import { VenueAutocomplete, type VenueSelection } from '../shared/LocationAutocomplete'
+import { fetchCoachProfileCached } from '@/lib/onboarding-cache'
 
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December']
 const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
@@ -142,30 +143,24 @@ export function AvailabilityStep() {
   }
   
   // Fix-16c: Fetch saved availability on mount
+  // AF-P-09: parallelise availability + cached profile + sports — all independent
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Fetch availability
-        await fetchAvailability()
+        const [, profileData, sportsData] = await Promise.all([
+          fetchAvailability(),
+          fetchCoachProfileCached(),
+          fetch('/api/coaches/sports').then((r) => r.ok ? r.json() : { sports: [] }),
+        ])
 
-        // Fix-16e: Fetch coach profile for name
-        const profileResponse = await fetch('/api/coaches/profile')
-        if (profileResponse.ok) {
-          const profileData = await profileResponse.json()
-          setCoachName(profileData.full_name || 'Your name')
-        }
+        setCoachName(profileData.full_name || 'Your name')
 
-        // Fix-104 (AF-C-12): Fetch coach's configured sports for the dropdown
-        const sportsResponse = await fetch('/api/coaches/sports')
-        if (sportsResponse.ok) {
-          const sportsData = await sportsResponse.json()
-          const sports = (sportsData.sports || []).map((s: { sport_id: string; sport_name: string }) => ({
-            sport_id: s.sport_id,
-            sport_name: s.sport_name,
-          }))
-          setCoachSports(sports)
-          if (sports.length > 0) setFormSportId(sports[0].sport_id)
-        }
+        const sports = (sportsData.sports || []).map((s: { sport_id: string; sport_name: string }) => ({
+          sport_id: s.sport_id,
+          sport_name: s.sport_name,
+        }))
+        setCoachSports(sports)
+        if (sports.length > 0) setFormSportId(sports[0].sport_id)
       } catch (error) {
         console.error('[AvailabilityStep] Failed to fetch data:', error)
       } finally {

@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Target, Trophy, Circle, Waves, Medal, Feather, Activity, Flag, Dumbbell, Check } from 'lucide-react'
 import { OnboardingPreviewPanel } from '../OnboardingPreviewPanel'
+import { fetchCoachProfileCached, fetchSportsListCached } from '@/lib/onboarding-cache'
 
 interface CoachSportResponse {
   id: string
@@ -52,22 +53,15 @@ export function SportStep() {
   }
 
   // Fix-17c: Fetch available sports from API and saved coach sports
+  // AF-P-07: parallelise three independent fetches; sports list + profile use shared caches
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Fix-30b: Cache raw data only, apply icon mapping after
-        const cachedSports = sessionStorage.getItem('sports_list_raw')
-        let rawSports: { id: string; name: string; slug: string }[] = []
-
-        if (cachedSports) {
-          rawSports = JSON.parse(cachedSports)
-        } else {
-          const sportsResponse = await fetch('/api/sports')
-          if (!sportsResponse.ok) throw new Error('Failed to fetch sports')
-          const sportsData = await sportsResponse.json()
-          rawSports = sportsData.sports || []
-          sessionStorage.setItem('sports_list_raw', JSON.stringify(rawSports))
-        }
+        const [rawSports, coachSportsData, profileData] = await Promise.all([
+          fetchSportsListCached() as Promise<{ id: string; name: string; slug: string }[]>,
+          fetch('/api/coaches/sports').then((r) => r.ok ? r.json() : { sports: [] }),
+          fetchCoachProfileCached(),
+        ])
 
         // Always apply icon mapping after loading (never cache components)
         const sportsWithIcons = rawSports.map((sport) => ({
@@ -75,21 +69,11 @@ export function SportStep() {
           Icon: iconMap[sport.slug] || Target
         }))
         setSports(sportsWithIcons)
-        
-        // Fetch saved coach sports to pre-select
-        const coachSportsResponse = await fetch('/api/coaches/sports')
-        if (coachSportsResponse.ok) {
-          const data = await coachSportsResponse.json()
-          const savedSportNames = data.sports.map((s: CoachSportResponse) => s.sport_name)
-          setSelectedSports(savedSportNames)
-        }
-        
-        // Fix-16e: Fetch coach profile for name
-        const profileResponse = await fetch('/api/coaches/profile')
-        if (profileResponse.ok) {
-          const profileData = await profileResponse.json()
-          setCoachName(profileData.full_name || 'Your name')
-        }
+
+        const savedSportNames = (coachSportsData.sports ?? []).map((s: CoachSportResponse) => s.sport_name)
+        setSelectedSports(savedSportNames)
+
+        setCoachName(profileData.full_name || 'Your name')
       } catch (error) {
         console.error('[SportStep] Failed to fetch data:', error)
       } finally {

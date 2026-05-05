@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Check, X, Plus } from 'lucide-react'
+import { fetchCoachProfileCached, fetchSportsListCached } from '@/lib/onboarding-cache'
 
 interface Sport {
   id: string
@@ -44,24 +45,20 @@ export function PricingStep() {
 
   useEffect(() => {
     // Fix-16c: Fetch sports list, selected sports, and saved pricing data
+    // AF-P-08: parallelise three independent fetches; sports list + profile use shared caches
     const fetchData = async () => {
       try {
-        // Fetch sports list
-        const sportsResponse = await fetch('/api/sports')
-        if (!sportsResponse.ok) {
-          throw new Error('Failed to fetch sports')
-        }
-        const sportsData = await sportsResponse.json()
-        setSports(sportsData.sports || [])
+        const [rawSports, profileData, coachSportsData] = await Promise.all([
+          fetchSportsListCached() as Promise<Sport[]>,
+          fetchCoachProfileCached(),
+          fetch('/api/coaches/sports').then((r) => r.ok ? r.json() : { sports: [] }),
+        ])
 
-        // Fix-23 & Fix-24b: Fetch coach profile for name and avatar
-        const profileResponse = await fetch('/api/coaches/profile')
-        if (profileResponse.ok) {
-          const profileData = await profileResponse.json()
-          setCoachName(profileData.full_name || '')
-          if (profileData.avatar_url) {
-            setCoachAvatarUrl(profileData.avatar_url)
-          }
+        setSports(rawSports)
+
+        setCoachName(profileData.full_name || '')
+        if (profileData.avatar_url) {
+          setCoachAvatarUrl(profileData.avatar_url)
         }
 
         // Get selected sports from sessionStorage
@@ -70,50 +67,46 @@ export function PricingStep() {
           setSelectedSports(JSON.parse(stored))
         }
 
-        // Fix-16c: Fetch saved coach sports data
-        const coachSportsResponse = await fetch('/api/coaches/sports')
-        if (coachSportsResponse.ok) {
-          const coachSportsData = await coachSportsResponse.json()
-          if (coachSportsData.sports && coachSportsData.sports.length > 0) {
-            const savedSport = coachSportsData.sports[0] as CoachSportResponse
-            
-            // Pre-populate session types
-            setSessionTypes({
-              individual: savedSport.session_types.includes('individual'),
-              group: savedSport.session_types.includes('group')
+        // Pre-populate from saved coach sports data
+        if (coachSportsData.sports && coachSportsData.sports.length > 0) {
+          const savedSport = coachSportsData.sports[0] as CoachSportResponse
+
+          // Pre-populate session types
+          setSessionTypes({
+            individual: savedSport.session_types.includes('individual'),
+            group: savedSport.session_types.includes('group')
+          })
+
+          // Pre-populate skill levels (capitalize first letter)
+          const capitalizedSkillLevels = savedSport.skill_levels.map(
+            level => level.charAt(0).toUpperCase() + level.slice(1)
+          )
+          setSkillLevels(capitalizedSkillLevels)
+
+          // Pre-populate price (convert from pence to pounds)
+          if (savedSport.price_individual_pence) {
+            const priceInPounds = (savedSport.price_individual_pence / 100).toFixed(0)
+            setPricingRows([{
+              id: '1',
+              duration: `${savedSport.session_duration_minutes} min`,
+              price: priceInPounds
+            }])
+          }
+
+          // Fix-16f: Pre-populate age_groups (convert API format to UI format)
+          if (savedSport.age_groups && savedSport.age_groups.length > 0) {
+            const uiAgeGroups = savedSport.age_groups.map((group: string) => {
+              const mapping: Record<string, string> = {
+                'under_8': 'Under 8',
+                'under_10': 'Under 10',
+                'under_12': 'Under 12',
+                'under_14': 'Under 14',
+                'under_16': 'Under 16',
+                'adults': 'Adults (17+)'
+              }
+              return mapping[group] || group
             })
-            
-            // Pre-populate skill levels (capitalize first letter)
-            const capitalizedSkillLevels = savedSport.skill_levels.map(
-              level => level.charAt(0).toUpperCase() + level.slice(1)
-            )
-            setSkillLevels(capitalizedSkillLevels)
-            
-            // Pre-populate price (convert from pence to pounds)
-            if (savedSport.price_individual_pence) {
-              const priceInPounds = (savedSport.price_individual_pence / 100).toFixed(0)
-              setPricingRows([{
-                id: '1',
-                duration: `${savedSport.session_duration_minutes} min`,
-                price: priceInPounds
-              }])
-            }
-            
-            // Fix-16f: Pre-populate age_groups (convert API format to UI format)
-            if (savedSport.age_groups && savedSport.age_groups.length > 0) {
-              const uiAgeGroups = savedSport.age_groups.map((group: string) => {
-                const mapping: Record<string, string> = {
-                  'under_8': 'Under 8',
-                  'under_10': 'Under 10',
-                  'under_12': 'Under 12',
-                  'under_14': 'Under 14',
-                  'under_16': 'Under 16',
-                  'adults': 'Adults (17+)'
-                }
-                return mapping[group] || group
-              })
-              setAgeGroups(uiAgeGroups)
-            }
+            setAgeGroups(uiAgeGroups)
           }
         }
       } catch (error) {

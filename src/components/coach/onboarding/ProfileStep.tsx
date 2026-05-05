@@ -6,6 +6,7 @@ import { Camera, Calendar, ChevronDown, Check } from 'lucide-react'
 import { OnboardingPreviewPanel } from '../OnboardingPreviewPanel'
 import { LocationAutocomplete } from '../shared/LocationAutocomplete'
 import { createClient } from '@/lib/supabase/client'
+import { fetchCoachProfileCached, clearCoachProfileCache } from '@/lib/onboarding-cache'
 
 // Fix-129 (AF-H-15): map travel-radius UI string → integer miles
 function parseTravelRadius(s: string): number | null {
@@ -92,12 +93,8 @@ export function ProfileStep() {
         setLoading(true)
         setError(null)
         
-        const response = await fetch('/api/coaches/profile')
-        if (!response.ok) {
-          throw new Error('Failed to fetch profile')
-        }
-        
-        const data: CoachProfileResponse = await response.json()
+        // AF-P-01: cached fetch — returns cached profile if hit, network otherwise
+        const data: CoachProfileResponse = await fetchCoachProfileCached()
         
         // Populate form fields with real data
         setDisplayName(data.full_name || '')
@@ -252,7 +249,10 @@ export function ProfileStep() {
       if (!response.ok) {
         throw new Error('Failed to save profile')
       }
-      
+
+      // AF-P-01: invalidate cache — this save mutates coach_profiles
+      clearCoachProfileCache()
+
       // CD-10: Show success state
       setSaveSuccess(true)
       

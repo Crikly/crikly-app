@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Upload, FileText, X } from 'lucide-react'
 import { OnboardingPreviewPanel } from '../OnboardingPreviewPanel'
+import { fetchCoachProfileCached } from '@/lib/onboarding-cache'
 
 interface Qualification {
   id: string
@@ -67,18 +68,15 @@ export function QualificationsStep() {
   }
   
   // Fix-16c: Fetch saved qualifications on mount
+  // AF-P-13: parallelise qualifications + cached profile fetch
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Fetch qualifications
-        await fetchQualifications()
-        
-        // Fix-16e: Fetch coach profile for name
-        const profileResponse = await fetch('/api/coaches/profile')
-        if (profileResponse.ok) {
-          const profileData = await profileResponse.json()
-          setCoachName(profileData.full_name || 'Your name')
-        }
+        const [, profileData] = await Promise.all([
+          fetchQualifications(),
+          fetchCoachProfileCached(),
+        ])
+        setCoachName(profileData.full_name || 'Your name')
       } catch (error) {
         console.error('[QualificationsStep] Failed to fetch data:', error)
       } finally {

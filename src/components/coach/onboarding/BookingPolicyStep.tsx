@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { CheckCircle2, Circle } from 'lucide-react'
 import { OnboardingPreviewPanel } from '../OnboardingPreviewPanel'
+import { fetchCoachProfileCached, clearCoachProfileCache } from '@/lib/onboarding-cache'
 
 export function BookingPolicyStep() {
   const router = useRouter()
@@ -21,10 +22,8 @@ export function BookingPolicyStep() {
     const fetchPolicy = async () => {
       try {
         setLoading(true)
-        const response = await fetch('/api/coaches/profile')
-        if (!response.ok) throw new Error('Failed to fetch profile')
-        
-        const data = await response.json()
+        // AF-P-01: cached fetch — returns cached profile if hit, network otherwise
+        const data = await fetchCoachProfileCached()
         
         // Fix-16e: Set coach name
         setCoachName(data.full_name || 'Your name')
@@ -116,6 +115,9 @@ export function BookingPolicyStep() {
         setSaveError('Failed to save booking policy. Please try again.')
         return
       }
+
+      // AF-P-01: invalidate cache — this save mutates coach_profiles
+      clearCoachProfileCache()
 
       router.push('/coach/onboarding/get-paid')
     } catch (err) {
