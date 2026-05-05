@@ -1,7 +1,7 @@
 'use client'
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useRouter, useParams } from 'next/navigation'
-import { ArrowLeft, Mail, CalendarDays, Activity, User, Clock, MapPin } from 'lucide-react'
+import { ArrowLeft, Mail, CalendarDays, Activity, User, Clock, MapPin, RefreshCw } from 'lucide-react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -189,6 +189,47 @@ export function BookingDetail() {
     }).finally(() => setLoading(false))
   }, [bookingId])
 
+  // AF-C-08: action state for Approve / Decline
+  const [actionLoading, setActionLoading] = useState<'approve' | 'decline' | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+
+  // AF-C-08: silent re-fetch after status action — no skeleton flash
+  const refetchBooking = useCallback(async () => {
+    if (!bookingId) return
+    try {
+      const r = await fetch(`/api/coaches/bookings/${bookingId}`)
+      if (!r.ok) return
+      const data = (await r.json()) as BookingDetailData
+      setBooking(data)
+    } catch {
+      // keep previous booking state — error surfaced via actionError if relevant
+    }
+  }, [bookingId])
+
+  // AF-C-08: handle Approve / Decline via existing PATCH /status endpoint
+  const handleStatusAction = async (action: 'approve' | 'decline') => {
+    if (!bookingId) return
+    setActionLoading(action)
+    setActionError(null)
+    try {
+      const res = await fetch(`/api/coaches/bookings/${bookingId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      })
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string }
+        setActionError(data.error ?? 'Something went wrong — please try again.')
+        return
+      }
+      await refetchBooking()
+    } catch {
+      setActionError('Network error — please try again.')
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
   const badge = booking ? statusBadge(booking.status) : null
 
   return (
@@ -341,16 +382,23 @@ export function BookingDetail() {
             {/* Action buttons — state-aware on booking.status */}
             {booking.status === 'pending_approval' && (
               <div className="pt-4 pb-6 space-y-3">
+                {actionError && (
+                  <p className="text-[14px] text-red-600 text-center" role="alert">{actionError}</p>
+                )}
                 <button
-                  className="w-full py-3.5 flex items-center justify-center gap-2 bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-xl text-[15px] font-bold transition-colors"
-                  onClick={() => { /* TODO: wire Approve in Step 5 */ }}
+                  disabled={actionLoading !== null}
+                  className="w-full py-3.5 flex items-center justify-center gap-2 bg-[#0077CC] hover:bg-[#0066AA] disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-xl text-[15px] font-bold transition-colors"
+                  onClick={() => handleStatusAction('approve')}
                 >
+                  {actionLoading === 'approve' ? <RefreshCw size={16} className="animate-spin" /> : null}
                   Approve
                 </button>
                 <button
-                  className="w-full py-3.5 flex items-center justify-center gap-2 border border-red-600 text-red-600 rounded-xl text-[15px] font-bold hover:bg-red-50 transition-colors bg-white"
-                  onClick={() => { /* TODO: wire Decline in Step 5 */ }}
+                  disabled={actionLoading !== null}
+                  className="w-full py-3.5 flex items-center justify-center gap-2 border border-red-600 text-red-600 rounded-xl text-[15px] font-bold hover:bg-red-50 disabled:opacity-60 disabled:cursor-not-allowed transition-colors bg-white"
+                  onClick={() => handleStatusAction('decline')}
                 >
+                  {actionLoading === 'decline' ? <RefreshCw size={16} className="animate-spin" /> : null}
                   Decline
                 </button>
               </div>
@@ -362,12 +410,19 @@ export function BookingDetail() {
                 booking.cancellation_window_hours,
               ) && (
                 <div className="pt-4 pb-6 space-y-3">
+                  {/* AF-C-09: coach-initiated cancel-of-confirmed-booking endpoint
+                      not yet implemented. Status route only accepts approve|decline
+                      and only against pending_approval bookings. Disabled until a
+                      dedicated cancel route exists (BR-04 refund + BR-13 flagging
+                      involved — separate 🔴 high-risk task). */}
                   <button
-                    className="w-full py-3.5 flex items-center justify-center gap-2 border border-red-600 text-red-600 rounded-xl text-[15px] font-bold hover:bg-red-50 transition-colors bg-white"
-                    onClick={() => { /* TODO: wire Cancel Booking in Step 5 */ }}
+                    disabled
+                    aria-disabled="true"
+                    className="w-full py-3.5 flex items-center justify-center gap-2 border border-gray-200 text-gray-400 rounded-xl text-[15px] font-bold opacity-60 cursor-not-allowed bg-white"
                   >
                     Cancel booking
                   </button>
+                  <p className="text-[12px] text-gray-400 text-center">Coming soon</p>
                 </div>
               )}
           </div>
