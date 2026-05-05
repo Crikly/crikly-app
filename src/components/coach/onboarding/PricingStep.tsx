@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Check, X, Plus } from 'lucide-react'
-import { fetchCoachProfileCached, fetchSportsListCached } from '@/lib/onboarding-cache'
+import { fetchCoachProfileCached, fetchSportsListCached, fetchCoachSportsCached, clearCoachSportsCache } from '@/lib/onboarding-cache'
 
 interface Sport {
   id: string
@@ -51,7 +51,7 @@ export function PricingStep() {
         const [rawSports, profileData, coachSportsData] = await Promise.all([
           fetchSportsListCached() as Promise<Sport[]>,
           fetchCoachProfileCached(),
-          fetch('/api/coaches/sports').then((r) => r.ok ? r.json() : { sports: [] }),
+          fetchCoachSportsCached(),
         ])
 
         setSports(rawSports)
@@ -220,7 +220,10 @@ export function PricingStep() {
 
       // Wait for all saves to complete
       await Promise.all(savePromises)
-      
+
+      // PERF-Sports-01: invalidate cache — these POSTs mutate coach_sports
+      clearCoachSportsCache()
+
       router.push('/coach/onboarding/qualifications')
     } finally {
       setSaving(false)

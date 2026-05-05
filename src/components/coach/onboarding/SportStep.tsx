@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Target, Trophy, Circle, Waves, Medal, Feather, Activity, Flag, Dumbbell, Check } from 'lucide-react'
 import { OnboardingPreviewPanel } from '../OnboardingPreviewPanel'
-import { fetchCoachProfileCached, fetchSportsListCached } from '@/lib/onboarding-cache'
+import { fetchCoachProfileCached, fetchSportsListCached, fetchCoachSportsCached } from '@/lib/onboarding-cache'
 
 interface CoachSportResponse {
   id: string
@@ -59,7 +59,7 @@ export function SportStep() {
       try {
         const [rawSports, coachSportsData, profileData] = await Promise.all([
           fetchSportsListCached() as Promise<{ id: string; name: string; slug: string }[]>,
-          fetch('/api/coaches/sports').then((r) => r.ok ? r.json() : { sports: [] }),
+          fetchCoachSportsCached(),
           fetchCoachProfileCached(),
         ])
 

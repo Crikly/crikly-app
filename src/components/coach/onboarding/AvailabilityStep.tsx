@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Pencil, X, Plus, ChevronDown, AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react'
 import { OnboardingPreviewPanel } from '../OnboardingPreviewPanel'
 import { VenueAutocomplete, type VenueSelection } from '../shared/LocationAutocomplete'
-import { fetchCoachProfileCached } from '@/lib/onboarding-cache'
+import { fetchCoachProfileCached, fetchCoachSportsCached } from '@/lib/onboarding-cache'
 
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December']
 const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
@@ -150,7 +150,7 @@ export function AvailabilityStep() {
         const [, profileData, sportsData] = await Promise.all([
           fetchAvailability(),
           fetchCoachProfileCached(),
-          fetch('/api/coaches/sports').then((r) => r.ok ? r.json() : { sports: [] }),
+          fetchCoachSportsCached(),
         ])
 
         setCoachName(profileData.full_name || 'Your name')

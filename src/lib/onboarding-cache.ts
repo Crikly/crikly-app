@@ -6,9 +6,12 @@
 // dedupe both via sessionStorage so each endpoint hits the network at most
 // once per onboarding pass.
 //
-// Cache invalidation: clearCoachProfileCache() must be called from any
-// handleSave that mutates coach_profiles (ProfileStep + BookingPolicyStep).
-// Other steps don't mutate coach_profiles, so they leave the cache warm.
+// Cache invalidation:
+//   clearCoachProfileCache() — call from any handleSave that mutates
+//     coach_profiles (ProfileStep + BookingPolicyStep).
+//   clearCoachSportsCache() — call from any handleSave that mutates
+//     coach_sports (PricingStep, the only writer in onboarding).
+//   Other steps leave caches warm.
 //
 // All sessionStorage access is wrapped in try/catch — sessionStorage throws
 // in private/incognito modes. On any failure we fall through to the network
@@ -16,6 +19,7 @@
 
 const COACH_PROFILE_KEY = 'coach_profile_cache'
 const SPORTS_LIST_KEY = 'sports_list_raw'
+const COACH_SPORTS_KEY = 'coach_sports_cache'
 
 export async function fetchCoachProfileCached() {
   try {
@@ -58,9 +62,37 @@ export async function fetchSportsListCached() {
   return rawSports
 }
 
+export async function fetchCoachSportsCached() {
+  try {
+    const cached = sessionStorage.getItem(COACH_SPORTS_KEY)
+    if (cached) return JSON.parse(cached)
+  } catch {
+    // fall through to network
+  }
+
+  const resp = await fetch('/api/coaches/sports')
+  if (!resp.ok) throw new Error('Failed to fetch coach sports')
+  const data = await resp.json()
+
+  try {
+    sessionStorage.setItem(COACH_SPORTS_KEY, JSON.stringify(data))
+  } catch {
+    // non-critical
+  }
+  return data
+}
+
 export function clearCoachProfileCache() {
   try {
     sessionStorage.removeItem(COACH_PROFILE_KEY)
+  } catch {
+    // sessionStorage unavailable — no cache to clear, no-op
+  }
+}
+
+export function clearCoachSportsCache() {
+  try {
+    sessionStorage.removeItem(COACH_SPORTS_KEY)
   } catch {
     // sessionStorage unavailable — no cache to clear, no-op
   }
