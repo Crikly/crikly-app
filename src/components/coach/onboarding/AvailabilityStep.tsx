@@ -11,7 +11,9 @@ const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct'
 const DAY_ABBR = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 const DISPLAY_ORDER = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
 const DAY_FULL: Record<string, string> = { Mon: 'Monday', Tue: 'Tuesday', Wed: 'Wednesday', Thu: 'Thursday', Fri: 'Friday', Sat: 'Saturday', Sun: 'Sunday' }
-const REPEAT_OPTIONS = ['Weekly', 'Fortnightly', 'Monthly', 'One-off']
+// Fix-104 (AF-C-12): One-off hidden — requires a date picker we don't have.
+// Track separately as a follow-up if/when one-off blocks are needed.
+const REPEAT_OPTIONS = ['Weekly', 'Fortnightly', 'Monthly']
 
 const TIME_OPTIONS: string[] = []
 for (let h = 6; h <= 22; h++) {
@@ -87,7 +89,9 @@ export function AvailabilityStep() {
   const [scheduleBlocks, setScheduleBlocks] = useState<ScheduleBlock[]>([])
   const [loading, setLoading] = useState(true)
   const [coachName, setCoachName] = useState<string>('Your name')
-  const availableSports = useMemo(() => [...new Set(scheduleBlocks.map(b => b.sport))], [scheduleBlocks])
+  // Fix-104 (AF-C-12): coach's configured sports — sourced from /api/coaches/sports
+  // (replaces deriving from scheduleBlocks, which left new coaches with an empty dropdown)
+  const [coachSports, setCoachSports] = useState<{ sport_id: string; sport_name: string }[]>([])
   const [showAddForm, setShowAddForm] = useState(false)
   const [preselectedDay, setPreselectedDay] = useState<string | null>(null)
   const [editingBlockId, setEditingBlockId] = useState<string | null>(null)
@@ -105,7 +109,8 @@ export function AvailabilityStep() {
   const [blockLabel, setBlockLabel] = useState('')
   const calendarDays = useMemo(() => buildCalendar(currentYear, currentMonth), [currentYear, currentMonth])
   const TODAY = new Date()
-  const [formSport, setFormSport] = useState(availableSports[0] ?? '')
+  // Fix-104 (AF-C-12): track sport_id alongside display name
+  const [formSportId, setFormSportId] = useState<string>('')
   const [formDays, setFormDays] = useState<string[]>([])
   const [formStartTime, setFormStartTime] = useState('09:00')
   const [formEndTime, setFormEndTime] = useState('10:00')
@@ -142,12 +147,24 @@ export function AvailabilityStep() {
       try {
         // Fetch availability
         await fetchAvailability()
-        
+
         // Fix-16e: Fetch coach profile for name
         const profileResponse = await fetch('/api/coaches/profile')
         if (profileResponse.ok) {
           const profileData = await profileResponse.json()
           setCoachName(profileData.full_name || 'Your name')
+        }
+
+        // Fix-104 (AF-C-12): Fetch coach's configured sports for the dropdown
+        const sportsResponse = await fetch('/api/coaches/sports')
+        if (sportsResponse.ok) {
+          const sportsData = await sportsResponse.json()
+          const sports = (sportsData.sports || []).map((s: { sport_id: string; sport_name: string }) => ({
+            sport_id: s.sport_id,
+            sport_name: s.sport_name,
+          }))
+          setCoachSports(sports)
+          if (sports.length > 0) setFormSportId(sports[0].sport_id)
         }
       } catch (error) {
         console.error('[AvailabilityStep] Failed to fetch data:', error)
@@ -196,10 +213,10 @@ export function AvailabilityStep() {
       }
     }
     return null
-  }, [formSport, formDays, formStartTime, formEndTime, scheduleBlocks, editingBlockId])
+  }, [formSportId, formDays, formStartTime, formEndTime, scheduleBlocks, editingBlockId])
   
-  const resetForm = () => { 
-    setFormSport(availableSports[0] ?? '')
+  const resetForm = () => {
+    setFormSportId(coachSports[0]?.sport_id ?? '')
     setFormDays([])
     setFormStartTime('09:00')
     setFormEndTime('10:00')
@@ -217,6 +234,9 @@ export function AvailabilityStep() {
     const times = block.time.split(' – ')
     setFormStartTime(times[0] || '09:00')
     setFormEndTime(times[1] || '10:00')
+    // Fix-104 (AF-C-12): pre-populate sport_id from the block's display sport name
+    const matchingSport = coachSports.find(s => s.sport_name === block.sport)
+    setFormSportId(matchingSport?.sport_id ?? '')
     setEditingBlockId(block.id)
     setShowAddForm(true)
     setTimeout(() => {
@@ -485,8 +505,8 @@ export function AvailabilityStep() {
                 <div className="mb-4">
                   <label className="block text-[12px] font-bold text-gray-500 mb-1.5 uppercase tracking-wider">Sport</label>
                   <div className="relative">
-                    <select value={formSport} onChange={e => { setFormSport(e.target.value); setFormDays([]) }} className="w-full appearance-none bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-[15px] font-medium text-gray-900 focus:outline-none focus:border-[#0077CC] pr-10">
-                      {availableSports.map(s => <option key={s} value={s}>{s}</option>)}
+                    <select value={formSportId} onChange={e => { setFormSportId(e.target.value); setFormDays([]) }} className="w-full appearance-none bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-[15px] font-medium text-gray-900 focus:outline-none focus:border-[#0077CC] pr-10">
+                      {coachSports.map(s => <option key={s.sport_id} value={s.sport_id}>{s.sport_name}</option>)}
                     </select>
                     <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                   </div>
@@ -572,18 +592,20 @@ export function AvailabilityStep() {
                         }
                         
                         // Save each selected day as a separate availability block
+                        // Fix-104 (AF-C-12): include sport_id, is_recurring, and venue snapshot
                         for (const dayAbbr of formDays) {
                           await fetch('/api/coaches/availability', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
-                              sport_id: null,
+                              sport_id: formSportId || null,
                               day_of_week: dayMap[dayAbbr],
                               start_time: formStartTime,
                               end_time: formEndTime,
                               price_override_pence: formPrice ? Math.round(parseFloat(formPrice) * 100) : null,
-                              // STUB: venue_id wiring pending Fix-38c
-                              // formVenueSelection holds { name, address, lat, lng } when a venue is selected
+                              venue_name: formVenueSelection?.name || formVenue.trim() || null,
+                              venue_address: formVenueSelection?.address || null,
+                              is_recurring: true, // One-off hidden from REPEAT_OPTIONS — all blocks are recurring here
                             })
                           })
                         }

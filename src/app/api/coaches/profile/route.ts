@@ -50,6 +50,7 @@ interface CoachProfileResponse {
   cancellation_window_hours: number
   min_advance_hours: number
   max_advance_days: number
+  travel_radius_miles: number | null
   rating_avg: number | null
   rating_count: number
   sessions_completed: number
@@ -113,6 +114,7 @@ export async function GET(): Promise<NextResponse<CoachProfileResponse | { error
         cancellation_window_hours,
         min_advance_hours,
         max_advance_days,
+        travel_radius_miles,
         rating_avg,
         rating_count,
         sessions_completed,
@@ -165,6 +167,7 @@ export async function GET(): Promise<NextResponse<CoachProfileResponse | { error
       cancellation_window_hours: coachProfile.cancellation_window_hours,
       min_advance_hours: coachProfile.min_advance_hours,
       max_advance_days: coachProfile.max_advance_days,
+      travel_radius_miles: coachProfile.travel_radius_miles,
       rating_avg: coachProfile.rating_avg,
       rating_count: coachProfile.rating_count,
       sessions_completed: coachProfile.sessions_completed,
@@ -321,6 +324,13 @@ export async function POST(
       }
     }
 
+    // Fix-129 (AF-H-15): travel_radius_miles validation
+    if (body.travel_radius_miles !== undefined && body.travel_radius_miles !== null) {
+      if (typeof body.travel_radius_miles !== 'number' || !Number.isInteger(body.travel_radius_miles) || body.travel_radius_miles < 0 || body.travel_radius_miles > 200) {
+        validationErrors.push('travel_radius_miles must be an integer between 0 and 200')
+      }
+    }
+
     // Fix-16e: Validate languages if provided
     if (body.languages !== undefined && body.languages !== null) {
       if (!Array.isArray(body.languages)) {
@@ -370,6 +380,7 @@ export async function POST(
       cancellation_window_hours?: number
       min_advance_hours?: number
       max_advance_days?: number
+      travel_radius_miles?: number | null
       updated_at: string
     } = {
       user_profile_id: userProfile.id,
@@ -384,6 +395,8 @@ export async function POST(
     if (body.cancellation_window_hours !== undefined) coachProfileUpdates.cancellation_window_hours = body.cancellation_window_hours
     if (body.min_advance_hours !== undefined) coachProfileUpdates.min_advance_hours = body.min_advance_hours
     if (body.max_advance_days !== undefined) coachProfileUpdates.max_advance_days = body.max_advance_days
+    // Fix-129 (AF-H-15): travel_radius_miles assignment
+    if (body.travel_radius_miles !== undefined) coachProfileUpdates.travel_radius_miles = body.travel_radius_miles
 
     const { error: coachUpsertError } = await supabase
       .from('coach_profiles')
@@ -410,6 +423,7 @@ export async function POST(
         cancellation_window_hours,
         min_advance_hours,
         max_advance_days,
+        travel_radius_miles,
         rating_avg,
         rating_count,
         sessions_completed,
@@ -463,6 +477,7 @@ export async function POST(
       cancellation_window_hours: updatedProfile.cancellation_window_hours,
       min_advance_hours: updatedProfile.min_advance_hours,
       max_advance_days: updatedProfile.max_advance_days,
+      travel_radius_miles: updatedProfile.travel_radius_miles,
       rating_avg: updatedProfile.rating_avg,
       rating_count: updatedProfile.rating_count,
       sessions_completed: updatedProfile.sessions_completed,

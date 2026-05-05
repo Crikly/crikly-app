@@ -1,7 +1,6 @@
 'use client'
-import React, { useState, useMemo, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { CheckCircle2, Circle, AlertTriangle } from 'lucide-react'
 import { OnboardingPreviewPanel } from '../OnboardingPreviewPanel'
 
 export function BookingPolicyStep() {
@@ -9,8 +8,9 @@ export function BookingPolicyStep() {
   const [cancellationWindow, setCancellationWindow] = useState('48 hours')
   const [earliestBooking, setEarliestBooking] = useState('24 hours')
   const [latestBooking, setLatestBooking] = useState('8 weeks')
-  const [bookingApproval, setBookingApproval] = useState('Instant')
+  // Fix-106 (AF-C-14): Manual approval removed per BR-06 ("Bookings auto-confirmed")
   const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [coachName, setCoachName] = useState<string>('Your name')
   
@@ -70,38 +70,48 @@ export function BookingPolicyStep() {
 
   const handleSave = async () => {
     setSaving(true)
+    setSaveError(null)
     try {
       // CD-03: verified - BookingPolicyStep saves to coach_profiles table
       // Maps to: cancellation_window_hours, min_advance_hours, max_advance_days
-      
+
       // Convert UI strings to hours/days integers
       const cancellationHours = cancellationWindow === 'No cancellations' ? 0 :
                                 cancellationWindow === '24 hours' ? 24 :
                                 cancellationWindow === '48 hours' ? 48 :
                                 cancellationWindow === '72 hours' ? 72 :
                                 cancellationWindow === '1 week' ? 168 : 48
-      
+
       const minAdvanceHours = earliestBooking === '12 hours' ? 12 :
                              earliestBooking === '24 hours' ? 24 :
                              earliestBooking === '48 hours' ? 48 :
                              earliestBooking === '1 week' ? 168 : 24
-      
+
       const maxAdvanceDays = latestBooking === '2 weeks' ? 14 :
                             latestBooking === '4 weeks' ? 28 :
                             latestBooking === '8 weeks' ? 56 :
                             latestBooking === '12 weeks' ? 84 : 56
-      
-      await fetch('/api/coaches/profile', {
+
+      const response = await fetch('/api/coaches/profile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          cancellation_window_hours: cancellationHours, // CD-03: coach_profiles.cancellation_window_hours (integer)
-          min_advance_hours: minAdvanceHours, // CD-03: coach_profiles.min_advance_hours (integer)
-          max_advance_days: maxAdvanceDays, // CD-03: coach_profiles.max_advance_days (integer)
-          // Note: booking_approval not in current schema - skipped
+          cancellation_window_hours: cancellationHours,
+          min_advance_hours: minAdvanceHours,
+          max_advance_days: maxAdvanceDays,
         })
       })
+
+      // Fix-106 (AF-C-14): surface API errors instead of silently navigating
+      if (!response.ok) {
+        setSaveError('Failed to save booking policy. Please try again.')
+        return
+      }
+
       router.push('/coach/onboarding/get-paid')
+    } catch (err) {
+      console.error('Failed to save booking policy:', err)
+      setSaveError('Failed to save booking policy. Please try again.')
     } finally {
       setSaving(false)
     }
@@ -194,47 +204,30 @@ export function BookingPolicyStep() {
             </div>
           </div>
 
-          {/* Booking approval */}
-          <div className="bg-white border border-gray-100 shadow-sm rounded-[24px] p-8 mb-6">
-            <h2 className="text-[18px] font-bold text-gray-900 mb-6">Booking approval</h2>
-            <div className="flex flex-col gap-3">
-              <label className="text-[14px] font-bold text-gray-900 mb-2">How do you want to confirm bookings?</label>
-              <div className="flex flex-col gap-3">
-                {[
-                  { key: 'Instant', desc: 'Bookings confirmed automatically on payment', helper: 'Parents get instant confirmation — better for conversion' },
-                  { key: 'Manual', desc: 'You review and approve each booking request', helper: 'You review each request before confirming — slower for parents' }
-                ].map(({ key, desc, helper }) => (
-                  <button key={key} onClick={() => setBookingApproval(key)} className={`flex items-start gap-4 p-5 rounded-xl border-2 transition-all text-left ${bookingApproval === key ? 'border-[#0077CC] bg-blue-50/50' : 'border-gray-100 hover:border-gray-200 hover:bg-gray-50'}`}>
-                    <div className="mt-0.5 shrink-0">
-                      {bookingApproval === key
-                        ? <CheckCircle2 size={20} className="text-[#0077CC] fill-blue-100" />
-                        : <Circle size={20} className="text-gray-300" />
-                      }
-                    </div>
-                    <div className="flex flex-col">
-                      <span className={`text-[15px] font-bold mb-1 ${bookingApproval === key ? 'text-[#0077CC]' : 'text-gray-900'}`}>{key}</span>
-                      <span className="text-[14px] text-gray-600 font-medium mb-1">{desc}</span>
-                      <span className="text-[12px] text-gray-500">{helper}</span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
+          {/* Fix-106 (AF-C-14): Booking approval section removed.
+              BR-06 mandates auto-confirmed bookings; Manual mode contradicted
+              the rule and caused silent data loss. */}
         </div>
 
+          {/* Fix-106 (AF-C-14): inline save error */}
+          {saveError && (
+            <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-xl">
+              <p className="text-[13px] font-medium text-red-700">{saveError}</p>
+            </div>
+          )}
+
           {/* Standard onboarding footer */}
-          <div 
+          <div
             className="sticky bottom-0 bg-white border-t-[0.5px] border-gray-100 px-6 py-3 flex justify-between items-center"
             style={{ boxShadow: '0 -2px 8px rgba(0,0,0,0.04)' }}
           >
-            <button 
+            <button
               onClick={() => router.push('/coach/onboarding/availability')}
               className="text-[13px] text-gray-500 hover:text-gray-900 font-medium transition-colors"
             >
               ← Back
             </button>
-            <button 
+            <button
               onClick={handleSave}
               disabled={saving}
               className="bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-full px-7 py-2.5 text-[13px] font-medium transition-colors disabled:opacity-60"
@@ -259,7 +252,7 @@ export function BookingPolicyStep() {
           cancellationWindow: cancellationWindow,
           minimumNotice: earliestBooking,
           bookingHorizon: latestBooking,
-          approvalType: bookingApproval.toLowerCase() as 'instant' | 'manual'
+          approvalType: 'instant'
         }}
       />
     </div>

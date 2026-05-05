@@ -5,6 +5,26 @@ import { useRouter } from 'next/navigation'
 import { Camera, Calendar, ChevronDown, Check } from 'lucide-react'
 import { OnboardingPreviewPanel } from '../OnboardingPreviewPanel'
 import { LocationAutocomplete } from '../shared/LocationAutocomplete'
+import { createClient } from '@/lib/supabase/client'
+
+// Fix-129 (AF-H-15): map travel-radius UI string → integer miles
+function parseTravelRadius(s: string): number | null {
+  if (s.startsWith('No travel')) return 0
+  if (s.includes('5 miles')) return 5
+  if (s.includes('10 miles')) return 10
+  if (s.includes('20 miles')) return 20
+  if (s.includes('30 miles')) return 30
+  return null
+}
+
+// Inverse: integer miles → UI string for read-back
+function travelRadiusFromMiles(miles: number | null): string {
+  if (miles === null || miles === 0) return 'No travel (I coach at fixed venues)'
+  if (miles <= 5) return 'Up to 5 miles'
+  if (miles <= 10) return 'Up to 10 miles'
+  if (miles <= 20) return 'Up to 20 miles'
+  return '30 miles+'
+}
 
 // CD-10: API response type
 interface CoachProfileResponse {
@@ -22,6 +42,7 @@ interface CoachProfileResponse {
   cancellation_window_hours: number
   min_advance_hours: number
   max_advance_days: number
+  travel_radius_miles: number | null
   rating_avg: number | null
   rating_count: number
   sessions_completed: number
@@ -35,6 +56,10 @@ export function ProfileStep() {
   const router = useRouter()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
+  // Fix-103 (AF-C-11): track uploaded URL separately from local preview
+  const [uploadedAvatarUrl, setUploadedAvatarUrl] = useState<string | null>(null)
+  const [photoUploading, setPhotoUploading] = useState(false)
+  const [photoError, setPhotoError] = useState<string | null>(null)
   const [displayName, setDisplayName] = useState('')
   const [bio, setBio] = useState('')
   const [baseLocation, setBaseLocation] = useState('')
@@ -102,7 +127,11 @@ export function ProfileStep() {
         // Set avatar preview if exists
         if (data.avatar_url) {
           setPhotoPreview(data.avatar_url)
+          setUploadedAvatarUrl(data.avatar_url)
         }
+
+        // Fix-129 (AF-H-15): pre-populate travel radius from saved value
+        setTravelRadius(travelRadiusFromMiles(data.travel_radius_miles))
         
         // Fix-16f: Pre-populate languages
         if (data.languages && data.languages.length > 0) {
@@ -147,16 +176,46 @@ export function ProfileStep() {
     }
   }
 
-  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Fix-103 (AF-C-11): upload to Supabase Storage 'coach-photos' bucket
+  const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     if (file.size > 5 * 1024 * 1024) {
-      alert('Photo must be under 5MB')
+      setPhotoError('Photo must be under 5MB')
       return
     }
+    setPhotoError(null)
+
+    // Show local preview immediately
     const reader = new FileReader()
     reader.onload = () => setPhotoPreview(reader.result as string)
     reader.readAsDataURL(file)
+
+    // Upload to Supabase Storage
+    setPhotoUploading(true)
+    try {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('Not authenticated')
+
+      const ext = file.name.split('.').pop() || 'jpg'
+      const path = `${user.id}/${Date.now()}.${ext}`
+
+      const { error: uploadError } = await supabase.storage
+        .from('coach-photos')
+        .upload(path, file, { upsert: false })
+      if (uploadError) throw uploadError
+
+      const { data: publicUrlData } = supabase.storage
+        .from('coach-photos')
+        .getPublicUrl(path)
+      setUploadedAvatarUrl(publicUrlData.publicUrl)
+    } catch (err) {
+      console.error('Photo upload failed:', err)
+      setPhotoError('Failed to upload photo. You can continue without one.')
+    } finally {
+      setPhotoUploading(false)
+    }
   }
 
   const handleSave = async () => {
@@ -183,6 +242,10 @@ export function ProfileStep() {
           years_experience: yearsExp,
           gender: gender.toLowerCase().replace(/\s+/g, '_'),
           languages: selectedLanguages, // Fix-16f: Include languages in save payload
+          // Fix-103 (AF-C-11): persist uploaded avatar URL
+          avatar_url: uploadedAvatarUrl,
+          // Fix-129 (AF-H-15): persist travel radius
+          travel_radius_miles: parseTravelRadius(travelRadius),
         })
       })
       
@@ -277,14 +340,18 @@ export function ProfileStep() {
               <div className="flex-1">
                 <h3 className="text-[15px] font-medium text-gray-900 mb-1">Add your profile photo</h3>
                 <p className="text-[12px] text-[#0077CC] font-medium mb-2.5">Coaches with a photo get 3× more bookings</p>
-                <input ref={fileInputRef} type="file" accept="image/jpeg,image/png" onChange={handlePhotoSelect} className="hidden" />
+                <input ref={fileInputRef} type="file" accept="image/jpeg,image/png" onChange={handlePhotoSelect} className="hidden" disabled={photoUploading} />
                 <button
                   onClick={() => fileInputRef.current?.click()}
-                  className="px-4 py-1.5 rounded-full bg-[#0077CC] hover:bg-[#0066AA] text-white text-[12px] font-medium transition-colors"
+                  disabled={photoUploading}
+                  className="px-4 py-1.5 rounded-full bg-[#0077CC] hover:bg-[#0066AA] disabled:opacity-60 text-white text-[12px] font-medium transition-colors"
                 >
-                  Upload photo
+                  {photoUploading ? 'Uploading...' : 'Upload photo'}
                 </button>
                 <p className="text-[10px] text-gray-400 mt-1.5">JPG or PNG · max 5MB</p>
+                {photoError && (
+                  <p className="text-[12px] text-red-600 font-medium mt-2">{photoError}</p>
+                )}
               </div>
             </div>
           </div>

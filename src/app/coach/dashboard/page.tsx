@@ -148,14 +148,20 @@ export default async function CoachDashboardPage() {
 
 
     // 4. Up next session
-    // STUB: bookings table doesn't have 'title' or 'venue_name' columns yet
-    // Using session_date and session_start_time/end_time instead
     const today = new Date()
     const todayDateStr = today.toISOString().split('T')[0]
     
+    // Fix-119 + Fix-118 (AF-H-04/05): include venue_name + booker join for real titles
     const { data: upNextBooking } = await supabase
       .from('bookings')
-      .select('session_date, session_start_time, session_end_time, session_type')
+      .select(`
+        session_date,
+        session_start_time,
+        session_end_time,
+        session_type,
+        venue_name,
+        booker:user_profiles!bookings_booked_by_user_id_fkey(full_name)
+      `)
       .eq('coach_profile_id', coachProfile.id)
       .eq('status', 'confirmed')
       .gte('session_date', todayDateStr)
@@ -165,17 +171,25 @@ export default async function CoachDashboardPage() {
       .single()
 
     if (upNextBooking) {
-      // Combine date and time to create full datetime
       const startDateTime = new Date(`${upNextBooking.session_date}T${upNextBooking.session_start_time}`)
-      const endDateTime = new Date(`${upNextBooking.session_date}T${upNextBooking.session_end_time}`)
       const startsInMs = startDateTime.getTime() - Date.now()
       const startsInMinutes = Math.floor(startsInMs / (1000 * 60))
 
+      // booker is a left join — Supabase returns object or array depending on relationship type
+      const bookerData = Array.isArray(upNextBooking.booker)
+        ? upNextBooking.booker[0]
+        : upNextBooking.booker
+      const bookerName = bookerData?.full_name ?? null
+
+      const title = upNextBooking.session_type === 'individual'
+        ? (bookerName ? `Session with ${bookerName}` : '1-on-1 Session')
+        : 'Group Session' // programme-name lookup deferred (would require chained join)
+
       dashboardData.upNextSession = {
-        title: `${upNextBooking.session_type === 'individual' ? '1-on-1' : 'Group'} Session`,
+        title,
         startTime: upNextBooking.session_start_time.substring(0, 5),
         endTime: upNextBooking.session_end_time.substring(0, 5),
-        venue: 'Venue TBC',
+        venue: upNextBooking.venue_name ?? 'Venue TBC',
         startsInMinutes
       }
     }
@@ -247,10 +261,17 @@ export default async function CoachDashboardPage() {
       dashboardData.weeklyStats.completionRate = Math.round(((totalCompleted || 0) / totalConfirmed) * 100)
     }
 
-    // 7. Today's sessions
+    // 7. Today's sessions — Fix-119 + Fix-118 (AF-H-04/05): include venue + booker name
     const { data: todayBookings } = await supabase
       .from('bookings')
-      .select('session_date, session_start_time, session_end_time, session_type')
+      .select(`
+        session_date,
+        session_start_time,
+        session_end_time,
+        session_type,
+        venue_name,
+        booker:user_profiles!bookings_booked_by_user_id_fkey(full_name)
+      `)
       .eq('coach_profile_id', coachProfile.id)
       .eq('status', 'confirmed')
       .eq('session_date', todayDateStr)
@@ -259,18 +280,27 @@ export default async function CoachDashboardPage() {
     if (todayBookings) {
       const currentTime = new Date()
       const currentTimeStr = currentTime.toTimeString().substring(0, 8)
-      
+
       dashboardData.todaySessions = todayBookings.map(booking => {
         const startDateTime = new Date(`${booking.session_date}T${booking.session_start_time}`)
         const endDateTime = new Date(`${booking.session_date}T${booking.session_end_time}`)
         const durationMinutes = Math.round((endDateTime.getTime() - startDateTime.getTime()) / (1000 * 60))
         const isActive = currentTimeStr >= booking.session_start_time && currentTimeStr <= booking.session_end_time
 
+        const bookerData = Array.isArray(booking.booker)
+          ? booking.booker[0]
+          : booking.booker
+        const bookerName = bookerData?.full_name ?? null
+
+        const title = booking.session_type === 'individual'
+          ? (bookerName ? `Session with ${bookerName}` : '1-on-1 Session')
+          : 'Group Session'
+
         return {
           time: booking.session_start_time.substring(0, 5),
           duration: `${durationMinutes}m`,
-          title: `${booking.session_type === 'individual' ? '1-on-1' : 'Group'} Session`,
-          location: 'Venue TBC',
+          title,
+          location: booking.venue_name ?? 'Venue TBC',
           isActive,
           type: booking.session_type === 'individual' ? 'Private' : undefined
         }
