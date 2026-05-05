@@ -119,6 +119,7 @@ function EventBlock({ top, height, type, title, subtitle, sessionId, onCardClick
 }
 
 // CD-12b: Booking block type
+// AF-C-01: extended with sport_id + venue_name for SessionPopover real data
 interface BookingBlock {
   id: string
   booking_reference: string
@@ -127,9 +128,11 @@ interface BookingBlock {
   session_end_time: string
   session_type: string
   status: string
+  sport_id: string
   coach_price_pence: number
   child_name: string | null
   booked_by_name: string | null
+  venue_name: string | null
 }
 
 // CF-D02c FIX 1: Single popover state
@@ -161,6 +164,8 @@ export function Schedule() {
   const [bookings, setBookings] = useState<BookingBlock[]>([])
   // CI-01: Increment to force bookings re-fetch after approve/decline
   const [refreshKey, setRefreshKey] = useState(0)
+  // AF-C-01: Sport id → name lookup for booking popovers
+  const [sportsMap, setSportsMap] = useState<Record<string, string>>({})
 
   // Fix-76: Ad hoc slot detail popover
   const [adHocPopover, setAdHocPopover] = useState<{
@@ -213,6 +218,18 @@ export function Schedule() {
 
     fetchAvailability()
   }, [refreshKey])
+
+  // AF-C-01: Fetch sports map once on mount for booking popover sport names
+  useEffect(() => {
+    fetch('/api/sports')
+      .then((r) => (r.ok ? r.json() : { sports: [] }))
+      .then((data: { sports?: { id: string; name: string }[] }) => {
+        const map: Record<string, string> = {}
+        data.sports?.forEach((s) => { map[s.id] = s.name })
+        setSportsMap(map)
+      })
+      .catch(() => { /* non-critical — popover falls back gracefully */ })
+  }, [])
 
   // CF-02a: Fetch coach sports when add modal opens
   useEffect(() => {
@@ -774,6 +791,7 @@ export function Schedule() {
             sessionId={activePopover.sessionId}
             type={activePopover.sessionType}
             booking={bookings.find((b) => b.id === activePopover.sessionId) ?? null}
+            sportsMap={sportsMap}
             onClose={() => setActivePopover(null)}
             onRefresh={() => { setActivePopover(null); setRefreshKey((k) => k + 1) }}
           />
@@ -1003,16 +1021,18 @@ export function Schedule() {
 
 // CF-D02b CHANGE 1: Session Popover Component (4 types)
 function SessionPopover({
-  x, y, sessionId, type, booking, onClose, onRefresh,
+  x, y, sessionId, type, booking, sportsMap, onClose, onRefresh,
 }: {
   x: number
   y: number
   sessionId: string
   type: string
   booking: BookingBlock | null
+  sportsMap: Record<string, string>
   onClose: () => void
   onRefresh: () => void
 }) {
+  const router = useRouter()
   const [actionLoading, setActionLoading] = useState<'approve' | 'decline' | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
 
@@ -1040,70 +1060,114 @@ function SessionPopover({
 
   const getPopoverContent = () => {
     switch (type) {
-      case 'confirmed':
+      case 'confirmed': {
+        // AF-C-01: real data from booking prop
+        const clientName = booking?.child_name ?? booking?.booked_by_name ?? 'Client'
+        const dateLabel = booking
+          ? (() => {
+              const d = new Date(booking.session_date + 'T00:00:00')
+              const dayStr = d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+              return `${dayStr} · ${booking.session_start_time.slice(0, 5)} – ${booking.session_end_time.slice(0, 5)}`
+            })()
+          : '—'
+        const sportName = booking ? (sportsMap[booking.sport_id] ?? null) : null
+        const typeLabel = booking?.session_type === 'group' ? 'Group' : '1-on-1'
+        const sportTypeLine = sportName ? `${sportName} · ${typeLabel}` : typeLabel
+        const venueLabel = booking?.venue_name ?? 'Venue not set'
+        const earningsLabel = booking?.coach_price_pence != null
+          ? `£${(booking.coach_price_pence / 100).toFixed(2)} (you receive)`
+          : '–'
         return (
           <>
             <div className="flex items-start justify-between mb-3">
-              <h3 className="text-[15px] font-medium text-gray-900">James Okafor</h3>
+              <h3 className="text-[15px] font-medium text-gray-900">{clientName}</h3>
               <span className="px-2 py-0.5 bg-green-50 text-green-700 border border-green-200 rounded-full text-[11px] font-medium">Confirmed</span>
             </div>
             <div className="space-y-2 mb-3">
               <div className="flex items-center gap-2 text-[13px] text-gray-600">
                 <Calendar size={14} />
-                <span>Mon 7 Apr · 09:00 – 10:00</span>
+                <span>{dateLabel}</span>
               </div>
               <div className="flex items-center gap-2 text-[13px] text-gray-600">
                 <User size={14} />
-                <span>Cricket · 1-on-1</span>
+                <span>{sportTypeLine}</span>
               </div>
               <div className="flex items-center gap-2 text-[13px] text-gray-600">
                 <MapPin size={14} />
-                <span>Oval Cricket Ground</span>
+                <span>{venueLabel}</span>
               </div>
               <div className="flex items-center gap-2 text-[13px] text-gray-900 font-medium">
                 <PoundSterling size={14} />
-                <span>£45.00 (you receive)</span>
+                <span>{earningsLabel}</span>
               </div>
             </div>
             <div className="flex gap-2 mt-3">
-              <button onClick={() => {/* TODO CF-D02b: wire View booking popover action */}} className="flex-1 bg-[#0077CC] text-white rounded-lg py-2 text-[13px] font-medium hover:bg-[#0066AA]">View booking →</button>
-              <button onClick={() => {/* TODO CF-D02b: wire Message popover action */}} className="flex-1 bg-white border border-gray-200 text-gray-700 rounded-lg py-2 text-[13px] font-medium hover:bg-gray-50">Message</button>
+              <button
+                onClick={() => { router.push(`/coach/bookings/${sessionId}`); onClose() }}
+                className="flex-1 bg-[#0077CC] text-white rounded-lg py-2 text-[13px] font-medium hover:bg-[#0066AA]"
+              >
+                View booking →
+              </button>
+              <button
+                disabled
+                className="flex-1 bg-white border border-gray-200 text-gray-400 rounded-lg py-2 text-[13px] font-medium opacity-40 cursor-not-allowed"
+              >
+                Message
+              </button>
             </div>
           </>
         )
+      }
       
-      case 'programme':
+      case 'programme': {
+        // AF-C-02: graceful fallback — booking prop has no programme detail.
+        // Title stays generic; spot count managed from /coach/programmes.
+        const dateLabel = booking
+          ? (() => {
+              const d = new Date(booking.session_date + 'T00:00:00')
+              const dayStr = d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+              return `${dayStr} · ${booking.session_start_time.slice(0, 5)} – ${booking.session_end_time.slice(0, 5)}`
+            })()
+          : '—'
+        const sportName = booking ? (sportsMap[booking.sport_id] ?? null) : null
+        const sportTypeLine = sportName ? `${sportName} · Group` : 'Group'
         return (
           <>
             <div className="flex items-start justify-between mb-3">
-              <h3 className="text-[15px] font-medium text-gray-900">{sessionId === 'session-2' ? 'Junior Cricket Foundations' : 'Open Net Session'}</h3>
+              <h3 className="text-[15px] font-medium text-gray-900">Group Programme</h3>
               <span className="px-2 py-0.5 bg-purple-50 text-purple-700 border border-purple-200 rounded-full text-[11px] font-medium">Active</span>
             </div>
             <div className="space-y-2 mb-3">
               <div className="flex items-center gap-2 text-[13px] text-gray-600">
                 <Calendar size={14} />
-                <span>{sessionId === 'session-2' ? 'Mon 7 Apr · 14:00 – 15:30' : 'Sun 12 Apr · 10:00 – 11:30'}</span>
+                <span>{dateLabel}</span>
               </div>
               <div className="flex items-center gap-2 text-[13px] text-gray-600">
                 <User size={14} />
-                <span>Cricket · Group</span>
+                <span>{sportTypeLine}</span>
               </div>
-              <div className="flex items-center gap-2 text-[13px] text-gray-600">
+              <div className="flex items-center gap-2 text-[13px] text-gray-500">
                 <Users size={14} />
-                <span>{sessionId === 'session-2' ? '4 / 6 spots filled' : '2 / 8 spots filled'}</span>
-              </div>
-              <div className="mt-2">
-                <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-purple-500 rounded-full" style={{ width: sessionId === 'session-2' ? '66.67%' : '25%' }} />
-                </div>
+                <span>Manage spots from Programmes</span>
               </div>
             </div>
             <div className="flex gap-2 mt-3">
-              <button onClick={() => {/* TODO CF-D02b: wire View programme popover action */}} className="flex-1 bg-purple-600 text-white rounded-lg py-2 text-[13px] font-medium hover:bg-purple-700">View prog. →</button>
-              <button onClick={() => {/* TODO CF-D02b: wire Message popover action */}} className="flex-1 bg-white border border-gray-200 text-gray-700 rounded-lg py-2 text-[13px] font-medium hover:bg-gray-50">Message</button>
+              <button
+                onClick={() => { router.push('/coach/programmes'); onClose() }}
+                className="flex-1 bg-[#0077CC] text-white rounded-lg py-2 text-[13px] font-medium hover:bg-[#0066AA]"
+              >
+                View prog. →
+              </button>
+              <button
+                disabled
+                className="flex-1 bg-white border border-gray-200 text-gray-400 rounded-lg py-2 text-[13px] font-medium opacity-40 cursor-not-allowed"
+              >
+                Message
+              </button>
             </div>
           </>
         )
+      }
       
       case 'pending': {
         const clientName = booking?.child_name ?? booking?.booked_by_name ?? '—'
@@ -1161,25 +1225,35 @@ function SessionPopover({
       }
       
       case 'blocked':
+        // AF-C-03: Blocked-date popover is wired for future use only.
+        // Schedule.tsx does not yet emit type='blocked' EventBlocks; blocked
+        // dates are managed in /coach/availability. This branch is preserved
+        // for when blocked dates are wired into the grid in a later wave.
         return (
           <>
             <div className="flex items-start justify-between mb-3">
-              <h3 className="text-[15px] font-medium text-gray-900">Blocked — Family Holiday</h3>
+              <h3 className="text-[15px] font-medium text-gray-900">Blocked</h3>
               <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full text-[11px] font-medium">Blocked</span>
             </div>
             <div className="space-y-2 mb-3">
-              <div className="flex items-center gap-2 text-[13px] text-gray-600">
-                <Calendar size={14} />
-                <span>Sat 11 Apr · 08:00 – 13:00</span>
-              </div>
               <div className="flex items-center gap-2 text-[13px] text-gray-500">
                 <Info size={14} />
                 <span>You are unavailable during this time</span>
               </div>
             </div>
             <div className="flex gap-2 mt-3">
-              <button onClick={() => {/* TODO CF-D02b: wire Edit block action */}} className="flex-1 bg-white border border-gray-200 text-gray-700 rounded-lg py-2 text-[13px] font-medium hover:bg-gray-50">Edit block</button>
-              <button onClick={() => {/* TODO CF-D02b: wire Remove block action */}} className="flex-1 bg-white border border-red-200 text-red-600 rounded-lg py-2 text-[13px] font-medium hover:bg-red-50">Remove</button>
+              <button
+                disabled
+                className="flex-1 bg-white border border-gray-200 text-gray-400 rounded-lg py-2 text-[13px] font-medium opacity-40 cursor-not-allowed"
+              >
+                Edit block
+              </button>
+              <button
+                disabled
+                className="flex-1 bg-white border border-gray-200 text-gray-400 rounded-lg py-2 text-[13px] font-medium opacity-40 cursor-not-allowed"
+              >
+                Remove
+              </button>
             </div>
           </>
         )
