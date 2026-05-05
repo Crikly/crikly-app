@@ -307,6 +307,23 @@ export async function POST(
       }
     }
 
+    // AF-C-22: validate venue_name + venue_address (matches pattern in availability/route.ts)
+    if (body.venue_name !== undefined && body.venue_name !== null) {
+      if (typeof body.venue_name !== 'string') {
+        validationErrors.push('venue_name must be a string or null')
+      } else if (body.venue_name.length > 200) {
+        validationErrors.push('venue_name must be 200 characters or less')
+      }
+    }
+
+    if (body.venue_address !== undefined && body.venue_address !== null) {
+      if (typeof body.venue_address !== 'string') {
+        validationErrors.push('venue_address must be a string or null')
+      } else if (body.venue_address.length > 500) {
+        validationErrors.push('venue_address must be 500 characters or less')
+      }
+    }
+
     if (validationErrors.length > 0) {
       return NextResponse.json(
         { error: 'Validation failed', details: validationErrors },

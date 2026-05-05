@@ -91,6 +91,7 @@ export async function GET(
     const coachSportIds = coachSports.map(cs => cs.id)
 
     // 5. Query coach_session_types using .in() on coach_sport_id
+    // AF-C-19: join through coach_sports → sports for real sport_id + sport_name
     const { data: sessionTypes, error: typesError } = await supabase
       .from('coach_session_types')
       .select(`
@@ -101,7 +102,11 @@ export async function GET(
         price_group_pence,
         currency,
         is_active,
-        created_at
+        created_at,
+        coach_sports!inner(
+          sport_id,
+          sports!inner(name)
+        )
       `)
       .in('coach_sport_id', coachSportIds)
       .eq('is_active', true)
@@ -113,18 +118,26 @@ export async function GET(
     }
 
     // 6. Build response and apply sport filter if needed
-    const response: SessionTypeResponse[] = (sessionTypes || []).map((type) => ({
-      id: type.id,
-      coach_sport_id: type.coach_sport_id,
-      sport_id: '',
-      sport_name: '',
-      duration_minutes: type.duration_minutes,
-      price_individual_pence: type.price_individual_pence,
-      price_group_pence: type.price_group_pence,
-      currency: type.currency,
-      is_active: type.is_active,
-      created_at: type.created_at,
-    }))
+    // AF-C-19: extract real sport_id + sport_name from joined coach_sports → sports.
+    // Defensive array/object handling — Supabase relationship inference may return either.
+    const response: SessionTypeResponse[] = (sessionTypes || []).map((type) => {
+      const coachSportData = Array.isArray(type.coach_sports) ? type.coach_sports[0] : type.coach_sports
+      const sportData = coachSportData?.sports
+        ? (Array.isArray(coachSportData.sports) ? coachSportData.sports[0] : coachSportData.sports)
+        : null
+      return {
+        id: type.id,
+        coach_sport_id: type.coach_sport_id,
+        sport_id: coachSportData?.sport_id ?? '',
+        sport_name: sportData?.name ?? '',
+        duration_minutes: type.duration_minutes,
+        price_individual_pence: type.price_individual_pence,
+        price_group_pence: type.price_group_pence,
+        currency: type.currency,
+        is_active: type.is_active,
+        created_at: type.created_at,
+      }
+    })
     .filter((type) => {
       if (sportIdFilter) {
         return type.sport_id === sportIdFilter
