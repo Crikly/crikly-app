@@ -327,7 +327,12 @@ export function GetPaid() {
         <div className="flex flex-col gap-4 mt-6">
           <h2 className="text-[18px] font-bold text-gray-900">Tax</h2>
           <div className="bg-white rounded-xl shadow-sm flex flex-col overflow-hidden">
-            <button className="w-full px-4 py-3 flex items-center gap-3 border-b-[0.5px] border-gray-100 hover:bg-gray-50 transition-colors text-left group">
+            {/* AF-M-BATCH-01: tax section disabled until endpoints exist */}
+            <button
+              disabled
+              aria-disabled="true"
+              className="w-full px-4 py-3 flex items-center gap-3 border-b-[0.5px] border-gray-100 text-left opacity-50 cursor-not-allowed"
+            >
               <div className="w-8 h-8 bg-gray-50 rounded-lg flex items-center justify-center shrink-0">
                 <FileText size={16} className="text-gray-600" />
               </div>
@@ -335,9 +340,13 @@ export function GetPaid() {
                 <div className="text-[13px] font-medium text-gray-900">Annual earnings summary</div>
                 <div className="text-[11px] text-gray-400 mt-0.5">Download your tax summary for 2025–26</div>
               </div>
-              <ChevronRight size={18} className="text-gray-300 group-hover:text-gray-400 shrink-0" />
+              <ChevronRight size={18} className="text-gray-300 shrink-0" />
             </button>
-            <button className="w-full px-4 py-3 flex items-center gap-3 hover:bg-gray-50 transition-colors text-left group">
+            <button
+              disabled
+              aria-disabled="true"
+              className="w-full px-4 py-3 flex items-center gap-3 text-left opacity-50 cursor-not-allowed"
+            >
               <div className="w-8 h-8 bg-gray-50 rounded-lg flex items-center justify-center shrink-0">
                 <Info size={16} className="text-gray-600" />
               </div>
@@ -345,7 +354,7 @@ export function GetPaid() {
                 <div className="text-[13px] font-medium text-gray-900">Self-assessment guidance</div>
                 <div className="text-[11px] text-gray-400 mt-0.5">HMRC resources for self-employed coaches</div>
               </div>
-              <ChevronRight size={18} className="text-gray-300 group-hover:text-gray-400 shrink-0" />
+              <ChevronRight size={18} className="text-gray-300 shrink-0" />
             </button>
           </div>
         </div>

@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { ChevronLeft, ChevronRight, Plus, Check, User, RefreshCw, Users, Ban, X, Calendar, MapPin, PoundSterling, AlertCircle, Info } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus, Check, User, RefreshCw, Users, Ban, X, Calendar, MapPin, PoundSterling, AlertCircle, AlertTriangle, Info } from 'lucide-react'
 import { VenueAutocomplete, type VenueSelection } from '@/components/coach/shared/LocationAutocomplete'
 
 // AF-P-03a: Local-time YYYY-MM-DD formatter — avoids toISOString() UTC drift.
@@ -404,7 +404,6 @@ export function Schedule() {
     dateStr: string,
     timeStr: string,
   ) => {
-    console.log('[AdHoc click]', block.id)
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
     const x = Math.min(rect.right + 8, window.innerWidth - RIGHT_PANEL_WIDTH - 388)
     const y = Math.min(rect.top, window.innerHeight - 400)
@@ -614,13 +613,17 @@ export function Schedule() {
             {error && !loading && (
               <div className="absolute inset-0 bg-white z-50 flex items-center justify-center">
                 <div className="flex flex-col items-center text-center px-4">
-                  <div className="w-16 h-16 bg-red-50 text-red-600 rounded-full flex items-center justify-center mb-4">
-                    <span className="text-2xl">⚠</span>
+                  <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mb-4">
+                    <AlertTriangle size={28} className="text-red-500" />
                   </div>
                   <h3 className="text-[18px] font-bold text-gray-900 mb-2">Failed to load schedule</h3>
                   <p className="text-[14px] text-gray-500 mb-6">{error}</p>
-                  <button 
-                    onClick={() => window.location.reload()}
+                  <button
+                    onClick={() => {
+                      setError(null)
+                      setAvailabilityRefreshKey(k => k + 1)
+                      setBookingsRefreshKey(k => k + 1)
+                    }}
                     className="bg-[#0077CC] hover:bg-[#0066AA] text-white px-6 py-3 rounded-xl text-[15px] font-bold transition-colors"
                   >
                     Try Again

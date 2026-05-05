@@ -33,7 +33,6 @@ interface ProfileSection { id: string; icon: React.ReactNode; title: string; sub
 
 export function ProfileEdit() {
   const router = useRouter()
-  const [isPaused, setIsPaused] = useState(false)
   
   // CD-10b: State for profile data
   const [profile, setProfile] = useState<CoachProfileResponse | null>(null)
@@ -519,24 +518,31 @@ export function ProfileEdit() {
               <h3 className="text-[9px] font-medium text-gray-400 uppercase tracking-wider">ACCOUNT</h3>
             </div>
             
-            {/* Pause profile row */}
+            {/* Pause profile row — AF-M-BATCH-01: disabled until persistence wired */}
             <div className="px-4 py-3.5 flex items-center justify-between border-t-[0.5px] border-gray-100">
               <div className="flex-1">
                 <div className="text-[13px] font-medium text-gray-900">Pause profile</div>
-                <div className="text-[11px] text-gray-400 mt-0.5">Temporarily hide from search</div>
+                <div className="text-[11px] text-gray-400 mt-0.5">Temporarily hide from search · Coming soon</div>
               </div>
-              <button 
-                onClick={() => setIsPaused(!isPaused)} 
-                className={`w-11 h-6 rounded-full relative transition-colors ${isPaused ? 'bg-[#0077CC]' : 'bg-gray-200'}`}
+              <button
+                disabled
+                aria-disabled="true"
+                className="w-11 h-6 rounded-full relative bg-gray-200 opacity-40 cursor-not-allowed"
               >
-                <div className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform shadow-sm ${isPaused ? 'translate-x-5' : 'translate-x-0'}`} />
+                <div className="absolute top-1 left-1 bg-white w-4 h-4 rounded-full shadow-sm translate-x-0" />
               </button>
             </div>
-            
-            {/* Delete account row */}
-            {/* CF-D07b POLISH 5: Ghost/text-only feel - text darkens on hover, no bg change */}
-            <button className="w-full px-4 py-3.5 flex items-center justify-between text-left transition-colors border-t-[0.5px] border-gray-100 hover:text-red-800">
-              <span className="text-[13px] font-medium text-[#B91C1C]">Delete account</span>
+
+            {/* Delete account row — AF-M-BATCH-01: disabled until endpoint exists */}
+            <button
+              disabled
+              aria-disabled="true"
+              className="w-full px-4 py-3.5 flex items-center justify-between text-left border-t-[0.5px] border-gray-100 opacity-50 cursor-not-allowed"
+            >
+              <div>
+                <span className="text-[13px] font-medium text-[#B91C1C]">Delete account</span>
+                <div className="text-[11px] text-gray-400 mt-0.5">Coming soon</div>
+              </div>
               <ChevronRight size={18} className="text-red-300" />
             </button>
           </div>

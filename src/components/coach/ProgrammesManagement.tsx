@@ -291,7 +291,7 @@ export function ProgrammesManagement() {
               <h3 className="text-[18px] font-bold text-gray-900 mb-2">Failed to load programmes</h3>
               <p className="text-[14px] text-gray-500 mb-6">{error}</p>
               <button
-                onClick={() => window.location.reload()}
+                onClick={() => fetchProgrammes()}
                 className="bg-[#0077CC] hover:bg-[#0066AA] text-white px-6 py-3 rounded-xl text-[15px] font-bold transition-colors"
               >
                 Try Again

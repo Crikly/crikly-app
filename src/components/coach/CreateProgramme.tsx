@@ -419,7 +419,6 @@ export function CreateProgramme() {
     try {
       if (step === 1) {
         // Create draft with all current form data (defaults included)
-        console.log('[Fix-60 debug] sport_id being sent:', form.sport_id)
         const res = await fetch('/api/coaches/programmes', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
