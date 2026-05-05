@@ -260,6 +260,15 @@ export async function POST(
       }
     }
 
+    // AF-H-10: validate optional ad-hoc notes (migration 026 added the column)
+    if (body.notes !== undefined && body.notes !== null) {
+      if (typeof body.notes !== 'string') {
+        validationErrors.push('notes must be a string or null')
+      } else if (body.notes.length > 500) {
+        validationErrors.push('notes must be 500 characters or less')
+      }
+    }
+
     if (validationErrors.length > 0) {
       return NextResponse.json(
         { error: 'Validation failed', details: validationErrors },
@@ -381,6 +390,7 @@ export async function POST(
       venue_address?: string | null
       is_recurring?: boolean
       specific_date?: string | null
+      notes?: string | null
     } = {
       coach_profile_id: coachProfile.id,
       day_of_week: body.day_of_week,
@@ -418,6 +428,11 @@ export async function POST(
 
     if (body.specific_date !== undefined) {
       insertData.specific_date = body.specific_date
+    }
+
+    // AF-H-10: persist optional ad-hoc notes (migration 026)
+    if (body.notes !== undefined) {
+      insertData.notes = body.notes
     }
 
     // Ad hoc slots use plain insert — must never overwrite a recurring block.

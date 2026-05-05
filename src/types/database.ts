@@ -116,6 +116,7 @@ export type Database = {
           id: string
           is_active: boolean
           is_recurring: boolean
+          notes: string | null
           price_override_pence: number | null
           session_type_id: string | null
           specific_date: string | null
@@ -134,6 +135,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           is_recurring?: boolean
+          notes?: string | null
           price_override_pence?: number | null
           session_type_id?: string | null
           specific_date?: string | null
@@ -152,6 +154,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           is_recurring?: boolean
+          notes?: string | null
           price_override_pence?: number | null
           session_type_id?: string | null
           specific_date?: string | null

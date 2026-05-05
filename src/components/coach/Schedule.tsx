@@ -454,6 +454,23 @@ export function Schedule() {
     const dateObj = new Date(`${adHocDate}T00:00:00`)
     const dayOfWeek = dateObj.getDay()
 
+    // AF-H-32: prevent overlap with existing availability slots before POSTing
+    const newStart = sh * 60 + sm
+    const newEnd = eh * 60 + em
+    const hasOverlap = availability.some(slot => {
+      if (slot.specific_date && slot.specific_date !== adHocDate) return false
+      if (!slot.specific_date && slot.day_of_week !== dayOfWeek) return false
+      const [slotSh, slotSm] = slot.start_time.split(':').map(Number)
+      const [slotEh, slotEm] = slot.end_time.split(':').map(Number)
+      const slotStart = slotSh * 60 + slotSm
+      const slotEnd = slotEh * 60 + slotEm
+      return newStart < slotEnd && newEnd > slotStart
+    })
+    if (hasOverlap) {
+      setAdHocError('This time overlaps with an existing slot.')
+      return
+    }
+
     setAdHocSubmitting(true)
     try {
       const res = await fetch('/api/coaches/availability', {
@@ -467,6 +484,7 @@ export function Schedule() {
           venue_name: adHocVenueName || null,
           venue_address: adHocVenueAddress || null,
           price_override_pence: adHocPrice ? Math.round(parseFloat(adHocPrice) * 100) : null,
+          notes: adHocNotes || null,
           is_recurring: false,
           specific_date: adHocDate,
         }),
@@ -1095,11 +1113,26 @@ function SessionPopover({
         const earningsLabel = booking?.coach_price_pence != null
           ? `£${(booking.coach_price_pence / 100).toFixed(2)} (you receive)`
           : '–'
+        // AF-H-08: derive badge from booking.status (was hardcoded "Confirmed")
+        const statusLabel =
+          booking?.status === 'completed' ? 'Completed' :
+          booking?.status === 'no_show' ? 'No show' :
+          booking?.status === 'cancelled_coach' ? 'Cancelled' :
+          booking?.status === 'cancelled_parent' ? 'Cancelled' :
+          'Confirmed'
+        const statusColour =
+          booking?.status === 'completed'
+            ? 'bg-gray-100 text-gray-600 border border-gray-200' :
+          booking?.status === 'no_show'
+            ? 'bg-orange-50 text-orange-700 border border-orange-200' :
+          (booking?.status === 'cancelled_coach' || booking?.status === 'cancelled_parent')
+            ? 'bg-red-50 text-red-700 border border-red-200' :
+          'bg-green-50 text-green-700 border border-green-200'
         return (
           <>
             <div className="flex items-start justify-between mb-3">
               <h3 className="text-[15px] font-medium text-gray-900">{clientName}</h3>
-              <span className="px-2 py-0.5 bg-green-50 text-green-700 border border-green-200 rounded-full text-[11px] font-medium">Confirmed</span>
+              <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${statusColour}`}>{statusLabel}</span>
             </div>
             <div className="space-y-2 mb-3">
               <div className="flex items-center gap-2 text-[13px] text-gray-600">
@@ -1398,15 +1431,20 @@ function CreationPopover({ x, y, source, date, time, onClose }: { x: number; y: 
         
         <div className="flex items-center gap-1.5 text-[12px] text-gray-500">
           <PoundSterling size={12} />
-          <span>45.00 (you receive)</span>
+          <span className="text-gray-400 italic">— set at booking</span>
         </div>
       </div>
-      
+
       <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
-        <button onClick={() => {/* TODO CF-D02b: wire Cancel to dismiss popover */onClose()}} className="text-[12px] text-gray-500 hover:text-gray-900">
+        <button onClick={onClose} className="text-[12px] text-gray-500 hover:text-gray-900">
           Cancel
         </button>
-        <button onClick={() => {/* TODO CF-D02b: wire Create session to booking/session creation API */}} className="bg-[#0077CC] text-white rounded-lg px-4 py-1.5 text-[13px] font-medium hover:bg-[#0066AA]">
+        {/* AF-H-11: Create session is disabled until shareable bookable widget exists (CG-BookableWidget-01) */}
+        <button
+          disabled
+          title="Shareable session links — coming soon"
+          className="bg-[#0077CC] text-white rounded-lg px-4 py-1.5 text-[13px] font-medium opacity-50 cursor-not-allowed"
+        >
           Create →
         </button>
       </div>
