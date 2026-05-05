@@ -164,6 +164,8 @@ export function BookingDetail() {
   const [loading, setLoading] = useState(true)
   const [booking, setBooking] = useState<BookingDetailData | null>(null)
   const [notFound, setNotFound] = useState(false)
+  // AF-H-31: distinguish 404 from server/network errors (was collapsed to notFound)
+  const [isError, setIsError] = useState(false)
   const [sportsMap, setSportsMap] = useState<Record<string, string>>({})
 
   useEffect(() => {
@@ -181,12 +183,18 @@ export function BookingDetail() {
       sportsData.sports?.forEach((s) => { map[s.id] = s.name })
       setSportsMap(map)
 
-      if (bookingData.notFound || bookingData.error) {
+      // AF-H-31: split 404 from server errors
+      if (bookingData.notFound) {
         setNotFound(true)
+      } else if (bookingData.error) {
+        setIsError(true)
       } else {
         setBooking(bookingData as unknown as BookingDetailData)
       }
-    }).finally(() => setLoading(false))
+    })
+    // AF-H-31: catch network errors that previously caused a blank screen
+    .catch(() => setIsError(true))
+    .finally(() => setLoading(false))
   }, [bookingId])
 
   // AF-C-08: action state for Approve / Decline
@@ -269,6 +277,20 @@ export function BookingDetail() {
               className="text-[14px] font-medium text-[#0077CC] hover:underline"
             >
               Back to Bookings
+            </button>
+          </div>
+        )}
+
+        {/* AF-H-31: server/network error (distinct from 404 not-found) */}
+        {!loading && isError && !notFound && (
+          <div className="flex-1 flex flex-col items-center justify-center px-5 py-20">
+            <p className="text-[17px] font-bold text-gray-900 mb-2">Failed to load booking</p>
+            <p className="text-[14px] text-gray-500 mb-6 text-center">Something went wrong. Please try again.</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="bg-[#0077CC] hover:bg-[#0066AA] text-white px-6 py-3 rounded-xl text-[15px] font-bold transition-colors"
+            >
+              Try again
             </button>
           </div>
         )}
@@ -378,6 +400,27 @@ export function BookingDetail() {
                 Booked on: {formatCreatedAt(booking.created_at)}
               </div>
             </div>
+
+            {/* AF-H-48: cancellation context — reason, who, when */}
+            {(booking.status === 'cancelled_parent' || booking.status === 'cancelled_coach') && (
+              <div className="bg-gray-50 rounded-[16px] p-5 space-y-2">
+                <p className="text-[12px] font-medium text-gray-500 uppercase tracking-wide">
+                  Cancellation
+                </p>
+                {booking.cancelled_by && (
+                  <p className="text-[13px] text-gray-700">
+                    Cancelled by {booking.cancelled_by === 'parent' ? 'parent' : booking.cancelled_by === 'coach' ? 'coach' : booking.cancelled_by}
+                    {booking.cancelled_at && ` on ${formatCreatedAt(booking.cancelled_at)}`}
+                  </p>
+                )}
+                {booking.cancellation_reason && (
+                  <div className="pt-1">
+                    <p className="text-[12px] text-gray-500 mb-0.5">Reason</p>
+                    <p className="text-[13px] text-gray-900">{booking.cancellation_reason}</p>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Action buttons — state-aware on booking.status */}
             {booking.status === 'pending_approval' && (
