@@ -27,21 +27,77 @@ interface CoachSportResponse {
   is_active: boolean
 }
 
+// C-Pricing-02: per-sport pricing data structure
+interface PricingRow {
+  id: string
+  duration: string
+  price: string
+}
+
+interface SportPricing {
+  sessionTypes: { individual: boolean; group: boolean }
+  skillLevels: string[]
+  ageGroups: string[]
+  pricingRows: PricingRow[]
+}
+
+const DURATION_OPTIONS = ['30 min', '45 min', '60 min', '90 min', '120 min'] as const
+
+const UI_TO_API_AGE: Record<string, string> = {
+  'Under 8': 'under_8',
+  'Under 10': 'under_10',
+  'Under 12': 'under_12',
+  'Under 14': 'under_14',
+  'Under 16': 'under_16',
+  'Adults (17+)': 'adults',
+}
+
+const API_TO_UI_AGE: Record<string, string> = {
+  'under_8': 'Under 8',
+  'under_10': 'Under 10',
+  'under_12': 'Under 12',
+  'under_14': 'Under 14',
+  'under_16': 'Under 16',
+  'adults': 'Adults (17+)',
+}
+
+const defaultSportPricing: SportPricing = {
+  sessionTypes: { individual: true, group: false },
+  skillLevels: [],
+  ageGroups: [],
+  pricingRows: [{ id: '1', duration: '60 min', price: '' }],
+}
+
 export function PricingStep() {
   const router = useRouter()
   const [selectedSports, setSelectedSports] = useState<string[]>([])
-  const [sessionTypes, setSessionTypes] = useState({ individual: true, group: false })
-  const [skillLevels, setSkillLevels] = useState<string[]>([])
-  const [ageGroups, setAgeGroups] = useState<string[]>([])
-  const [pricingRows, setPricingRows] = useState([
-    { id: '1', duration: '60 min', price: '' },
-  ])
+  // C-Pricing-02: per-sport pricing keyed by sport name
+  const [pricingBySport, setPricingBySport] = useState<Record<string, SportPricing>>({})
+  const [activeSport, setActiveSport] = useState<string>('')
   const [saving, setSaving] = useState(false)
   const [sports, setSports] = useState<Sport[]>([])
   const [loadingError, setLoadingError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [coachName, setCoachName] = useState('')
   const [coachAvatarUrl, setCoachAvatarUrl] = useState<string | null>(null)
+
+  // C-Pricing-02: derive active sport's pricing (with safe default)
+  const activePricing: SportPricing = pricingBySport[activeSport] ?? defaultSportPricing
+
+  // C-Pricing-02: write a partial update to the active sport
+  const updateActiveSport = (update: Partial<SportPricing>) => {
+    if (!activeSport) return
+    setPricingBySport(prev => ({
+      ...prev,
+      [activeSport]: { ...(prev[activeSport] ?? defaultSportPricing), ...update },
+    }))
+  }
+
+  // C-Pricing-02: a sport is "configured" when at least one priced row exists
+  const isConfigured = (sport: string): boolean => {
+    const p = pricingBySport[sport]
+    return p?.pricingRows.some(r => r.price !== '') ?? false
+  }
 
   useEffect(() => {
     // Fix-16c: Fetch sports list, selected sports, and saved pricing data
@@ -63,51 +119,43 @@ export function PricingStep() {
 
         // Get selected sports from sessionStorage
         const stored = sessionStorage.getItem('selectedSports')
+        let storedSports: string[] = []
         if (stored) {
-          setSelectedSports(JSON.parse(stored))
+          storedSports = JSON.parse(stored) as string[]
+          setSelectedSports(storedSports)
         }
 
-        // Pre-populate from saved coach sports data
+        // C-Pricing-02: pre-populate from ALL saved coach sports (was only sports[0])
         if (coachSportsData.sports && coachSportsData.sports.length > 0) {
-          const savedSport = coachSportsData.sports[0] as CoachSportResponse
+          const initialPricing: Record<string, SportPricing> = {}
 
-          // Pre-populate session types
-          setSessionTypes({
-            individual: savedSport.session_types.includes('individual'),
-            group: savedSport.session_types.includes('group')
+          coachSportsData.sports.forEach((savedSport: CoachSportResponse) => {
+            const sportName = savedSport.sport_name
+            initialPricing[sportName] = {
+              sessionTypes: {
+                individual: savedSport.session_types.includes('individual'),
+                group: savedSport.session_types.includes('group'),
+              },
+              skillLevels: savedSport.skill_levels.map(l =>
+                l.charAt(0).toUpperCase() + l.slice(1)
+              ),
+              ageGroups: (savedSport.age_groups ?? []).map(g => API_TO_UI_AGE[g] ?? g),
+              pricingRows: savedSport.price_individual_pence
+                ? [{
+                    id: '1',
+                    duration: `${savedSport.session_duration_minutes} min`,
+                    price: (savedSport.price_individual_pence / 100).toFixed(0),
+                  }]
+                : [{ id: '1', duration: '60 min', price: '' }],
+            }
           })
 
-          // Pre-populate skill levels (capitalize first letter)
-          const capitalizedSkillLevels = savedSport.skill_levels.map(
-            level => level.charAt(0).toUpperCase() + level.slice(1)
-          )
-          setSkillLevels(capitalizedSkillLevels)
+          setPricingBySport(initialPricing)
+        }
 
-          // Pre-populate price (convert from pence to pounds)
-          if (savedSport.price_individual_pence) {
-            const priceInPounds = (savedSport.price_individual_pence / 100).toFixed(0)
-            setPricingRows([{
-              id: '1',
-              duration: `${savedSport.session_duration_minutes} min`,
-              price: priceInPounds
-            }])
-          }
-
-          // Fix-16f: Pre-populate age_groups (convert API format to UI format)
-          if (savedSport.age_groups && savedSport.age_groups.length > 0) {
-            const uiAgeGroups = savedSport.age_groups.map((group: string) => {
-              const mapping: Record<string, string> = {
-                'under_8': 'Under 8',
-                'under_10': 'Under 10',
-                'under_12': 'Under 12',
-                'under_14': 'Under 14',
-                'under_16': 'Under 16',
-                'adults': 'Adults (17+)'
-              }
-              return mapping[group] || group
-            })
-            setAgeGroups(uiAgeGroups)
-          }
+        // C-Pricing-02: anchor activeSport to first selected sport
+        if (storedSports.length > 0) {
+          setActiveSport(storedSports[0])
         }
       } catch (error) {
         console.error('[PricingStep] Error fetching data:', error)
@@ -121,44 +169,54 @@ export function PricingStep() {
   }, [])
 
   const toggleSkillLevel = (level: string) => {
-    setSkillLevels(prev =>
-      prev.includes(level) ? prev.filter(l => l !== level) : [...prev, level]
-    )
+    const next = activePricing.skillLevels.includes(level)
+      ? activePricing.skillLevels.filter(l => l !== level)
+      : [...activePricing.skillLevels, level]
+    updateActiveSport({ skillLevels: next })
   }
 
   const toggleAgeGroup = (group: string) => {
-    setAgeGroups(prev =>
-      prev.includes(group) ? prev.filter(g => g !== group) : [...prev, group]
-    )
+    const next = activePricing.ageGroups.includes(group)
+      ? activePricing.ageGroups.filter(g => g !== group)
+      : [...activePricing.ageGroups, group]
+    updateActiveSport({ ageGroups: next })
   }
 
   const removePricingRow = (id: string) => {
-    setPricingRows(prev => prev.filter(row => row.id !== id))
+    if (activePricing.pricingRows.length === 1) return // guard: never remove last row
+    updateActiveSport({
+      pricingRows: activePricing.pricingRows.filter(row => row.id !== id),
+    })
   }
 
   const addPricingRow = () => {
-    setPricingRows(prev => [...prev, {
-      id: Math.random().toString(36).substr(2, 9),
-      duration: '120 min',
-      price: ''
-    }])
+    const used = activePricing.pricingRows.map(r => r.duration)
+    const nextDuration = DURATION_OPTIONS.find(d => !used.includes(d)) ?? '60 min'
+    updateActiveSport({
+      pricingRows: [
+        ...activePricing.pricingRows,
+        { id: Math.random().toString(36).substr(2, 9), duration: nextDuration, price: '' },
+      ],
+    })
   }
 
   const handleSave = async () => {
     setSaving(true)
     try {
-      // CD-04: wired - PricingStep saves to coach_sports table with real sport_id lookup
-      // Maps to: sport_id, session_types[], skill_levels[], price_individual_pence, price_group_pence
-      
-      // CD-04: Lookup sport_id by matching selected sport name from sessionStorage
       if (selectedSports.length === 0) {
         setLoadingError('No sport selected. Please go back and select a sport.')
         setSaving(false)
         return
       }
 
-      // Fix-17b: Loop through ALL selected sports and save each one
-      // First, validate all sports exist
+      // C-Pricing-02: every selected sport must have at least one priced row
+      const unconfigured = selectedSports.filter(s => !isConfigured(s))
+      if (unconfigured.length > 0) {
+        setLoadingError(`Please set a price for: ${unconfigured.join(', ')}`)
+        setSaving(false)
+        return
+      }
+
       const sportMatches = selectedSports.map(sportName => {
         const matchedSport = sports.find(s => s.name === sportName)
         if (!matchedSport) {
@@ -168,57 +226,48 @@ export function PricingStep() {
         }
         return { name: sportName, id: matchedSport.id }
       })
+      if (sportMatches.some(match => match === null)) return
 
-      // If any sport not found, stop
-      if (sportMatches.some(match => match === null)) {
-        return
-      }
-      
-      // Convert session types to array format
-      const sessionTypesArray: string[] = []
-      if (sessionTypes.individual) sessionTypesArray.push('individual')
-      if (sessionTypes.group) sessionTypesArray.push('group')
-      
-      // Convert skill levels to lowercase array
-      const skillLevelsArray = skillLevels.map(l => l.toLowerCase())
-      
-      // Fix-16f: Convert age_groups from UI format to API format
-      const ageGroupsArray = ageGroups.map(group => {
-        const mapping: Record<string, string> = {
-          'Under 8': 'under_8',
-          'Under 10': 'under_10',
-          'Under 12': 'under_12',
-          'Under 14': 'under_14',
-          'Under 16': 'under_16',
-          'Adults (17+)': 'adults'
-        }
-        return mapping[group] || group.toLowerCase().replace(' ', '_')
-      })
-      
-      // Get lowest price as individual price (pence)
-      const lowestPricePence = pricingRows.length > 0
-        ? Math.round(Math.min(...pricingRows.map(r => parseFloat(r.price || '0'))) * 100)
-        : 0
-      
-      // Fix-17b: Save all sports using Promise.all
-      const savePromises = sportMatches.map(match => 
-        fetch('/api/coaches/sports', {
+      // C-Pricing-02: each sport gets its own pricing payload from pricingBySport
+      const savePromises = sportMatches.map(match => {
+        const pricing = pricingBySport[match!.name] ?? defaultSportPricing
+
+        const sessionTypesArray: string[] = []
+        if (pricing.sessionTypes.individual) sessionTypesArray.push('individual')
+        if (pricing.sessionTypes.group) sessionTypesArray.push('group')
+
+        const skillLevelsArray = pricing.skillLevels.map(l => l.toLowerCase())
+
+        const ageGroupsArray = pricing.ageGroups.map(g =>
+          UI_TO_API_AGE[g] ?? g.toLowerCase().replace(' ', '_')
+        )
+
+        const lowestPricePence = pricing.pricingRows.length > 0
+          ? Math.round(Math.min(...pricing.pricingRows.map(r => parseFloat(r.price || '0'))) * 100)
+          : 0
+
+        // C-Pricing-02: parse duration from first row's "60 min" → 60
+        const durationMinutes = parseInt(
+          pricing.pricingRows[0]?.duration?.split(' ')[0] ?? '60',
+          10
+        )
+
+        return fetch('/api/coaches/sports', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            sport_id: match!.id, // CD-04: coach_sports.sport_id (real UUID FK to sports table)
-            session_types: sessionTypesArray, // CD-03: coach_sports.session_types (text[])
-            skill_levels: skillLevelsArray, // CD-03: coach_sports.skill_levels (text[])
-            age_groups: ageGroupsArray, // Fix-16f: coach_sports.age_groups (text[])
-            price_individual_pence: lowestPricePence, // CD-03: coach_sports.price_individual_pence (integer)
-            price_group_pence: null, // CD-03: coach_sports.price_group_pence (not configured in UI yet)
-            max_group_size: null, // CD-03: coach_sports.max_group_size (not configured in UI yet)
-            session_duration_minutes: 60, // CD-03: default duration
+            sport_id: match!.id,
+            session_types: sessionTypesArray,
+            skill_levels: skillLevelsArray,
+            age_groups: ageGroupsArray,
+            price_individual_pence: lowestPricePence,
+            price_group_pence: null,
+            max_group_size: null,
+            session_duration_minutes: durationMinutes,
           })
         })
-      )
+      })
 
-      // Wait for all saves to complete
       await Promise.all(savePromises)
 
       // PERF-Sports-01: invalidate cache — these POSTs mutate coach_sports
@@ -230,10 +279,14 @@ export function PricingStep() {
     }
   }
 
-  // Calculate minimum price for summary
-  const minPrice = pricingRows.length > 0 
-    ? Math.min(...pricingRows.map(r => parseFloat(r.price || '0')).filter(p => p > 0))
-    : 0
+  // C-Pricing-02: Calculate minimum price from active sport's pricing rows
+  const activePrices = activePricing.pricingRows
+    .map(r => parseFloat(r.price || '0'))
+    .filter(p => p > 0)
+  const minPrice = activePrices.length > 0 ? Math.min(...activePrices) : 0
+
+  // C-Pricing-02: first unconfigured sport (for the bottom warning)
+  const firstUnconfigured = selectedSports.find(s => !isConfigured(s))
 
   return (
     <div className="flex-1 overflow-y-auto bg-transparent font-sans text-gray-900 flex">
@@ -277,32 +330,39 @@ export function PricingStep() {
 
         <div className="flex flex-col gap-3">
 
-          {/* CF-D12 CHANGE 2C: Sport context display */}
+          {/* C-Pricing-02: Sport tabs with onClick + dynamic configured indicator */}
           {selectedSports.length === 1 ? (
-            <p className="text-[13px] text-gray-500 mb-4">Setting up: {selectedSports[0]}</p>
+            <p className="text-[13px] text-gray-500 mb-4">Setting up: {activeSport}</p>
           ) : selectedSports.length > 1 ? (
             <div className="mb-4">
               <div className="flex items-center gap-4 mb-2">
-                {selectedSports.map((sport, idx) => (
-                  <button
-                    key={sport}
-                    className={idx === 0 ? 'text-[13px] font-medium text-[#0077CC] border-b-2 border-[#0077CC] pb-1' : 'text-[13px] text-gray-500 pb-1'}
-                  >
-                    {sport}
-                    <span className="ml-2">
-                      {idx === 0 ? (
-                        <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-[#DCFCE7] text-[#166534]"><Check size={10} strokeWidth={3} /></span>
-                      ) : (
-                        <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full border-[1.5px] border-[#E2E8F0]"></span>
-                      )}
-                    </span>
-                  </button>
-                ))}
+                {selectedSports.map((sport) => {
+                  const isActive = sport === activeSport
+                  const configured = isConfigured(sport)
+                  return (
+                    <button
+                      key={sport}
+                      onClick={() => setActiveSport(sport)}
+                      className={isActive ? 'text-[13px] font-medium text-[#0077CC] border-b-2 border-[#0077CC] pb-1' : 'text-[13px] text-gray-500 pb-1 hover:text-gray-700 transition-colors'}
+                    >
+                      {sport}
+                      <span className="ml-2">
+                        {configured ? (
+                          <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-[#DCFCE7] text-[#166534]"><Check size={10} strokeWidth={3} /></span>
+                        ) : (
+                          <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full border-[1.5px] border-[#E2E8F0]"></span>
+                        )}
+                      </span>
+                    </button>
+                  )
+                })}
               </div>
-              <p className="text-[11px] text-gray-400">1 of {selectedSports.length} sports configured</p>
+              <p className="text-[11px] text-gray-400">
+                {selectedSports.filter(isConfigured).length} of {selectedSports.length} sports configured
+              </p>
             </div>
           ) : (
-            <p className="text-[13px] text-gray-500 mb-4">Setting up: Cricket</p>
+            <p className="text-[13px] text-gray-500 mb-4">Setting up: {activeSport || 'Cricket'}</p>
           )}
 
           {/* CF-D12 CHANGE 2D: Session types */}
@@ -313,10 +373,12 @@ export function PricingStep() {
                 <div
                   key={type}
                   className="flex items-start gap-4 p-4 rounded-xl border border-gray-100 hover:border-blue-100 hover:bg-blue-50/30 transition-colors cursor-pointer"
-                  onClick={() => setSessionTypes(prev => ({ ...prev, [type]: !prev[type] }))}
+                  onClick={() => updateActiveSport({
+                    sessionTypes: { ...activePricing.sessionTypes, [type]: !activePricing.sessionTypes[type] }
+                  })}
                 >
-                  <div className={`mt-0.5 w-6 h-6 rounded-md flex items-center justify-center shrink-0 border transition-colors ${sessionTypes[type] ? 'bg-[#0077CC] border-[#0077CC]' : 'bg-white border-gray-300'}`}>
-                    {sessionTypes[type] && <Check size={16} className="text-white" />}
+                  <div className={`mt-0.5 w-6 h-6 rounded-md flex items-center justify-center shrink-0 border transition-colors ${activePricing.sessionTypes[type] ? 'bg-[#0077CC] border-[#0077CC]' : 'bg-white border-gray-300'}`}>
+                    {activePricing.sessionTypes[type] && <Check size={16} className="text-white" />}
                   </div>
                   <div className="flex flex-col">
                     <span className="text-[15px] font-bold text-gray-900 capitalize">{type === 'individual' ? 'Individual' : 'Group'}</span>
@@ -338,7 +400,7 @@ export function PricingStep() {
                   key={level}
                   onClick={() => toggleSkillLevel(level)}
                   className={`px-5 py-2.5 rounded-full text-[14px] font-bold transition-all border ${
-                    skillLevels.includes(level)
+                    activePricing.skillLevels.includes(level)
                       ? 'bg-[#0077CC] border-[#0077CC] text-white shadow-sm'
                       : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'
                   }`}
@@ -358,7 +420,7 @@ export function PricingStep() {
                   key={group}
                   onClick={() => toggleAgeGroup(group)}
                   className={`px-5 py-2.5 rounded-full text-[14px] font-bold transition-all border ${
-                    ageGroups.includes(group)
+                    activePricing.ageGroups.includes(group)
                       ? 'bg-[#0077CC] border-[#0077CC] text-white shadow-sm'
                       : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'
                   }`}
@@ -376,9 +438,21 @@ export function PricingStep() {
               <p className="text-[12px] text-gray-500 mt-1">Set your price for each session length</p>
             </div>
             <div className="flex flex-col gap-4">
-              {pricingRows.map((row) => (
+              {activePricing.pricingRows.map((row) => (
                 <div key={row.id} className="flex items-center gap-4">
-                  <div className="w-[80px] text-[15px] font-bold text-gray-900 shrink-0">{row.duration}</div>
+                  <select
+                    value={row.duration}
+                    onChange={(e) => updateActiveSport({
+                      pricingRows: activePricing.pricingRows.map(r =>
+                        r.id === row.id ? { ...r, duration: e.target.value } : r
+                      )
+                    })}
+                    className="w-[90px] text-[14px] font-medium text-gray-900 border border-gray-200 rounded-lg px-2 py-2 bg-white focus:border-[#0077CC] focus:ring-1 focus:ring-[#0077CC] outline-none"
+                  >
+                    {DURATION_OPTIONS.map(d => (
+                      <option key={d} value={d}>{d}</option>
+                    ))}
+                  </select>
                   <div className="flex-1 relative">
                     <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                       <span className="text-gray-500 font-bold">£</span>
@@ -386,13 +460,21 @@ export function PricingStep() {
                     <input
                       type="number"
                       value={row.price}
-                      onChange={(e) => setPricingRows(prev => prev.map(r => r.id === row.id ? { ...r, price: e.target.value } : r))}
+                      onChange={(e) => updateActiveSport({
+                        pricingRows: activePricing.pricingRows.map(r =>
+                          r.id === row.id ? { ...r, price: e.target.value } : r
+                        )
+                      })}
                       placeholder="0.00"
                       className="w-full pl-8 pr-4 py-3 rounded-xl border border-gray-200 text-[15px] font-medium text-gray-900 placeholder:text-gray-300 focus:border-[#0077CC] focus:ring-1 focus:ring-[#0077CC] outline-none transition-all"
                     />
                   </div>
                   <div className="text-[15px] text-gray-500 font-medium whitespace-nowrap hidden sm:block w-[80px]">per session</div>
-                  <button onClick={() => removePricingRow(row.id)} className="p-2 text-gray-400 hover:text-red-500 transition-colors rounded-lg hover:bg-red-50">
+                  <button
+                    onClick={() => removePricingRow(row.id)}
+                    disabled={activePricing.pricingRows.length === 1}
+                    className="p-2 text-gray-400 hover:text-red-500 transition-colors rounded-lg hover:bg-red-50 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:text-gray-400 disabled:hover:bg-transparent"
+                  >
                     <X size={20} />
                   </button>
                 </div>
@@ -461,7 +543,7 @@ export function PricingStep() {
                   {coachName || <span className="text-gray-300">Your name</span>}
                 </h3>
                 <p className="text-[13px] text-gray-500">
-                  {selectedSports.length > 0 ? `${selectedSports[0]} Coach` : 'Cricket Coach'}
+                  {activeSport ? `${activeSport} Coach` : 'Cricket Coach'}
                 </p>
               </div>
             </div>
@@ -493,39 +575,39 @@ export function PricingStep() {
           
           <div className="bg-white border border-gray-100 shadow-sm rounded-xl p-4">
             <h3 className="text-[13px] font-semibold text-gray-900 mb-3">
-              {selectedSports.length > 0 ? selectedSports[0] : 'Cricket'}
+              {activeSport || 'Cricket'}
             </h3>
-            
+
             <div className="space-y-2">
               <div className="flex justify-between">
                 <span className="text-[11px] text-gray-500">Session types</span>
                 <span className="text-[11px] text-gray-900 font-medium text-right max-w-[140px]">
-                  {sessionTypes.individual && sessionTypes.group ? 'Individual · Group' : 
-                   sessionTypes.individual ? 'Individual' : 
-                   sessionTypes.group ? 'Group' : 'None'}
+                  {activePricing.sessionTypes.individual && activePricing.sessionTypes.group ? 'Individual · Group' :
+                   activePricing.sessionTypes.individual ? 'Individual' :
+                   activePricing.sessionTypes.group ? 'Group' : 'None'}
                 </span>
               </div>
-              
+
               <div className="flex justify-between">
                 <span className="text-[11px] text-gray-500">Skill levels</span>
                 <span className="text-[11px] text-gray-900 font-medium text-right max-w-[140px]">
-                  {skillLevels.length > 0 ? skillLevels.join(', ') : 'None'}
+                  {activePricing.skillLevels.length > 0 ? activePricing.skillLevels.join(', ') : 'None'}
                 </span>
               </div>
-              
+
               <div className="flex justify-between">
                 <span className="text-[11px] text-gray-500">Age groups</span>
                 <span className="text-[11px] text-gray-900 font-medium text-right max-w-[140px]">
-                  {ageGroups.length > 0 ? `U${ageGroups[0].replace('Under ', '')} – U${ageGroups[ageGroups.length - 1].replace('Under ', '')}` : 'None'}
+                  {activePricing.ageGroups.length > 0 ? `U${activePricing.ageGroups[0].replace('Under ', '')} – U${activePricing.ageGroups[activePricing.ageGroups.length - 1].replace('Under ', '')}` : 'None'}
                 </span>
               </div>
             </div>
           </div>
           
-          {/* Warning for multiple sports */}
-          {selectedSports.length > 1 && (
+          {/* C-Pricing-02: warning shows first unconfigured sport (was hardcoded selectedSports[1]) */}
+          {firstUnconfigured && selectedSports.length > 1 && (
             <div className="bg-[#FFFBEB] border-l-[3px] border-[#F59E0B] rounded-r-lg px-3 py-2 mt-4">
-              <p className="text-[11px] text-[#78350F]">{selectedSports[1]} still needs setup</p>
+              <p className="text-[11px] text-[#78350F]">{firstUnconfigured} still needs setup</p>
             </div>
           )}
         </div>
