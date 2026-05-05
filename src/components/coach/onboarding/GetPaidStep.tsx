@@ -52,19 +52,8 @@ export function GetPaidStep() {
       <div className="flex-1 flex flex-col items-center pt-10 pb-32 min-h-screen bg-white">
         <div className="w-full max-w-[640px] px-6 page-content-enter">
           <div className="mb-8">
-            {/* Step indicator - Step 6 of 6 */}
-            <div className="mb-4">
-              <div className="flex items-center gap-1.5 mb-2">
-                <div className="w-2 h-2 rounded-full bg-[#E2E8F0]"></div>
-                <div className="w-2 h-2 rounded-full bg-[#E2E8F0]"></div>
-                <div className="w-2 h-2 rounded-full bg-[#E2E8F0]"></div>
-                <div className="w-2 h-2 rounded-full bg-[#E2E8F0]"></div>
-                <div className="w-2 h-2 rounded-full bg-[#E2E8F0]"></div>
-                <div className="w-6 h-2 rounded-full bg-[#0077CC]"></div>
-              </div>
-              <p className="text-[11px] text-[#94A3B8]">Step 6 of 6</p>
-            </div>
-            
+            {/* AF-H-22: step indicator removed — Get Paid is the post-numbered "go live" page,
+                not a numbered step in the X-of-5 onboarding flow */}
             <h1 className="text-[32px] font-bold text-gray-900 leading-tight mb-2">Get paid</h1>
             <p className="text-[16px] text-gray-500 font-medium mb-6">Set up payments to start accepting bookings</p>
             <div className="p-3 bg-blue-50 rounded-lg border-l-4 border-[#0077CC]">

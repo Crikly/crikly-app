@@ -44,6 +44,8 @@ export function QualificationsStep() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null)
   const [confirmRemoveName, setConfirmRemoveName] = useState<string>('')
+  // AF-H-18: surface inline error when add/remove qualification fails
+  const [qualError, setQualError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   
   // Fix-17e: Extract fetchQualifications into reusable function
@@ -112,14 +114,15 @@ export function QualificationsStep() {
     // CD-03: wired - Add qualification to coach_qualifications table
     // Maps to: custom_name, issuing_body, issued_date (coach_qualifications)
     if (!qualTitle.trim()) return
-    
+
+    setQualError(null)
     try {
       if (editingId) {
         // Fix-17g: Update existing qualification (DELETE + POST since PATCH doesn't allow custom_name change)
         await fetch(`/api/coaches/qualifications/${editingId}`, {
           method: 'DELETE',
         })
-        
+
         const response = await fetch('/api/coaches/qualifications', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -129,10 +132,14 @@ export function QualificationsStep() {
             issued_date: year ? `${year}-01-01` : null,
           })
         })
-        
+
         if (response.ok) {
           await fetchQualifications()
           setEditingId(null)
+        } else {
+          // AF-H-18: surface failure; don't reset the form
+          setQualError('Failed to update qualification. Please try again.')
+          return
         }
       } else {
         // Add new qualification
@@ -147,20 +154,25 @@ export function QualificationsStep() {
             // Note: file upload not implemented yet - skipped
           })
         })
-        
-        // Fix-17e: Refetch qualifications to update state
+
         if (response.ok) {
+          // Fix-17e: Refetch qualifications to update state
           await fetchQualifications()
+        } else {
+          // AF-H-18: surface failure; don't reset the form
+          setQualError('Failed to add qualification. Please try again.')
+          return
         }
       }
-      
-      // Reset form
+
+      // Reset form (only on success)
       setQualTitle('')
       setProvider('')
       setYear('')
       setFileName(null)
     } catch (error) {
       console.error('Failed to add qualification:', error)
+      setQualError('Failed to save. Please try again.')
     }
   }
 
@@ -178,18 +190,22 @@ export function QualificationsStep() {
   }
 
   // Fix-16e: Add handleRemove function to delete qualification and update local state
+  // AF-H-18: surface error feedback when DELETE fails
   const handleRemove = async (qualId: string) => {
+    setQualError(null)
     try {
       const response = await fetch(`/api/coaches/qualifications/${qualId}`, {
         method: 'DELETE',
       })
-      
-      // Fix-16e: Remove from local state immediately after successful deletion
+
       if (response.ok) {
         setQualifications(prev => prev.filter(q => q.id !== qualId))
+      } else {
+        setQualError('Failed to remove qualification. Please try again.')
       }
     } catch (error) {
       console.error('[QualificationsStep] Failed to remove qualification:', error)
+      setQualError('Failed to remove qualification. Please try again.')
     }
   }
 
@@ -199,11 +215,6 @@ export function QualificationsStep() {
     // This step just navigates to next step
     router.push('/coach/onboarding/availability')
     setSaving(false)
-  }
-  
-  const handleSkip = () => {
-    // TODO CF-D13: wire skip to next step route
-    router.push('/coach/onboarding/availability')
   }
 
   return (
@@ -377,6 +388,11 @@ export function QualificationsStep() {
                 </div>
               ))}
             </div>
+          )}
+
+          {/* AF-H-18: inline error feedback for add/remove qualification failures */}
+          {qualError && (
+            <p className="text-[12px] text-red-600 mt-2">{qualError}</p>
           )}
 
           {/* CF-D13 CHANGE 5: Empty state (v1.1: no Skip link inside, only in save bar) */}

@@ -268,12 +268,22 @@ export function PricingStep() {
         })
       })
 
-      await Promise.all(savePromises)
+      // AF-H-20: check each response.ok before invalidating cache + navigating
+      const responses = await Promise.all(savePromises)
+      const allOk = responses.every(r => r.ok)
+      if (!allOk) {
+        setLoadingError('Failed to save pricing for one or more sports. Please try again.')
+        return
+      }
 
       // PERF-Sports-01: invalidate cache — these POSTs mutate coach_sports
       clearCoachSportsCache()
 
       router.push('/coach/onboarding/qualifications')
+    } catch (error) {
+      // AF-H-20: top-level catch for network or unexpected errors
+      console.error('[PricingStep] handleSave error:', error)
+      setLoadingError('An error occurred. Please try again.')
     } finally {
       setSaving(false)
     }

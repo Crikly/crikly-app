@@ -97,6 +97,11 @@ export function AvailabilityStep() {
   const [preselectedDay, setPreselectedDay] = useState<string | null>(null)
   const [editingBlockId, setEditingBlockId] = useState<string | null>(null)
   
+  // AF-H-16/17: schedule-tab error state (Add block + Remove block)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  // AF-H-25: confirm before discarding an open Add block form
+  const [confirmDiscard, setConfirmDiscard] = useState(false)
+
   // Blocked dates state
   const [blockedRanges, setBlockedRanges] = useState<BlockedRange[]>([])
   const [blockedLoading, setBlockedLoading] = useState(false)
@@ -172,18 +177,22 @@ export function AvailabilityStep() {
   }, [])
   
   // Fix-16e: Add handleRemoveBlock function to delete availability block and update local state
+  // AF-H-17: surface user-visible error when DELETE fails (catch path or !response.ok)
   const handleRemoveBlock = async (blockId: string) => {
+    setSaveError(null)
     try {
       const response = await fetch(`/api/coaches/availability/${blockId}`, {
         method: 'DELETE',
       })
-      
-      // Fix-16e: Remove from local state immediately after successful deletion
+
       if (response.ok) {
         setScheduleBlocks(prev => prev.filter(b => b.id !== blockId))
+      } else {
+        setSaveError('Failed to remove block. Please try again.')
       }
     } catch (error) {
       console.error('[AvailabilityStep] Failed to remove availability block:', error)
+      setSaveError('Failed to remove block. Please try again.')
     }
   }
   
@@ -292,7 +301,8 @@ export function AvailabilityStep() {
   }
   const handleBlockDates = async () => {
     if (!rangeStart) return
-    
+
+    setBlockedError(null)
     try {
       const end = rangeEnd ?? rangeStart
       const formatDate = (d: Date) => d.toISOString().split('T')[0]
@@ -331,7 +341,7 @@ export function AvailabilityStep() {
       setHoverDate(null)
     } catch (err) {
       console.error('Error blocking dates:', err)
-      alert('Failed to block dates. Please try again.')
+      setBlockedError('Failed to block dates. Please try again.')
     }
   }
   const clearSelection = () => { setRangeStart(null); setRangeEnd(null); setBlockLabel(''); setHoverDate(null) }
@@ -380,6 +390,11 @@ export function AvailabilityStep() {
                 </div>
               </div>
             ) : (
+            <>
+            {/* AF-H-17: render remove errors outside the add form (form may be closed when removing) */}
+            {saveError && !showAddForm && (
+              <p className="text-[12px] text-red-600 mb-3">{saveError}</p>
+            )}
             <div className="flex flex-col gap-6 mb-6">
               {DISPLAY_ORDER.map((dayAbbr) => {
                 const dayFull = DAY_FULL[dayAbbr]
@@ -492,6 +507,7 @@ export function AvailabilityStep() {
                 )
               })}
             </div>
+            </>
             )}
 
             {showAddForm ? (
@@ -567,29 +583,30 @@ export function AvailabilityStep() {
                 )}
                 <div className="flex items-center justify-between">
                   <button onClick={resetForm} className="text-[14px] font-bold text-gray-400 hover:text-gray-700 transition-colors">Cancel</button>
-                  <button 
+                  <button
                     onClick={async () => {
                       // CD-03: wired - Save availability block to availability_templates table
                       // Maps to: sport_id, day_of_week, start_time, end_time, price_override_pence
                       if (conflict || formDays.length === 0) return
-                      
+
+                      setSaveError(null)
                       try {
                         // Convert day abbreviations to day_of_week numbers (0=Sunday, 1=Monday, etc.)
                         const dayMap: Record<string, number> = {
                           'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6
                         }
-                        
+
                         // Fix-17h: If editing, delete the old block first
                         if (editingBlockId) {
                           await fetch(`/api/coaches/availability/${editingBlockId}`, {
                             method: 'DELETE',
                           })
                         }
-                        
+
                         // Save each selected day as a separate availability block
                         // Fix-104 (AF-C-12): include sport_id, is_recurring, and venue snapshot
                         for (const dayAbbr of formDays) {
-                          await fetch('/api/coaches/availability', {
+                          const res = await fetch('/api/coaches/availability', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
@@ -603,13 +620,18 @@ export function AvailabilityStep() {
                               is_recurring: true, // One-off hidden from REPEAT_OPTIONS — all blocks are recurring here
                             })
                           })
+                          if (!res.ok) {
+                            setSaveError('Failed to add block. Please try again.')
+                            return
+                          }
                         }
-                        
+
                         // Fix-17e: Refetch availability to update scheduleBlocks
                         await fetchAvailability()
                         resetForm()
                       } catch (error) {
                         console.error('Failed to add availability block:', error)
+                        setSaveError('Failed to add block. Please try again.')
                       }
                     }}
                     disabled={!!conflict || formDays.length === 0} 
@@ -618,6 +640,10 @@ export function AvailabilityStep() {
                     <Plus size={16} />{editingBlockId ? 'Update block' : 'Add this block'}
                   </button>
                 </div>
+                {/* AF-H-16/17: inline error feedback for Add/Remove block failures */}
+                {saveError && (
+                  <p className="text-[12px] text-red-600 mt-2">{saveError}</p>
+                )}
               </div>
             ) : (
               <button 
@@ -648,19 +674,51 @@ export function AvailabilityStep() {
               </button>
             )}
             
+            {/* AF-H-25: warn when navigating away with an unsaved Add block form open */}
+            {confirmDiscard && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 mb-3 mx-6">
+                <p className="text-[13px] font-medium text-amber-900 mb-1">You have an unsaved block.</p>
+                <p className="text-[12px] text-amber-700 mb-3">Discard it or save it before continuing.</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      resetForm()
+                      setConfirmDiscard(false)
+                      router.push('/coach/onboarding/policy')
+                    }}
+                    className="px-4 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-md text-[12px] font-medium transition-colors"
+                  >
+                    Discard & continue
+                  </button>
+                  <button
+                    onClick={() => setConfirmDiscard(false)}
+                    className="px-4 py-1.5 bg-white border border-gray-200 text-gray-700 rounded-md text-[12px] font-medium hover:bg-gray-50 transition-colors"
+                  >
+                    Go back
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Onboarding footer CTA */}
-            <div 
+            <div
               className="sticky bottom-0 bg-white border-t-[0.5px] border-gray-100 px-6 py-3 flex justify-between items-center"
               style={{ boxShadow: '0 -2px 8px rgba(0,0,0,0.04)' }}
             >
-              <button 
+              <button
                 onClick={() => router.push('/coach/onboarding/qualifications')}
                 className="text-[13px] text-gray-500 hover:text-gray-900 font-medium transition-colors"
               >
                 ← Back
               </button>
-              <button 
-                onClick={() => router.push('/coach/onboarding/policy')}
+              <button
+                onClick={() => {
+                  if (showAddForm) {
+                    setConfirmDiscard(true)
+                  } else {
+                    router.push('/coach/onboarding/policy')
+                  }
+                }}
                 className="bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-full px-7 py-2.5 text-[13px] font-medium transition-colors"
               >
                 Save & continue →

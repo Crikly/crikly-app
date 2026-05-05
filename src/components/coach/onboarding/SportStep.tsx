@@ -54,28 +54,39 @@ export function SportStep() {
 
   // Fix-17c: Fetch available sports from API and saved coach sports
   // AF-P-07: parallelise three independent fetches; sports list + profile use shared caches
+  // AF-H-21: Promise.allSettled — keep form usable when individual fetches fail
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [rawSports, coachSportsData, profileData] = await Promise.all([
+        const [sportsResult, coachSportsResult, profileResult] = await Promise.allSettled([
           fetchSportsListCached() as Promise<{ id: string; name: string; slug: string }[]>,
           fetchCoachSportsCached(),
           fetchCoachProfileCached(),
         ])
 
-        // Always apply icon mapping after loading (never cache components)
-        const sportsWithIcons = rawSports.map((sport) => ({
-          ...sport,
-          Icon: iconMap[sport.slug] || Target
-        }))
-        setSports(sportsWithIcons)
+        if (sportsResult.status === 'fulfilled') {
+          // Always apply icon mapping after loading (never cache components)
+          const sportsWithIcons = sportsResult.value.map((sport) => ({
+            ...sport,
+            Icon: iconMap[sport.slug] || Target
+          }))
+          setSports(sportsWithIcons)
+        } else {
+          console.warn('[SportStep] Failed to load sports list:', sportsResult.reason)
+        }
 
-        const savedSportNames = (coachSportsData.sports ?? []).map((s: CoachSportResponse) => s.sport_name)
-        setSelectedSports(savedSportNames)
+        if (coachSportsResult.status === 'fulfilled') {
+          const savedSportNames = (coachSportsResult.value.sports ?? []).map((s: CoachSportResponse) => s.sport_name)
+          setSelectedSports(savedSportNames)
+        } else {
+          console.warn('[SportStep] Failed to load coach sports:', coachSportsResult.reason)
+        }
 
-        setCoachName(profileData.full_name || 'Your name')
-      } catch (error) {
-        console.error('[SportStep] Failed to fetch data:', error)
+        if (profileResult.status === 'fulfilled') {
+          setCoachName(profileResult.value.full_name || 'Your name')
+        } else {
+          console.warn('[SportStep] Failed to load profile:', profileResult.reason)
+        }
       } finally {
         setLoading(false)
       }
