@@ -4,6 +4,8 @@ import React, { useState, useMemo, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Pencil, X, ChevronLeft, ChevronRight, Plus, ChevronDown, AlertTriangle } from 'lucide-react'
 import { VenueAutocomplete, type VenueSelection } from '@/components/coach/shared/LocationAutocomplete'
+// AF-H-41: pull configured sports from cached helper so new coaches can pick a sport
+import { fetchCoachSportsCached } from '@/lib/onboarding-cache'
 
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December']
 const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
@@ -116,6 +118,8 @@ export function AvailabilityManagement() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
+  // AF-H-41: configured-sports list, drives dropdown and provides sport_id for POST/PATCH
+  const [allSports, setAllSports] = useState<{ sport_id: string; sport_name: string }[]>([])
   // Fix-69-2: inline confirmation + error for availability block delete
   const [deleteBlockConfirmId, setDeleteBlockConfirmId] = useState<string | null>(null)
   const [blockDeleteError, setBlockDeleteError] = useState<string | null>(null)
@@ -130,7 +134,9 @@ export function AvailabilityManagement() {
   // Fix-69-2: inline confirmation + error for blocked date remove
   const [removeBlockedConfirmId, setRemoveBlockedConfirmId] = useState<string | null>(null)
   const [blockedActionError, setBlockedActionError] = useState<string | null>(null)
-  const availableSports = useMemo(() => [...new Set(scheduleBlocks.map(b => b.sport))], [scheduleBlocks])
+  // AF-H-41: use coach's configured sports — was derived from existing scheduleBlocks
+  // (empty for new coaches), preventing them adding their first block.
+  const availableSports = useMemo(() => allSports.map(s => s.sport_name), [allSports])
   const [showAddForm, setShowAddForm] = useState(false)
   // CF-D06b FIX 1: Add preselectedDay state
   const [preselectedDay, setPreselectedDay] = useState<string | null>(null)
@@ -199,7 +205,26 @@ export function AvailabilityManagement() {
 
     fetchAvailability()
   }, [])
-  
+
+  // AF-H-41: fetch coach's configured sports once on mount
+  useEffect(() => {
+    fetchCoachSportsCached()
+      .then((data: { sports?: { sport_id: string; sport_name: string }[] }) => {
+        setAllSports(data?.sports ?? [])
+      })
+      .catch(() => {
+        // Non-critical — dropdown stays empty; coach sees the existing
+        // "configure a sport in onboarding first" flow.
+      })
+  }, [])
+
+  // AF-H-41: once sports load, sync formSport so POST sends a real sport_id
+  // (useState only takes initial value on mount; without this, a stale empty
+  // string defeats the lookup below).
+  useEffect(() => {
+    if (!formSport && availableSports.length > 0) setFormSport(availableSports[0])
+  }, [availableSports, formSport])
+
   // CF-D06b FIX 2: Replace same-day check with time overlap validation
   const timeToMinutes = (time: string) => {
     const [h, m] = time.split(':').map(Number)
@@ -269,7 +294,14 @@ export function AvailabilityManagement() {
 
   // Fix-107: extracted save handler — shared by inline save button and sticky bar
   const handleSaveBlock = async () => {
-    if (conflict || formDays.length === 0) return
+    // AF-H-46/wave-5: clear any prior error before re-attempting
+    setAddBlockError(null)
+    if (conflict) return
+    // AF-H-46: was a silent return — coach got no feedback when no days selected
+    if (formDays.length === 0) {
+      setAddBlockError('Please select at least one day before saving.')
+      return
+    }
 
     const dayMap: Record<string, number> = {
       'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6,
@@ -282,6 +314,8 @@ export function AvailabilityManagement() {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            // AF-H-41: send real sport_id (was omitted — only worked because server preserved existing on undefined)
+            sport_id: allSports.find(s => s.sport_name === formSport)?.sport_id ?? null,
             day_of_week: dayMap[formDays[0]],
             start_time: formStartTime,
             end_time: formEndTime,
@@ -292,22 +326,44 @@ export function AvailabilityManagement() {
         })
         if (!response.ok) throw new Error('Failed to update availability block')
       } else {
-        // Add: one POST per selected day
-        for (const dayAbbr of formDays) {
-          const response = await fetch('/api/coaches/availability', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              sport_id: null,
-              day_of_week: dayMap[dayAbbr],
-              start_time: formStartTime,
-              end_time: formEndTime,
-              price_override_pence: formPrice ? Math.round(parseFloat(formPrice) * 100) : null,
-              venue_name: formVenueName.trim() || null,
-              venue_address: formVenueAddress.trim() || null,
-            }),
+        // AF-H-41 + AF-H-47: parallel POSTs with per-day result tracking.
+        // Was: sequential await, throw on first failure → days 1..n already
+        // inserted with no rollback and a generic error.
+        const sportId = allSports.find(s => s.sport_name === formSport)?.sport_id ?? null
+        const dayResults = await Promise.all(
+          formDays.map(async (dayAbbr) => {
+            try {
+              const response = await fetch('/api/coaches/availability', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  sport_id: sportId,
+                  day_of_week: dayMap[dayAbbr],
+                  start_time: formStartTime,
+                  end_time: formEndTime,
+                  price_override_pence: formPrice ? Math.round(parseFloat(formPrice) * 100) : null,
+                  venue_name: formVenueName.trim() || null,
+                  venue_address: formVenueAddress.trim() || null,
+                }),
+              })
+              return { day: dayAbbr, ok: response.ok }
+            } catch {
+              return { day: dayAbbr, ok: false }
+            }
           })
-          if (!response.ok) throw new Error('Failed to add availability block')
+        )
+
+        const failed = dayResults.filter(r => !r.ok)
+        if (failed.length > 0) {
+          const failedDays = failed.map(r => DAY_FULL[r.day] ?? r.day).join(', ')
+          setAddBlockError(
+            failed.length === formDays.length
+              ? 'Failed to save availability. Please try again.'
+              : `Saved some days but failed on: ${failedDays}. Please try again for those days.`
+          )
+          // Refresh anyway — successful days should appear immediately.
+          await refreshAvailability()
+          return
         }
       }
 
@@ -412,8 +468,16 @@ export function AvailabilityManagement() {
     try {
       const end = rangeEnd ?? rangeStart
       
-      // Format dates as YYYY-MM-DD
-      const formatDate = (d: Date) => d.toISOString().split('T')[0]
+      // AF-H-45: format as local YYYY-MM-DD — was toISOString() which UTC-shifts
+      // BST evenings to the previous calendar day.
+      // (AF-H-45b follow-up: read-back at lines parsing block.blocked_date with
+      // new Date() has the inverse UTC-parse problem; deferred.)
+      const formatDate = (d: Date) => {
+        const yr = d.getFullYear()
+        const mo = String(d.getMonth() + 1).padStart(2, '0')
+        const dy = String(d.getDate()).padStart(2, '0')
+        return `${yr}-${mo}-${dy}`
+      }
       
       const response = await fetch('/api/coaches/blocked-dates', {
         method: 'POST',
@@ -691,6 +755,12 @@ export function AvailabilityManagement() {
                     <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                   </div>
                   <p className="text-[12px] text-gray-400 font-medium mt-1.5">Only sports you've already configured are shown</p>
+                  {/* AF-H-Wave-5 addition: honest empty-state when coach hasn't configured any sport yet */}
+                  {allSports.length === 0 && !loading && (
+                    <p className="text-[12px] text-amber-700 mt-1">
+                      No sports configured yet. Complete your profile setup to add a sport first.
+                    </p>
+                  )}
                 </div>
                 <div className="mb-4">
                   <label className="block text-[12px] font-bold text-gray-500 mb-1.5 uppercase tracking-wider">Days</label>
@@ -760,8 +830,9 @@ export function AvailabilityManagement() {
                   <button onClick={resetForm} className="text-[14px] font-bold text-gray-400 hover:text-gray-700 transition-colors">Cancel</button>
                   <button
                     onClick={handleSaveBlock}
-                    disabled={!!conflict || formDays.length === 0}
-                    className={`px-6 py-3 rounded-xl text-[14px] font-bold transition-colors flex items-center gap-2 ${conflict || formDays.length === 0 ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-[#0077CC] text-white hover:bg-[#0066AA]'}`}
+                    // AF-H-46: was also disabled on formDays.length === 0, which prevented the inline error from ever firing
+                    disabled={!!conflict}
+                    className={`px-6 py-3 rounded-xl text-[14px] font-bold transition-colors flex items-center gap-2 ${conflict ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-[#0077CC] text-white hover:bg-[#0066AA]'}`}
                   >
                     {editingBlockId ? 'Save changes' : (<><Plus size={16} />Add this block</>)}
                   </button>
@@ -805,8 +876,9 @@ export function AvailabilityManagement() {
               >
                 <button
                   onClick={handleSaveBlock}
-                  disabled={!!conflict || formDays.length === 0}
-                  className={`rounded-full px-7 py-2.5 text-[13px] font-medium transition-colors ${conflict || formDays.length === 0 ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-[#0077CC] hover:bg-[#0066AA] text-white'}`}
+                  // AF-H-46: was also disabled on formDays.length === 0; handler now surfaces the inline error instead
+                  disabled={!!conflict}
+                  className={`rounded-full px-7 py-2.5 text-[13px] font-medium transition-colors ${conflict ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-[#0077CC] hover:bg-[#0066AA] text-white'}`}
                 >
                   Save changes
                 </button>
