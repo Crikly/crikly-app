@@ -404,8 +404,9 @@ export function ProfileEdit() {
                   Preview <ExternalLink size={10} />
                 </button>
                 <button
+                  // AF-H-43: dispatch the global share-modal event (listener in CoachLayoutClient.tsx:84)
                   onClick={() => {
-                    // TODO CF-D07: wire to share profile
+                    window.dispatchEvent(new CustomEvent('crikly:open-share-modal'))
                   }}
                   className="px-3 py-1.5 bg-white border border-gray-200 text-gray-600 text-[11px] font-medium rounded-full hover:bg-gray-50 transition-colors flex items-center gap-1"
                 >

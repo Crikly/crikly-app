@@ -486,7 +486,8 @@ export function EditProgramme({ programmeId }: { programmeId: string }) {
                   </span>
                   <button
                     type="button"
-                    onClick={() => update('max_spots', form.max_spots + 1)}
+                    // AF-H-13: cap at 200 — was uncapped, coach could click endlessly to absurd values
+                    onClick={() => update('max_spots', Math.min(200, form.max_spots + 1))}
                     className="w-11 h-12 flex items-center justify-center text-[#475569] text-lg hover:bg-[#F8FAFC] transition-colors"
                     aria-label="Increase"
                   >

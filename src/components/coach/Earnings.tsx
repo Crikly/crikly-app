@@ -405,7 +405,14 @@ export function Earnings() {
             {/* Chart */}
             <div className="bg-white rounded-xl shadow-sm p-4">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-[13px] font-medium text-gray-900">Earnings this month</h3>
+                <h3 className="text-[13px] font-medium text-gray-900">
+                  {/* AF-H-42: was hardcoded "Earnings this month" — stale when "This week" or "All time" was selected */}
+                  {period === 'This week'
+                    ? 'Earnings this week'
+                    : period === 'All time'
+                    ? 'All earnings'
+                    : 'Earnings this month'}
+                </h3>
                 {bestDay && (
                   <span className="text-[11px] font-medium text-[#0077CC]">Best day: {bestDay}</span>
                 )}

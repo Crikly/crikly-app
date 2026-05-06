@@ -473,11 +473,12 @@ export function ProgrammesManagement() {
                         Edit
                       </button>
                       <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          // TODO CF-D05: wire Open new cohort action
-                        }}
-                        className="flex-1 bg-[#0077CC] text-white rounded-md text-[11px] py-1.5 text-center hover:bg-[#0066AA] transition-all duration-150"
+                        // AF-H-12: dead button — disabled until CF-D05 wires the action
+                        disabled
+                        aria-disabled="true"
+                        title="New cohort coming soon"
+                        onClick={(e) => e.stopPropagation()}
+                        className="flex-1 bg-[#0077CC] text-white rounded-md text-[11px] py-1.5 text-center transition-all duration-150 opacity-50 cursor-not-allowed"
                       >
                         New cohort ↗
                       </button>
@@ -527,11 +528,12 @@ export function ProgrammesManagement() {
                           Edit
                         </button>
                         <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            // TODO CF-D05: wire Promote action
-                          }}
-                          className="flex-1 bg-[#0077CC] text-white rounded-md text-[11px] py-1.5 text-center hover:bg-[#0066AA] transition-all duration-150"
+                          // AF-H-12: dead button — disabled until CF-D05 wires the action
+                          disabled
+                          aria-disabled="true"
+                          title="Promote coming soon"
+                          onClick={(e) => e.stopPropagation()}
+                          className="flex-1 bg-[#0077CC] text-white rounded-md text-[11px] py-1.5 text-center transition-all duration-150 opacity-50 cursor-not-allowed"
                         >
                           Promote ↗
                         </button>
