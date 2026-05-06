@@ -486,8 +486,9 @@ export function EditProgramme({ programmeId }: { programmeId: string }) {
                   </span>
                   <button
                     type="button"
-                    // AF-H-13: cap at 200 — was uncapped, coach could click endlessly to absurd values
-                    onClick={() => update('max_spots', Math.min(200, form.max_spots + 1))}
+                    // AF-H-13 + Wave-7 regression fix: cap at 100 to match API validation
+                    // (programmes/route.ts:210 enforces max_spots between 2 and 100)
+                    onClick={() => update('max_spots', Math.min(100, form.max_spots + 1))}
                     className="w-11 h-12 flex items-center justify-center text-[#475569] text-lg hover:bg-[#F8FAFC] transition-colors"
                     aria-label="Increase"
                   >

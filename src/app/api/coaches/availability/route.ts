@@ -321,6 +321,22 @@ export async function POST(
       }
     }
 
+    // AF-H-53: verify coach_venue_id belongs to this coach (parallel to sport_id check above)
+    if (body.coach_venue_id) {
+      const { data: venueOwnership } = await supabase
+        .from('coach_venues')
+        .select('id')
+        .eq('id', body.coach_venue_id)
+        .eq('coach_profile_id', coachProfile.id)
+        .maybeSingle()
+      if (!venueOwnership) {
+        return NextResponse.json(
+          { error: 'Venue not found or does not belong to you.' },
+          { status: 404 }
+        )
+      }
+    }
+
     // 7. Conflict validation (REQ-C-047)
     const normalizedStartTime = normalizeTime(body.start_time)
     const normalizedEndTime = normalizeTime(body.end_time)

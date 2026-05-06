@@ -208,14 +208,34 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to add participant' }, { status: 500 })
     }
 
-    // 7. Increment current_spots
-    const { error: updateError } = await adminSupabase
+    // 7. AF-H-57: atomic capacity check + increment via optimistic locking.
+    // Was: read-then-write race (two concurrent enrolments could both read N and both
+    // write N+1, over-enrolling the programme). The .eq('current_spots', N) clause
+    // ensures only one of two concurrent requests succeeds.
+    const { data: updated, error: updateError } = await adminSupabase
       .from('group_programmes')
       .update({ current_spots: programme.current_spots + 1 })
       .eq('id', programmeId)
-    if (updateError) {
-      // Non-fatal — enrolment already created; log and continue
-      console.error('[POST /roster] current_spots increment error:', updateError)
+      .eq('current_spots', programme.current_spots)         // optimistic lock — match prior value
+      .lt('current_spots', programme.max_spots)              // capacity guard at row level
+      .select('id')
+      .maybeSingle()
+
+    if (updateError || !updated) {
+      // Race lost (or DB error) — roll back the enrolment we inserted at step 6.
+      // Best-effort: if rollback fails too, log; the orphan row will need manual cleanup.
+      console.error('[POST /roster] optimistic increment failed — rolling back enrolment:', updateError)
+      const { error: rollbackError } = await adminSupabase
+        .from('group_programme_enrolments')
+        .delete()
+        .eq('id', newEnrolment.id)
+      if (rollbackError) {
+        console.error('[POST /roster] rollback delete failed (orphan enrolment):', rollbackError)
+      }
+      return NextResponse.json(
+        { error: 'Programme is now full. Please try again.' },
+        { status: 409 }
+      )
     }
 
     const enrolmentItem: EnrolmentItem = {

@@ -27,6 +27,8 @@ interface CoachSportResponse {
     price_group_pence: number | null
     is_active: boolean
   }>
+  // AF-H-58: optional warning when session-type upsert fails non-fatally during sport creation
+  warning?: string
 }
 
 /**
@@ -276,6 +278,10 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to save sport' }, { status: 500 })
     }
 
+    // AF-H-58: track session-type save state for response builder
+    let savedVariant: CoachSportResponse['session_type_variants'][number] | null = null
+    let sessionTypeWarning: string | null = null
+
     // Fix-18b: Insert/upsert session type into coach_session_types table
     // This replaces the deprecated price columns in coach_sports
     if (body.session_duration_minutes && (body.price_individual_pence || body.price_group_pence)) {
@@ -295,7 +301,8 @@ export async function POST(
         is_active: true
       }
 
-      const { error: sessionTypeError } = await supabase
+      // AF-H-58: capture upsert row so the response can return the saved variant (was always [])
+      const { data: sessionTypeRow, error: sessionTypeError } = await supabase
         .from('coach_session_types')
         .upsert(sessionTypeData, {
           onConflict: 'coach_sport_id,duration_minutes',
@@ -306,7 +313,15 @@ export async function POST(
 
       if (sessionTypeError) {
         console.error('[POST /api/coaches/sports] session type upsert error:', sessionTypeError)
-        // Don't fail the whole request - coach_sports was saved successfully
+        sessionTypeWarning = 'Sport saved but pricing variant failed. Please update pricing in My Profile.'
+      } else if (sessionTypeRow) {
+        savedVariant = {
+          id: sessionTypeRow.id,
+          duration_minutes: sessionTypeRow.duration_minutes,
+          price_individual_pence: sessionTypeRow.price_individual_pence,
+          price_group_pence: sessionTypeRow.price_group_pence,
+          is_active: sessionTypeRow.is_active,
+        }
       }
     }
 
@@ -331,7 +346,9 @@ export async function POST(
       session_duration_minutes: newSport.session_duration_minutes,
       currency: newSport.currency,
       is_active: newSport.is_active,
-      session_type_variants: [], // No variants yet
+      // AF-H-58: was always [] — now returns the variant just upserted (or [] on upsert failure)
+      session_type_variants: savedVariant ? [savedVariant] : [],
+      ...(sessionTypeWarning && { warning: sessionTypeWarning }),
     }
 
     return NextResponse.json(response, { status: 201 })

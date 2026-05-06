@@ -15,22 +15,28 @@ function generateSlug(name: string): string {
     .replace(/^-|-$/g, '')
 }
 
+const MAX_SLUG_SUFFIX = 50
+
 async function findUniqueSlug(
   supabase: SupabaseServerClient,
   name: string,
   excludeId?: string,
 ): Promise<string> {
-  const base = generateSlug(name)
+  // AF-H-51: empty-slug fallback for non-alphanumeric names (e.g. "!!!") which previously infinite-looped
+  const base = generateSlug(name) || 'coach'
   let candidate = base
   let suffix = 2
-
-  for (;;) {
+  while (suffix <= MAX_SLUG_SUFFIX + 2) {
     let q = supabase.from('coach_profiles').select('id').eq('slug', candidate)
     if (excludeId) q = q.neq('id', excludeId)
-    const { data } = await q.maybeSingle()
+    const { data, error } = await q.maybeSingle()
+    // AF-H-51: surface DB errors instead of silently returning a potentially non-unique slug
+    if (error) throw new Error(`Slug uniqueness check failed: ${error.message}`)
     if (!data) return candidate
     candidate = `${base}-${suffix++}`
   }
+  // AF-H-51: bounded fallback after MAX_SLUG_SUFFIX attempts
+  return `${base}-${Date.now()}`
 }
 
 /**

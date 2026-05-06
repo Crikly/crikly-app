@@ -66,10 +66,11 @@ export async function PATCH(
       if (!Array.isArray(body.skill_levels) || body.skill_levels.length === 0) {
         validationErrors.push('skill_levels must be a non-empty array')
       } else {
-        const validSkillLevels = ['beginner', 'intermediate', 'advanced']
+        // AF-H-56: align with POST sports route (4 values) — coach who created sport with 'elite' couldn't PATCH it
+        const validSkillLevels = ['beginner', 'intermediate', 'advanced', 'elite']
         const invalidLevels = body.skill_levels.filter((l: unknown) => !validSkillLevels.includes(l as string))
         if (invalidLevels.length > 0) {
-          validationErrors.push('skill_levels must only contain: beginner, intermediate, advanced')
+          validationErrors.push('skill_levels must only contain: beginner, intermediate, advanced, elite')
         }
       }
     }
