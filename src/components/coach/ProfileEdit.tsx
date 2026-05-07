@@ -40,6 +40,8 @@ export function ProfileEdit() {
   const [error, setError] = useState<string | null>(null)
   const [hasSports, setHasSports] = useState(false)
   const [hasQualifications, setHasQualifications] = useState(false)
+  // AF-M-Wave-1: real availability flag, was hardcoded `true` in calculateCompleteness + getSections
+  const [hasAvailability, setHasAvailability] = useState(false)
   // Fix-45: Real Stripe Connect status from CG-03 endpoint
   const [stripeChargesEnabled, setStripeChargesEnabled] = useState(false)
   const [stripePayoutsEnabled, setStripePayoutsEnabled] = useState(false)
@@ -94,6 +96,13 @@ export function ProfileEdit() {
           setStripeChargesEnabled(stripeData.charges_enabled ?? false)
           setStripePayoutsEnabled(stripeData.payouts_enabled ?? false)
         }
+
+        // AF-M-Wave-1: fetch availability count for completeness scoring (non-fatal, matches sports/qualifications pattern)
+        const availRes = await fetch('/api/coaches/availability')
+        if (availRes.ok) {
+          const availData = await availRes.json() as { availability?: unknown[] }
+          setHasAvailability((availData.availability ?? []).length > 0)
+        }
       } catch (err) {
         console.error('Failed to fetch profile:', err)
         setError('Failed to load profile. Please try again.')
@@ -121,8 +130,8 @@ export function ProfileEdit() {
     // Qualifications (has at least one qualification)
     if (hasQualifications) completed++
     
-    // Availability (assume complete - would need availability API check)
-    completed++ // TODO: Check actual availability data
+    // AF-M-Wave-1: gate on real availability data — was unconditional `completed++`
+    if (hasAvailability) completed++
     
     // Booking Policy (cancellation_window_hours set)
     if (profile.cancellation_window_hours > 0) completed++
@@ -142,7 +151,8 @@ export function ProfileEdit() {
     const personalComplete = !!(profile.full_name && profile.bio && profile.location_city)
     const sportsComplete = hasSports
     const qualificationsComplete = hasQualifications
-    const availabilityComplete = true // TODO: Check actual availability
+    // AF-M-Wave-1: derived from real availability data — was hardcoded `true`
+    const availabilityComplete = hasAvailability
     const policyComplete = profile.cancellation_window_hours > 0
     // Fix-45: fully live = charges + payouts both enabled; partial = connected but not complete
     const paymentFullyComplete = stripeChargesEnabled && stripePayoutsEnabled

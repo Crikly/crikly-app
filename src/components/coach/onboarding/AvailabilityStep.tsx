@@ -14,7 +14,7 @@ const DISPLAY_ORDER = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
 const DAY_FULL: Record<string, string> = { Mon: 'Monday', Tue: 'Tuesday', Wed: 'Wednesday', Thu: 'Thursday', Fri: 'Friday', Sat: 'Saturday', Sun: 'Sunday' }
 // Fix-104 (AF-C-12): One-off hidden — requires a date picker we don't have.
 // Track separately as a follow-up if/when one-off blocks are needed.
-const REPEAT_OPTIONS = ['Weekly', 'Fortnightly', 'Monthly']
+// AF-M-Wave-1: REPEAT_OPTIONS array removed — only 'Weekly' is persisted by the API; the buttons are now rendered explicitly with the other cadences disabled
 
 const TIME_OPTIONS: string[] = []
 for (let h = 6; h <= 22; h++) {
@@ -547,8 +547,20 @@ export function AvailabilityStep() {
                 <div className="mb-4">
                   <label className="block text-[12px] font-bold text-gray-500 mb-1.5 uppercase tracking-wider">Repeat</label>
                   <div className="flex flex-wrap gap-2">
-                    {REPEAT_OPTIONS.map(opt => (
-                      <button key={opt} type="button" onClick={() => setFormRepeat(opt)} className={`px-3.5 py-2 rounded-lg text-[13px] font-bold transition-colors border ${formRepeat === opt ? 'bg-[#0077CC] text-white border-[#0077CC]' : 'bg-gray-50 text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-100'}`}>{opt}</button>
+                    {/* AF-M-Wave-1: only Weekly is persisted by the API; other cadences are coming soon */}
+                    <button
+                      type="button"
+                      onClick={() => setFormRepeat('Weekly')}
+                      className={`px-3.5 py-2 rounded-lg text-[13px] font-bold transition-colors border ${formRepeat === 'Weekly' ? 'bg-[#0077CC] text-white border-[#0077CC]' : 'bg-gray-50 text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-100'}`}
+                    >Weekly</button>
+                    {['Fortnightly', 'Monthly'].map(opt => (
+                      <button
+                        key={opt}
+                        type="button"
+                        disabled
+                        title="Coming soon"
+                        className="px-3.5 py-2 rounded-lg text-[13px] font-bold transition-colors border bg-gray-50 text-gray-600 border-gray-200 opacity-50 cursor-not-allowed"
+                      >{opt}</button>
                     ))}
                   </div>
                 </div>
@@ -617,7 +629,7 @@ export function AvailabilityStep() {
                               price_override_pence: formPrice ? Math.round(parseFloat(formPrice) * 100) : null,
                               venue_name: formVenueSelection?.name || formVenue.trim() || null,
                               venue_address: formVenueSelection?.address || null,
-                              is_recurring: true, // One-off hidden from REPEAT_OPTIONS — all blocks are recurring here
+                              is_recurring: true, // One-off hidden from the cadence buttons — all blocks are recurring here
                             })
                           })
                           if (!res.ok) {

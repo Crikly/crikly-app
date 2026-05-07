@@ -268,7 +268,15 @@ export function ProfileStep() {
     }
   }
 
-  const profileCompleteness = 35 // TODO: Calculate based on filled fields
+  // AF-M-Wave-1: derive from 5 user-controlled fields (defaults excluded — travelRadius/selectedExperience/selectedLanguages have non-empty defaults that would always score as filled)
+  const filledCount = [
+    !!displayName.trim(),
+    !!bio.trim(),
+    !!(baseLocation.trim() || locationPostcode?.trim()),
+    !!gender,
+    !!uploadedAvatarUrl,
+  ].filter(Boolean).length
+  const profileCompleteness = Math.round((filledCount / 5) * 100)
   
   return (
     <div className="flex-1 overflow-y-auto bg-transparent font-sans text-gray-900 flex">
