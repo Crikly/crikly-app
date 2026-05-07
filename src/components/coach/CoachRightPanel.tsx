@@ -206,11 +206,8 @@ function GetPaidNextPayout({ router }: { router: any }) {
       </div>
       
       {/* View earnings link */}
-      <button 
-        onClick={() => {
-          // TODO CF-D09: wire to earnings
-          router.push('/coach/earnings')
-        }}
+      <button
+        onClick={() => router.push('/coach/earnings')}
         className="w-full text-center text-[11px] font-medium text-[#0077CC] hover:text-[#0066AA] transition-colors"
       >
         View earnings →
@@ -237,11 +234,8 @@ function GetPaidReassurance() {
 // CF-D09 CHANGE 6: Get Paid history link
 function GetPaidHistoryLink({ router }: { router: any }) {
   return (
-    <button 
-      onClick={() => {
-        // TODO CF-D09: wire to payout history
-        router.push('/coach/earnings')
-      }}
+    <button
+      onClick={() => router.push('/coach/earnings')}
       className="w-full text-center text-[12px] font-medium text-[#0077CC] hover:text-[#0066AA] transition-colors"
     >
       View full payout history →
@@ -264,11 +258,8 @@ function EarningsNextPayout({ router }: { router: any }) {
       </div>
       
       {/* Go to Get Paid button */}
-      <button 
-        onClick={() => {
-          // TODO CF-D08: wire to Get Paid route
-          router.push('/coach/get-paid')
-        }}
+      <button
+        onClick={() => router.push('/coach/get-paid')}
         className="w-full bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-full py-2 text-[11px] font-medium transition-colors"
       >
         Go to Get Paid →
@@ -279,11 +270,12 @@ function EarningsNextPayout({ router }: { router: any }) {
 
 // CF-D08 CHANGE 5: Earnings period summary
 function EarningsPeriodSummary() {
+  // AF-M-Wave-2: was hardcoded fake numbers — replaced with placeholders until earnings API is wired to this panel
   const rows = [
-    { label: 'Total earned', value: '£1,240', color: 'text-[#166534]' },
-    { label: 'vs last month', value: '+12%', color: 'text-[#166534]' },
-    { label: 'Sessions', value: '18', color: 'text-gray-900' },
-    { label: 'Upcoming this week', value: '£320', color: 'text-gray-900' }
+    { label: 'Total earned', value: '—', color: 'text-gray-400' },
+    { label: 'vs last month', value: '—', color: 'text-gray-400' },
+    { label: 'Sessions', value: '—', color: 'text-gray-400' },
+    { label: 'Upcoming this week', value: '—', color: 'text-gray-400' }
   ]
   
   return (
@@ -429,11 +421,10 @@ function ProfilePublicPreview({ profile }: { profile: CoachProfileResponse }) {
         )}
         
         {/* CF-D07b POLISH 4: Book button with pill shape (radius-999px), padding 10px */}
-        <button 
-          onClick={() => {
-            // TODO CF-D07: stub
-          }}
-          className="w-full bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-full py-2.5 text-[12px] font-medium transition-colors"
+        <button
+          disabled
+          title="This is a preview of your public profile"
+          className="w-full bg-[#0077CC] text-white rounded-full py-2.5 text-[12px] font-medium opacity-50 cursor-not-allowed"
         >
           Book a session
         </button>
@@ -833,15 +824,18 @@ function DaySessionList({ selectedDate, onBackToWeek }: { selectedDate: number |
     weekday: 'long', day: 'numeric', month: 'short'
   })
 
-  // TODO CF-D02b: derive day sessions from real schedule/booking data
-  const allSessions = [
-    { date: 6, day: 'Mon', name: 'James Okafor', time: '09:00', sport: 'Cricket', status: 'confirmed', color: '#3B82F6' },
-    { date: 6, day: 'Mon', name: 'Junior Cricket', time: '14:00', sport: 'Cricket', status: 'programme', color: '#7C3AED' },
-    { date: 8, day: 'Wed', name: 'Marcus Trent', time: '10:00', sport: 'Football', status: 'confirmed', color: '#3B82F6' },
-    { date: 8, day: 'Wed', name: 'David Chen', time: '13:00', sport: 'Cricket', status: 'pending', color: '#F59E0B' },
-    { date: 9, day: 'Thu', name: 'Advanced Batting', time: '09:00', sport: 'Cricket', status: 'programme', color: '#7C3AED' },
-    { date: 12, day: 'Sun', name: 'Open Net Session', time: '10:00', sport: 'Football', status: 'programme', color: '#7C3AED' },
-  ]
+  // AF-M-Wave-2: was 6 fake sessions with invented parent names — replaced with empty
+  // until real booking + programme data is wired to this panel.
+  // Type annotation explicit so TS doesn't infer never[] for the .filter below.
+  const allSessions: Array<{
+    date: number
+    day: string
+    name: string
+    time: string
+    sport: string
+    status: string
+    color: string
+  }> = []
 
   const daySessions = allSessions.filter(s => s.date === selectedDate)
 
@@ -883,12 +877,13 @@ function DaySessionList({ selectedDate, onBackToWeek }: { selectedDate: number |
 }
 
 function SmartInsightCard() {
-  // TODO CF-D02b: derive insight from real earnings/availability data
+  // AF-M-Wave-2: was hardcoded "Saturdays earn 30% more" shown to every coach —
+  // replaced with honest coming-soon placeholder until real earnings/availability derivation lands
   return (
     <div className="bg-[#E8F5F0] border-l-[3px] border-l-[#1D9E75] rounded-lg px-3 py-2.5">
       <div className="text-[9px] text-[#0F6E56] uppercase tracking-wider font-medium mb-1">Insight</div>
-      <p className="text-[11px] text-[#085041] font-medium leading-relaxed">
-        Saturdays earn 30% more on average — consider opening a slot
+      <p className="text-gray-400 italic text-[12px]">
+        Smart insights coming soon — based on your bookings and earnings data.
       </p>
     </div>
   )
