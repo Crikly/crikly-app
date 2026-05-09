@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect } from 'react'
 import { MapPin, Calendar, XCircle, CalendarDays, CheckCircle, ShieldCheck } from 'lucide-react'
+// AF-P-Wave-1: profile cache adoption
+import { fetchCoachProfileCached } from '@/lib/onboarding-cache'
 
 interface OnboardingPreviewPanelProps {
   coachName: string
@@ -60,13 +62,10 @@ export function OnboardingPreviewPanel({
       }
 
       try {
-        // Fix-24: Fetch profile for avatar
-        const profileResponse = await fetch('/api/coaches/profile')
-        if (profileResponse.ok) {
-          const profileData = await profileResponse.json()
-          if (profileData.avatar_url) {
-            setAvatarUrl(profileData.avatar_url)
-          }
+        // AF-P-Wave-1: use cache (was Fix-24 raw fetch)
+        const profileData = await fetchCoachProfileCached()
+        if (profileData?.avatar_url) {
+          setAvatarUrl(profileData.avatar_url)
         }
       } catch {
         // Fail silently — falls back to initials

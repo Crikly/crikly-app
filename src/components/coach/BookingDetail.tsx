@@ -2,6 +2,8 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { ArrowLeft, Mail, CalendarDays, Activity, User, Clock, MapPin, RefreshCw } from 'lucide-react'
+// AF-P-Wave-1: sports cache adoption
+import { fetchSportsListCached } from '@/lib/onboarding-cache'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -169,8 +171,10 @@ export function BookingDetail() {
   const [sportsMap, setSportsMap] = useState<Record<string, string>>({})
 
   useEffect(() => {
+    // AF-P-Wave-1: use sports cache — fetchSportsListCached returns Sport[] directly,
+    // so destructure is now Sport[] instead of { sports?: Sport[] }
     Promise.all([
-      fetch('/api/sports').then((r) => r.json()).catch(() => ({ sports: [] })),
+      fetchSportsListCached().catch(() => [] as Sport[]),
       bookingId
         ? fetch(`/api/coaches/bookings/${bookingId}`).then(async (r) => {
             if (r.status === 404) return { notFound: true }
@@ -178,9 +182,9 @@ export function BookingDetail() {
             return r.json()
           })
         : Promise.resolve({ notFound: true }),
-    ]).then(([sportsData, bookingData]: [{ sports?: Sport[] }, Record<string, unknown>]) => {
+    ]).then(([sports, bookingData]: [Sport[], Record<string, unknown>]) => {
       const map: Record<string, string> = {}
-      sportsData.sports?.forEach((s) => { map[s.id] = s.name })
+      sports.forEach((s) => { map[s.id] = s.name })
       setSportsMap(map)
 
       // AF-H-31: split 404 from server errors

@@ -2,6 +2,8 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { ChevronRight, Loader2 } from 'lucide-react'
+// AF-P-Wave-1: sports cache adoption
+import { fetchSportsListCached } from '@/lib/onboarding-cache'
 
 type Tab = 'Upcoming' | 'Pending approval' | 'Past'
 
@@ -104,13 +106,12 @@ export function BookingsManagement() {
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [loadMoreError, setLoadMoreError] = useState<string | null>(null)
 
-  // Fetch sports once on mount
+  // AF-P-Wave-1: use sports cache — fetchSportsListCached() returns the array directly
   useEffect(() => {
-    fetch('/api/sports')
-      .then((r) => r.json())
-      .then((data: { sports?: Sport[] }) => {
+    fetchSportsListCached()
+      .then((sports: Sport[]) => {
         const map: Record<string, string> = {}
-        data.sports?.forEach((s) => { map[s.id] = s.name })
+        sports.forEach((s) => { map[s.id] = s.name })
         setSportsMap(map)
       })
       .catch(() => {/* non-critical — sport names fall back to empty */})

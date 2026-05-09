@@ -5,6 +5,8 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { ChevronLeft, ChevronRight, Plus, Check, User, RefreshCw, Users, Ban, X, Calendar, MapPin, PoundSterling, AlertCircle, AlertTriangle, Info } from 'lucide-react'
 import { VenueAutocomplete, type VenueSelection } from '@/components/coach/shared/LocationAutocomplete'
+// AF-P-Wave-1: sports cache adoption
+import { fetchSportsListCached } from '@/lib/onboarding-cache'
 
 // AF-P-03a: Local-time YYYY-MM-DD formatter — avoids toISOString() UTC drift.
 // Used for week-bounds filter and per-day grid filtering.
@@ -232,13 +234,12 @@ export function Schedule() {
     fetchAvailability()
   }, [availabilityRefreshKey])
 
-  // AF-C-01: Fetch sports map once on mount for booking popover sport names
+  // AF-P-Wave-1: use sports cache (was AF-C-01 raw fetch)
   useEffect(() => {
-    fetch('/api/sports')
-      .then((r) => (r.ok ? r.json() : { sports: [] }))
-      .then((data: { sports?: { id: string; name: string }[] }) => {
+    fetchSportsListCached()
+      .then((sports: { id: string; name: string }[]) => {
         const map: Record<string, string> = {}
-        data.sports?.forEach((s) => { map[s.id] = s.name })
+        sports.forEach((s) => { map[s.id] = s.name })
         setSportsMap(map)
       })
       .catch(() => { /* non-critical — popover falls back gracefully */ })

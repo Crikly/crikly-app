@@ -5,6 +5,8 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { ChevronRight, ChevronLeft, MapPin, Star, PoundSterling, Calendar, Loader2, Check, X, ShieldCheck } from 'lucide-react'
 import type { ProgrammePreviewEventDetail } from './CreateProgramme'
+// AF-P-Wave-1: profile + sports cache adoption
+import { fetchCoachProfileCached, fetchSportsListCached } from '@/lib/onboarding-cache'
 
 type ProgrammePreviewState = ProgrammePreviewEventDetail
 
@@ -132,11 +134,11 @@ export function CoachRightPanel({ dashboardData }: CoachRightPanelProps = {}) {
   const [sportsMap, setSportsMap] = useState<Record<string, string>>({})
   useEffect(() => {
     if (!isBookingsRoute) return
-    fetch('/api/sports')
-      .then((r) => r.json())
-      .then((data: { sports?: Sport[] }) => {
+    // AF-P-Wave-1: use sports cache — fetchSportsListCached() returns the array directly (no wrapper)
+    fetchSportsListCached()
+      .then((sports: Sport[]) => {
         const map: Record<string, string> = {}
-        data.sports?.forEach((s) => { map[s.id] = s.name })
+        sports.forEach((s) => { map[s.id] = s.name })
         setSportsMap(map)
       })
       .catch(() => {})
@@ -301,10 +303,9 @@ function ProfilePublicPreviewWrapper() {
     const fetchProfile = async () => {
       try {
         setLoading(true)
-        const response = await fetch('/api/coaches/profile')
-        if (!response.ok) throw new Error('Failed to fetch profile')
-        const data: CoachProfileResponse = await response.json()
-        setProfile(data)
+        // AF-P-Wave-1: use cache
+        const data = await fetchCoachProfileCached()
+        setProfile(data as CoachProfileResponse)
       } catch (err) {
         console.error('Failed to fetch profile:', err)
       } finally {

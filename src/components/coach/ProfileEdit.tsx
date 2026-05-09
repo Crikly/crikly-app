@@ -3,6 +3,8 @@ import React, { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { ChevronRight, User, Tag, Award, Calendar, ShieldCheck, CreditCard, CheckCircle2, Star, Share2, ExternalLink, Circle, Camera, LayoutGrid, X, Plus } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+// AF-P-Wave-1: profile cache adoption
+import { fetchCoachProfileCached, clearCoachProfileCache } from '@/lib/onboarding-cache'
 
 // CD-10b: API response type
 interface CoachProfileResponse {
@@ -62,13 +64,9 @@ export function ProfileEdit() {
         setLoading(true)
         setError(null)
 
-        const response = await fetch('/api/coaches/profile')
-        if (!response.ok) {
-          throw new Error('Failed to fetch profile')
-        }
-
-        const data: CoachProfileResponse = await response.json()
-        setProfile(data)
+        // AF-P-Wave-1: use cache — was raw fetch on every mount
+        const data = await fetchCoachProfileCached()
+        setProfile(data as CoachProfileResponse)
 
         // Fix-17m: Fetch sports count
         const sportsRes = await fetch('/api/coaches/sports')
@@ -278,6 +276,8 @@ export function ProfileEdit() {
 
       if (!res.ok) throw new Error('Failed to update profile')
 
+      // AF-P-Wave-1: clear stale profile cache so next read sees the new avatar
+      clearCoachProfileCache()
       setProfile(prev => prev ? { ...prev, avatar_url: publicUrl } : prev)
     } catch (err) {
       console.error('[Fix-42] Photo upload error:', err)

@@ -3,21 +3,20 @@ import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, Check, CheckCircle } from 'lucide-react'
 import { OnboardingPreviewPanel } from '../OnboardingPreviewPanel'
+// AF-P-Wave-1: profile cache adoption + clear after go-live mutation
+import { fetchCoachProfileCached, clearCoachProfileCache } from '@/lib/onboarding-cache'
 
 export function GetPaidStep() {
   const router = useRouter()
   const [coachName, setCoachName] = useState<string>('Your name')
   const [isGoingLive, setIsGoingLive] = useState(false)
   
-  // Fix-16e: Fetch coach profile for name
+  // AF-P-Wave-1: use cache (was Fix-16e raw fetch)
   useEffect(() => {
     const fetchProfile = async () => {
       try {
-        const response = await fetch('/api/coaches/profile')
-        if (response.ok) {
-          const data = await response.json()
-          setCoachName(data.full_name || 'Your name')
-        }
+        const data = await fetchCoachProfileCached()
+        setCoachName(data?.full_name || 'Your name')
       } catch (error) {
         console.error('[GetPaidStep] Failed to fetch profile:', error)
       }
@@ -39,6 +38,8 @@ export function GetPaidStep() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ is_profile_live: true })
       })
+      // AF-P-Wave-1: clear stale profile cache so dashboard reads see is_profile_live: true
+      clearCoachProfileCache()
       router.push('/coach/dashboard?celebrated=true')
     } catch (error) {
       console.error('Failed to go live:', error)
