@@ -301,6 +301,13 @@ export async function POST(
       }
     }
 
+    // BUG-PROFILE-LIVE-WRITE: is_profile_live validation (boolean, optional)
+    if (body.is_profile_live !== undefined) {
+      if (typeof body.is_profile_live !== 'boolean') {
+        validationErrors.push('is_profile_live must be a boolean')
+      }
+    }
+
     // C-Settings-01-API: is_paused validation (boolean, optional)
     if (body.is_paused !== undefined) {
       if (typeof body.is_paused !== 'boolean') {
@@ -359,6 +366,7 @@ export async function POST(
       max_advance_days?: number
       travel_radius_miles?: number | null
       requires_manual_approval?: boolean
+      is_profile_live?: boolean
       is_paused?: boolean
       updated_at: string
     } = {
@@ -378,6 +386,8 @@ export async function POST(
     if (body.travel_radius_miles !== undefined) coachProfileUpdates.travel_radius_miles = body.travel_radius_miles
     // Fix-AC-14: requires_manual_approval assignment
     if (body.requires_manual_approval !== undefined) coachProfileUpdates.requires_manual_approval = body.requires_manual_approval
+    // BUG-PROFILE-LIVE-WRITE: is_profile_live assignment — was silently dropped (typed object excluded the field, so POST {is_profile_live: true} from GetPaidStep was a no-op)
+    if (body.is_profile_live !== undefined) coachProfileUpdates.is_profile_live = body.is_profile_live
     // C-Settings-01-API: is_paused assignment
     if (body.is_paused !== undefined) coachProfileUpdates.is_paused = body.is_paused
 
