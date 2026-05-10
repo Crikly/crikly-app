@@ -533,6 +533,7 @@ export type Database = {
           id: string
           is_featured: boolean
           is_flagged: boolean
+          is_paused: boolean
           is_profile_live: boolean
           is_suspended: boolean
           languages: string[] | null
@@ -566,6 +567,7 @@ export type Database = {
           id?: string
           is_featured?: boolean
           is_flagged?: boolean
+          is_paused?: boolean
           is_profile_live?: boolean
           is_suspended?: boolean
           languages?: string[] | null
@@ -599,6 +601,7 @@ export type Database = {
           id?: string
           is_featured?: boolean
           is_flagged?: boolean
+          is_paused?: boolean
           is_profile_live?: boolean
           is_suspended?: boolean
           languages?: string[] | null

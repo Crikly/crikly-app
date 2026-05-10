@@ -218,6 +218,7 @@ Verified sports coaches offering sessions.
 | dbs_verified_at | timestamptz | YES | null | When DBS badge was approved |
 | dbs_expires_at | timestamptz | YES | null | Annual renewal date |
 | is_profile_live | boolean | NO | false | Visible in search results |
+| is_paused | boolean | NO | false | Coach-controlled pause — true = hidden from search; existing bookings continue (Migration 027) |
 | subscription_tier_id | uuid | YES | null | FK → subscription_tiers(id) |
 | cancellation_window_hours | integer | NO | 24 | Min hours before session to cancel |
 | min_advance_hours | integer | NO | 24 | Min hours ahead parents can book |
