@@ -29,6 +29,10 @@ export function CoachLayoutClient({
   const [notificationCount, setNotificationCount] = useState(0)
   // AF-H-39: real coach slug from DB (was: name-derived single-replace)
   const [coachSlug, setCoachSlug] = useState('')
+  // BUG-GO-LIVE-PATH: profile status drives the My Profile sidebar pulse dot.
+  // null = unknown (don't render dot until fetch resolves to avoid flash).
+  const [profileLive, setProfileLive] = useState<boolean | null>(null)
+  const [profilePaused, setProfilePaused] = useState(false)
 
   const isActive = (path: string) => pathname === path ||
     (path !== '/coach/dashboard' && pathname.startsWith(path))
@@ -85,10 +89,17 @@ export function CoachLayoutClient({
     return () => window.removeEventListener('crikly:open-share-modal', handleOpenShare)
   }, [])
 
-  // AF-H-39: fetch coach slug for share URLs (cached helper — warm after onboarding)
+  // AF-H-39: fetch coach slug for share URLs (cached helper — warm after onboarding).
+  // BUG-GO-LIVE-PATH: also captures is_profile_live + is_paused for the sidebar pulse dot.
   useEffect(() => {
     fetchCoachProfileCached()
-      .then(p => { if (p?.slug) setCoachSlug(p.slug) })
+      .then((p: { slug?: string; is_profile_live?: boolean; is_paused?: boolean } | null) => {
+        if (p?.slug) setCoachSlug(p.slug)
+        if (p) {
+          setProfileLive(!!p.is_profile_live)
+          setProfilePaused(!!p.is_paused)
+        }
+      })
       .catch(() => {})
   }, [])
 
@@ -164,7 +175,15 @@ export function CoachLayoutClient({
           <div className="flex flex-col gap-1.5">
             <div className="px-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1 mt-2">Manage</div>
             <SidebarItem icon={<Clock size={20} />} label="Availability" active={isActive('/coach/availability')} onClick={() => nav('/coach/availability')} />
-            <SidebarItem icon={<User size={20} />} label="My Profile" active={isActive('/coach/profile')} onClick={() => nav('/coach/profile/edit')} />
+            {/* BUG-GO-LIVE-PATH: pulse dot signals action-needed (green = go live) or status (orange = paused) */}
+            <SidebarItem
+              icon={<User size={20} />}
+              label="My Profile"
+              active={isActive('/coach/profile')}
+              pulseDot={profileLive === false ? 'success' : (profileLive && profilePaused ? 'warning' : undefined)}
+              pulseTitle={profileLive === false ? 'Your profile is not live yet' : (profileLive && profilePaused ? 'Your profile is paused' : undefined)}
+              onClick={() => nav('/coach/profile/edit')}
+            />
           </div>
           <div className="flex flex-col gap-1.5">
             <div className="px-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1 mt-2">Account</div>
@@ -306,8 +325,17 @@ export function CoachLayoutClient({
   )
 }
 
-function SidebarItem({ icon, label, active, badge, warningDot, onClick }: {
-  icon: React.ReactNode; label: string; active?: boolean; badge?: number; warningDot?: boolean; onClick?: () => void
+function SidebarItem({ icon, label, active, badge, warningDot, pulseDot, pulseTitle, onClick }: {
+  icon: React.ReactNode
+  label: string
+  active?: boolean
+  badge?: number
+  warningDot?: boolean
+  // BUG-GO-LIVE-PATH: animated dot for action-needed (success = go live) / paused (warning = paused).
+  // Distinct from the static `warningDot` (e.g. Get Paid Stripe-pending) by both colour and pulse animation.
+  pulseDot?: 'success' | 'warning'
+  pulseTitle?: string
+  onClick?: () => void
 }) {
   return (
     <div onClick={onClick} className={`flex items-center justify-between px-4 py-3 rounded-xl cursor-pointer transition-all ${active ? 'bg-[#0077CC]/10 text-[#0077CC] font-bold' : 'text-gray-600 font-medium hover:bg-gray-50 hover:text-gray-900'}`}>
@@ -315,6 +343,12 @@ function SidebarItem({ icon, label, active, badge, warningDot, onClick }: {
         <div className="relative">
           {icon}
           {warningDot && <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-amber-500 rounded-full border-2 border-white" />}
+          {pulseDot && (
+            <span
+              title={pulseTitle}
+              className={`absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full border-2 border-white animate-pulse ${pulseDot === 'success' ? 'bg-success' : 'bg-warning'}`}
+            />
+          )}
         </div>
         <span className="text-[15px]">{label}</span>
       </div>

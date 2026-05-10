@@ -1,7 +1,7 @@
 'use client'
 import React, { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { ChevronRight, User, Tag, Award, Calendar, ShieldCheck, CreditCard, CheckCircle2, Star, Share2, ExternalLink, Circle, Camera, LayoutGrid, X, Plus } from 'lucide-react'
+import { ChevronRight, User, Tag, Award, Calendar, ShieldCheck, CreditCard, CheckCircle2, Star, Share2, ExternalLink, Circle, Camera, LayoutGrid, X, Plus, Info, Copy, Check, AlertTriangle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 // AF-P-Wave-1: profile cache adoption
 import { fetchCoachProfileCached, clearCoachProfileCache } from '@/lib/onboarding-cache'
@@ -56,6 +56,45 @@ export function ProfileEdit() {
 
   // Fix-42b: Gallery modal state
   const [galleryOpen, setGalleryOpen] = useState(false)
+
+  // BUG-GO-LIVE-PATH: Go Live action state
+  const [goingLive, setGoingLive] = useState(false)
+  const [goLiveError, setGoLiveError] = useState<string | null>(null)
+  const [showLiveModal, setShowLiveModal] = useState(false)
+  const [copiedLiveModal, setCopiedLiveModal] = useState(false)
+
+  // BUG-GO-LIVE-PATH: clear "Copied!" feedback after 1.5s with cleanup-on-unmount
+  // (was a bare setTimeout that leaked if the modal closed mid-flight)
+  useEffect(() => {
+    if (!copiedLiveModal) return
+    const t = setTimeout(() => setCopiedLiveModal(false), 1500)
+    return () => clearTimeout(t)
+  }, [copiedLiveModal])
+
+  async function handleGoLive() {
+    if (goingLive) return
+    setGoingLive(true)
+    setGoLiveError(null)
+    try {
+      const res = await fetch('/api/coaches/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_profile_live: true }),
+      })
+      if (!res.ok) throw new Error('Failed')
+      // BUG-GO-LIVE-PATH: reflect new state locally + clear cache so the sidebar dot
+      // updates on next mount. Write path itself was wired up in BUG-PROFILE-LIVE-WRITE
+      // (commit f0fad79).
+      setProfile(prev => prev ? { ...prev, is_profile_live: true } : prev)
+      clearCoachProfileCache()
+      setShowLiveModal(true)
+    } catch (err) {
+      console.error('[ProfileEdit] Go Live error:', err)
+      setGoLiveError('Could not go live. Please try again.')
+    } finally {
+      setGoingLive(false)
+    }
+  }
 
   // CD-10b: Fetch profile data on mount
   useEffect(() => {
@@ -297,7 +336,8 @@ export function ProfileEdit() {
           {/* CD-10b: Loading state */}
           {loading && (
             <div className="py-16 flex flex-col items-center justify-center">
-              <div className="w-8 h-8 border-3 border-gray-200 border-t-[#0077CC] rounded-full animate-spin mb-3" />
+              {/* BUG-GO-LIVE-PATH: spinner border-t hex → brand-600 token */}
+              <div className="w-8 h-8 border-3 border-gray-200 border-t-brand-600 rounded-full animate-spin mb-3" />
               <p className="text-[14px] text-gray-500">Loading profile...</p>
             </div>
           )}
@@ -305,14 +345,15 @@ export function ProfileEdit() {
           {/* CD-10b: Error state */}
           {error && !loading && (
             <div className="py-16 flex flex-col items-center justify-center text-center px-4">
+              {/* BUG-GO-LIVE-PATH: replaced ⚠ emoji with Lucide AlertTriangle (no-emoji rule) + brand-600 token */}
               <div className="w-16 h-16 bg-red-50 text-red-600 rounded-full flex items-center justify-center mb-4">
-                <span className="text-2xl">⚠</span>
+                <AlertTriangle size={28} />
               </div>
               <h3 className="text-[18px] font-bold text-gray-900 mb-2">Failed to load profile</h3>
               <p className="text-[14px] text-gray-500 mb-6">{error}</p>
-              <button 
+              <button
                 onClick={() => window.location.reload()}
-                className="bg-[#0077CC] hover:bg-[#0066AA] text-white px-6 py-3 rounded-xl text-[15px] font-bold transition-colors"
+                className="bg-brand-600 hover:bg-[#0066AA] text-white px-6 py-3 rounded-xl text-[15px] font-bold transition-colors"
               >
                 Try Again
               </button>
@@ -322,6 +363,27 @@ export function ProfileEdit() {
           {/* CD-10b: Profile content */}
           {!loading && !error && profile && (
           <>
+          {/* BUG-GO-LIVE-PATH: not-live banner with Go Live action — sits above profile card */}
+          {!profile.is_profile_live && (
+            <div className="bg-brand-50 border border-brand-100 rounded-xl px-4 py-3 flex items-center gap-3 mb-4">
+              <Info size={20} className="text-brand-600 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-[13px] font-medium text-gray-900">Your profile is not live.</p>
+                <p className="text-[12px] text-gray-600">Parents cannot find or book you.</p>
+              </div>
+              <button
+                type="button"
+                onClick={handleGoLive}
+                disabled={goingLive}
+                className="h-9 px-4 rounded-full bg-brand-600 hover:bg-[#0066AA] text-white text-[13px] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+              >
+                {goingLive ? 'Going live…' : 'Go live'}
+              </button>
+            </div>
+          )}
+          {goLiveError && (
+            <p className="text-[12px] text-danger mb-4">{goLiveError}</p>
+          )}
           {/* CF-D07 CHANGE 1: Identity hero with stronger presence */}
           {/* CF-D07b POLISH 1: Increased padding to 24px */}
           <div className="bg-white rounded-[14px] p-6 shadow-sm">
@@ -405,9 +467,13 @@ export function ProfileEdit() {
               {/* Action buttons */}
               {/* CF-D07b POLISH 1: Added margin-left auto to push buttons to far right */}
               <div className="flex gap-2 shrink-0 ml-auto">
+                {/* BUG-GO-LIVE-PATH: gate Preview on is_profile_live + slug.
+                    Was falling back to profile.id which 404s for non-live coaches
+                    (the public route only resolves rows where is_profile_live=true). */}
                 <button
-                  onClick={() => profile && window.open(`/coaches/${profile.slug || profile.id}`, '_blank')}
-                  disabled={!profile}
+                  onClick={() => profile?.slug && window.open(`/coaches/${profile.slug}`, '_blank')}
+                  disabled={!profile || !profile.is_profile_live || !profile.slug}
+                  title={!profile?.is_profile_live || !profile?.slug ? 'Go live first to preview your profile' : undefined}
                   className="px-3 py-1.5 bg-white border border-gray-200 text-gray-600 text-[11px] font-medium rounded-full hover:bg-gray-50 transition-colors flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
                   data-testid="preview-profile-btn"
                 >
@@ -434,18 +500,22 @@ export function ProfileEdit() {
             {/* Progress section */}
             {/* CF-D07b POLISH 1: Increased padding-top to 16px */}
             <div className="pt-4 border-t-[0.5px] border-gray-100">
+              {/* BUG-GO-LIVE-PATH: hex tokens replaced with brand-600/brand-50 + motivational copy
+                  now keys off is_profile_live too — was misleading 100%-complete-but-not-live coaches
+                  with "Your profile is live" while the new banner above said the opposite. */}
               <div className="flex items-center justify-between mb-1.5">
                 <span className="text-[12px] font-medium text-gray-900">Profile completeness</span>
-                <span className="text-[12px] font-medium text-[#0077CC]">{profileCompleteness}%</span>
+                <span className="text-[12px] font-medium text-brand-600">{profileCompleteness}%</span>
               </div>
-              <div className="h-1.5 bg-[#E6F1FB] rounded-full overflow-hidden">
-                <div className="h-full bg-[#0077CC] rounded-full transition-all" style={{ width: `${profileCompleteness}%` }} />
+              <div className="h-1.5 bg-brand-50 rounded-full overflow-hidden">
+                <div className="h-full bg-brand-600 rounded-full transition-all" style={{ width: `${profileCompleteness}%` }} />
               </div>
-              {/* CF-D07b POLISH 2: More outcome-oriented motivational copy */}
-              <p className="text-[11px] font-medium text-[#0077CC] mt-1">
-                {profileCompleteness < 100 
-                  ? 'Almost there — add your qualifications to build trust with parents'
-                  : 'Your profile is live — parents can find and book you'
+              <p className="text-[11px] font-medium text-brand-600 mt-1">
+                {profile.is_profile_live
+                  ? 'Your profile is live — parents can find and book you'
+                  : profileCompleteness < 100
+                    ? 'Almost there — add your qualifications to build trust with parents'
+                    : 'Profile complete — go live to start receiving bookings'
                 }
               </p>
             </div>
@@ -541,6 +611,66 @@ export function ProfileEdit() {
               <ChevronRight size={18} className="text-gray-400" />
             </button>
           </div>
+
+          {/* BUG-GO-LIVE-PATH: focused sharing moment after Go Live (NOT the onboarding celebration). */}
+          {showLiveModal && profile?.slug && (
+            <div
+              className="fixed inset-0 bg-neutral-900/40 z-[100] flex items-center justify-center p-4"
+              onClick={() => setShowLiveModal(false)}
+            >
+              <div
+                className="bg-white rounded-[20px] shadow-lg w-full max-w-[400px] p-6 relative"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  onClick={() => setShowLiveModal(false)}
+                  aria-label="Close"
+                  className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-900 bg-gray-50 hover:bg-gray-100 rounded-full transition-colors"
+                >
+                  <X size={16} />
+                </button>
+
+                <h2 className="text-[20px] font-semibold text-gray-900 mb-2">You&apos;re live! 🎉</h2>
+                <p className="text-[14px] text-gray-600 mb-5">Parents can now find and book you on Crikly.</p>
+
+                <div className="bg-gray-50 border border-gray-100 rounded-xl px-3 py-2.5 mb-4 text-[13px] font-mono text-gray-700 truncate">
+                  crikly.app/{profile.slug}
+                </div>
+
+                <div className="flex gap-2 mb-5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(`https://crikly.app/${profile.slug}`).catch(() => {})
+                      // BUG-GO-LIVE-PATH: setCopiedLiveModal triggers a useEffect that auto-clears after 1.5s with cleanup
+                      setCopiedLiveModal(true)
+                    }}
+                    className="flex-1 h-10 rounded-xl bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 text-[13px] font-medium transition-colors flex items-center justify-center gap-2"
+                  >
+                    {copiedLiveModal ? (<><Check size={14} /> Copied!</>) : (<><Copy size={14} /> Copy link</>)}
+                  </button>
+                  {/* BUG-GO-LIVE-PATH: action buttons use brand-600 per design system,
+                      not bg-success — green is reserved for trust/verified status, not actions. */}
+                  <button
+                    type="button"
+                    onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(`Book a session with me on Crikly: https://crikly.app/${profile.slug}`)}`, '_blank', 'noopener')}
+                    className="flex-1 h-10 rounded-xl bg-brand-600 hover:bg-[#0066AA] text-white text-[13px] font-medium transition-colors flex items-center justify-center gap-2"
+                  >
+                    Share on WhatsApp
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowLiveModal(false)}
+                  className="w-full h-10 rounded-xl bg-brand-600 hover:bg-[#0066AA] text-white text-[13px] font-medium transition-colors"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          )}
           </>
           )}
         </div>
@@ -710,7 +840,8 @@ function GalleryModal({
         <div className="flex-1 overflow-y-auto px-5 py-4">
           {loadingPhotos ? (
             <div className="flex items-center justify-center py-12">
-              <div className="w-7 h-7 border-2 border-gray-200 border-t-[#0077CC] rounded-full animate-spin" />
+              {/* BUG-GO-LIVE-PATH: spinner border-t hex → brand-600 token */}
+              <div className="w-7 h-7 border-2 border-gray-200 border-t-brand-600 rounded-full animate-spin" />
             </div>
           ) : loadError ? (
             <p className="text-[13px] text-red-500 text-center py-8">{loadError}</p>
