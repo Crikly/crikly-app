@@ -180,6 +180,11 @@ export async function GET(
       .eq(UUID_RE.test(id) ? 'id' : 'slug', id)
       .eq('is_profile_live', true)
       .eq('is_suspended', false)
+      // BUG-PUBLIC-PROFILE-404: paused coaches must not be publicly discoverable
+      // (is_paused added in Migration 027 / C-Settings-01-DB; the public route
+      // had been missing this filter so paused coaches were still reachable
+      // by direct URL — defeating the Settings page Pause toggle).
+      .eq('is_paused', false)
       .is('deleted_at', null)
       .maybeSingle()
 
