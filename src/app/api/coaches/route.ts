@@ -303,6 +303,11 @@ export async function GET(
       `)
       .eq('is_profile_live', true)
       .eq('is_suspended', false)
+      // BUG-PUBLIC-PROFILE-404: paused coaches must not appear in search/listing results
+      // (is_paused added in Migration 027 / C-Settings-01-DB; matches the same filter
+      // added to /api/coaches/[id]/route.ts in this same commit — without both, the
+      // Settings page Pause toggle would still leak paused coaches via search).
+      .eq('is_paused', false)
       .is('deleted_at', null)
 
     // DB-level filters for indexed columns
