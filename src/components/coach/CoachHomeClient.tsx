@@ -3,12 +3,14 @@
 import React, { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { 
-  Clock, MapPin, Star, TrendingUp, AlertCircle, 
+import {
+  Clock, MapPin, Star, TrendingUp, AlertCircle, AlertTriangle,
   ChevronRight, ChevronLeft, PoundSterling, Check, Calendar, Plus,
   Search, Banknote, Copy, Share, ArrowRight
 } from 'lucide-react'
 import { CoachRightPanel } from '@/components/coach/CoachRightPanel'
+// C-Settings-01-UI: pause banner reads is_paused from cached profile fetch
+import { fetchCoachProfileCached } from '@/lib/onboarding-cache'
 
 const upNextUrl = "https://images.unsplash.com/photo-1771909713672-4e351f1f8b62?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjcmlja2V0JTIwdHJhaW5pbmclMjBzcG9ydHN8ZW58MXx8fHwxNzc1NDg3OTc5fDA&ixlib=rb-4.1.0&q=80&w=1080"
 const group1Url = "https://images.unsplash.com/photo-1761039807856-9f412d0e0a3d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxzcG9ydHMlMjB0cmFpbmluZyUyMGdyb3VwfGVufDF8fHx8MTc3NTQ4Nzk3OXww&ixlib=rb-4.1.0&q=80&w=1080"
@@ -70,6 +72,8 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
   const [showCelebration, setShowCelebration] = useState(false)
   const [profileUrl, setProfileUrl] = useState('crikly.app/coach')
   const [copied, setCopied] = useState(false)
+  // C-Settings-01-UI: pause banner state (cached fetch — no extra round-trip if already warm)
+  const [isPaused, setIsPaused] = useState(false)
 
   // Fix-36: Detect celebration query param and show modal
   useEffect(() => {
@@ -87,6 +91,15 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
       .replace(/[^a-z0-9-]/g, '')
     setProfileUrl(`crikly.app/${slug}`)
   }, [data.coachName])
+
+  // C-Settings-01-UI: read is_paused from cached profile fetch (DashboardData doesn't include it)
+  useEffect(() => {
+    fetchCoachProfileCached()
+      .then((p: { is_paused?: boolean } | null) => {
+        if (p?.is_paused) setIsPaused(true)
+      })
+      .catch(() => {/* non-critical — banner just won't show */})
+  }, [])
   
   // Time-based greeting
   const hour = new Date().getHours()
@@ -121,7 +134,21 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
       {/* Main content — left/center */}
       <div className="flex-1 flex justify-center">
         <div className="w-full flex flex-col gap-6 md:gap-8 p-5 md:p-10 pb-28 md:pb-10 bg-white">
-        
+
+        {/* C-Settings-01-UI: amber pause banner — visible on both mobile + desktop */}
+        {isPaused && (
+          <div className="bg-[#FEF3C7] border border-[#FDE68A] rounded-[10px] p-3 flex gap-2.5 items-start">
+            <AlertTriangle size={18} strokeWidth={1.8} className="text-warning shrink-0 mt-0.5" />
+            <div className="text-[13px] text-[#854D0E] leading-[1.5]">
+              <strong className="text-[#713F12] font-semibold">Your profile is paused.</strong>{' '}
+              Parents cannot find you in search results.{' '}
+              <Link href="/coach/settings" className="text-brand-600 font-medium ml-1 inline-flex items-center gap-1 hover:underline">
+                Go to settings →
+              </Link>
+            </div>
+          </div>
+        )}
+
         {/* Mobile Top Bar */}
         <div className="flex justify-between items-center md:hidden mb-2">
           <Link href="/coach/dashboard">

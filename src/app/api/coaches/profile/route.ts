@@ -53,6 +53,7 @@ interface CoachProfileResponse {
   years_experience: number | null
   dbs_status: 'none' | 'pending' | 'verified' | 'expired'
   is_profile_live: boolean
+  is_paused: boolean
   stripe_onboarding_complete: boolean
   cancellation_window_hours: number
   min_advance_hours: number
@@ -93,6 +94,7 @@ export async function GET(): Promise<NextResponse<CoachProfileResponse | { error
         years_experience,
         dbs_status,
         is_profile_live,
+        is_paused,
         stripe_onboarding_complete,
         cancellation_window_hours,
         min_advance_hours,
@@ -147,6 +149,7 @@ export async function GET(): Promise<NextResponse<CoachProfileResponse | { error
       years_experience: coachProfile.years_experience,
       dbs_status: coachProfile.dbs_status as 'none' | 'pending' | 'verified' | 'expired',
       is_profile_live: coachProfile.is_profile_live,
+      is_paused: coachProfile.is_paused,
       stripe_onboarding_complete: coachProfile.stripe_onboarding_complete,
       cancellation_window_hours: coachProfile.cancellation_window_hours,
       min_advance_hours: coachProfile.min_advance_hours,
@@ -298,6 +301,20 @@ export async function POST(
       }
     }
 
+    // BUG-PROFILE-LIVE-WRITE: is_profile_live validation (boolean, optional)
+    if (body.is_profile_live !== undefined) {
+      if (typeof body.is_profile_live !== 'boolean') {
+        validationErrors.push('is_profile_live must be a boolean')
+      }
+    }
+
+    // C-Settings-01-API: is_paused validation (boolean, optional)
+    if (body.is_paused !== undefined) {
+      if (typeof body.is_paused !== 'boolean') {
+        validationErrors.push('is_paused must be a boolean')
+      }
+    }
+
     // Fix-16e: Validate languages if provided
     if (body.languages !== undefined && body.languages !== null) {
       if (!Array.isArray(body.languages)) {
@@ -349,6 +366,8 @@ export async function POST(
       max_advance_days?: number
       travel_radius_miles?: number | null
       requires_manual_approval?: boolean
+      is_profile_live?: boolean
+      is_paused?: boolean
       updated_at: string
     } = {
       user_profile_id: userProfile.id,
@@ -367,6 +386,10 @@ export async function POST(
     if (body.travel_radius_miles !== undefined) coachProfileUpdates.travel_radius_miles = body.travel_radius_miles
     // Fix-AC-14: requires_manual_approval assignment
     if (body.requires_manual_approval !== undefined) coachProfileUpdates.requires_manual_approval = body.requires_manual_approval
+    // BUG-PROFILE-LIVE-WRITE: is_profile_live assignment — was silently dropped (typed object excluded the field, so POST {is_profile_live: true} from GetPaidStep was a no-op)
+    if (body.is_profile_live !== undefined) coachProfileUpdates.is_profile_live = body.is_profile_live
+    // C-Settings-01-API: is_paused assignment
+    if (body.is_paused !== undefined) coachProfileUpdates.is_paused = body.is_paused
 
     const { error: coachUpsertError } = await supabase
       .from('coach_profiles')
@@ -389,6 +412,7 @@ export async function POST(
         years_experience,
         dbs_status,
         is_profile_live,
+        is_paused,
         stripe_onboarding_complete,
         cancellation_window_hours,
         min_advance_hours,
@@ -444,6 +468,7 @@ export async function POST(
       years_experience: updatedProfile.years_experience,
       dbs_status: updatedProfile.dbs_status as 'none' | 'pending' | 'verified' | 'expired',
       is_profile_live: updatedProfile.is_profile_live,
+      is_paused: updatedProfile.is_paused,
       stripe_onboarding_complete: updatedProfile.stripe_onboarding_complete,
       cancellation_window_hours: updatedProfile.cancellation_window_hours,
       min_advance_hours: updatedProfile.min_advance_hours,

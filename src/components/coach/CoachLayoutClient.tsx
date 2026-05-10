@@ -5,8 +5,8 @@ import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import {
   Home, Calendar, Inbox, Users, Clock, User,
-  TrendingUp, CreditCard, Share2,
-  MoreHorizontal, X, Copy, QrCode, Mail
+  TrendingUp, CreditCard, Settings, Share2,
+  X, Copy, QrCode, Mail
 } from 'lucide-react'
 import { CoachRightPanel } from '@/components/coach/CoachRightPanel'
 import { createClient } from '@/lib/supabase/client'
@@ -170,6 +170,8 @@ export function CoachLayoutClient({
             <div className="px-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1 mt-2">Account</div>
             <SidebarItem icon={<TrendingUp size={20} />} label="Earnings" active={isActive('/coach/earnings')} onClick={() => nav('/coach/earnings')} />
             <SidebarItem icon={<CreditCard size={20} />} label="Get Paid" warningDot active={isActive('/coach/get-paid')} onClick={() => nav('/coach/get-paid')} />
+            {/* C-Settings-01-UI: Settings entry — placed at end of Account cluster (Ambiguity 3) */}
+            <SidebarItem icon={<Settings size={20} />} label="Settings" active={isActive('/coach/settings')} onClick={() => nav('/coach/settings')} />
           </div>
         </nav>
 
@@ -189,13 +191,12 @@ export function CoachLayoutClient({
         <MobileNavItem icon={<Calendar size={24} />} label="Schedule" active={isActive('/coach/schedule')} onClick={() => nav('/coach/schedule')} />
         <MobileNavItem icon={<Inbox size={24} />} label="Bookings" active={isActive('/coach/bookings')} onClick={() => nav('/coach/bookings')} />
         <MobileNavItem icon={<Users size={24} />} label="Programmes" active={isActive('/coach/programmes')} onClick={() => nav('/coach/programmes')} />
+        {/* C-Settings-01-UI: replaces the AF-H-Wave-4 "More" stub now that Settings exists */}
         <MobileNavItem
-          icon={<MoreHorizontal size={24} />}
-          label="More"
-          active={false}
-          onClick={() => {}}
-          disabled
-          title="Settings coming soon"
+          icon={<Settings size={24} />}
+          label="Settings"
+          active={isActive('/coach/settings')}
+          onClick={() => nav('/coach/settings')}
         />
       </div>
 

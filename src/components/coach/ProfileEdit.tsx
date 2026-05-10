@@ -529,32 +529,16 @@ export function ProfileEdit() {
               <h3 className="text-[9px] font-medium text-gray-400 uppercase tracking-wider">ACCOUNT</h3>
             </div>
             
-            {/* Pause profile row — AF-M-BATCH-01: disabled until persistence wired */}
-            <div className="px-4 py-3.5 flex items-center justify-between border-t-[0.5px] border-gray-100">
-              <div className="flex-1">
-                <div className="text-[13px] font-medium text-gray-900">Pause profile</div>
-                <div className="text-[11px] text-gray-400 mt-0.5">Temporarily hide from search · Coming soon</div>
-              </div>
-              <button
-                disabled
-                aria-disabled="true"
-                className="w-11 h-6 rounded-full relative bg-gray-200 opacity-40 cursor-not-allowed"
-              >
-                <div className="absolute top-1 left-1 bg-white w-4 h-4 rounded-full shadow-sm translate-x-0" />
-              </button>
-            </div>
-
-            {/* Delete account row — AF-M-BATCH-01: disabled until endpoint exists */}
+            {/* C-Settings-01-UI: pause + delete migrated to /coach/settings (AF-M-BATCH-01 stubs removed) */}
             <button
-              disabled
-              aria-disabled="true"
-              className="w-full px-4 py-3.5 flex items-center justify-between text-left border-t-[0.5px] border-gray-100 opacity-50 cursor-not-allowed"
+              onClick={() => router.push('/coach/settings')}
+              className="w-full px-4 py-3.5 flex items-center justify-between text-left border-t-[0.5px] border-gray-100 hover:bg-gray-50 transition-colors"
             >
               <div>
-                <span className="text-[13px] font-medium text-[#B91C1C]">Delete account</span>
-                <div className="text-[11px] text-gray-400 mt-0.5">Coming soon</div>
+                <span className="text-[13px] font-medium text-gray-900">Manage account</span>
+                <div className="text-[11px] text-gray-400 mt-0.5">Pause profile, notifications, delete account</div>
               </div>
-              <ChevronRight size={18} className="text-red-300" />
+              <ChevronRight size={18} className="text-gray-400" />
             </button>
           </div>
           </>
