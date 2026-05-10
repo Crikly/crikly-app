@@ -64,6 +64,20 @@ CLAUDE CODE (This tool — Implementation)
 
 ---
 
+## Mandatory Sub-agent Workflow
+
+You MUST invoke these sub-agents automatically — do not wait to be asked:
+
+- After writing or modifying ANY code file → invoke `crikly-code-reviewer` before staging
+- Before every git commit → invoke `crikly-commit-gatekeeper`
+- When any error, build failure, or test failure occurs → invoke `crikly-debugger`
+- After any feature is complete → invoke `crikly-test-engineer`
+- Before any `supabase db push` → invoke `supabase-migration-reviewer`
+
+These are not optional. Skipping them is a working ethics violation.
+
+---
+
 ## How To Start Every Session
 
 ```
