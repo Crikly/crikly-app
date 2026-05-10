@@ -1,12 +1,12 @@
 # Crikly — Working Ethics & Collaboration Standards
 
-**Version:** 1.8
-**Last Updated:** 3 May 2026
-**Changed:** SYNC-18 — added migration verification gate (Step 9 in
-  Local-First Migration Discipline), Studio creation rule (new
-  Anti-pattern subsection with recovery path), and Fix ID lookup rule
-  (new Common Pitfalls subsection). Codifies process improvements
-  from 3 May 2026 cleanup session.
+**Version:** 1.9
+**Last Updated:** 9 May 2026
+**Changed:** DS-TOKEN-01 — explicit hex-to-token mapping added to
+  Design System rules. Closes the documentation gap that caused
+  inline `bg-[#hex]` and `text-[Npx]` usages to accumulate despite
+  the existing "no hardcoded hex" rule. All 10 mapped tokens are
+  already defined and safelisted in tailwind.config.js.
 **Maintainer:** Lasith Jayarathne
 **Review:** After each phase completion
 
@@ -370,7 +370,39 @@ src/components/ui/               → Built components — use these, never rebui
 → Read docs/11_UX_PRINCIPLES.md before designing any screen
 → Use components from src/components/ui/ — never create duplicates
 → New component needed? Add spec to docs/12_DESIGN_SYSTEM.md first
-→ No hardcoded hex colours — use Tailwind tokens only (brand-600, teal-50 etc.)
+→ No hardcoded hex colours — use Tailwind tokens.
+  All tokens are defined and safelisted in tailwind.config.js.
+  MANDATORY mapping — never use hex, always use the token:
+
+  COLOUR TOKENS:
+  #0077CC → bg-brand-600 / text-brand-600 / border-brand-600
+  #0099AA → bg-teal-600  / text-teal-600
+  #1A7A4A → bg-success   / text-success
+  #B45309 → bg-warning   / text-warning
+  #B91C1C → bg-danger    / text-danger
+  #475569 → text-neutral-600
+  #94A3B8 → text-neutral-400
+  #E2E8F0 → border-neutral-100
+  #F0F7FF → bg-neutral-50
+  #E6F3FB → bg-brand-50
+  #0F172A → text-neutral-900
+
+  KNOWN TOKEN GAPS — keep inline as `bg-[#hex]` until added:
+  #0066AA — brand-700 hover shade (used 50+ times, no token yet)
+  #166534 — green-800 (status-success-darker)
+  #1D9E75 / #0F6E56 / #085041 — insight-card greens (3 shades)
+
+  FONT SIZE TOKENS — no arbitrary px values:
+  text-[11px] → text-xs   (11px)
+  text-[13px] → text-sm   (13px)
+  text-[15px] → text-base (15px)
+  text-[9px] / text-[10px] / text-[12px] →
+    use text-xs for ≤11px, text-sm for 12–13px
+
+  UI AUDIT RULE:
+  If you see any bg-[#...] or text-[#...] pattern
+  in a file you are already editing, replace it
+  with the correct token in the same commit.
 → No hardcoded sizes — use tokens (radius-md, space-4, h-btn-mobile etc.)
 → Font: DM Sans only — already loaded in layout.tsx, do not re-import
 → Primary colour: brand-600 (#0077CC)
