@@ -34,7 +34,9 @@ export async function GET(): Promise<NextResponse<{ qualifications: Qualificatio
     // 4. Fix-16d: Fetch qualifications WITHOUT joins (no qualification_types syntax)
     const { data: qualifications, error: qualError } = await supabase
       .from('coach_qualifications')
-      .select('*')
+      // AF-P-Wave-2: explicit columns matching QualificationResponse builder at L67–78.
+      // Note: is_custom is derived (`qualification_type_id === null`) — not a column.
+      .select('id, qualification_type_id, issuing_body, custom_name, issued_date, expiry_date, notes, created_at')
       .eq('coach_profile_id', coachProfile.id)
       .order('created_at', { ascending: false })
 

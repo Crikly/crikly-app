@@ -47,7 +47,8 @@ export async function GET(): Promise<NextResponse<{ sports: CoachSportResponse[]
     // 4. Fix-16d: Fetch coach sports WITHOUT joins (no sports!inner syntax)
     const { data: coachSports, error: sportsError } = await supabase
       .from('coach_sports')
-      .select('*')
+      // AF-P-Wave-2: explicit columns matching CoachSportResponse builder at L102–117
+      .select('id, sport_id, session_types, skill_levels, age_groups, price_individual_pence, price_group_pence, max_group_size, session_duration_minutes, currency, is_active')
       .eq('coach_profile_id', coachProfile.id)
 
     if (sportsError) {
@@ -55,31 +56,28 @@ export async function GET(): Promise<NextResponse<{ sports: CoachSportResponse[]
       return NextResponse.json({ error: 'Failed to fetch sports' }, { status: 500 })
     }
 
-    // 5. Fix-16d: Fetch sport details separately for each coach sport
+    // AF-P-Wave-2: parallelise sports + session_types lookups (both depend only on coach_sports rows above)
     const sportIds = [...new Set((coachSports || []).map(cs => cs.sport_id).filter(Boolean))]
-    
-    const { data: sportsData, error: sportsDataError } = sportIds.length > 0
-      ? await supabase
-          .from('sports')
-          .select('id, name, slug')
-          .in('id', sportIds)
-      : { data: [], error: null }
+    const coachSportIds = (coachSports || []).map(cs => cs.id)
+
+    const [
+      { data: sportsData, error: sportsDataError },
+      { data: sessionTypes, error: typesError },
+    ] = await Promise.all([
+      sportIds.length > 0
+        ? supabase.from('sports').select('id, name, slug').in('id', sportIds)
+        : Promise.resolve({ data: [], error: null }),
+      coachSportIds.length > 0
+        ? supabase.from('coach_session_types')
+            .select('id, coach_sport_id, duration_minutes, price_individual_pence, price_group_pence, is_active')
+            .in('coach_sport_id', coachSportIds)
+        : Promise.resolve({ data: [], error: null }),
+    ])
 
     if (sportsDataError) {
       console.error('[GET /api/coaches/sports] sports data error:', sportsDataError)
       return NextResponse.json({ error: 'Failed to fetch sports data' }, { status: 500 })
     }
-
-    // 6. Fetch session type variants for all coach sports
-    const coachSportIds = (coachSports || []).map(cs => cs.id)
-    
-    const { data: sessionTypes, error: typesError } = coachSportIds.length > 0
-      ? await supabase
-          .from('coach_session_types')
-          .select('id, coach_sport_id, duration_minutes, price_individual_pence, price_group_pence, is_active')
-          .in('coach_sport_id', coachSportIds)
-      : { data: [], error: null }
-
     if (typesError) {
       console.error('[GET /api/coaches/sports] session types error:', typesError)
       return NextResponse.json({ error: 'Failed to fetch session types' }, { status: 500 })

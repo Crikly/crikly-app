@@ -63,7 +63,10 @@ export async function GET(
     // 4. Fix-16d: Fetch availability blocks WITHOUT joins
     let query = supabase
       .from('availability_templates')
-      .select('*')
+      // AF-P-Wave-2: explicit columns matching AvailabilityResponse builder at L132–153.
+      // Note: 'notes' column omitted intentionally — added in Wave-5 for POST writes only,
+      // not surfaced by GET (not in AvailabilityResponse interface).
+      .select('id, sport_id, day_of_week, start_time, end_time, is_active, price_override_pence, session_type_id, coach_venue_id, venue_name, venue_address, is_recurring, specific_date, created_at')
       .eq('coach_profile_id', coachProfile.id)
       .order('day_of_week', { ascending: true })
       .order('start_time', { ascending: true })
@@ -80,53 +83,46 @@ export async function GET(
       return NextResponse.json({ error: 'Failed to fetch availability' }, { status: 500 })
     }
 
-    // 5. Fix-16d: Fetch sport data separately
+    // AF-P-Wave-2: parallelise 3 independent dedup-then-fetch sequences (sports, session_types, venues)
+    // — was 3 sequential awaits each holding the function open for its round trip.
     const sportIds = [...new Set((blocks || [])
       .map(b => b.sport_id)
       .filter((id): id is string => id !== null))]
-    
-    const { data: sportsData, error: sportsError } = sportIds.length > 0
-      ? await supabase
-          .from('sports')
-          .select('id, name')
-          .in('id', sportIds)
-      : { data: [], error: null }
+    const sessionTypeIds = [...new Set((blocks || [])
+      .map(b => b.session_type_id)
+      .filter((id): id is string => id !== null))]
+    const venueIds = [...new Set((blocks || [])
+      .map(b => b.coach_venue_id)
+      .filter((id): id is string => id !== null))]
+
+    const [
+      { data: sportsData, error: sportsError },
+      { data: sessionTypesData, error: sessionTypesError },
+      { data: venuesData },
+    ] = await Promise.all([
+      sportIds.length > 0
+        ? supabase.from('sports').select('id, name').in('id', sportIds)
+        : Promise.resolve({ data: [], error: null }),
+      sessionTypeIds.length > 0
+        ? supabase.from('coach_session_types').select('id, duration_minutes').in('id', sessionTypeIds)
+        : Promise.resolve({ data: [], error: null }),
+      venueIds.length > 0
+        ? supabase.from('coach_venues').select('id, name').in('id', venueIds)
+        : Promise.resolve({ data: [], error: null }),
+    ])
 
     if (sportsError) {
       console.error('[GET /api/coaches/availability] sports error:', sportsError)
       return NextResponse.json({ error: 'Failed to fetch sports data' }, { status: 500 })
     }
-
-    // 6. Fix-16d: Fetch session type data separately
-    const sessionTypeIds = [...new Set((blocks || [])
-      .map(b => b.session_type_id)
-      .filter((id): id is string => id !== null))]
-
-    const { data: sessionTypesData, error: sessionTypesError } = sessionTypeIds.length > 0
-      ? await supabase
-          .from('coach_session_types')
-          .select('id, duration_minutes')
-          .in('id', sessionTypeIds)
-      : { data: [], error: null }
-
     if (sessionTypesError) {
       console.error('[GET /api/coaches/availability] session types error:', sessionTypesError)
       return NextResponse.json({ error: 'Failed to fetch session types data' }, { status: 500 })
     }
 
-    // 7. Fix-16d: Fetch venue data separately
-    const venueIds = [...new Set((blocks || [])
-      .map(b => b.coach_venue_id)
-      .filter((id): id is string => id !== null))]
-
+    // Venues fail-silent (preserves prior behaviour at L124 — no error destructure)
     const venueMap: Record<string, string> = {}
-    if (venueIds.length > 0) {
-      const { data: venuesData } = await supabase
-        .from('coach_venues')
-        .select('id, name')
-        .in('id', venueIds)
-      venuesData?.forEach(v => { venueMap[v.id] = v.name })
-    }
+    venuesData?.forEach(v => { venueMap[v.id] = v.name })
 
     // 8. Build response by merging data in application code
     const response: AvailabilityResponse[] = (blocks || []).map((block) => {
@@ -477,36 +473,18 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to add availability block' }, { status: 500 })
     }
 
-    // 9. Fetch sport, session type, and venue data separately if needed
-    let sportData = null
-    if (newBlock.sport_id) {
-      const { data: sport } = await supabase
-        .from('sports')
-        .select('name')
-        .eq('id', newBlock.sport_id)
-        .single()
-      sportData = sport
-    }
-
-    let sessionTypeData = null
-    if (newBlock.session_type_id) {
-      const { data: sessionType } = await supabase
-        .from('coach_session_types')
-        .select('duration_minutes')
-        .eq('id', newBlock.session_type_id)
-        .single()
-      sessionTypeData = sessionType
-    }
-
-    let venueData = null
-    if (newBlock.coach_venue_id) {
-      const { data: venue } = await supabase
-        .from('coach_venues')
-        .select('name')
-        .eq('id', newBlock.coach_venue_id)
-        .single()
-      venueData = venue
-    }
+    // 9. AF-P-Wave-2: parallelise 3 independent post-insert hydration lookups (was sequential)
+    const [sportData, sessionTypeData, venueData] = await Promise.all([
+      newBlock.sport_id
+        ? supabase.from('sports').select('name').eq('id', newBlock.sport_id).single().then(r => r.data)
+        : Promise.resolve(null),
+      newBlock.session_type_id
+        ? supabase.from('coach_session_types').select('duration_minutes').eq('id', newBlock.session_type_id).single().then(r => r.data)
+        : Promise.resolve(null),
+      newBlock.coach_venue_id
+        ? supabase.from('coach_venues').select('name').eq('id', newBlock.coach_venue_id).single().then(r => r.data)
+        : Promise.resolve(null),
+    ])
 
     const response: AvailabilityResponse = {
       id: newBlock.id,
