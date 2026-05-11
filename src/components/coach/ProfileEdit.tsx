@@ -103,7 +103,12 @@ export function ProfileEdit() {
         setLoading(true)
         setError(null)
 
-        // AF-P-Wave-1: use cache — was raw fetch on every mount
+        // FIX-GO-LIVE-CACHE: bust the cache on every Profile mount so
+        // is_profile_live can never be stale here. Other pages keep the
+        // cached read for performance — this is the one page where the
+        // value drives the headline UI (banner + Go Live CTA + completion
+        // copy), so accuracy beats the cache hit.
+        clearCoachProfileCache()
         const data = await fetchCoachProfileCached()
         setProfile(data as CoachProfileResponse)
 
