@@ -338,21 +338,31 @@ function SidebarItem({ icon, label, active, badge, warningDot, pulseDot, pulseTi
   onClick?: () => void
 }) {
   return (
-    <div onClick={onClick} className={`flex items-center justify-between px-4 py-3 rounded-xl cursor-pointer transition-all ${active ? 'bg-[#0077CC]/10 text-[#0077CC] font-bold' : 'text-gray-600 font-medium hover:bg-gray-50 hover:text-gray-900'}`}>
+    <div onClick={onClick} className={`relative flex items-center justify-between px-4 py-3 rounded-xl cursor-pointer transition-all ${active ? 'bg-[#0077CC]/10 text-[#0077CC] font-bold' : 'text-gray-600 font-medium hover:bg-gray-50 hover:text-gray-900'}`}>
       <div className="flex items-center gap-3.5">
         <div className="relative">
           {icon}
           {warningDot && <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-amber-500 rounded-full border-2 border-white" />}
-          {pulseDot && (
-            <span
-              title={pulseTitle}
-              className={`absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full border-2 border-white animate-pulse ${pulseDot === 'success' ? 'bg-success' : 'bg-warning'}`}
-            />
-          )}
         </div>
         <span className="text-[15px]">{label}</span>
       </div>
       {badge && <div className="w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center text-[11px] font-bold shadow-sm">{badge}</div>}
+      {/* FIX-PULSE-DOT-POSITION: pulse dot moved out of icon wrapper to row level,
+          flush right + vertically centred. The 10px wrapper / 8px dot / animate-ping
+          ring structure from BUG-PULSE-DOT-VISIBILITY is preserved verbatim. */}
+      {pulseDot && (
+        <span
+          title={pulseTitle}
+          className="absolute right-3 top-1/2 -translate-y-1/2 h-2.5 w-2.5"
+        >
+          <span
+            className={`absolute inset-0 rounded-full opacity-75 animate-ping ${pulseDot === 'success' ? 'bg-green-600' : 'bg-amber-600'}`}
+          />
+          <span
+            className={`absolute inset-px rounded-full ${pulseDot === 'success' ? 'bg-green-600' : 'bg-amber-600'}`}
+          />
+        </span>
+      )}
     </div>
   )
 }
