@@ -1,12 +1,13 @@
 # Crikly — Working Ethics & Collaboration Standards
 
-**Version:** 1.9
-**Last Updated:** 9 May 2026
-**Changed:** DS-TOKEN-01 — explicit hex-to-token mapping added to
-  Design System rules. Closes the documentation gap that caused
-  inline `bg-[#hex]` and `text-[Npx]` usages to accumulate despite
-  the existing "no hardcoded hex" rule. All 10 mapped tokens are
-  already defined and safelisted in tailwind.config.js.
+**Version:** 1.10
+**Last Updated:** 12 May 2026
+**Changed:** L-07-RM-NEXT-BAN — `rm -rf .next` permanently banned
+  from all Claude Code workflows. Two tasks on 11 May 2026
+  destroyed Turbopack's RocksDB cache (Next.js 16.2.1) and
+  required a full `npm install` (3–5 min downtime) to recover.
+  New "Banned Commands" section added; L-07 added to Process
+  Lessons.
 **Maintainer:** Lasith Jayarathne
 **Review:** After each phase completion
 
@@ -522,6 +523,28 @@ Stop Claude Code immediately and bring to Claude if:
 
 When in doubt — bring to Claude. It costs nothing.
 Fixing a bad architectural decision costs weeks.
+
+---
+
+## Banned Commands — Never Run
+
+Commands listed here have caused operational damage in prior
+sessions. They must never appear in Claude Code prompts, agent
+files, or be executed at the terminal. Any prompt containing
+a banned command must be rejected before execution.
+
+```
+BANNED: rm -rf .next
+  Reason: Destroys Turbopack's RocksDB persistent cache on
+          Next.js 16. Recovery requires a full `npm install`
+          (3–5 min downtime). Affected: FIX-GO-LIVE-CACHE and
+          FIX-THEME-BRAND-TOKENS, 11 May 2026.
+  Use instead: `npx tsc --noEmit` only — TypeScript checks do
+               not require the `.next` directory to be removed.
+               Next.js auto-invalidates stale cache entries on
+               source change.
+  See: L-07 in Process Lessons below.
+```
 
 ---
 
@@ -1160,6 +1183,31 @@ before producing any plan or summary.
 
 ---
 
+### L-07 — `rm -rf .next` destroys Turbopack RocksDB cache
+
+**What happened:** Two Claude Code tasks on 11 May 2026
+(FIX-GO-LIVE-CACHE and FIX-THEME-BRAND-TOKENS) ran
+`rm -rf .next` as part of their TypeScript-check workflow.
+This destroyed Turbopack's RocksDB persistent cache on
+Next.js 16.2.1. Recovery required a full `npm install`
+(3–5 minutes of downtime).
+
+**Root cause:** The prompts did not explicitly ban
+`rm -rf .next`. Claude approved both prompts without
+flagging the command. The agent files and working-ethics
+doc did not list it as a banned command — the `.next`
+directory was implicitly treated as disposable build
+output, which is wrong under Next.js 16 with Turbopack
+caching.
+
+**Rule added:** `rm -rf .next` is permanently banned from
+all Claude Code prompts and agent files. TypeScript checks
+must use `npx tsc --noEmit` only. Any prompt containing
+`rm -rf .next` must be rejected before execution. Added to
+the new "Banned Commands" section above.
+
+---
+
 ## Common Pitfalls — Lessons from real sessions
 
 ### macOS Finder duplicates
@@ -1221,6 +1269,6 @@ Fix]. Canonical Fix ID is Fix-MM in this log."
 
 ---
 
-*Crikly Working Ethics v1.8 — 3 May 2026 — SYNC-18*
+*Crikly Working Ethics v1.10 — 12 May 2026 — L-07-RM-NEXT-BAN*
 *Review after each phase completion.*
 *Any process change must be agreed with Lasith first.*
