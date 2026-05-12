@@ -82,11 +82,13 @@ export function ProfileEdit() {
         body: JSON.stringify({ is_profile_live: true }),
       })
       if (!res.ok) throw new Error('Failed')
-      // BUG-GO-LIVE-PATH: reflect new state locally + clear cache so the sidebar dot
-      // updates on next mount. Write path itself was wired up in BUG-PROFILE-LIVE-WRITE
-      // (commit f0fad79).
+      // BUG-GO-LIVE-PATH: reflect new state locally + clear cache.
+      // BUG-SIDEBAR-PULSE-STALE: dispatch crikly:profile-updated so the
+      // sidebar pulse dot recomputes in-session (was previously frozen
+      // by [] deps on CoachLayoutClient mount fetch).
       setProfile(prev => prev ? { ...prev, is_profile_live: true } : prev)
       clearCoachProfileCache()
+      window.dispatchEvent(new CustomEvent('crikly:profile-updated'))
       setShowLiveModal(true)
     } catch (err) {
       console.error('[ProfileEdit] Go Live error:', err)
@@ -108,9 +110,13 @@ export function ProfileEdit() {
         // cached read for performance — this is the one page where the
         // value drives the headline UI (banner + Go Live CTA + completion
         // copy), so accuracy beats the cache hit.
+        // BUG-SIDEBAR-PULSE-STALE: notify the sidebar after the freshen
+        // so its pulse dot picks up any server-side flip that happened
+        // since the layout first mounted.
         clearCoachProfileCache()
         const data = await fetchCoachProfileCached()
         setProfile(data as CoachProfileResponse)
+        window.dispatchEvent(new CustomEvent('crikly:profile-updated'))
 
         // Fix-17m: Fetch sports count
         const sportsRes = await fetch('/api/coaches/sports')
@@ -320,8 +326,13 @@ export function ProfileEdit() {
 
       if (!res.ok) throw new Error('Failed to update profile')
 
-      // AF-P-Wave-1: clear stale profile cache so next read sees the new avatar
+      // AF-P-Wave-1: clear stale profile cache so next read sees the new avatar.
+      // BUG-SIDEBAR-PULSE-STALE: notify the sidebar of the cache invalidation
+      // (current sidebar uses is_profile_live + is_paused, not avatar_url, so
+      // this is harmless extra refresh — kept for "every cache invalidation
+      // dispatches" consistency).
       clearCoachProfileCache()
+      window.dispatchEvent(new CustomEvent('crikly:profile-updated'))
       setProfile(prev => prev ? { ...prev, avatar_url: publicUrl } : prev)
     } catch (err) {
       console.error('[Fix-42] Photo upload error:', err)
