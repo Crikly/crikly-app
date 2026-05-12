@@ -103,6 +103,30 @@ export function CoachLayoutClient({
       .catch(() => {})
   }, [])
 
+  // BUG-SIDEBAR-PULSE-STALE: listen for in-session profile cache invalidation
+  // from ProfileEdit (Go Live, mount-freshen, photo upload) and re-read so the
+  // pulse dot reflects the current is_profile_live + is_paused. Without this,
+  // the [] deps fetch above runs once at layout mount and never recomputes,
+  // leaving the sidebar dot frozen until full page reload. Matches the
+  // crikly:open-share-modal listener pattern at L86–90. Handler body is a
+  // verbatim duplicate of the mount-fetch above — if that shape changes,
+  // this handler must change too (drift risk noted in commit body).
+  useEffect(() => {
+    const handleProfileUpdated = () => {
+      fetchCoachProfileCached()
+        .then((p: { slug?: string; is_profile_live?: boolean; is_paused?: boolean } | null) => {
+          if (p?.slug) setCoachSlug(p.slug)
+          if (p) {
+            setProfileLive(!!p.is_profile_live)
+            setProfilePaused(!!p.is_paused)
+          }
+        })
+        .catch(() => {})
+    }
+    window.addEventListener('crikly:profile-updated', handleProfileUpdated)
+    return () => window.removeEventListener('crikly:profile-updated', handleProfileUpdated)
+  }, [])
+
   // AF-H-39/40: derive share URLs from coach slug
   const profileUrl = coachSlug ? `https://crikly.app/${coachSlug}` : 'https://crikly.app'
   const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(`Book a session with me on Crikly: ${profileUrl}`)}`
