@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { requireCoachRole } from '@/lib/auth/require-coach'
+import { requireCoachRole, requireCoachContext } from '@/lib/auth/require-coach'
 
 // ─── Slug helpers ─────────────────────────────────────────────────────────────
 
@@ -79,8 +79,13 @@ interface CoachProfileResponse {
 export async function GET(): Promise<NextResponse<CoachProfileResponse | { error: string }>> {
   try {
     const supabase = await createClient()
-    
-    const { context, error } = await requireCoachRole(supabase)
+
+    // PERF-01-FIX: Variant B parallelises user_roles + coach_profiles
+    // gate checks (saves ~one round-trip vs Variant A's 3 sequential).
+    // The rich coach_profiles SELECT below still needs the
+    // user_profiles!inner join, so the coach_profiles ID returned by
+    // Variant B is unused — worth it for the parallelisation win.
+    const { context, error } = await requireCoachContext(supabase)
     if (error) return error
     const { userProfile } = context
 
@@ -119,6 +124,10 @@ export async function GET(): Promise<NextResponse<CoachProfileResponse | { error
       .eq('user_profile_id', userProfile.id)
       .single()
 
+    // PERF-01-FIX: post-Variant-B, the missing-coach-row case is
+    // unreachable here (Variant B 404s earlier with the same status +
+    // message). This guard is kept to catch coachError from the rich
+    // SELECT itself (e.g. transient DB errors after the gate passes).
     if (coachError || !coachProfile) {
       return NextResponse.json({ error: 'Coach profile not found' }, { status: 404 })
     }
@@ -128,15 +137,13 @@ export async function GET(): Promise<NextResponse<CoachProfileResponse | { error
       ? coachProfile.user_profiles[0]
       : coachProfile.user_profiles
 
-    // 5. Backfill slug if missing
-    let slug: string | null = coachProfile.slug ?? null
-    if (!slug && userProfileData.full_name) {
-      slug = await findUniqueSlug(supabase, userProfileData.full_name, coachProfile.id)
-      await supabase
-        .from('coach_profiles')
-        .update({ slug })
-        .eq('id', coachProfile.id)
-    }
+    // PERF-01-FIX: slug backfill removed from GET — was a WRITE inside a
+    // READ path that ran 1+1 round-trips on every call where slug was null,
+    // and up to 51 round-trips on collision (see PERF-01 investigation).
+    // Existing NULL-slug rows backfilled via migration 028; new coaches
+    // get slugs from the POST handler below (gated on name-change or
+    // missing slug). The variable below preserves the response field type.
+    const slug: string | null = coachProfile.slug ?? null
 
     const response: CoachProfileResponse = {
       id: coachProfile.id,

@@ -5,7 +5,9 @@
 // user_roles + coach_profiles SELECT (saves one round-trip). Variants
 // A and C remain sequential to preserve existing semantics:
 //   - A keeps role-only gate so callers can do their own coach_profiles
-//     work (e.g. profile/route.ts GET needs a rich user_profiles join).
+//     work (deferred-upsert paths). profile/route.ts GET migrated to
+//     Variant B in PERF-01-FIX — accepts the redundant coach_profiles
+//     ID check for the parallelisation win.
 //   - C upserts coach_profiles only after role passes — prevents orphan
 //     rows for non-coach users (matches current behaviour).
 //
