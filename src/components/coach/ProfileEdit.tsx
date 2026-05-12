@@ -1,7 +1,7 @@
 'use client'
 import React, { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { ChevronRight, User, Tag, Award, Calendar, ShieldCheck, CreditCard, CheckCircle2, Star, Share2, ExternalLink, Circle, Camera, LayoutGrid, X, Plus, Info, Copy, Check, AlertTriangle } from 'lucide-react'
+import { ChevronRight, User, Tag, Award, Calendar, ShieldCheck, CreditCard, CheckCircle2, Star, Share2, ExternalLink, Circle, Camera, LayoutGrid, X, Plus, AlertCircle, Copy, Check, AlertTriangle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 // AF-P-Wave-1: profile cache adoption
 import { fetchCoachProfileCached, clearCoachProfileCache } from '@/lib/onboarding-cache'
@@ -368,19 +368,20 @@ export function ProfileEdit() {
           {/* CD-10b: Profile content */}
           {!loading && !error && profile && (
           <>
-          {/* BUG-GO-LIVE-PATH: not-live banner with Go Live action — sits above profile card */}
+          {/* FIX-GO-LIVE-BANNER-DESIGN: brand-50 surface, brand-800 heading, brand-600 sub + button.
+              Replaces flat white-on-white where Go Live button visually disappeared. */}
           {!profile.is_profile_live && (
-            <div className="bg-brand-50 border border-brand-100 rounded-xl px-4 py-3 flex items-center gap-3 mb-4">
-              <Info size={20} className="text-brand-600 shrink-0" />
+            <div className="bg-brand-50 border border-brand-100 rounded-xl p-4 flex items-center gap-3 mb-4">
+              <AlertCircle size={18} className="text-brand-600 shrink-0" />
               <div className="flex-1 min-w-0">
-                <p className="text-[13px] font-medium text-gray-900">Your profile is not live.</p>
-                <p className="text-[12px] text-gray-600">Parents cannot find or book you.</p>
+                <p className="text-[14px] font-medium text-brand-800">Your profile is not live</p>
+                <p className="text-[13px] text-brand-600 mt-0.5">Parents cannot find or book you.</p>
               </div>
               <button
                 type="button"
                 onClick={handleGoLive}
                 disabled={goingLive}
-                className="h-9 px-4 rounded-full bg-brand-600 hover:bg-[#0066AA] text-white text-[13px] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                className="h-9 px-4 rounded-full bg-brand-600 hover:bg-brand-800 text-white text-[13px] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
               >
                 {goingLive ? 'Going live…' : 'Go live'}
               </button>
