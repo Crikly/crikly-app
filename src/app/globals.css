@@ -32,6 +32,45 @@ html, body {
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+
+  /* FIX-THEME-BRAND-TOKENS: register colour tokens as v4 CSS variables.
+     Project runs Tailwind v4 (@import "tailwindcss" + @tailwindcss/postcss)
+     but tailwind.config.js is in v3 JS-config format. v4's compat layer
+     doesn't always honour theme.extend.colors, so bg-brand-600 et al
+     were resolving to transparent. Values mirror tailwind.config.js — keep
+     the two in sync until non-colour tokens are also migrated (follow-up:
+     FIX-THEME-NON-COLOR-TOKENS). */
+
+  /* Brand (Sky Blue) */
+  --color-brand-50:  #E6F3FB;
+  --color-brand-100: #B5D4F4;
+  --color-brand-400: #378ADD;
+  --color-brand-600: #0077CC;
+  --color-brand-800: #0C447C;
+  --color-brand-900: #042C53;
+
+  /* Teal */
+  --color-teal-50:  #E0F6F8;
+  --color-teal-600: #0099AA;
+  --color-teal-800: #006677;
+
+  /* Neutral */
+  --color-neutral-0:   #FFFFFF;
+  --color-neutral-50:  #F0F7FF;
+  --color-neutral-100: #E2E8F0;
+  --color-neutral-400: #94A3B8;
+  --color-neutral-600: #475569;
+  --color-neutral-900: #0F172A;
+
+  /* Surface (dark-mode overrides — app forces light, kept for completeness) */
+  --color-surface-light: #F0F7FF;
+  --color-surface-dark:  #1A1A2E;
+
+  /* Semantic */
+  --color-success: #1A7A4A;
+  --color-warning: #B45309;
+  --color-danger:  #B91C1C;
+  --color-info:    #0077CC;
 }
 
 [data-theme="light"] {
