@@ -1,8 +1,8 @@
 # Crikly — Design System
 
-**Version:** 1.1
-**Last Updated:** April 2026
-**Changed:** Card rules, layout backgrounds, interaction patterns, onboarding patterns, no-emoji rule
+**Version:** 1.2
+**Last Updated:** 10 May 2026
+**Changed:** v1.2 (BUG-GO-LIVE-PATH) — added 🎉 celebration emoji exception for one-off success modals (Go Live, first booking, milestones; H1 only, never in nav/labels/buttons/chrome). v1.1 (April 2026) — Card rules, layout backgrounds, interaction patterns, onboarding patterns, no-emoji rule.
 **Applies to:** Web PWA (Tailwind/Next.js) + Flutter Mobile (Phase 2)
 
 Single source of truth for all visual decisions. Every colour, font,
@@ -224,8 +224,13 @@ This includes: 🏅 🛡 ❤️ 👶 📍 📅 ★ and all others.
   neutral-50 bg, radius 8px, text character or SVG)
 - Text labels only
 
-**The only exception:** the 👋 wave emoji on the Dashboard
-greeting — approved and already implemented.
+**Approved exceptions (only):**
+- **👋** — wave emoji on the Dashboard greeting (already implemented).
+- **🎉** — celebration emoji in one-off success modals only
+  (Go Live, first booking, milestones). Sanctioned per
+  BUG-GO-LIVE-PATH. Permitted in modal/page H1 headings ONLY,
+  never in nav, labels, buttons, banners, or recurring UI chrome.
+  One per modal max. Drop the emoji rather than using two.
 
 ---
 
