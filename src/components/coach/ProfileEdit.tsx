@@ -1,10 +1,11 @@
 'use client'
 import React, { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { ChevronRight, User, Tag, Award, Calendar, ShieldCheck, CreditCard, CheckCircle2, Star, Share2, ExternalLink, Circle, Camera, LayoutGrid, X, Plus, AlertCircle, Copy, Check, AlertTriangle } from 'lucide-react'
+import { ChevronRight, User, Tag, Award, Calendar, ShieldCheck, CreditCard, CheckCircle2, Star, Share2, ExternalLink, Circle, Camera, LayoutGrid, X, Plus, AlertCircle, AlertTriangle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 // AF-P-Wave-1: profile cache adoption
 import { fetchCoachProfileCached, clearCoachProfileCache } from '@/lib/onboarding-cache'
+import { ShareLinkPanel } from '@/components/coach/shared/ShareLinkPanel'
 
 // CD-10b: API response type
 interface CoachProfileResponse {
@@ -57,19 +58,13 @@ export function ProfileEdit() {
   // Fix-42b: Gallery modal state
   const [galleryOpen, setGalleryOpen] = useState(false)
 
-  // BUG-GO-LIVE-PATH: Go Live action state
+  // BUG-GO-LIVE-PATH: Go Live action state.
+  // BUG-GO-LIVE-MODAL-SHARE: copiedLiveModal state + 1.5s timer useEffect
+  // moved into ShareLinkPanel so the copy feedback works in both share
+  // surfaces (Go Live modal + sidebar share modal).
   const [goingLive, setGoingLive] = useState(false)
   const [goLiveError, setGoLiveError] = useState<string | null>(null)
   const [showLiveModal, setShowLiveModal] = useState(false)
-  const [copiedLiveModal, setCopiedLiveModal] = useState(false)
-
-  // BUG-GO-LIVE-PATH: clear "Copied!" feedback after 1.5s with cleanup-on-unmount
-  // (was a bare setTimeout that leaked if the modal closed mid-flight)
-  useEffect(() => {
-    if (!copiedLiveModal) return
-    const t = setTimeout(() => setCopiedLiveModal(false), 1500)
-    return () => clearTimeout(t)
-  }, [copiedLiveModal])
 
   async function handleGoLive() {
     if (goingLive) return
@@ -651,37 +646,16 @@ export function ProfileEdit() {
                 <h2 className="text-[20px] font-semibold text-gray-900 mb-2">You&apos;re live! 🎉</h2>
                 <p className="text-[14px] text-gray-600 mb-5">Parents can now find and book you on Crikly.</p>
 
-                <div className="bg-gray-50 border border-gray-100 rounded-xl px-3 py-2.5 mb-4 text-[13px] font-mono text-gray-700 truncate">
-                  crikly.app/{profile.slug}
-                </div>
-
-                <div className="flex gap-2 mb-5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      navigator.clipboard.writeText(`https://crikly.app/${profile.slug}`).catch(() => {})
-                      // BUG-GO-LIVE-PATH: setCopiedLiveModal triggers a useEffect that auto-clears after 1.5s with cleanup
-                      setCopiedLiveModal(true)
-                    }}
-                    className="flex-1 h-10 rounded-xl bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 text-[13px] font-medium transition-colors flex items-center justify-center gap-2"
-                  >
-                    {copiedLiveModal ? (<><Check size={14} /> Copied!</>) : (<><Copy size={14} /> Copy link</>)}
-                  </button>
-                  {/* BUG-GO-LIVE-PATH: action buttons use brand-600 per design system,
-                      not bg-success — green is reserved for trust/verified status, not actions. */}
-                  <button
-                    type="button"
-                    onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(`Book a session with me on Crikly: https://crikly.app/${profile.slug}`)}`, '_blank', 'noopener')}
-                    className="flex-1 h-10 rounded-xl bg-brand-600 hover:bg-[#0066AA] text-white text-[13px] font-medium transition-colors flex items-center justify-center gap-2"
-                  >
-                    Share on WhatsApp
-                  </button>
-                </div>
+                {/* BUG-GO-LIVE-MODAL-SHARE: 5-channel share panel replaces the
+                    prior 2-button row (Copy + WhatsApp). ShareLinkPanel renders
+                    its own URL strip so the previous standalone strip (was
+                    monospace gray-50) is removed to avoid duplication. */}
+                <ShareLinkPanel slug={profile.slug} />
 
                 <button
                   type="button"
                   onClick={() => setShowLiveModal(false)}
-                  className="w-full h-10 rounded-xl bg-brand-600 hover:bg-[#0066AA] text-white text-[13px] font-medium transition-colors"
+                  className="w-full h-10 rounded-xl bg-brand-600 hover:bg-brand-800 text-white text-[13px] font-medium transition-colors mt-5"
                 >
                   Done
                 </button>
