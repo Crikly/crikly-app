@@ -346,8 +346,19 @@ function SidebarItem({ icon, label, active, badge, warningDot, pulseDot, pulseTi
           {pulseDot && (
             <span
               title={pulseTitle}
-              className={`absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full border-2 border-white animate-pulse ${pulseDot === 'success' ? 'bg-success' : 'bg-warning'}`}
-            />
+              className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5"
+            >
+              {/* BUG-PULSE-DOT-VISIBILITY: 10px wrapper + 8px dot + ping ring.
+                  animate-ping scales 2x while fading opacity — the visible
+                  "halo" expanding outward. Solid dot stacks on top via DOM
+                  order. Green for not-live, amber for paused (live). */}
+              <span
+                className={`absolute inset-0 rounded-full opacity-75 animate-ping ${pulseDot === 'success' ? 'bg-green-600' : 'bg-amber-600'}`}
+              />
+              <span
+                className={`absolute inset-px rounded-full ${pulseDot === 'success' ? 'bg-green-600' : 'bg-amber-600'}`}
+              />
+            </span>
           )}
         </div>
         <span className="text-[15px]">{label}</span>
