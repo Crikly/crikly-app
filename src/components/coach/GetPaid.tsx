@@ -1,15 +1,16 @@
 'use client'
 
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { Building2, FileText, Info, ExternalLink, ChevronRight, AlertCircle, CheckCircle2, Check } from 'lucide-react'
-
-// CG-03: Stripe Connect status from GET /api/payments/connect/onboard
-interface StripeConnectStatus {
-  connected: boolean
-  charges_enabled?: boolean
-  payouts_enabled?: boolean
-  details_submitted?: boolean
-}
+// PERF-03 + PERF-04: 60s TTL cache + in-flight guard for Stripe status.
+// Type moved alongside the cache helpers so the cache and its serialised
+// shape live in one place.
+import {
+  readStripeStatusCache,
+  writeStripeStatusCache,
+  clearStripeStatusCache,
+  type StripeConnectStatus,
+} from '@/lib/stripe-status-cache'
 
 export function GetPaid() {
   const [loading, setLoading] = useState(true)
@@ -19,26 +20,51 @@ export function GetPaid() {
   // CG-03: Banner shown after returning from Stripe onboarding
   const [returnBanner, setReturnBanner] = useState<'success' | 'refresh' | null>(null)
 
-  // CG-03: Fetch real Stripe Connect status
+  // PERF-04: in-flight guard prevents React strict-mode double-invoke
+  // (and any future double-call) from firing two parallel Stripe API
+  // round-trips. The ref is stable across renders so useCallback deps
+  // stay [].
+  const fetchingRef = useRef(false)
+
+  // CG-03: Fetch real Stripe Connect status.
+  // PERF-03: 60s sessionStorage cache. Cache hits avoid the ~800ms
+  // Stripe accounts.retrieve() round-trip. Cache is busted explicitly
+  // after Stripe return-from-onboarding (see useEffect below).
   const fetchStripeStatus = useCallback(async () => {
+    if (fetchingRef.current) return
+    fetchingRef.current = true
     try {
-      setLoading(true)
       setError(null)
+      const cached = readStripeStatusCache()
+      if (cached) {
+        setStripeStatus(cached)
+        return
+      }
+      // PERF-03: set loading ONLY after cache miss confirmed — cache hits
+      // should feel instant (no spinner flicker for the 60s window), but
+      // the retry-button path needs the spinner to show during the network
+      // round-trip otherwise the error UI sits static for ~800ms.
+      setLoading(true)
       const response = await fetch('/api/payments/connect/onboard')
       if (!response.ok) throw new Error('Failed to fetch Stripe status')
       const data: StripeConnectStatus = await response.json()
       setStripeStatus(data)
+      writeStripeStatusCache(data)
     } catch (err) {
       console.error('[GetPaid] Failed to fetch Stripe status:', err)
       setError('Failed to load payment information. Please try again.')
     } finally {
       setLoading(false)
+      fetchingRef.current = false
     }
   }, [])
 
   // CG-03: On mount — detect return from Stripe and fetch status
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
+    const justReturnedFromStripe =
+      params.get('success') === 'true' || params.get('refresh') === 'true'
+
     if (params.get('success') === 'true') {
       setReturnBanner('success')
       window.history.replaceState({}, '', '/coach/get-paid')
@@ -46,6 +72,15 @@ export function GetPaid() {
       setReturnBanner('refresh')
       window.history.replaceState({}, '', '/coach/get-paid')
     }
+
+    // PERF-03: bust cache when returning from Stripe — onboarding state
+    // may have changed during the redirect, so the cached snapshot is
+    // stale. Without this the cache could serve the pre-onboarding
+    // value for up to 60s after the coach completed onboarding.
+    if (justReturnedFromStripe) {
+      clearStripeStatusCache()
+    }
+
     fetchStripeStatus()
   }, [fetchStripeStatus])
 
