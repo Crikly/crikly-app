@@ -5,6 +5,10 @@ import { ChevronRight, User, Tag, Award, Calendar, ShieldCheck, CreditCard, Chec
 import { createClient } from '@/lib/supabase/client'
 // AF-P-Wave-1: profile cache adoption
 import { fetchCoachProfileCached, clearCoachProfileCache } from '@/lib/onboarding-cache'
+// PERF-06b: 60s TTL cache for Stripe Connect status. Cache written by
+// GetPaid (PERF-03) and invalidated on Stripe redirect-back; ProfileEdit
+// is a pure reader/writer here.
+import { readStripeStatusCache, writeStripeStatusCache } from '@/lib/stripe-status-cache'
 import { ShareLinkPanel } from '@/components/coach/shared/ShareLinkPanel'
 
 // CD-10b: API response type
@@ -114,6 +118,16 @@ export function ProfileEdit() {
         // Predicted ~950ms warm (1500-3000ms cold) saved per Profile
         // mount. Same mechanical pattern as PERF-02 on dashboard/page.tsx,
         // applied at the client.
+
+        // PERF-06b: read the PERF-03 Stripe cache before firing requests.
+        // Cache hit → swap the network fetch for Promise.resolve(null) so
+        // the Promise.all stays the same shape, but the Stripe ~800ms
+        // round-trip is skipped. Cache miss → fetch normally and write
+        // the result post-parse. Cache invalidation is owned by
+        // GetPaid.tsx (return-from-onboarding); ProfileEdit is a pure
+        // reader/writer here.
+        const cachedStripe = readStripeStatusCache()
+
         const [
           profileData,
           sportsRes,
@@ -124,7 +138,7 @@ export function ProfileEdit() {
           fetchCoachProfileCached(),
           fetch('/api/coaches/sports'),
           fetch('/api/coaches/qualifications'),
-          fetch('/api/payments/connect/onboard'),
+          cachedStripe ? Promise.resolve(null) : fetch('/api/payments/connect/onboard'),
           fetch('/api/coaches/availability'),
         ])
 
@@ -147,7 +161,12 @@ export function ProfileEdit() {
         }
 
         // Fix-45: real Stripe Connect status
-        if (stripeRes.ok) {
+        // PERF-06b: apply from cache on hit, or fetch+parse+writeCache on miss.
+        if (cachedStripe) {
+          setStripeConnected(cachedStripe.connected)
+          setStripeChargesEnabled(cachedStripe.charges_enabled ?? false)
+          setStripePayoutsEnabled(cachedStripe.payouts_enabled ?? false)
+        } else if (stripeRes && stripeRes.ok) {
           const stripeData = await stripeRes.json() as {
             connected: boolean
             charges_enabled?: boolean
@@ -156,6 +175,7 @@ export function ProfileEdit() {
           setStripeConnected(stripeData.connected)
           setStripeChargesEnabled(stripeData.charges_enabled ?? false)
           setStripePayoutsEnabled(stripeData.payouts_enabled ?? false)
+          writeStripeStatusCache(stripeData)
         }
 
         // AF-M-Wave-1: availability count for completeness scoring (non-fatal, matches sports/qualifications pattern)
