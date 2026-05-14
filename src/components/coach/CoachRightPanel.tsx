@@ -1,12 +1,16 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { ChevronRight, ChevronLeft, MapPin, Star, PoundSterling, Calendar, Loader2, Check, X, ShieldCheck } from 'lucide-react'
 import type { ProgrammePreviewEventDetail } from './CreateProgramme'
 // AF-P-Wave-1: profile + sports cache adoption
 import { fetchCoachProfileCached, fetchSportsListCached } from '@/lib/onboarding-cache'
+// PERF-02-BOOKINGS-CACHE: BookingListItem type unified across consumers in
+// the shared context file. Both right-panel sub-components below now read
+// from useBookings() instead of firing their own /api/coaches/bookings calls.
+import { useBookings, type BookingListItem } from '@/contexts/BookingsContext'
 
 type ProgrammePreviewState = ProgrammePreviewEventDetail
 
@@ -52,21 +56,8 @@ interface DashboardData {
   }
 }
 
-// Fix-55: Booking list item from /api/coaches/bookings
-interface BookingListItem {
-  id: string
-  booking_reference: string
-  session_date: string
-  session_start_time: string
-  session_end_time: string
-  session_type: string
-  status: string
-  sport_id: string
-  coach_price_pence: number
-  child_name: string | null
-  booked_by_name: string | null
-  created_at: string
-}
+// Fix-55: Booking list item from /api/coaches/bookings — type now imported
+// from BookingsContext (see top of file).
 
 interface Sport { id: string; name: string }
 
@@ -908,27 +899,16 @@ function PendingApprovalCard() {
 }
 
 // CF-D03 CHANGE 7 / Fix-55: Bookings-specific right panel components
+// PERF-02-BOOKINGS-CACHE: own fetch + own `bookings`/`loading` state removed —
+// list now comes from useBookings() (single shared fetch lifecycle). The
+// approve/decline handler calls context.refresh() so all THREE cached lists
+// (upcoming + today + pendingApproval) update atomically — approving a
+// pending booking moves it to upcoming, and refresh() reflects that without
+// per-component stale-state risk.
 function BookingsPendingApprovals({ sportsMap }: { sportsMap: Record<string, string> }) {
-  const [bookings, setBookings] = useState<BookingListItem[]>([])
-  const [loading, setLoading] = useState(true)
+  const { pendingApproval: bookings, loading, refresh } = useBookings()
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
-
-  const fetchPending = useCallback(async () => {
-    setLoading(true)
-    try {
-      const res = await fetch('/api/coaches/bookings?tab=pending_approval')
-      if (!res.ok) { setBookings([]); return }
-      const data = await res.json() as { bookings: BookingListItem[] }
-      setBookings(data.bookings ?? [])
-    } catch {
-      setBookings([])
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => { fetchPending() }, [fetchPending])
 
   const handleAction = async (id: string, action: 'approve' | 'decline') => {
     setActionLoadingId(id)
@@ -944,7 +924,9 @@ function BookingsPendingApprovals({ sportsMap }: { sportsMap: Record<string, str
         setActionError(data.error ?? 'Something went wrong')
         return
       }
-      await fetchPending()
+      // PERF-02-BOOKINGS-CACHE: refresh ALL three cached lists, not just
+      // pendingApproval — the approved booking moves to upcoming.
+      await refresh()
     } catch {
       setActionError('Network error — please try again')
     } finally {
@@ -1162,24 +1144,9 @@ function ProgrammeCreatePreviewPanel({ preview }: { preview: ProgrammePreviewSta
 }
 
 function BookingsTodaySessions({ sportsMap }: { sportsMap: Record<string, string> }) {
-  const [sessions, setSessions] = useState<BookingListItem[]>([])
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    const fetchToday = async () => {
-      try {
-        const res = await fetch('/api/coaches/bookings?tab=today')
-        if (!res.ok) { setSessions([]); return }
-        const data = await res.json() as { bookings: BookingListItem[] }
-        setSessions(data.bookings ?? [])
-      } catch {
-        setSessions([])
-      } finally {
-        setLoading(false)
-      }
-    }
-    fetchToday()
-  }, [])
+  // PERF-02-BOOKINGS-CACHE: today's sessions sourced from the shared bookings
+  // context — own fetch + own state removed. Single shared fetch lifecycle.
+  const { today: sessions, loading } = useBookings()
 
   return (
     <div className="border-t-[0.5px] border-gray-100 pt-3.5">
