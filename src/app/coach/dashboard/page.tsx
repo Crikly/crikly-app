@@ -82,29 +82,51 @@ export default async function CoachDashboardPage() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return <CoachHomeClient data={dashboardData} />
 
-    // PERF-02: merged user_profiles SELECT — was a duplicate fetch of the
-    // row already loaded just below for completion checks. Adding
-    // location_city here eliminates that extra round-trip.
-    const { data: userProfile } = await supabase
+    // PERF-DASHBOARD-CLEANUP: merged user_profiles + coach_profiles into
+    // one round-trip via PostgREST nested !inner JOIN. Was two sequential
+    // round-trips because the FK chains forward; the JOIN folds them into
+    // one network hop. Same pattern as profile/route.ts GET at L120-129.
+    // Also drops `dbs_status` from the coach_profiles select — was loaded
+    // but never read on this page (PERF-DASHBOARD-UNUSED-FIELDS).
+    const { data: joined } = await supabase
       .from('user_profiles')
-      .select('id, full_name, avatar_url, location_city')
+      .select(`
+        id,
+        full_name,
+        avatar_url,
+        location_city,
+        coach_profiles!inner (
+          id,
+          bio,
+          cancellation_window_hours,
+          stripe_account_id,
+          rating_avg,
+          rating_count
+        )
+      `)
       .eq('auth_user_id', user.id)
       .single()
 
-    if (!userProfile) return <CoachHomeClient data={dashboardData} />
+    if (!joined) return <CoachHomeClient data={dashboardData} />
+
+    // Supabase nested join may return the joined row as object or array
+    // depending on the relationship's inferred cardinality. Normalise here
+    // (same pattern as profile/route.ts L127-129).
+    const coachData = Array.isArray(joined.coach_profiles)
+      ? joined.coach_profiles[0]
+      : joined.coach_profiles
+
+    if (!coachData) return <CoachHomeClient data={dashboardData} />
+
+    // Aliases preserve every downstream reference (coachProfile.X,
+    // userProfile.X) unchanged — no refactor needed at the 12+ call sites
+    // below the auth chain.
+    const userProfile = joined
+    const coachProfile = coachData
 
     // Coach name + avatar — set immediately after userProfile fetch
     dashboardData.coachName = userProfile.full_name || ''
     dashboardData.coachAvatarUrl = userProfile.avatar_url ?? null
-
-    // Get coach profile (must be sequential — needs userProfile.id)
-    const { data: coachProfile } = await supabase
-      .from('coach_profiles')
-      .select('id, bio, cancellation_window_hours, stripe_account_id, rating_avg, rating_count, dbs_status')
-      .eq('user_profile_id', userProfile.id)
-      .single()
-
-    if (!coachProfile) return <CoachHomeClient data={dashboardData} />
 
     // PERF-02: date math hoisted ahead of the Promise.all so all 11
     // dashboard queries can fire in parallel. Previously inlined between
