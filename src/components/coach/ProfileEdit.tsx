@@ -105,30 +105,48 @@ export function ProfileEdit() {
         // cached read for performance — this is the one page where the
         // value drives the headline UI (banner + Go Live CTA + completion
         // copy), so accuracy beats the cache hit.
+        clearCoachProfileCache()
+
+        // PERF-06: all 5 fetches were sequential — none depend on each
+        // other (the profile data and the 4 count checks each populate
+        // independent state slots). Folding into a single Promise.all
+        // collapses 5 sequential HTTP round-trips into 1 wall-clock max.
+        // Predicted ~950ms warm (1500-3000ms cold) saved per Profile
+        // mount. Same mechanical pattern as PERF-02 on dashboard/page.tsx,
+        // applied at the client.
+        const [
+          profileData,
+          sportsRes,
+          qualsRes,
+          stripeRes,
+          availRes,
+        ] = await Promise.all([
+          fetchCoachProfileCached(),
+          fetch('/api/coaches/sports'),
+          fetch('/api/coaches/qualifications'),
+          fetch('/api/payments/connect/onboard'),
+          fetch('/api/coaches/availability'),
+        ])
+
+        setProfile(profileData as CoachProfileResponse)
         // BUG-SIDEBAR-PULSE-STALE: notify the sidebar after the freshen
         // so its pulse dot picks up any server-side flip that happened
         // since the layout first mounted.
-        clearCoachProfileCache()
-        const data = await fetchCoachProfileCached()
-        setProfile(data as CoachProfileResponse)
         window.dispatchEvent(new CustomEvent('crikly:profile-updated'))
 
-        // Fix-17m: Fetch sports count
-        const sportsRes = await fetch('/api/coaches/sports')
+        // Fix-17m: sports count
         if (sportsRes.ok) {
           const sportsData = await sportsRes.json()
           setHasSports(sportsData.sports && sportsData.sports.length > 0)
         }
 
-        // Fix-17m: Fetch qualifications count
-        const qualsRes = await fetch('/api/coaches/qualifications')
+        // Fix-17m: qualifications count
         if (qualsRes.ok) {
           const qualsData = await qualsRes.json()
           setHasQualifications(qualsData.qualifications && qualsData.qualifications.length > 0)
         }
 
-        // Fix-45: Fetch real Stripe Connect status
-        const stripeRes = await fetch('/api/payments/connect/onboard')
+        // Fix-45: real Stripe Connect status
         if (stripeRes.ok) {
           const stripeData = await stripeRes.json() as {
             connected: boolean
@@ -140,8 +158,7 @@ export function ProfileEdit() {
           setStripePayoutsEnabled(stripeData.payouts_enabled ?? false)
         }
 
-        // AF-M-Wave-1: fetch availability count for completeness scoring (non-fatal, matches sports/qualifications pattern)
-        const availRes = await fetch('/api/coaches/availability')
+        // AF-M-Wave-1: availability count for completeness scoring (non-fatal, matches sports/qualifications pattern)
         if (availRes.ok) {
           const availData = await availRes.json() as { availability?: unknown[] }
           setHasAvailability((availData.availability ?? []).length > 0)
