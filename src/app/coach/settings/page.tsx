@@ -46,6 +46,16 @@ export default function CoachSettingsPage() {
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const [deleteBlock, setDeleteBlock] = useState<{ kind: 'upcoming' | 'payouts'; message: string } | null>(null)
 
+  // ─── Change password flow (C-Settings-PWD-CHANGE) ────────────────
+  // Email/password users only — gated below behind !isOAuth.
+  const [pwdFormOpen, setPwdFormOpen] = useState(false)
+  const [currentPwd, setCurrentPwd] = useState('')
+  const [newPwd, setNewPwd] = useState('')
+  const [confirmPwd, setConfirmPwd] = useState('')
+  const [pwdSaving, setPwdSaving] = useState(false)
+  const [pwdError, setPwdError] = useState<string | null>(null)
+  const [pwdSuccess, setPwdSuccess] = useState(false)
+
   useEffect(() => {
     let cancelled = false
     async function load() {
@@ -94,6 +104,13 @@ export default function CoachSettingsPage() {
     return () => { cancelled = true }
   }, [supabase])
 
+  // C-Settings-PWD-CHANGE: auto-clear the "Password updated." toast after 3s
+  useEffect(() => {
+    if (!pwdSuccess) return
+    const t = setTimeout(() => setPwdSuccess(false), 3000)
+    return () => clearTimeout(t)
+  }, [pwdSuccess])
+
   async function handleTogglePause() {
     if (pauseSaving) return
     const newValue = !isPaused
@@ -115,6 +132,90 @@ export default function CoachSettingsPage() {
     } finally {
       setPauseSaving(false)
     }
+  }
+
+  // C-Settings-PWD-CHANGE: inline change-password flow.
+  // Only rendered for email/password users (gated by !isOAuth in JSX).
+  async function handleChangePassword() {
+    if (pwdSaving) return
+    setPwdError(null)
+
+    // Client-side validation — keep matching the register-form rules.
+    if (!currentPwd || !newPwd || !confirmPwd) {
+      setPwdError('Please fill in all fields.')
+      return
+    }
+    if (newPwd.length < 8) {
+      setPwdError('New password must be at least 8 characters.')
+      return
+    }
+    if (newPwd !== confirmPwd) {
+      setPwdError('New passwords do not match.')
+      return
+    }
+    if (newPwd === currentPwd) {
+      setPwdError('New password must be different from current password.')
+      return
+    }
+
+    setPwdSaving(true)
+    try {
+      // BUG-PWD-CHANGE-RATE-LIMIT (follow-up): re-using signInWithPassword as a
+      // current-password verifier shares Supabase's auth rate-limit bucket. A
+      // user typing the wrong current password 5–6 times in quick succession
+      // can lock themselves out of *login* for ~minutes. Acceptable for now
+      // (typo rate on own password is low), but we should switch to a
+      // dedicated server-side verify endpoint once available.
+      const { error: verifyErr } = await supabase.auth.signInWithPassword({
+        email,
+        password: currentPwd,
+      })
+      if (verifyErr) {
+        // Supabase returns "Invalid login credentials" for wrong password —
+        // present this as a current-password error rather than a generic one.
+        if (verifyErr.message.toLowerCase().includes('invalid login')) {
+          setPwdError('Current password is incorrect.')
+        } else {
+          setPwdError('Could not verify current password. Please try again.')
+        }
+        return
+      }
+
+      // BUG-PWD-CHANGE-INVALIDATE-OTHER-SESSIONS (follow-up): updateUser
+      // rotates the password but does NOT sign out other devices/sessions.
+      // A stolen-laptop scenario means the attacker keeps their session
+      // even after the victim "changes the password". We need a follow-up
+      // task to call /auth/v1/logout?scope=others (or admin signOut) right
+      // after updateUser succeeds, ideally with a confirmation modal
+      // "Sign out everywhere else? [Yes] [No]" matching the Settings spec.
+      const { error: updateErr } = await supabase.auth.updateUser({
+        password: newPwd,
+      })
+      if (updateErr) {
+        console.error('[settings] password update error:', updateErr)
+        setPwdError('Could not update password. Please try again.')
+        return
+      }
+
+      setPwdSuccess(true)
+      setCurrentPwd('')
+      setNewPwd('')
+      setConfirmPwd('')
+      setPwdFormOpen(false)
+    } catch (err) {
+      console.error('[settings] handleChangePassword error:', err)
+      setPwdError('Something went wrong. Please try again.')
+    } finally {
+      setPwdSaving(false)
+    }
+  }
+
+  function handleCancelPwd() {
+    setPwdFormOpen(false)
+    setCurrentPwd('')
+    setNewPwd('')
+    setConfirmPwd('')
+    setPwdError(null)
   }
 
   async function handleToggleNotif(key: NotifKey) {
@@ -243,19 +344,97 @@ export default function CoachSettingsPage() {
               }
             />
             {!isOAuth && (
-              <Row
-                label="Password"
-                value="••••••••"
-                action={
-                  <button
-                    type="button"
-                    title="Coming soon"
-                    className="text-brand-600 hover:text-brand-700 text-[13px] font-medium cursor-pointer bg-transparent border-0 p-0 py-1.5"
+              <>
+                <Row
+                  label="Password"
+                  value={pwdFormOpen ? '' : '••••••••'}
+                  action={
+                    pwdFormOpen ? null : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPwdFormOpen(true)
+                          setPwdError(null)
+                          setPwdSuccess(false)
+                        }}
+                        className="text-brand-600 hover:text-brand-700 text-[13px] font-medium cursor-pointer bg-transparent border-0 p-0 py-1.5"
+                      >
+                        Change password
+                      </button>
+                    )
+                  }
+                />
+                {pwdSuccess && !pwdFormOpen && (
+                  <p
+                    role="status"
+                    aria-live="polite"
+                    className="text-[12px] text-success mt-1"
                   >
-                    Change password
-                  </button>
-                }
-              />
+                    Password updated.
+                  </p>
+                )}
+                {pwdFormOpen && (
+                  <div className="flex flex-col gap-3 py-3">
+                    <label className="flex flex-col gap-1">
+                      <span className="text-[12px] text-neutral-600">Current password</span>
+                      <input
+                        type="password"
+                        value={currentPwd}
+                        onChange={(e) => setCurrentPwd(e.target.value)}
+                        autoComplete="current-password"
+                        disabled={pwdSaving}
+                        className="h-11 px-3 rounded-md border border-neutral-300 text-[14px] focus:outline-none focus:border-brand-600 focus:ring-1 focus:ring-brand-600 disabled:bg-neutral-50"
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1">
+                      <span className="text-[12px] text-neutral-600">New password</span>
+                      <input
+                        type="password"
+                        value={newPwd}
+                        onChange={(e) => setNewPwd(e.target.value)}
+                        autoComplete="new-password"
+                        disabled={pwdSaving}
+                        className="h-11 px-3 rounded-md border border-neutral-300 text-[14px] focus:outline-none focus:border-brand-600 focus:ring-1 focus:ring-brand-600 disabled:bg-neutral-50"
+                      />
+                      <span className="text-[12px] text-neutral-500">At least 8 characters.</span>
+                    </label>
+                    <label className="flex flex-col gap-1">
+                      <span className="text-[12px] text-neutral-600">Confirm new password</span>
+                      <input
+                        type="password"
+                        value={confirmPwd}
+                        onChange={(e) => setConfirmPwd(e.target.value)}
+                        autoComplete="new-password"
+                        disabled={pwdSaving}
+                        className="h-11 px-3 rounded-md border border-neutral-300 text-[14px] focus:outline-none focus:border-brand-600 focus:ring-1 focus:ring-brand-600 disabled:bg-neutral-50"
+                      />
+                    </label>
+
+                    {pwdError && (
+                      <p role="alert" className="text-[12px] text-danger">{pwdError}</p>
+                    )}
+
+                    <div className="flex gap-2 mt-1">
+                      <button
+                        type="button"
+                        onClick={handleChangePassword}
+                        disabled={pwdSaving}
+                        className="h-11 px-4 rounded-md bg-brand-600 hover:bg-brand-700 text-white text-[14px] font-medium disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                      >
+                        {pwdSaving ? 'Saving…' : 'Update password'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleCancelPwd}
+                        disabled={pwdSaving}
+                        className="h-11 px-4 rounded-md border border-neutral-300 hover:bg-neutral-50 text-neutral-800 text-[14px] font-medium disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </Card>
 
