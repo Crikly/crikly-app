@@ -56,6 +56,18 @@ export default function CoachSettingsPage() {
   const [pwdError, setPwdError] = useState<string | null>(null)
   const [pwdSuccess, setPwdSuccess] = useState(false)
 
+  // ─── Change email flow (C-Settings-EMAIL-CHANGE) ─────────────────
+  // Available to all users (OAuth + password). Supabase auth.updateUser
+  // triggers the verification email; old email stays active until verified.
+  const [emailFormOpen, setEmailFormOpen] = useState(false)
+  const [newEmail, setNewEmail] = useState('')
+  const [emailSaving, setEmailSaving] = useState(false)
+  const [emailError, setEmailError] = useState<string | null>(null)
+  const [emailPendingTo, setEmailPendingTo] = useState<string | null>(null)
+
+  // ─── Sign out (BUG-SETTINGS-SIGNOUT-MISSING) ──────────────────────
+  const [signingOut, setSigningOut] = useState(false)
+
   useEffect(() => {
     let cancelled = false
     async function load() {
@@ -218,6 +230,86 @@ export default function CoachSettingsPage() {
     setPwdError(null)
   }
 
+  // C-Settings-EMAIL-CHANGE: inline change-email flow.
+  // Open to all users (email/password and OAuth).
+  async function handleChangeEmail() {
+    if (emailSaving) return
+    setEmailError(null)
+
+    const trimmed = newEmail.trim().toLowerCase()
+    if (!trimmed) {
+      setEmailError('Please enter a new email address.')
+      return
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(trimmed)) {
+      setEmailError('Please enter a valid email address.')
+      return
+    }
+    if (trimmed === email.toLowerCase()) {
+      setEmailError('New email must be different from your current email.')
+      return
+    }
+
+    setEmailSaving(true)
+    try {
+      // BUG-EMAIL-CHANGE-RATE-LIMIT (follow-up): repeated email-change
+      // attempts share Supabase's email-send rate-limit bucket — the same
+      // bucket that throttles signUp verification mails. A user hammering
+      // this can lock themselves out of triggering legitimate auth mails
+      // for ~minutes. Acceptable for now; revisit if we see complaints.
+      const { error } = await supabase.auth.updateUser({ email: trimmed })
+      if (error) {
+        console.error('[settings] email update error:', error)
+        if (error.message.toLowerCase().includes('already')) {
+          setEmailError('That email is already in use.')
+        } else if (error.message.toLowerCase().includes('rate limit')) {
+          setEmailError('Too many attempts. Please wait a few minutes and try again.')
+        } else {
+          setEmailError('Could not update email. Please try again.')
+        }
+        return
+      }
+      // BUG-EMAIL-CHANGE-PENDING-PERSIST (follow-up): the "pending verification"
+      // banner is in-memory only — refreshing the page hides it. Supabase
+      // exposes user.new_email on the session once the change is pending;
+      // we should rehydrate emailPendingTo from that on mount so the banner
+      // survives page reloads until the user confirms.
+      setEmailPendingTo(trimmed)
+      setNewEmail('')
+      setEmailFormOpen(false)
+    } catch (err) {
+      console.error('[settings] handleChangeEmail error:', err)
+      setEmailError('Something went wrong. Please try again.')
+    } finally {
+      setEmailSaving(false)
+    }
+  }
+
+  function handleCancelEmail() {
+    setEmailFormOpen(false)
+    setNewEmail('')
+    setEmailError(null)
+  }
+
+  // BUG-SETTINGS-SIGNOUT-MISSING: standalone sign-out from Settings.
+  async function handleSignOut() {
+    if (signingOut) return
+    setSigningOut(true)
+    try {
+      await supabase.auth.signOut()
+    } catch (err) {
+      // Even if signOut throws, still redirect — the user asked to leave.
+      console.error('[settings] sign out error:', err)
+    } finally {
+      // Reset state before navigation — if router.push is intercepted
+      // (middleware redirect loop, etc.) the button stays usable instead
+      // of being stuck disabled.
+      setSigningOut(false)
+      router.push('/login')
+    }
+  }
+
   async function handleToggleNotif(key: NotifKey) {
     if (!notifPrefs || notifSaving) return
     const newValue = !notifPrefs[key]
@@ -331,18 +423,76 @@ export default function CoachSettingsPage() {
           <Card title="Account">
             <Row
               label="Email address"
-              value={email}
+              value={emailFormOpen ? '' : email}
               action={
-                // Fix A: stub buttons now visible/active (no disabled, no opacity-50). Title tooltip carries the "coming soon" hint.
-                <button
-                  type="button"
-                  title="Coming soon"
-                  className="text-brand-600 hover:text-brand-700 text-[13px] font-medium cursor-pointer bg-transparent border-0 p-0 py-1.5"
-                >
-                  Change
-                </button>
+                emailFormOpen ? null : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEmailFormOpen(true)
+                      setEmailError(null)
+                    }}
+                    className="text-brand-600 hover:text-brand-700 text-[13px] font-medium cursor-pointer bg-transparent border-0 p-0 py-1.5"
+                  >
+                    Change
+                  </button>
+                )
               }
             />
+            {emailPendingTo && !emailFormOpen && (
+              <div
+                role="status"
+                aria-live="polite"
+                className="rounded-md border border-brand-100 bg-brand-50 p-3 mt-2"
+              >
+                <p className="text-[13px] text-neutral-800">
+                  <strong className="font-semibold">Verification email sent to {emailPendingTo}.</strong>{' '}
+                  Click the link in your inbox to confirm the new address. Your current address remains active until then.
+                </p>
+              </div>
+            )}
+            {emailFormOpen && (
+              <div className="flex flex-col gap-3 py-3">
+                <label className="flex flex-col gap-1">
+                  <span className="text-[12px] text-neutral-600">New email address</span>
+                  <input
+                    type="email"
+                    value={newEmail}
+                    onChange={(e) => setNewEmail(e.target.value)}
+                    autoComplete="email"
+                    disabled={emailSaving}
+                    placeholder="you@example.com"
+                    className="h-11 px-3 rounded-md border border-neutral-300 text-[14px] focus:outline-none focus:border-brand-600 focus:ring-1 focus:ring-brand-600 disabled:bg-neutral-50"
+                  />
+                  <span className="text-[12px] text-neutral-500">
+                    We&apos;ll send a verification link to this address. Your current email stays active until you confirm.
+                  </span>
+                </label>
+
+                {emailError && (
+                  <p role="alert" className="text-[12px] text-danger">{emailError}</p>
+                )}
+
+                <div className="flex gap-2 mt-1">
+                  <button
+                    type="button"
+                    onClick={handleChangeEmail}
+                    disabled={emailSaving}
+                    className="h-11 px-4 rounded-md bg-brand-600 hover:bg-brand-700 text-white text-[14px] font-medium disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                  >
+                    {emailSaving ? 'Sending…' : 'Send verification email'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCancelEmail}
+                    disabled={emailSaving}
+                    className="h-11 px-4 rounded-md border border-neutral-300 hover:bg-neutral-50 text-neutral-800 text-[14px] font-medium disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
             {!isOAuth && (
               <>
                 <Row
@@ -606,6 +756,18 @@ export default function CoachSettingsPage() {
               </div>
             </DangerCard>
           )}
+
+          {/* ===== SIGN OUT (BUG-SETTINGS-SIGNOUT-MISSING) ===== */}
+          <div className="flex justify-center pt-2">
+            <button
+              type="button"
+              onClick={handleSignOut}
+              disabled={signingOut}
+              className="h-11 px-6 rounded-md border border-danger bg-white text-danger text-[14px] font-medium hover:bg-[#FEE2E2] transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {signingOut ? 'Signing out…' : 'Sign out'}
+            </button>
+          </div>
         </div>
       </div>
     </div>
