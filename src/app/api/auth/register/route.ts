@@ -71,6 +71,21 @@ export async function POST(request: Request) {
           { status: 409 }
         )
       }
+      // BUG-AUTH-REGISTER-500: Supabase Auth returns 429 with code
+      // 'over_email_send_rate_limit' when too many register attempts
+      // hit the same email/IP in a short window. Code check is the
+      // canonical match; the 'rate limit' substring is a defensive
+      // fallback for variants (e.g. older SDK versions emitting only
+      // the message text). Covers both the burst-protection limit
+      // and the per-email "For security purposes..." cooldown which
+      // share the same error code in modern Supabase SDKs.
+      if (error.code === 'over_email_send_rate_limit' ||
+          error.message.toLowerCase().includes('rate limit')) {
+        return NextResponse.json(
+          { success: false, error: { code: 'RATE_LIMITED', message: 'Too many attempts. Please wait a few minutes and try again.' } },
+          { status: 429 }
+        )
+      }
       return NextResponse.json(
         { success: false, error: { code: 'UNKNOWN_ERROR', message: 'Something went wrong. Please try again.' } },
         { status: 500 }
