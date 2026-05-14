@@ -21,7 +21,7 @@
 
 'use client'
 
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
 
 // Union of the two pre-existing BookingListItem definitions in BookingsManagement.tsx
 // (had messaging_unlocked) and CoachRightPanel.tsx (had created_at). Both fields are
@@ -68,7 +68,16 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  // PERF-02b: in-flight guard prevents React strict-mode double-invoke
+  // (and back-to-back refresh() calls during fast user actions) from
+  // firing two parallel Promise.all batches of 3 fetches each. The ref
+  // is stable across renders so useCallback deps stay []. Mirrors the
+  // PERF-04 pattern in GetPaid.tsx (fetchStripeStatus).
+  const fetchingRef = useRef(false)
+
   const fetchAll = useCallback(async () => {
+    if (fetchingRef.current) return
+    fetchingRef.current = true
     setLoading(true)
     setError(null)
     try {
@@ -105,6 +114,7 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
       setError('Failed to load bookings. Please try again.')
     } finally {
       setLoading(false)
+      fetchingRef.current = false
     }
   }, [])
 
