@@ -4,23 +4,12 @@ import { useRouter } from 'next/navigation'
 import { ChevronRight, Loader2 } from 'lucide-react'
 // AF-P-Wave-1: sports cache adoption
 import { fetchSportsListCached } from '@/lib/onboarding-cache'
+// PERF-02-BOOKINGS-CACHE: shared booking lists for Upcoming + Pending approval.
+// Past stays on local fetch (lazy + paginated). Type moved into the context
+// to dedupe the old per-file definitions.
+import { useBookings, type BookingListItem } from '@/contexts/BookingsContext'
 
 type Tab = 'Upcoming' | 'Pending approval' | 'Past'
-
-interface BookingListItem {
-  id: string
-  booking_reference: string
-  session_date: string
-  session_start_time: string
-  session_end_time: string
-  session_type: string
-  status: string
-  sport_id: string
-  coach_price_pence: number
-  booked_by_name: string | null
-  child_name: string | null
-  messaging_unlocked: boolean
-}
 
 interface Sport {
   id: string
@@ -95,9 +84,11 @@ function BookingCardSkeleton() {
 export function BookingsManagement() {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<Tab>('Upcoming')
+  // PERF-02-BOOKINGS-CACHE: Upcoming + Pending approval come from context;
+  // Past keeps its own paginated fetch. `loading` and `bookings` reflect the
+  // active-tab path: context for the first two tabs, local state for Past.
   const [loading, setLoading] = useState(true)
   const [bookings, setBookings] = useState<BookingListItem[]>([])
-  const [upcomingCount, setUpcomingCount] = useState(0)
   const [sportsMap, setSportsMap] = useState<Record<string, string>>({})
   const [pastPage, setPastPage] = useState(1)
   const [hasMore, setHasMore] = useState(false)
@@ -105,6 +96,19 @@ export function BookingsManagement() {
   // AF-H-29/30: surface fetch errors instead of silent empty list
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [loadMoreError, setLoadMoreError] = useState<string | null>(null)
+
+  // PERF-02-BOOKINGS-CACHE: shared bookings lists from the provider in
+  // CoachLayoutClient. upcoming.length drives the header count; the two
+  // cached tabs read directly from this without firing their own fetch.
+  const {
+    upcoming,
+    pendingApproval,
+    loading: bookingsContextLoading,
+    error: bookingsContextError,
+    refresh: refreshBookingsContext,
+  } = useBookings()
+
+  const upcomingCount = upcoming.length
 
   // AF-P-Wave-1: use sports cache — fetchSportsListCached() returns the array directly
   useEffect(() => {
@@ -119,7 +123,9 @@ export function BookingsManagement() {
 
   const PAGE_SIZE = 10
 
-  const fetchBookings = useCallback(async (tab: Tab) => {
+  // PERF-02-BOOKINGS-CACHE: only handles the Past tab now — Upcoming and
+  // Pending approval are served from context.
+  const fetchPast = useCallback(async () => {
     setLoading(true)
     setPastPage(1)
     setHasMore(false)
@@ -127,13 +133,8 @@ export function BookingsManagement() {
     setFetchError(null)
     setLoadMoreError(null)
 
-    let apiTab: string
-    if (tab === 'Upcoming') apiTab = 'upcoming'
-    else if (tab === 'Past') apiTab = 'past'
-    else apiTab = 'pending_approval'
-
     try {
-      const res = await fetch(`/api/coaches/bookings?tab=${apiTab}&page=1`)
+      const res = await fetch('/api/coaches/bookings?tab=past&page=1')
       if (!res.ok) {
         setFetchError('Failed to load bookings. Please try again.')
         setBookings([])
@@ -142,8 +143,7 @@ export function BookingsManagement() {
       const data = await res.json() as { bookings: BookingListItem[] }
       const rows = data.bookings ?? []
       setBookings(rows)
-      if (tab === 'Upcoming') setUpcomingCount(rows.length)
-      if (tab === 'Past') setHasMore(rows.length === PAGE_SIZE)
+      setHasMore(rows.length === PAGE_SIZE)
     } catch {
       setFetchError('Failed to load bookings. Please try again.')
       setBookings([])
@@ -151,6 +151,17 @@ export function BookingsManagement() {
       setLoading(false)
     }
   }, [])
+
+  // PERF-02-BOOKINGS-CACHE: retry routes to the appropriate source for the
+  // active tab — context refresh for cached tabs, local fetch for Past.
+  // Declared after fetchPast so the closure captures it without TDZ.
+  const retryFetch = useCallback(() => {
+    if (activeTab === 'Past') {
+      fetchPast()
+    } else {
+      refreshBookingsContext()
+    }
+  }, [activeTab, fetchPast, refreshBookingsContext])
 
   const loadMore = useCallback(async () => {
     setLoadingMore(true)
@@ -174,9 +185,26 @@ export function BookingsManagement() {
     }
   }, [pastPage])
 
+  // PERF-02-BOOKINGS-CACHE: tab-switching reads from context for the two
+  // cached tabs and falls through to the local Past fetch otherwise. The
+  // displayed bookings + loading + error all derive from whichever source
+  // owns the active tab.
   useEffect(() => {
-    fetchBookings(activeTab)
-  }, [activeTab, fetchBookings])
+    if (activeTab === 'Upcoming') {
+      setBookings(upcoming)
+      setLoading(bookingsContextLoading)
+      setFetchError(bookingsContextError)
+      setHasMore(false)
+    } else if (activeTab === 'Pending approval') {
+      setBookings(pendingApproval)
+      setLoading(bookingsContextLoading)
+      setFetchError(bookingsContextError)
+      setHasMore(false)
+    } else {
+      // Past — lazy fetch with its own pagination
+      fetchPast()
+    }
+  }, [activeTab, upcoming, pendingApproval, bookingsContextLoading, bookingsContextError, fetchPast])
 
   // AF-H-Wave-3: derive from data — manual-approval coaches now have real pending bookings (BR-06 v2)
   const pendingCount = bookings.filter(b => b.status === 'pending_approval').length
@@ -241,7 +269,7 @@ export function BookingsManagement() {
             <div className="mb-3 p-3 bg-red-50 rounded-xl">
               <p className="text-[13px] text-red-600">{fetchError}</p>
               <button
-                onClick={() => fetchBookings(activeTab)}
+                onClick={retryFetch}
                 className="text-[13px] text-[#0077CC] font-medium mt-1"
               >
                 Try again
