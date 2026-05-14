@@ -55,6 +55,15 @@ export async function POST(request: Request) {
     })
 
     if (error) {
+      // BUG-AUTH-REGISTER-500: log every Supabase auth.signUp error so the
+      // non-duplicate fall-through path (which silently returned 500 before)
+      // surfaces the real cause in Vercel logs.
+      console.error('[register] supabase.auth.signUp error:', {
+        message: error.message,
+        status: error.status,
+        code: error.code,
+        name: error.name,
+      })
       if (error.message.toLowerCase().includes('already registered') ||
           error.message.toLowerCase().includes('already exists')) {
         return NextResponse.json(
@@ -69,6 +78,9 @@ export async function POST(request: Request) {
     }
 
     if (!data.user) {
+      // BUG-AUTH-REGISTER-500: signUp succeeded but didn't return a user —
+      // surface this edge case so we can tell it apart from genuine errors.
+      console.error('[register] signUp returned no user but no error', { hasSession: !!data.session })
       return NextResponse.json(
         { success: false, error: { code: 'UNKNOWN_ERROR', message: 'Could not create account. Please try again.' } },
         { status: 500 }
@@ -76,7 +88,11 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({ success: true, redirectTo: `/verify?email=${encodeURIComponent(email)}` })
-  } catch {
+  } catch (error) {
+    // BUG-AUTH-REGISTER-500: bare catch was silently swallowing exceptions.
+    // Includes any throw before signUp is even called (body parse, cookies(),
+    // createServerClient crash, etc.).
+    console.error('[register] Unexpected exception:', error)
     return NextResponse.json(
       { success: false, error: { code: 'UNKNOWN_ERROR', message: 'Unexpected error. Please try again.' } },
       { status: 500 }
