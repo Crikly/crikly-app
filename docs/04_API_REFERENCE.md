@@ -276,6 +276,9 @@ Add a blocked date.
 ### DELETE /api/coaches/[id]/blocked-dates/[date]
 Remove a blocked date.
 
+### GET /api/coaches/reviews
+**STUB endpoint** — returns hardcoded dummy reviews for the authenticated coach. Auth via `requireCoachContext`. Replace with real `bookings + reviews + coach_replies` joins when `API-COACH-REVIEWS-REAL-WIRING` lands. Response: `{ reviews: Review[], rating_avg, rating_count, rating_change_30d, positive_share }`. Pagination follow-up tracked as `API-COACH-REVIEWS-PAGINATION`. Reply persistence (POST) tracked as `BUG-REVIEWS-REPLY-PERSIST`. See CF-REVIEWS-01.
+
 ---
 
 ## Child Profile Routes

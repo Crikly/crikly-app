@@ -341,6 +341,7 @@ C-05, C-06, C-07, C-08 are safe to proceed without M-015.
 | Fix-11j | Fix greeting name source and avatar display | @FrontendDeveloper | 🟢 | feature/coach-data | ✅ |
 | Fix-11k | Fix avatar display and remove fake booking badge | @FrontendDeveloper | 🟢 | feature/coach-data | ✅ |
 | Fix-12 | Insert user_roles row on role selection for OAuth and email users | @BackendDeveloper | 🔴 | feature/coach-data-2 | ✅ |
+| CF-REVIEWS-01 | Coach Reviews page — /coach/reviews + STUB GET /api/coaches/reviews + sidebar nav entry. Follow-ups: API-COACH-REVIEWS-REAL-WIRING, API-COACH-REVIEWS-PAGINATION, BUG-REVIEWS-REPLY-PERSIST, BUG-REVIEWS-FLAG-ACTION, BUG-REVIEWS-TOKEN-DEBT. | @FrontendDeveloper | 🟡 | feat/coach-reviews | ✅ |
 
 ### 3D — Screen Review & Polish (CF-D tasks)
 
