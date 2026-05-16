@@ -271,7 +271,7 @@ export function CoachRightPanel() {
       {/* ─── SECTION 1 · THIS WEEK ──────────────────────────────────────── */}
       <section>
         <div className="flex items-center justify-between mb-2">
-          <h3 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">This week</h3>
+          <h3 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">{monthLabel}</h3>
           <div className="flex items-center gap-2 text-[11px]">
             {weekOffset !== 0 && (
               <button
@@ -290,7 +290,6 @@ export function CoachRightPanel() {
             >
               <ChevronLeft className="w-3.5 h-3.5" />
             </button>
-            <span className="font-semibold text-gray-700 min-w-[44px] text-center">{monthLabel}</span>
             <button
               type="button"
               onClick={() => setWeekOffset((o) => o + 1)}
