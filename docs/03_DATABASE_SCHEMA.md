@@ -949,28 +949,69 @@ Premium coach feature. Structured reports attached to passport entries.
 Reviews left by parents/players after a session.
 
 **Purpose:** Trust building — visible on coach profile and search results.
-**Migration:** 007_create_passport.sql
+**Migration:** 007_passport.sql (original), 029_reviews_coach_replies.sql (DB-REVIEWS-SCHEMA — column additions, FK loosening, coach SELECT policy)
 
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
 | id | uuid | NO | gen_random_uuid() | Primary key |
-| booking_id | uuid | NO | — | FK → bookings(id) |
-| coach_profile_id | uuid | NO | — | FK → coach_profiles(id) |
-| reviewer_user_id | uuid | NO | — | FK → user_profiles(id) |
+| booking_id | uuid | YES | — | FK → bookings(id) ON DELETE SET NULL. Nullable so seeded reviews can omit it (migration 029). |
+| coach_profile_id | uuid | NO | — | FK → coach_profiles(id) ON DELETE CASCADE (migration 029 — was RESTRICT) |
+| reviewer_user_id | uuid | YES | — | FK → user_profiles(id) ON DELETE SET NULL (migration 029). Nullable for seeded reviews. |
+| reviewer_name | text | NO | 'Anonymous' | Display name on coach reviews page. Independent of reviewer_user_id so seeded data and user-deleted reviews still render. Added in migration 029. |
 | rating | integer | NO | — | 1-5 stars |
 | comment | text | YES | null | Optional written review |
+| sport_name | text | NO | 'Unknown' | Snapshot of sport at review time (text not FK). Added in migration 029. |
 | is_visible | boolean | NO | true | Admin can hide inappropriate reviews |
 | created_at | timestamptz | NO | now() | |
-| updated_at | timestamptz | NO | now() | |
 
 **Constraints:**
-- UNIQUE(booking_id) — one review per booking
+- UNIQUE(booking_id) — one review per booking (NULL booking_ids are treated as distinct by Postgres, so seeded rows are unconstrained)
 - rating CHECK (rating >= 1 AND rating <= 5)
 
+**Indexes:**
+- coach_profile_id, reviewer_user_id, is_visible WHERE is_visible = true (migration 007)
+- created_at DESC (migration 029 — for newest-first sort on coach reviews page)
+
 **RLS Policies:**
-- SELECT: Public (all visible reviews)
-- INSERT: Authenticated parent/player who made the booking
-- UPDATE: Not permitted (reviews are permanent)
+- SELECT (public): all visible reviews — `is_visible = true`
+- SELECT (coach): coach can see own reviews including hidden ones (migration 029)
+- INSERT: authenticated parent/player who made the booking
+- UPDATE: not permitted (reviews are immutable)
+
+**Lifecycle notes (migration 029):**
+- ON DELETE CASCADE on `coach_profile_id` means coach profile deletion vaporises all their reviews + replies. Acceptable for Phase 1; revisit with soft-delete (`BUG-REVIEWS-FK-LIFECYCLE`).
+- ON DELETE SET NULL on `booking_id` and `reviewer_user_id` means application code cannot assume those are non-null.
+
+---
+
+### 8.4 coach_replies
+
+Coach replies to reviews. One reply per review.
+
+**Purpose:** Allow coaches to publicly respond to feedback on their profile.
+**Migration:** 029_reviews_coach_replies.sql
+
+| Column | Type | Nullable | Default | Notes |
+|---|---|---|---|---|
+| id | uuid | NO | gen_random_uuid() | Primary key |
+| review_id | uuid | NO | — | FK → reviews(id) ON DELETE CASCADE, UNIQUE — enforces 1 reply per review |
+| coach_profile_id | uuid | NO | — | FK → coach_profiles(id) ON DELETE CASCADE |
+| reply_text | text | NO | — | The reply body (no length cap at schema level; app enforces) |
+| created_at | timestamptz | NO | now() | |
+| updated_at | timestamptz | NO | now() | Auto-updated via trigger `update_coach_replies_updated_at` |
+
+**Constraints:**
+- UNIQUE(review_id) — one reply per review
+
+**Indexes:**
+- review_id, coach_profile_id
+
+**RLS Policies:**
+- SELECT (public): visible whenever the parent review is visible (`reviews.is_visible = true`)
+- SELECT (coach): coach can read own replies regardless of review visibility
+- INSERT (coach): coach can reply to reviews targeting their own profile (double-EXISTS check prevents replying as another coach)
+- UPDATE (coach): coach can edit own reply text
+- DELETE: not permitted — coaches blank text via UPDATE if needed
 
 ---
 
