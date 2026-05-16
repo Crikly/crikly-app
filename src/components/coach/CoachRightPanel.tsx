@@ -33,7 +33,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Star, Clock, MessageSquare, User, MapPin, Trophy, ArrowRight, Check, X, ChevronRight } from 'lucide-react'
+import { Star, Clock, MessageSquare, User, MapPin, Trophy, ArrowRight, Check, X, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useBookings, type BookingListItem } from '@/contexts/BookingsContext'
 import { fetchCoachProfileCached, fetchSportsListCached } from '@/lib/onboarding-cache'
 
@@ -54,22 +54,30 @@ interface Sport { id: string; name: string }
 
 // ─── Date helpers ────────────────────────────────────────────────────────────
 
+// DS-RIGHT-PANEL-01-FIXES: use local components (not toISOString which is UTC)
+// so days don't shift across midnight in late-evening UK time near month
+// boundaries. Was the root cause of selected-day mismatches reported in
+// smoke test issues 3 + 4.
 function isoDate(d: Date): string {
-  return d.toISOString().slice(0, 10)
+  return [
+    d.getFullYear(),
+    String(d.getMonth() + 1).padStart(2, '0'),
+    String(d.getDate()).padStart(2, '0'),
+  ].join('-')
 }
 
 function todayIsoLocal(): string {
   return isoDate(new Date())
 }
 
-function getWeekDays(): Array<{ iso: string; label: string; date: number; isToday: boolean }> {
-  // Mon-Sun for the current week using server-local time (UK only Phase 1).
+function getWeekDays(weekOffset: number = 0): Array<{ iso: string; label: string; date: number; isToday: boolean }> {
+  // Mon-Sun for the current week (or offset week), local time. UK only Phase 1.
   const today = new Date()
   const todayIso0 = isoDate(today)
   const dayOfWeek = today.getDay()
   const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
   const monday = new Date(today)
-  monday.setDate(today.getDate() + mondayOffset)
+  monday.setDate(today.getDate() + mondayOffset + weekOffset * 7)
   monday.setHours(0, 0, 0, 0)
 
   const labels = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
@@ -135,6 +143,10 @@ function statusBadgeClass(status: string): string {
 export function CoachRightPanel() {
   const [selectedDayIso, setSelectedDayIso] = useState<string>(todayIsoLocal())
   const [selectedSession, setSelectedSession] = useState<BookingListItem | null>(null)
+  // DS-RIGHT-PANEL-01-FIXES: week navigation. Note that BookingsContext only
+  // fetches the current week — offset !== 0 will render empty dots and an
+  // empty lineup. Filed PERF-RIGHT-PANEL-WEEK-NAV-DATA for fetch-on-demand.
+  const [weekOffset, setWeekOffset] = useState(0)
 
   const { thisWeek, pendingApproval, loading } = useBookings()
 
@@ -163,7 +175,29 @@ export function CoachRightPanel() {
       .catch(() => {})
   }, [])
 
-  const weekDays = useMemo(getWeekDays, [])
+  const weekDays = useMemo(() => getWeekDays(weekOffset), [weekOffset])
+
+  // Month label for the displayed week, derived from its Thursday (ISO
+  // month convention — the Thursday is always inside the calendar month
+  // that "owns" the week). Year suffix appears only when not current year.
+  const monthLabel = useMemo(() => {
+    const today = new Date()
+    const dayOfWeek = today.getDay()
+    const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
+    const monday = new Date(today)
+    monday.setDate(today.getDate() + mondayOffset + weekOffset * 7)
+    const thursday = new Date(monday)
+    thursday.setDate(monday.getDate() + 3)
+    const currentYear = new Date().getFullYear()
+    return thursday.getFullYear() === currentYear
+      ? thursday.toLocaleDateString('en-GB', { month: 'short' })
+      : thursday.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })
+  }, [weekOffset])
+
+  function handleResetToToday() {
+    setWeekOffset(0)
+    setSelectedDayIso(todayIsoLocal())
+  }
 
   // Day → sessions map for dot indicators + lineup filtering.
   const sessionsByDay = useMemo(() => {
@@ -187,11 +221,18 @@ export function CoachRightPanel() {
     selectedDayIso === todayIso ? 'No sessions today' : 'No sessions this day'
 
   // Profile completeness — Phase 1 STUB.
-  // API-CMD-CENTRE follow-up: a real calculation needs 4 DB count queries
+  //
+  // API-CMD-CENTRE (follow-up): a real calculation needs 4 DB count queries
   // (sports, qualifications, availability, stripe) which the dashboard
-  // already does server-side. This computes only the 2 checks readable from
-  // the cached profile and assumes the other 4 are complete — overestimates
-  // for new coaches but avoids a separate fetch in Phase 1.
+  // already does server-side. We can't do those here without a new endpoint.
+  //
+  // As a stopgap, this only evaluates the 4 checks readable from the cached
+  // profile (name+bio+location, years_experience, stripe_account_id,
+  // cancellation_window_hours) and assumes the 2 missing checks pass —
+  // which means new coaches who haven't added sports/availability may see
+  // the row hidden when it should be shown. The UI sub-text is therefore
+  // generic ("Some checks incomplete — view profile") rather than showing
+  // a specific X-of-6 count that would be misleading.
   const completedChecks = useMemo(() => {
     if (!profile) return 6
     let count = 0
@@ -229,10 +270,38 @@ export function CoachRightPanel() {
 
       {/* ─── SECTION 1 · THIS WEEK ──────────────────────────────────────── */}
       <section>
-        <div className="flex items-baseline justify-between mb-3">
+        <div className="flex items-center justify-between mb-2">
           <h3 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">This week</h3>
-          <span className="text-[11px] text-gray-400">tap a day to update lineup</span>
+          <div className="flex items-center gap-2 text-[11px]">
+            {weekOffset !== 0 && (
+              <button
+                type="button"
+                onClick={handleResetToToday}
+                className="font-semibold text-brand-600 hover:text-[#0066AA] cursor-pointer transition-colors"
+              >
+                Today
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setWeekOffset((o) => o - 1)}
+              className="p-0.5 text-gray-400 hover:text-gray-900 cursor-pointer transition-colors"
+              aria-label="Previous week"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" />
+            </button>
+            <span className="font-semibold text-gray-700 min-w-[44px] text-center">{monthLabel}</span>
+            <button
+              type="button"
+              onClick={() => setWeekOffset((o) => o + 1)}
+              className="p-0.5 text-gray-400 hover:text-gray-900 cursor-pointer transition-colors"
+              aria-label="Next week"
+            >
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
+        <p className="text-[11px] text-gray-400 mb-2">tap a day to update lineup</p>
         <div className="flex justify-between items-center">
           {weekDays.map((day) => {
             const hasSession = (sessionsByDay[day.iso] ?? []).length > 0
@@ -374,7 +443,7 @@ export function CoachRightPanel() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-[13px] font-semibold text-gray-900 leading-tight">Complete your profile</p>
-                  <p className="text-[11px] text-gray-500 mt-0.5">{completedChecks} of 6 checks done</p>
+                  <p className="text-[11px] text-gray-500 mt-0.5">Some checks incomplete — view profile</p>
                 </div>
               </Link>
             )}
