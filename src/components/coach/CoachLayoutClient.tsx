@@ -5,7 +5,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import {
   Home, Calendar, Inbox, Users, Clock, User,
-  TrendingUp, CreditCard, Settings, Share2,
+  TrendingUp, Star, CreditCard, Settings, Share2,
   X
 } from 'lucide-react'
 import { CoachRightPanel } from '@/components/coach/CoachRightPanel'
@@ -220,6 +220,7 @@ export function CoachLayoutClient({
           <div className="flex flex-col gap-1.5">
             <div className="px-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1 mt-2">Account</div>
             <SidebarItem icon={<TrendingUp size={20} />} label="Earnings" active={isActive('/coach/earnings')} onClick={() => nav('/coach/earnings')} />
+            <SidebarItem icon={<Star size={20} />} label="Reviews" active={isActive('/coach/reviews')} onClick={() => nav('/coach/reviews')} />
             <SidebarItem icon={<CreditCard size={20} />} label="Get Paid" warningDot active={isActive('/coach/get-paid')} onClick={() => nav('/coach/get-paid')} />
             {/* C-Settings-01-UI: Settings entry — placed at end of Account cluster (Ambiguity 3) */}
             <SidebarItem icon={<Settings size={20} />} label="Settings" active={isActive('/coach/settings')} onClick={() => nav('/coach/settings')} />
