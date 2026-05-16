@@ -1,31 +1,27 @@
-// PERF-02-BOOKINGS-CACHE: shared bookings context for /coach/bookings.
+// PERF-02-BOOKINGS-CACHE: shared bookings context for coach routes.
 //
-// Background: BookingsManagement (left main panel) and CoachRightPanel's
-// BookingsPendingApprovals + BookingsTodaySessions (right panel) each fired
-// their own /api/coaches/bookings fetch on mount — 3 simultaneous API calls
-// with 3 separate auth chains (~150ms × 3 of auth overhead). They are also
-// React-tree siblings (both descend from CoachLayoutClient), so a context
-// provider at that layout level is the only spot that can be seen by all
-// three consumers.
+// History:
+//   - Originally gated to /coach/bookings so BookingsManagement +
+//     CoachRightPanel's sub-components could share one fetch lifecycle.
+//   - DS-RIGHT-PANEL-01 (May 2026) ungated this provider so the universal
+//     right-panel command-centre can read sessions on every coach route.
+//     Added a 4th fetch for ?tab=week (Mon-Sun) to power the week strip.
 //
 // Provider strategy:
-//   - Mount only on /coach/bookings (route-gated in CoachLayoutClient).
-//   - Single useEffect fires Promise.all of the 3 endpoints on mount.
-//   - Exposes upcoming / today / pendingApproval lists + a refresh()
-//     callback for status-mutation flows (approve / decline).
+//   - Mounted at CoachLayoutClient level — wraps every coach route.
+//   - Single useEffect fires Promise.all of 4 endpoints on mount.
+//   - Exposes today / upcoming / pendingApproval / thisWeek + refresh().
 //
-// Out of scope:
-//   - Past + Cancelled tabs in BookingsManagement keep their own fetch
-//     (lazy-loaded with pagination, not worth lifting).
-//   - sportsMap state in each consumer (separate concern).
+// Cost: 4 parallel fetches per coach page load (~200ms wall-clock).
+// On /coach/dashboard this duplicates some server-rendered data — see
+// PERF-RIGHT-PANEL-DASHBOARD-DEDUPE follow-up.
 
 'use client'
 
 import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
 
-// Union of the two pre-existing BookingListItem definitions in BookingsManagement.tsx
-// (had messaging_unlocked) and CoachRightPanel.tsx (had created_at). Both fields are
-// included so either consumer can read what it needs.
+// Union of fields needed across consumers. venue_name added in
+// DS-RIGHT-PANEL-01 for the session-detail popup's location row.
 export interface BookingListItem {
   id: string
   booking_reference: string
@@ -40,18 +36,21 @@ export interface BookingListItem {
   child_name: string | null
   messaging_unlocked: boolean
   created_at: string
+  venue_name: string | null
 }
 
 interface BookingsContextValue {
   upcoming: BookingListItem[]
   today: BookingListItem[]
   pendingApproval: BookingListItem[]
+  /** Mon-Sun of the current week (server-local time), all statuses except
+   *  cancelled. Powers the right-panel week strip + daily lineup. Capped
+   *  at API PAGE_SIZE (10) per query — see PERF-RIGHT-PANEL-WEEK-CAP. */
+  thisWeek: BookingListItem[]
   loading: boolean
   error: string | null
-  /** Re-fires the 3 fetches in parallel. Call after status mutations
-   *  (approve / decline / cancel) so all cached lists reflect current
-   *  server state — approving a pending booking should move it from
-   *  pendingApproval to upcoming, and refresh() does that atomically. */
+  /** Re-fires all 4 fetches in parallel. Call after status mutations
+   *  (approve / decline / cancel) so cached lists reflect current state. */
   refresh: () => Promise<void>
 }
 
@@ -65,14 +64,13 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
   const [upcoming, setUpcoming] = useState<BookingListItem[]>([])
   const [today, setToday] = useState<BookingListItem[]>([])
   const [pendingApproval, setPendingApproval] = useState<BookingListItem[]>([])
+  const [thisWeek, setThisWeek] = useState<BookingListItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   // PERF-02b: in-flight guard prevents React strict-mode double-invoke
   // (and back-to-back refresh() calls during fast user actions) from
-  // firing two parallel Promise.all batches of 3 fetches each. The ref
-  // is stable across renders so useCallback deps stay []. Mirrors the
-  // PERF-04 pattern in GetPaid.tsx (fetchStripeStatus).
+  // firing two parallel Promise.all batches.
   const fetchingRef = useRef(false)
 
   const fetchAll = useCallback(async () => {
@@ -81,14 +79,15 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
     setLoading(true)
     setError(null)
     try {
-      const [upRes, todayRes, pendingRes] = await Promise.all([
+      const [upRes, todayRes, pendingRes, weekRes] = await Promise.all([
         fetch('/api/coaches/bookings?tab=upcoming&page=1'),
         fetch('/api/coaches/bookings?tab=today'),
         fetch('/api/coaches/bookings?tab=pending_approval'),
+        fetch('/api/coaches/bookings?tab=week'),
       ])
 
       // Each tab's response is independent — a partial failure leaves the
-      // other tabs populated rather than wiping all three.
+      // other tabs populated rather than wiping all four.
       if (upRes.ok) {
         const data = await upRes.json() as BookingsApiResponse
         setUpcoming(data.bookings ?? [])
@@ -109,6 +108,13 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
       } else {
         setPendingApproval([])
       }
+
+      if (weekRes.ok) {
+        const data = await weekRes.json() as BookingsApiResponse
+        setThisWeek(data.bookings ?? [])
+      } else {
+        setThisWeek([])
+      }
     } catch (err) {
       console.error('[BookingsContext] fetchAll error:', err)
       setError('Failed to load bookings. Please try again.')
@@ -128,6 +134,7 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
         upcoming,
         today,
         pendingApproval,
+        thisWeek,
         loading,
         error,
         refresh: fetchAll,

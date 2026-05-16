@@ -5,9 +5,9 @@ import type { Database } from '@/types/database'
 import { requireCoachContext } from '@/lib/auth/require-coach'
 
 type BookingRow = Database['public']['Tables']['bookings']['Row']
-type Tab = 'today' | 'upcoming' | 'past' | 'cancelled' | 'pending_approval'
+type Tab = 'today' | 'upcoming' | 'past' | 'cancelled' | 'pending_approval' | 'week'
 
-const VALID_TABS: Tab[] = ['today', 'upcoming', 'past', 'cancelled', 'pending_approval']
+const VALID_TABS: Tab[] = ['today', 'upcoming', 'past', 'cancelled', 'pending_approval', 'week']
 const PAGE_SIZE = 10
 
 // Service-role client for user_profiles lookups.
@@ -32,7 +32,7 @@ export async function GET(request: Request) {
   const rawTab = searchParams.get('tab') ?? 'upcoming'
   if (!VALID_TABS.includes(rawTab as Tab)) {
     return NextResponse.json(
-      { error: 'Validation failed', details: ['tab must be one of: today, upcoming, past, cancelled, pending_approval'] },
+      { error: 'Validation failed', details: ['tab must be one of: today, upcoming, past, cancelled, pending_approval, week'] },
       { status: 400 },
     )
   }
@@ -59,11 +59,29 @@ export async function GET(request: Request) {
     filtered = base.in('status', ['completed', 'no_show'])
   } else if (tab === 'pending_approval') {
     filtered = base.in('status', ['pending_approval'])
+  } else if (tab === 'week') {
+    // DS-RIGHT-PANEL-01: returns Mon-Sun of the current week (server-local
+    // time), all statuses except cancelled. Powers the right-panel week
+    // strip + daily lineup so coaches can scrub back to past sessions of
+    // this week. Server-local time is acceptable for Phase 1 (UK-only).
+    const today = new Date()
+    const dayOfWeek = today.getDay()
+    const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
+    const monday = new Date(today)
+    monday.setDate(today.getDate() + mondayOffset)
+    const sunday = new Date(monday)
+    sunday.setDate(monday.getDate() + 6)
+    const mondayIso = monday.toISOString().slice(0, 10)
+    const sundayIso = sunday.toISOString().slice(0, 10)
+    filtered = base
+      .gte('session_date', mondayIso)
+      .lte('session_date', sundayIso)
+      .not('status', 'in', '(cancelled_parent,cancelled_coach)')
   } else {
     filtered = base.in('status', ['cancelled_parent', 'cancelled_coach'])
   }
 
-  const ascending = tab === 'today' || tab === 'upcoming' || tab === 'pending_approval'
+  const ascending = tab === 'today' || tab === 'upcoming' || tab === 'pending_approval' || tab === 'week'
   const { data: bookings, error: bookingsError } = await filtered
     .order('session_date', { ascending })
     .order('session_start_time', { ascending: true })

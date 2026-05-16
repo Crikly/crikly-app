@@ -1,131 +1,159 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+// ──────────────────────────────────────────────────────────────────────────────
+// DS-RIGHT-PANEL-01 — Universal right-panel command centre.
+//
+// Replaces the previous 7-route-conditional panel with a single layout
+// rendered identically on every coach screen. Six sections, top to bottom:
+//
+//   1. This week     — Mon-Sun strip with dots; clicking a day filters L2
+//   2. Daily lineup  — sessions for the selected day; row click → popup
+//   3. Action needed — pending approvals / unanswered reviews / completeness
+//   4. Pulse         — 2×2 grid of this-week stats; whole card → /earnings
+//   5. Next payout   — STUB Phase 1 (see API-RIGHT-PANEL-PAYOUT-REAL)
+//   6. Your profile  — live/paused dot; STUB views (see BUG-RIGHT-PANEL-PROFILE-VIEWS)
+//
+// Visibility: hidden below xl (1280px). Mounted from CoachLayoutClient on
+// every coach route except onboarding.
+//
+// Data:
+//   - Sessions: useBookings() (today / upcoming / pendingApproval / thisWeek)
+//   - Profile : fetchCoachProfileCached() (deduped with sidebar fetch)
+//   - Sports  : fetchSportsListCached() (for sport name lookup)
+//
+// Phase 2 follow-ups (filed in BUILD_PLAN + tracked inline):
+//   - API-CMD-CENTRE                        — one aggregation endpoint
+//   - API-RIGHT-PANEL-PAYOUT-REAL           — wire next payout to Stripe data
+//   - BUG-RIGHT-PANEL-UNANSWERED-REVIEWS    — real reviews-without-reply count
+//   - BUG-RIGHT-PANEL-PROFILE-VIEWS         — view tracking + stat
+//   - BUG-PROGRAMME-CREATE-PREVIEW-LOST     — move preview into create page
+//   - PERF-RIGHT-PANEL-DASHBOARD-DEDUPE     — server-rendered overlap on /dashboard
+// ──────────────────────────────────────────────────────────────────────────────
+
+import { useState, useMemo, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
-import { ChevronRight, ChevronLeft, MapPin, Star, PoundSterling, Calendar, Loader2, Check, X, ShieldCheck } from 'lucide-react'
-import type { ProgrammePreviewEventDetail } from './CreateProgramme'
-// AF-P-Wave-1: profile + sports cache adoption
-import { fetchCoachProfileCached, fetchSportsListCached } from '@/lib/onboarding-cache'
-// PERF-02-BOOKINGS-CACHE: BookingListItem type unified across consumers in
-// the shared context file. Both right-panel sub-components below now read
-// from useBookings() instead of firing their own /api/coaches/bookings calls.
+import { Star, Clock, MessageSquare, User, MapPin, Trophy, ArrowRight, Check, X, ChevronRight } from 'lucide-react'
 import { useBookings, type BookingListItem } from '@/contexts/BookingsContext'
+import { fetchCoachProfileCached, fetchSportsListCached } from '@/lib/onboarding-cache'
 
-type ProgrammePreviewState = ProgrammePreviewEventDetail
-
-// Fix-14C: API response type
-interface CoachProfileResponse {
-  id: string
-  user_profile_id: string
-  full_name: string
-  avatar_url: string | null
-  location_city: string | null
-  location_postcode: string | null
-  bio: string | null
-  years_experience: number | null
-  dbs_status: 'none' | 'pending' | 'verified' | 'expired'
-  is_profile_live: boolean
-  stripe_onboarding_complete: boolean
-  cancellation_window_hours: number
-  min_advance_hours: number
-  max_advance_days: number
+interface ProfileData {
   rating_avg: number | null
   rating_count: number
-  sessions_completed: number
-  gender: string | null
-  created_at: string
-  updated_at: string
+  is_profile_live: boolean
+  is_paused: boolean
+  bio: string | null
+  location_city: string | null
+  full_name: string | null
+  years_experience: number | null
+  stripe_account_id: string | null
+  cancellation_window_hours: number
 }
-
-interface DashboardData {
-  todaySessions: Array<{
-    time: string
-    duration: string
-    title: string
-    location: string
-    isActive: boolean
-    type?: string
-  }>
-  rating: {
-    average: number
-    count: number
-  }
-  weeklyStats: {
-    revenueThisWeek: number
-  }
-}
-
-// Fix-55: Booking list item from /api/coaches/bookings — type now imported
-// from BookingsContext (see top of file).
 
 interface Sport { id: string; name: string }
 
-// Fix-55: Helpers
-function formatRelativeTime(iso: string): string {
-  const diffMs = Date.now() - new Date(iso).getTime()
-  const hours = Math.floor(diffMs / (1000 * 60 * 60))
-  if (hours < 1) return 'just now'
-  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`
-  const days = Math.floor(hours / 24)
-  return `${days} day${days === 1 ? '' : 's'} ago`
+// ─── Date helpers ────────────────────────────────────────────────────────────
+
+function isoDate(d: Date): string {
+  return d.toISOString().slice(0, 10)
 }
 
-function formatSessionDateShort(dateStr: string): string {
-  const d = new Date(dateStr + 'T00:00:00')
-  return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+function todayIsoLocal(): string {
+  return isoDate(new Date())
 }
 
-function statusDotColor(status: string): string {
+function getWeekDays(): Array<{ iso: string; label: string; date: number; isToday: boolean }> {
+  // Mon-Sun for the current week using server-local time (UK only Phase 1).
+  const today = new Date()
+  const todayIso0 = isoDate(today)
+  const dayOfWeek = today.getDay()
+  const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
+  const monday = new Date(today)
+  monday.setDate(today.getDate() + mondayOffset)
+  monday.setHours(0, 0, 0, 0)
+
+  const labels = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
+  const days: Array<{ iso: string; label: string; date: number; isToday: boolean }> = []
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(monday)
+    d.setDate(monday.getDate() + i)
+    days.push({
+      iso: isoDate(d),
+      label: labels[i],
+      date: d.getDate(),
+      isToday: isoDate(d) === todayIso0,
+    })
+  }
+  return days
+}
+
+function getDayName(iso: string): string {
+  const d = new Date(iso + 'T00:00:00')
+  return d.toLocaleDateString('en-GB', { weekday: 'long' })
+}
+
+function getDurationMinutes(start: string, end: string): number {
+  // start, end: "HH:MM:SS"
+  const [sh, sm] = start.split(':').map(Number)
+  const [eh, em] = end.split(':').map(Number)
+  return eh * 60 + em - (sh * 60 + sm)
+}
+
+function formatTime12h(hms: string): string {
+  // "HH:MM:SS" → "H:MM AM/PM"
+  const [hStr, mStr] = hms.split(':')
+  const h = parseInt(hStr, 10)
+  const m = mStr ?? '00'
+  const suffix = h >= 12 ? 'PM' : 'AM'
+  const h12 = h % 12 === 0 ? 12 : h % 12
+  return `${h12}:${m} ${suffix}`
+}
+
+function statusLabel(status: string): string {
   switch (status) {
-    case 'confirmed': return '#0077CC'
-    case 'completed': return '#15803D'
-    case 'pending_approval': return '#F59E0B'
-    default: return '#9CA3AF'
+    case 'confirmed': return 'Confirmed'
+    case 'pending_approval': return 'Pending'
+    case 'completed': return 'Completed'
+    default: return status.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
   }
 }
 
-interface CoachRightPanelProps {
-  dashboardData?: DashboardData
+function statusBadgeClass(status: string): string {
+  switch (status) {
+    case 'confirmed':
+    case 'completed':
+      return 'bg-green-50 text-green-800'
+    case 'pending_approval':
+      return 'bg-amber-50 text-amber-800'
+    default:
+      return 'bg-gray-100 text-gray-700'
+  }
 }
 
-export function CoachRightPanel({ dashboardData }: CoachRightPanelProps = {}) {
-  const pathname = usePathname()
-  const router = useRouter()
-  // CF-D02d BUG FIX 1: Route detection confirmed working
-  const isScheduleRoute = pathname === '/coach/schedule' || pathname.includes('/schedule')
-  // CF-D03 CHANGE 7: Detect bookings route
-  const isBookingsRoute = pathname === '/coach/bookings' || pathname.includes('/bookings')
-  // CF-D07 CHANGE 4: Detect profile route
-  const isProfileRoute = pathname === '/coach/profile' || pathname.includes('/profile')
-  // CF-D08 CHANGE 5: Detect earnings route
-  const isEarningsRoute = pathname === '/coach/earnings' || pathname.includes('/earnings')
-  // CF-D09 CHANGE 6: Detect get-paid route
-  const isGetPaidRoute = pathname.includes('/get-paid')
-  // Fix-59-1: Hydration guard — pathname is client-only; guard prevents server/client mismatch
-  const [mounted, setMounted] = useState(false)
-  useEffect(() => setMounted(true), [])
-  // Fix-58-2: Detect programme create route
-  const isProgrammeCreateRoute = mounted && pathname.includes('/programmes/create')
-  // Fix-25: Dynamic today date
-  const [selectedDate, setSelectedDate] = useState<number | null>(new Date().getDate())
+// ─── Main component ──────────────────────────────────────────────────────────
 
-  // Fix-58-2: Programme create preview state — populated via CustomEvent bridge
-  const [programmePreview, setProgrammePreview] = useState<ProgrammePreviewState | null>(null)
+export function CoachRightPanel() {
+  const [selectedDayIso, setSelectedDayIso] = useState<string>(todayIsoLocal())
+  const [selectedSession, setSelectedSession] = useState<BookingListItem | null>(null)
+
+  const { thisWeek, pendingApproval, loading } = useBookings()
+
+  // Coach profile — cached fetch dedups with the sidebar's fetch.
+  const [profile, setProfile] = useState<ProfileData | null>(null)
   useEffect(() => {
-    if (!isProgrammeCreateRoute) return
-    const handler = (e: Event) => {
-      setProgrammePreview((e as CustomEvent<ProgrammePreviewState>).detail)
-    }
-    window.addEventListener('programme-preview-update', handler)
-    return () => window.removeEventListener('programme-preview-update', handler)
-  }, [isProgrammeCreateRoute])
+    let cancelled = false
+    fetchCoachProfileCached()
+      .then((p) => {
+        if (cancelled || !p) return
+        setProfile(p as ProfileData)
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [])
 
-  // Fix-55: Fetch sports once when on bookings route — passed to child components
+  // Sports map for session sport-name lookup.
   const [sportsMap, setSportsMap] = useState<Record<string, string>>({})
   useEffect(() => {
-    if (!isBookingsRoute) return
-    // AF-P-Wave-1: use sports cache — fetchSportsListCached() returns the array directly (no wrapper)
     fetchSportsListCached()
       .then((sports: Sport[]) => {
         const map: Record<string, string> = {}
@@ -133,1059 +161,444 @@ export function CoachRightPanel({ dashboardData }: CoachRightPanelProps = {}) {
         setSportsMap(map)
       })
       .catch(() => {})
-  }, [isBookingsRoute])
+  }, [])
+
+  const weekDays = useMemo(getWeekDays, [])
+
+  // Day → sessions map for dot indicators + lineup filtering.
+  const sessionsByDay = useMemo(() => {
+    const map: Record<string, BookingListItem[]> = {}
+    thisWeek.forEach((b) => {
+      if (!map[b.session_date]) map[b.session_date] = []
+      map[b.session_date].push(b)
+    })
+    return map
+  }, [thisWeek])
+
+  const selectedDaySessions = useMemo(() => {
+    const list = sessionsByDay[selectedDayIso] ?? []
+    return [...list].sort((a, b) => a.session_start_time.localeCompare(b.session_start_time))
+  }, [sessionsByDay, selectedDayIso])
+
+  const todayIso = todayIsoLocal()
+  const lineupHeading =
+    selectedDayIso === todayIso ? "Today's lineup" : `${getDayName(selectedDayIso)}'s lineup`
+  const emptyDayText =
+    selectedDayIso === todayIso ? 'No sessions today' : 'No sessions this day'
+
+  // Profile completeness — Phase 1 STUB.
+  // API-CMD-CENTRE follow-up: a real calculation needs 4 DB count queries
+  // (sports, qualifications, availability, stripe) which the dashboard
+  // already does server-side. This computes only the 2 checks readable from
+  // the cached profile and assumes the other 4 are complete — overestimates
+  // for new coaches but avoids a separate fetch in Phase 1.
+  const completedChecks = useMemo(() => {
+    if (!profile) return 6
+    let count = 0
+    if (profile.full_name && profile.bio && profile.location_city) count++
+    if (profile.years_experience !== null) count++
+    if (profile.stripe_account_id) count++
+    if (profile.cancellation_window_hours > 0) count++
+    count += 2 // STUB: assume sports + availability + quals checks pass
+    return Math.min(count, 6)
+  }, [profile])
+
+  // BUG-RIGHT-PANEL-UNANSWERED-REVIEWS: STUB 0 until coach_replies-aware
+  // count is exposed via an API endpoint. Row stays hidden in the meantime.
+  const unansweredReviewsCount = 0
+
+  const showPendingRow = pendingApproval.length > 0
+  const showReviewsRow = unansweredReviewsCount > 0
+  const showCompletionRow = completedChecks < 6
+  const allCaughtUp = !showPendingRow && !showReviewsRow && !showCompletionRow
+
+  // Section 4 stats — derived from thisWeek (confirmed + completed only).
+  const weekSessionsActive = useMemo(
+    () => thisWeek.filter((b) => b.status === 'confirmed' || b.status === 'completed'),
+    [thisWeek],
+  )
+  const weekRevenue = weekSessionsActive.reduce((sum, b) => sum + b.coach_price_pence, 0) / 100
+  const completedCount = weekSessionsActive.filter((b) => b.status === 'completed').length
+  const weekCompletionPct =
+    weekSessionsActive.length > 0
+      ? Math.round((completedCount / weekSessionsActive.length) * 100)
+      : 0
 
   return (
-    <aside className="hidden xl:flex w-96 shrink-0 flex-col gap-6 bg-white p-8 sticky top-0 h-screen overflow-y-auto border-l border-gray-100">
-      {isScheduleRoute ? (
-        <>
-          <MiniCalendar selectedDate={selectedDate} onDateSelect={setSelectedDate} />
-          <DaySessionList selectedDate={selectedDate} onBackToWeek={() => setSelectedDate(new Date().getDate())} />
-          <FreeSlotsThisWeek />
-          <SmartInsightCard />
-          <PendingApprovalCard />
-        </>
-      ) : isBookingsRoute ? (
-        <>
-          <BookingsPendingApprovals sportsMap={sportsMap} />
-          <BookingsTodaySessions sportsMap={sportsMap} />
-        </>
-      ) : isProfileRoute ? (
-        // CF-D07 CHANGE 4: Profile-specific right panel
-        // Fix-14C: Pass real profile data
-        <>
-          <ProfilePublicPreviewWrapper />
-        </>
-      ) : isEarningsRoute ? (
-        // CF-D08 CHANGE 5: Earnings-specific right panel
-        <>
-          <EarningsNextPayout router={router} />
-          <EarningsPeriodSummary />
-        </>
-      ) : isGetPaidRoute ? (
-        // CF-D09 CHANGE 6: Get Paid-specific right panel
-        <>
-          <GetPaidNextPayout router={router} />
-          <GetPaidReassurance />
-          <GetPaidHistoryLink router={router} />
-        </>
-      ) : isProgrammeCreateRoute ? (
-        // Fix-58-2: Programme create live preview
-        <ProgrammeCreatePreviewPanel preview={programmePreview} />
-      ) : (
-        <>
-          <ThisWeekStrip isDesktop />
-          <TodayLineup isDesktop sessions={dashboardData?.todaySessions || []} />
-          <YourRatingCard rating={dashboardData?.rating} />
-          <TotalEarningsCard revenueThisWeek={dashboardData?.weeklyStats?.revenueThisWeek} />
-        </>
+    <aside className="hidden xl:flex w-96 shrink-0 flex-col gap-4 bg-white p-6 border-l border-gray-100 sticky top-0 h-screen overflow-y-auto">
+
+      {/* ─── SECTION 1 · THIS WEEK ──────────────────────────────────────── */}
+      <section>
+        <div className="flex items-baseline justify-between mb-3">
+          <h3 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">This week</h3>
+          <span className="text-[11px] text-gray-400">tap a day to update lineup</span>
+        </div>
+        <div className="flex justify-between items-center">
+          {weekDays.map((day) => {
+            const hasSession = (sessionsByDay[day.iso] ?? []).length > 0
+            const isSelected = day.iso === selectedDayIso
+            const circleClass = day.isToday
+              ? 'w-9 h-9 rounded-full flex items-center justify-center text-[14px] font-bold bg-brand-600 text-white shadow-sm'
+              : isSelected
+              ? 'w-9 h-9 rounded-full flex items-center justify-center text-[14px] font-medium text-brand-600 ring-2 ring-brand-600'
+              : 'w-9 h-9 rounded-full flex items-center justify-center text-[14px] font-medium text-gray-700 group-hover:bg-gray-100 transition-colors'
+            return (
+              <button
+                key={day.iso}
+                type="button"
+                onClick={() => setSelectedDayIso(day.iso)}
+                className="flex flex-col items-center gap-1.5 group cursor-pointer"
+              >
+                <span className={`text-[11px] font-bold uppercase tracking-wider ${day.isToday || isSelected ? 'text-brand-600' : 'text-gray-400'}`}>
+                  {day.label}
+                </span>
+                <div className={circleClass}>{day.date}</div>
+                <div className={`w-1.5 h-1.5 rounded-full bg-brand-600 ${hasSession ? '' : 'opacity-0'}`} />
+              </button>
+            )
+          })}
+        </div>
+      </section>
+
+      <div className="h-px bg-gray-100 my-1" />
+
+      {/* ─── SECTION 2 · DAILY LINEUP ───────────────────────────────────── */}
+      <section>
+        <h3 className="text-[15px] font-bold text-gray-900 mb-3">{lineupHeading}</h3>
+        {loading ? (
+          <p className="text-[12px] text-gray-400 py-2">Loading…</p>
+        ) : selectedDaySessions.length === 0 ? (
+          <div className="text-center py-4">
+            <div className="inline-flex mb-2">
+              <Star className="w-6 h-6 text-gray-300" />
+            </div>
+            <p className="text-[14px] font-semibold text-gray-700">{emptyDayText}</p>
+            <p className="text-[12px] text-gray-400 mt-0.5">Enjoy the time off.</p>
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            {selectedDaySessions.map((session) => {
+              const isOpen = selectedSession?.id === session.id
+              const clientName = session.child_name ?? session.booked_by_name ?? 'Session'
+              const typeLabel = session.session_type === 'group' ? 'Group' : '1-to-1'
+              const sport = sportsMap[session.sport_id] ?? ''
+              const timeBadge = formatTime12h(session.session_start_time)
+              return (
+                <button
+                  key={session.id}
+                  type="button"
+                  onClick={() => setSelectedSession(session)}
+                  className={
+                    isOpen
+                      ? 'w-full group flex items-center gap-3 px-2.5 py-2 rounded-lg ring-1 ring-brand-600/30 bg-brand-600/[0.03] text-left cursor-pointer'
+                      : 'w-full group flex items-center gap-3 px-2.5 py-2 rounded-lg hover:bg-gray-50 transition-colors text-left cursor-pointer'
+                  }
+                >
+                  <span className="text-[11px] font-semibold text-brand-600 bg-brand-50 px-1.5 py-0.5 rounded shrink-0">
+                    {timeBadge}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] font-semibold text-gray-900 leading-tight truncate">{clientName}</p>
+                    <p className="text-[11px] text-gray-500 mt-0.5 truncate">
+                      {[typeLabel, sport].filter(Boolean).join(' · ')}
+                    </p>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-gray-300 shrink-0 group-hover:text-gray-500 transition-colors" />
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </section>
+
+      <div className="h-px bg-gray-100 my-1" />
+
+      {/* ─── SECTION 3 · ACTION NEEDED ──────────────────────────────────── */}
+      <section>
+        <h3 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-3">Action needed</h3>
+        {allCaughtUp ? (
+          <div className="text-center py-4">
+            <div className="inline-flex mb-2">
+              <div className="w-8 h-8 rounded-full bg-green-50 flex items-center justify-center">
+                <Check className="w-4 h-4 text-green-600" />
+              </div>
+            </div>
+            <p className="text-[13px] font-semibold text-gray-700">All caught up</p>
+            <p className="text-[11px] text-gray-400 mt-0.5">Nothing needs your attention.</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {showPendingRow && (
+              <Link
+                href="/coach/bookings"
+                className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 bg-white hover:border-gray-200 transition-colors"
+              >
+                <div className="w-9 h-9 rounded-lg bg-amber-50 flex items-center justify-center shrink-0">
+                  <Clock className="w-[18px] h-[18px] text-amber-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-semibold text-gray-900 leading-tight">Pending approvals</p>
+                  <p className="text-[11px] text-gray-500 mt-0.5">
+                    {pendingApproval.length} {pendingApproval.length === 1 ? 'booking awaiting' : 'bookings awaiting'}
+                  </p>
+                </div>
+                <span className="text-[11px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded shrink-0">
+                  {pendingApproval.length}
+                </span>
+              </Link>
+            )}
+            {showReviewsRow && (
+              <Link
+                href="/coach/reviews"
+                className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 bg-white hover:border-gray-200 transition-colors"
+              >
+                <div className="w-9 h-9 rounded-lg bg-brand-50 flex items-center justify-center shrink-0">
+                  <MessageSquare className="w-[18px] h-[18px] text-brand-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-semibold text-gray-900 leading-tight">Unanswered reviews</p>
+                  <p className="text-[11px] text-gray-500 mt-0.5">{unansweredReviewsCount} without a reply</p>
+                </div>
+                <span className="text-[11px] font-bold text-brand-600 bg-brand-50 px-1.5 py-0.5 rounded shrink-0">
+                  {unansweredReviewsCount}
+                </span>
+              </Link>
+            )}
+            {showCompletionRow && (
+              <Link
+                href="/coach/profile"
+                className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 bg-white hover:border-gray-200 transition-colors"
+              >
+                <div className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center shrink-0">
+                  <User className="w-[18px] h-[18px] text-gray-500" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-semibold text-gray-900 leading-tight">Complete your profile</p>
+                  <p className="text-[11px] text-gray-500 mt-0.5">{completedChecks} of 6 checks done</p>
+                </div>
+              </Link>
+            )}
+          </div>
+        )}
+      </section>
+
+      <div className="h-px bg-gray-100 my-1" />
+
+      {/* ─── SECTION 4 · THIS WEEK'S PULSE ──────────────────────────────── */}
+      <section>
+        <Link
+          href="/coach/earnings"
+          className="block p-4 rounded-xl border border-gray-100 bg-white hover:border-gray-200 transition-colors group"
+        >
+          <div className="flex items-baseline justify-between mb-3">
+            <h3 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">This week&apos;s pulse</h3>
+            <span className="text-[11px] font-medium text-brand-600 opacity-0 group-hover:opacity-100 transition-opacity">
+              Earnings →
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="bg-gray-50 rounded-lg p-3">
+              <p className="text-[11px] text-gray-400">Sessions</p>
+              <p className="text-[18px] font-semibold text-gray-900 leading-tight mt-0.5">{weekSessionsActive.length}</p>
+              <p className="text-[11px] text-gray-400 mt-0.5">this week</p>
+            </div>
+            <div className="bg-gray-50 rounded-lg p-3">
+              <p className="text-[11px] text-gray-400">Revenue</p>
+              <p className="text-[18px] font-semibold text-green-700 leading-tight mt-0.5">£{weekRevenue.toFixed(0)}</p>
+              <p className="text-[11px] text-gray-400 mt-0.5">this week</p>
+            </div>
+            <div className="bg-gray-50 rounded-lg p-3">
+              <p className="text-[11px] text-gray-400">Rating</p>
+              <p className="text-[18px] font-semibold text-gray-900 leading-tight mt-0.5 flex items-center gap-1">
+                {profile?.rating_avg !== null && profile?.rating_avg !== undefined ? profile.rating_avg.toFixed(1) : '—'}
+                <Star className="w-4 h-4 text-amber-400" fill="#FBBF24" />
+              </p>
+              <p className="text-[11px] text-gray-400 mt-0.5">
+                {profile?.rating_count ?? 0} {profile?.rating_count === 1 ? 'review' : 'reviews'}
+              </p>
+            </div>
+            <div className="bg-gray-50 rounded-lg p-3">
+              <p className="text-[11px] text-gray-400">Completion</p>
+              <p className="text-[18px] font-semibold text-gray-900 leading-tight mt-0.5">{weekCompletionPct}%</p>
+              <p className="text-[11px] text-gray-400 mt-0.5">sessions done</p>
+            </div>
+          </div>
+        </Link>
+      </section>
+
+      {/* ─── SECTION 5 · NEXT PAYOUT ────────────────────────────────────── */}
+      {/* API-RIGHT-PANEL-PAYOUT-REAL (follow-up): Phase 1 always renders the
+          empty state. Wiring to a real payout calculation needs the Stripe
+          payout schedule + aggregated completed-session totals — neither is
+          surfaced anywhere yet. The populated branch is intentionally omitted
+          to avoid showing hardcoded "£90 / Releases 10 Apr" copy. */}
+      <section>
+        <Link
+          href="/coach/get-paid"
+          className="block p-4 rounded-xl border border-gray-100 bg-white hover:border-gray-200 transition-colors group"
+        >
+          <div className="flex items-baseline justify-between mb-3">
+            <h3 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Next payout</h3>
+            <span className="text-[11px] font-medium text-brand-600 opacity-0 group-hover:opacity-100 transition-opacity">
+              Get Paid →
+            </span>
+          </div>
+          <div className="text-center py-4">
+            <p className="text-[13px] font-semibold text-gray-700">No pending payout</p>
+            <p className="text-[11px] text-gray-400 mt-0.5">Complete sessions to earn.</p>
+          </div>
+        </Link>
+      </section>
+
+      {/* ─── SECTION 6 · YOUR PROFILE ───────────────────────────────────── */}
+      {/* BUG-RIGHT-PANEL-PROFILE-VIEWS (follow-up): view tracking is not
+          built anywhere — no page-view events, no analytics tables. Phase 1
+          always shows "No views yet" regardless of live/paused. The amber
+          "Share your profile →" CTA appears when paused, since sharing is
+          the action that makes the paused state actionable. */}
+      <section>
+        <Link
+          href="/coach/profile"
+          className="block p-4 rounded-xl border border-gray-100 bg-white hover:border-gray-200 transition-colors group"
+        >
+          <div className="flex items-baseline justify-between mb-3">
+            <h3 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Your profile</h3>
+            <span className="text-[11px] font-medium text-brand-600 opacity-0 group-hover:opacity-100 transition-opacity">
+              My Profile →
+            </span>
+          </div>
+          <div className="flex items-end justify-between">
+            <ProfileLiveDot live={profile?.is_profile_live ?? null} paused={profile?.is_paused ?? false} />
+            <div className="text-right">
+              <p className="text-[13px] text-gray-400">No views yet</p>
+              {profile?.is_paused && (
+                <p className="text-[11px] text-brand-600 mt-1 font-medium">Share your profile →</p>
+              )}
+            </div>
+          </div>
+        </Link>
+      </section>
+
+      {/* SESSION DETAIL POPUP */}
+      {selectedSession && (
+        <SessionDetailPopup
+          session={selectedSession}
+          sportName={sportsMap[selectedSession.sport_id] ?? '—'}
+          onClose={() => setSelectedSession(null)}
+        />
       )}
     </aside>
   )
 }
 
-// CF-D09 CHANGE 6: Get Paid next payout card
-function GetPaidNextPayout({ router }: { router: any }) {
-  return (
-    <div className="bg-[#E6F1FB] rounded-xl p-3.5">
-      <div className="text-[9px] font-medium text-[#0C447C] uppercase tracking-wider mb-1.5">NEXT PAYOUT</div>
-      <div className="text-[26px] font-medium text-[#0077CC] mb-1">£90.00</div>
-      <div className="text-[10px] text-[#378ADD] mb-2.5">Releases 10 Apr · in 2 days</div>
-      
-      {/* Processing info box */}
-      <div className="bg-white rounded-lg px-2.5 py-2 flex items-center gap-2 mb-2.5">
-        <span className="text-[15px] font-medium text-[#0077CC]">48h</span>
-        <span className="text-[10px] text-gray-400">standard processing delay</span>
+// ─── Sub-components ──────────────────────────────────────────────────────────
+
+function ProfileLiveDot({ live, paused }: { live: boolean | null; paused: boolean }) {
+  if (live === null) {
+    return (
+      <div className="flex items-center gap-2">
+        <span className="w-[7px] h-[7px] rounded-full bg-gray-200" />
+        <span className="text-[13px] font-medium text-gray-400">…</span>
       </div>
-      
-      {/* View earnings link */}
-      <button
-        onClick={() => router.push('/coach/earnings')}
-        className="w-full text-center text-[11px] font-medium text-[#0077CC] hover:text-[#0066AA] transition-colors"
-      >
-        View earnings →
-      </button>
+    )
+  }
+  if (!live) {
+    return (
+      <div className="flex items-center gap-2">
+        <span className="w-[7px] h-[7px] rounded-full bg-gray-400" />
+        <span className="text-[13px] font-medium text-gray-900">Not live</span>
+      </div>
+    )
+  }
+  if (paused) {
+    return (
+      <div className="flex items-center gap-2">
+        <span className="w-[7px] h-[7px] rounded-full bg-amber-500" />
+        <span className="text-[13px] font-medium text-gray-900">Paused</span>
+      </div>
+    )
+  }
+  return (
+    <div className="flex items-center gap-2">
+      <span className="relative flex h-[7px] w-[7px]">
+        <span className="absolute inset-0 rounded-full bg-green-500 animate-pulse" />
+        <span className="relative inline-flex rounded-full h-[7px] w-[7px] bg-green-600" />
+      </span>
+      <span className="text-[13px] font-medium text-gray-900">Live</span>
     </div>
   )
 }
 
-// CF-D09 CHANGE 6: Get Paid reassurance message
-function GetPaidReassurance() {
-  return (
-    <div className="bg-[#F0FDF4] rounded-[10px] p-3">
-      <div className="flex items-start gap-2 mb-1">
-        <Check size={16} className="text-[#16A34A] shrink-0" />
-        <div className="text-[12px] font-medium text-[#166534]">Everything looks good</div>
-      </div>
-      <p className="text-[11px] text-[#166534] leading-relaxed">
-        Your Stripe account is connected and payouts are on schedule.
-      </p>
-    </div>
-  )
-}
+function SessionDetailPopup({
+  session,
+  sportName,
+  onClose,
+}: {
+  session: BookingListItem
+  sportName: string
+  onClose: () => void
+}) {
+  const router = useRouter()
+  const typeLabel = session.session_type === 'group' ? 'Group' : '1-to-1'
+  const clientName = session.child_name ?? session.booked_by_name ?? 'Session'
+  const startTime = formatTime12h(session.session_start_time)
+  const durationMinutes = getDurationMinutes(session.session_start_time, session.session_end_time)
+  const location = session.venue_name ?? 'Venue TBC'
 
-// CF-D09 CHANGE 6: Get Paid history link
-function GetPaidHistoryLink({ router }: { router: any }) {
   return (
-    <button
-      onClick={() => router.push('/coach/earnings')}
-      className="w-full text-center text-[12px] font-medium text-[#0077CC] hover:text-[#0066AA] transition-colors"
+    <div
+      className="fixed inset-0 bg-gray-900/40 z-[60] flex items-center justify-center p-4"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
     >
-      View full payout history →
-    </button>
-  )
-}
-
-// CF-D08 CHANGE 5: Earnings next payout card
-function EarningsNextPayout({ router }: { router: any }) {
-  return (
-    <div className="bg-[#E6F1FB] rounded-xl p-3.5">
-      <div className="text-[9px] font-medium text-[#0C447C] uppercase tracking-wider mb-1.5">NEXT PAYOUT</div>
-      <div className="text-[26px] font-medium text-[#0077CC] mb-1">£90.00</div>
-      <div className="text-[10px] text-[#378ADD] mb-2.5">Releases 10 Apr · in 2 days</div>
-      
-      {/* Processing info box */}
-      <div className="bg-white rounded-lg px-2.5 py-2 flex items-center gap-2 mb-2.5">
-        <span className="text-[15px] font-medium text-[#0077CC]">48h</span>
-        <span className="text-[10px] text-gray-400">standard processing delay</span>
-      </div>
-      
-      {/* Go to Get Paid button */}
-      <button
-        onClick={() => router.push('/coach/get-paid')}
-        className="w-full bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-full py-2 text-[11px] font-medium transition-colors"
+      <div
+        className="bg-white rounded-xl border border-gray-100 shadow-[0_20px_50px_rgba(15,23,42,0.18)] w-[320px]"
+        onClick={(e) => e.stopPropagation()}
       >
-        Go to Get Paid →
-      </button>
-    </div>
-  )
-}
-
-// CF-D08 CHANGE 5: Earnings period summary
-function EarningsPeriodSummary() {
-  // AF-M-Wave-2: was hardcoded fake numbers — replaced with placeholders until earnings API is wired to this panel
-  const rows = [
-    { label: 'Total earned', value: '—', color: 'text-gray-400' },
-    { label: 'vs last month', value: '—', color: 'text-gray-400' },
-    { label: 'Sessions', value: '—', color: 'text-gray-400' },
-    { label: 'Upcoming this week', value: '—', color: 'text-gray-400' }
-  ]
-  
-  return (
-    <div className="bg-[#F8F9FA] rounded-[10px] p-3">
-      <div className="space-y-1">
-        {rows.map((row, i) => (
-          <div key={i} className="flex items-center justify-between">
-            <span className="text-[11px] text-gray-400">{row.label}</span>
-            <span className={`text-[11px] font-medium ${row.color}`}>{row.value}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-// Fix-14C: Wrapper component that fetches and passes profile data
-function ProfilePublicPreviewWrapper() {
-  const [profile, setProfile] = useState<CoachProfileResponse | null>(null)
-  const [loading, setLoading] = useState(true)
-  
-  useEffect(() => {
-    const fetchProfile = async () => {
-      try {
-        setLoading(true)
-        // AF-P-Wave-1: use cache
-        const data = await fetchCoachProfileCached()
-        setProfile(data as CoachProfileResponse)
-      } catch (err) {
-        console.error('Failed to fetch profile:', err)
-      } finally {
-        setLoading(false)
-      }
-    }
-    fetchProfile()
-  }, [])
-  
-  if (loading || !profile) {
-    return (
-      <div className="animate-pulse">
-        <div className="h-4 bg-gray-200 rounded w-24 mb-2" />
-        <div className="bg-white rounded-xl p-4 shadow-sm">
-          <div className="flex items-start gap-3 mb-3">
-            <div className="w-12 h-12 bg-gray-200 rounded-full" />
-            <div className="flex-1">
-              <div className="h-4 bg-gray-200 rounded w-32 mb-2" />
-              <div className="h-3 bg-gray-200 rounded w-24" />
-            </div>
-          </div>
-        </div>
-      </div>
-    )
-  }
-  
-  return (
-    <>
-      <ProfilePublicPreview profile={profile} />
-      <ProfileCompletenessNotice profile={profile} />
-    </>
-  )
-}
-
-// CF-D07 CHANGE 4: Profile public preview component
-// CF-D07b POLISH 4: More polished and realistic preview card
-// Fix-14C: Now accepts real profile data
-function ProfilePublicPreview({ profile }: { profile: CoachProfileResponse }) {
-  // Fix-14C: Get initials from real name
-  const getInitials = (name: string): string => {
-    const parts = name.trim().split(' ')
-    if (parts.length >= 2) {
-      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
-    }
-    return name.substring(0, 2).toUpperCase()
-  }
-  
-  return (
-    <div>
-      <div className="text-[9px] font-medium text-gray-400 uppercase tracking-wider mb-2">WHAT PARENTS SEE</div>
-      
-      {/* CF-D07b POLISH 4: White bg, shadow, no border */}
-      <div className="bg-white rounded-xl p-4 shadow-sm">
-        {/* Avatar */}
-        <div className="flex items-start gap-3 mb-3">
-          {/* Fix-14C: Real avatar or initials */}
-          {profile.avatar_url ? (
-            <img 
-              src={profile.avatar_url} 
-              alt={profile.full_name} 
-              className="w-12 h-12 rounded-full object-cover shrink-0" 
-              style={{ boxShadow: '0 0 0 2px #E6F1FB' }}
-            />
-          ) : (
-            <div className="w-12 h-12 bg-[#E6F1FB] rounded-full flex items-center justify-center text-[14px] font-medium text-[#0C447C] shrink-0" style={{ boxShadow: '0 0 0 2px #E6F1FB' }}>
-              {getInitials(profile.full_name)}
-            </div>
-          )}
-          <div className="flex-1 min-w-0">
-            {/* Fix-14C: Real coach name */}
-            <h3 className="text-[15px] font-medium text-gray-900 truncate">{profile.full_name}</h3>
-            {/* Fix-14C: Real experience */}
-            <p className="text-[12px] text-gray-400 mt-0.5">
-              {profile.years_experience ? `${profile.years_experience} years experience` : 'Coach'}
-            </p>
-          </div>
-        </div>
-        
-        {/* Fix-14C: Real rating data */}
-        {profile.rating_avg !== null && profile.rating_count > 0 && (
-          <div className="flex items-center gap-1 mb-2">
-            {[1,2,3,4,5].map(i => (
-              <Star key={i} size={11} className={i <= Math.round(profile.rating_avg!) ? "text-amber-500 fill-amber-500" : "text-gray-300"} />
-            ))}
-            <span className="text-[13px] font-medium text-gray-900 ml-0.5">{profile.rating_avg.toFixed(1)}</span>
-            <span className="text-[11px] text-gray-400">· {profile.rating_count} {profile.rating_count === 1 ? 'review' : 'reviews'}</span>
-          </div>
-        )}
-        
-        {/* Meta rows */}
-        <div className="space-y-1.5 mb-2">
-          {/* Fix-14C: Real location */}
-          {profile.location_city && (
-            <div className="flex items-center gap-1.5 text-[11px] text-gray-500">
-              <MapPin size={12} className="shrink-0" />
-              <span>{profile.location_city}</span>
-            </div>
-          )}
-          {/* TODO: Get real availability days from API */}
-          <div className="flex items-center gap-1.5 text-[11px] text-gray-500">
-            <Calendar size={12} className="shrink-0" />
-            <span>See availability</span>
-          </div>
-        </div>
-        
-        {/* Fix-14C: Price placeholder - would need coach_sports data */}
-        <p className="text-[16px] font-medium text-gray-900 mb-2">View pricing</p>
-        
-        {/* Fix-14C: Real DBS status */}
-        {profile.dbs_status === 'verified' && (
-          <div className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#E0F6F8] text-[#006677] text-[10px] font-medium rounded-full mb-2.5">
-            <ShieldCheck size={11} /> DBS checked
-          </div>
-        )}
-        
-        {/* CF-D07b POLISH 4: Book button with pill shape (radius-999px), padding 10px */}
-        <button
-          disabled
-          title="This is a preview of your public profile"
-          className="w-full bg-[#0077CC] text-white rounded-full py-2.5 text-[12px] font-medium opacity-50 cursor-not-allowed"
-        >
-          Book a session
-        </button>
-      </div>
-    </div>
-  )
-}
-
-// CF-D07 CHANGE 4: Profile completeness notice
-// Fix-14C: Now calculates real completion percentage
-function ProfileCompletenessNotice({ profile }: { profile: CoachProfileResponse }) {
-  // Fix-14C: Calculate real completion percentage (matches Profile Hub logic)
-  const calculateCompleteness = (): number => {
-    let completed = 0
-    const total = 6
-    
-    if (profile.full_name && profile.bio && profile.location_city) completed++
-    if (profile.years_experience !== null) completed++
-    if (profile.dbs_status === 'verified') completed++
-    completed++ // Availability (assumed complete)
-    if (profile.cancellation_window_hours > 0) completed++
-    if (profile.stripe_onboarding_complete) completed++
-    
-    return Math.round((completed / total) * 100)
-  }
-  
-  const completeness = calculateCompleteness()
-  const isComplete = completeness === 100
-  
-  if (isComplete) {
-    return (
-      <div className="bg-[#F0FDF4] rounded-lg p-3 border-l-[3px] border-[#16A34A]">
-        <h4 className="text-[11px] font-medium text-[#166534] mb-1">Profile complete</h4>
-        <p className="text-[10px] text-[#166534] leading-relaxed">
-          Your profile is live and visible to parents
-        </p>
-      </div>
-    )
-  }
-  
-  return (
-    <div className="bg-[#FFFBEB] rounded-lg p-3 border-l-[3px] border-[#F59E0B]">
-      <h4 className="text-[11px] font-medium text-[#78350F] mb-1">{completeness}% complete</h4>
-      <p className="text-[10px] text-[#92400E] leading-relaxed">
-        {profile.dbs_status !== 'verified' 
-          ? 'Add qualifications to unlock full search visibility'
-          : !profile.stripe_onboarding_complete
-          ? 'Connect Stripe to start accepting bookings'
-          : 'Complete your profile to go live'}
-      </p>
-    </div>
-  )
-}
-
-function ThisWeekStrip({ isDesktop }: { isDesktop?: boolean }) {
-  const [weekOffset, setWeekOffset] = useState(0)
-
-  const getWeekDates = (offset: number) => {
-    const now = new Date()
-    const todayMidnight = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      now.getDate()
-    )
-    const currentDayOfWeek = todayMidnight.getDay()
-    const daysFromMonday = currentDayOfWeek === 0 ? 6 : currentDayOfWeek - 1
-    const monday = new Date(todayMidnight)
-    monday.setDate(todayMidnight.getDate() - daysFromMonday + offset * 7)
-
-    const weekDays = []
-    for (let i = 0; i < 7; i++) {
-      const day = new Date(monday)
-      day.setDate(monday.getDate() + i)
-      weekDays.push({
-        label: ['M','T','W','T','F','S','S'][i],
-        date: day.getDate(),
-        isToday: day.getTime() === todayMidnight.getTime(),
-        hasSession: false
-      })
-    }
-
-    const thursday = new Date(monday)
-    thursday.setDate(monday.getDate() + 3)
-    const monthName = thursday.toLocaleDateString('en-GB', { month: 'long' })
-
-    return { weekDays, monthName }
-  }
-
-  const { weekDays, monthName } = getWeekDates(weekOffset)
-
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="flex justify-between items-center">
-        <h3 className={`${isDesktop ? 'text-[22px]' : 'text-[19px]'} font-bold text-gray-900`}>
-          This week
-        </h3>
-        <div className="flex items-center gap-1 text-sm font-bold text-gray-500">
-          {weekOffset > 0 && (
+        <div className="p-4">
+          <div className="flex items-start justify-between mb-2">
+            <span className="text-[11px] uppercase tracking-wider font-semibold text-gray-500">{typeLabel}</span>
             <button
-              onClick={() => setWeekOffset(weekOffset - 1)}
-              className="hover:text-gray-900 transition-colors"
+              type="button"
+              onClick={onClose}
+              className="w-6 h-6 -mr-1 -mt-1 flex items-center justify-center text-gray-400 hover:text-gray-900 rounded-md hover:bg-gray-50 cursor-pointer"
+              aria-label="Close session details"
             >
-              <ChevronLeft size={16} />
+              <X className="w-4 h-4" />
             </button>
-          )}
-          <span className="cursor-pointer hover:text-gray-900 transition-colors">
-            {monthName}
-          </span>
-          <button
-            onClick={() => setWeekOffset(weekOffset + 1)}
-            className="hover:text-gray-900 transition-colors"
-          >
-            <ChevronRight size={16} />
-          </button>
-        </div>
-      </div>
-      <div className="flex justify-between items-center bg-gray-50 rounded-[20px] p-2.5 border border-gray-100/80 shadow-sm">
-        {weekDays.map((day, i) => (
-          <div key={i} className="flex flex-col items-center gap-2 cursor-pointer group">
-            <span className="text-[11px] text-gray-400 font-bold uppercase tracking-wider">
-              {day.label}
+          </div>
+          <div className="flex items-center gap-2 flex-wrap mb-3">
+            <h4 className="text-[16px] font-semibold text-gray-900 leading-tight">{clientName}</h4>
+            <span className={`text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full ${statusBadgeClass(session.status)}`}>
+              {statusLabel(session.status)}
             </span>
-            <div className={`w-9 h-9 rounded-full flex items-center justify-center text-[15px] font-bold transition-all ${day.isToday ? 'bg-[#0077CC] text-white shadow-md' : 'text-gray-700 group-hover:bg-gray-200'}`}>
-              {day.date}
+          </div>
+          <div className="h-px bg-gray-100 -mx-4 mb-3" />
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-[13px] text-gray-700">
+              <Clock className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+              <span>{startTime} · {durationMinutes} min</span>
             </div>
-            <div className="h-1.5 flex justify-center w-full">
-              {day.hasSession && (
-                <div className={`w-1.5 h-1.5 rounded-full ${day.isToday ? 'bg-[#0077CC]' : 'bg-gray-300'}`} />
-              )}
+            <div className="flex items-center gap-2 text-[13px] text-gray-700">
+              <Trophy className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+              <span>{sportName}</span>
+            </div>
+            <div className="flex items-center gap-2 text-[13px] text-gray-700">
+              <MapPin className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+              <span>{location}</span>
             </div>
           </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function TodayLineup({ isDesktop, sessions }: { isDesktop?: boolean; sessions: Array<{time: string; duration: string; title: string; location: string; isActive: boolean; type?: string}> }) {
-  return (
-    <div className="flex flex-col gap-6">
-      <div className="flex justify-between items-center">
-        <h3 className={`${isDesktop ? 'text-[22px]' : 'text-[19px]'} font-bold text-gray-900`}>Today's lineup</h3>
-        {isDesktop && <span className="text-[#0077CC] text-sm font-bold cursor-pointer hover:underline">View all</span>}
-      </div>
-      {sessions.length === 0 ? (
-        <p className="text-gray-400 text-sm">No sessions today</p>
-      ) : (
-        <div className="flex flex-col relative">
-          <div className="absolute left-[60px] top-4 bottom-8 w-[1.5px] bg-gray-100 -translate-x-1/2"></div>
-          {sessions.map((session, i) => (
-            <div key={i} className="flex gap-6 mb-7 relative group cursor-pointer">
-              <div className="flex flex-col items-center pt-3.5 z-10 w-12 shrink-0">
-                <span className={`text-[15px] font-bold ${session.isActive ? 'text-[#0077CC]' : 'text-gray-600'}`}>{session.time}</span>
-                <span className="text-[11px] text-gray-400 font-bold mt-1 uppercase tracking-wider">{session.duration}</span>
-              </div>
-              <div className={`absolute left-[60px] top-[26px] w-3.5 h-3.5 rounded-full border-[3px] bg-white z-20 transition-all -translate-x-1/2 -translate-y-1/2 ${session.isActive ? 'border-[#0077CC] shadow-[0_0_0_4px_rgba(0,119,204,0.1)] scale-110' : 'border-gray-300 group-hover:border-gray-400'}`}></div>
-              <div className={`flex-1 p-4 md:p-5 rounded-[20px] border transition-all ${session.isActive ? 'bg-[#0077CC]/[0.03] border-[#0077CC]/20 shadow-sm' : 'bg-white border-gray-100 shadow-[0_2px_12px_rgba(0,0,0,0.02)] hover:border-gray-200 hover:shadow-md'}`}>
-                <div className="flex justify-between items-start mb-2">
-                  <h4 className={`font-bold text-[16px] md:text-[17px] ${session.isActive ? 'text-[#0077CC]' : 'text-gray-900'} leading-tight pr-2`}>{session.title}</h4>
-                  {session.type === 'Private' && <span className="text-[10px] font-bold uppercase tracking-wider text-purple-600 bg-purple-50 px-2.5 py-1 rounded-full shrink-0 border border-purple-100/50">1:1</span>}
-                </div>
-                <div className="flex items-center gap-2 text-gray-500 text-[13px] font-medium">
-                  <MapPin size={14} className={session.isActive ? 'text-[#0077CC]/70' : ''} />
-                  <span className="truncate">{session.location}</span>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function YourRatingCard({ rating }: { rating?: { average: number; count: number } }) {
-  const hasReviews = rating && rating.count > 0
-  
-  return (
-    <Link href="/coach/profile#reviews" className="bg-gray-50 rounded-[10px] p-[14px] flex flex-col gap-3 cursor-pointer hover:border hover:border-gray-300 hover:scale-[1.01] transition-all duration-150">
-      <div className="flex items-center gap-2">
-        <Star size={16} className="text-amber-400" fill="currentColor" />
-        <span className="text-sm font-semibold text-gray-900">Your Rating</span>
-      </div>
-      {hasReviews ? (
-        <>
-          <div className="flex flex-col gap-1">
-            <p className="text-[28px] font-bold text-gray-900">{rating.average.toFixed(1)}</p>
-            <p className="text-[13px] text-gray-500">Based on {rating.count} {rating.count === 1 ? 'review' : 'reviews'}</p>
-          </div>
-          <div className="flex gap-1">
-            {[1,2,3,4,5].map(i => (
-              <Star key={i} size={14} className={i <= Math.round(rating.average) ? 'text-amber-400 fill-amber-400' : 'text-gray-300'} />
-            ))}
-          </div>
-        </>
-      ) : (
-        <div className="flex flex-col gap-1">
-          <p className="text-[16px] font-medium text-gray-500">No reviews yet</p>
-          <p className="text-[13px] text-gray-400">Complete sessions to get your first review</p>
-        </div>
-      )}
-    </Link>
-  )
-}
-
-function TotalEarningsCard({ revenueThisWeek }: { revenueThisWeek?: number }) {
-  // STUB: Only showing revenue this week from props, no comparison data available
-  const revenue = revenueThisWeek ?? 0
-  
-  return (
-    <Link href="/coach/earnings" className="bg-gray-50 rounded-[10px] p-[14px] flex flex-col gap-3 cursor-pointer hover:border hover:border-gray-300 hover:scale-[1.01] transition-all duration-150">
-      <div className="flex items-center gap-2">
-        <PoundSterling size={16} className="text-[#0077CC]" />
-        <span className="text-sm font-semibold text-gray-900">Revenue This Week</span>
-      </div>
-      <div className="flex flex-col gap-1">
-        <p className="text-[28px] font-bold text-gray-900">£{revenue.toFixed(0)}</p>
-        <p className="text-[13px] text-gray-400">From completed sessions</p>
-      </div>
-    </Link>
-  )
-}
-
-// CHANGE 6: Schedule-specific right panel components
-
-// CF-D02c FIX 2: Enhanced mini calendar with dots and click functionality
-function MiniCalendar({ selectedDate, onDateSelect }: { selectedDate: number | null; onDateSelect: (date: number) => void }) {
-  // Fix-25: Dynamic date detection
-  const now = new Date()
-  const todayDate = now.getDate()
-  const todayMonth = now.getMonth()
-  const todayYear = now.getFullYear()
-  const currentMonthName = now.toLocaleDateString('en-GB', {
-    month: 'long', year: 'numeric'
-  })
-
-  // Stub session data mapped to dates
-  const sessionsByDate: Record<number, Array<'confirmed' | 'programme' | 'pending' | 'blocked'>> = {
-    6: ['confirmed', 'programme'], // Mon
-    7: [], // Tue (available slot, no sessions)
-    8: ['confirmed', 'pending'], // Wed (today)
-    9: ['programme'], // Thu
-    10: [], // Fri (available slot)
-    11: ['blocked'], // Sat
-    12: ['programme'], // Sun
-  }
-
-  // CF-D02c FIX 2: Improved dot rendering with consistent container
-  const getDots = (date: number) => {
-    const sessions = sessionsByDate[date] || []
-    
-    const dotColors: Record<string, string> = {
-      confirmed: '#3B82F6',
-      programme: '#7C3AED',
-      pending: '#F59E0B',
-      blocked: '#D1D5DB',
-    }
-    
-    // Always render container for consistent height
-    if (sessions.length === 0) {
-      return <div className="flex gap-0.5 justify-center items-center h-[6px] mt-[1px]"></div>
-    }
-    
-    const displaySessions = sessions.slice(0, 3)
-    // If more than 3 sessions, make 3rd dot grey
-    const dots = displaySessions.map((type, i) => {
-      const color = (sessions.length > 3 && i === 2) ? '#D1D5DB' : dotColors[type]
-      return <div key={i} className="w-1 h-1 rounded-full" style={{ backgroundColor: color }} />
-    })
-    
-    return <div className="flex gap-0.5 justify-center items-center h-[6px] mt-[1px]">{dots}</div>
-  }
-
-  // Fix-25: Dynamic month grid helpers
-  const getDaysInMonth = (year: number, month: number) =>
-    new Date(year, month + 1, 0).getDate()
-
-  const getFirstDayOfMonth = (year: number, month: number) => {
-    const day = new Date(year, month, 1).getDay()
-    return day === 0 ? 6 : day - 1 // Convert to Mon=0
-  }
-
-  const daysInMonth = getDaysInMonth(todayYear, todayMonth)
-  const firstDay = getFirstDayOfMonth(todayYear, todayMonth)
-  const prevMonthDays = getDaysInMonth(todayYear, todayMonth - 1)
-
-  // CF-D02c FIX 2: Improved date rendering with proper selection state
-  const renderDate = (date: number, isCurrentMonth: boolean, isPreviouslyToday: boolean) => {
-    // Fix-25: Dynamic today detection
-    const isToday = date === todayDate && isCurrentMonth
-    const isSelected = selectedDate === date && !isToday
-    
-    return (
-      <div 
-        key={date} 
-        onClick={() => isCurrentMonth && onDateSelect(date)}
-        className={`py-1 flex flex-col items-center ${
-          isCurrentMonth ? 'cursor-pointer' : 'cursor-default'
-        } min-h-[38px] ${
-          !isCurrentMonth ? 'text-gray-300' :
-          isToday ? 'text-white font-bold' :
-          isSelected ? 'text-[#0077CC] font-medium' :
-          'text-gray-700'
-        }`}
-      >
-        {isToday ? (
-          <span className="w-6 h-6 bg-[#0077CC] text-white rounded-full flex items-center justify-center text-[13px]">{date}</span>
-        ) : isSelected ? (
-          <span className="w-6 h-6 bg-blue-100 text-[#0077CC] rounded-full flex items-center justify-center text-[13px]">{date}</span>
-        ) : (
-          <span className="text-[13px]">{date}</span>
-        )}
-        {/* CF-D02c FIX 2: Always render dot container for consistent spacing */}
-        {getDots(date)}
-      </div>
-    )
-  }
-
-  return (
-    <div className="bg-white border border-gray-200 rounded-[16px] p-5 shadow-sm">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-[15px] font-bold text-gray-900">{currentMonthName}</h3>
-        <div className="flex gap-1">
-          <button className="p-1 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-50"><ChevronLeft size={16} /></button>
-          <button className="p-1 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-50"><ChevronRight size={16} /></button>
-        </div>
-      </div>
-      <div className="grid grid-cols-7 gap-y-2 text-center text-[12px] font-medium mb-2">
-        {['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map(d => <div key={d} className="text-gray-400">{d}</div>)}
-      </div>
-      <div className="grid grid-cols-7 gap-y-1 text-center relative z-0">
-        <div className="absolute left-0 right-0 top-[28px] h-[28px] bg-[#EFF6FF] rounded-md -z-10" />
-        {/* Fix-25: Dynamic month grid */}
-        {/* Previous month trailing days */}
-        {Array.from({ length: firstDay }, (_, i) =>
-          renderDate(prevMonthDays - firstDay + i + 1, false, false)
-        )}
-        {/* Current month days */}
-        {Array.from({ length: daysInMonth }, (_, i) =>
-          renderDate(i + 1, true, false)
-        )}
-        {/* Next month leading days (fill to complete 6 rows = 42 cells) */}
-        {Array.from({ length: 42 - firstDay - daysInMonth }, (_, i) =>
-          renderDate(i + 1, false, false)
-        )}
-      </div>
-    </div>
-  )
-}
-
-function FreeSlotsThisWeek() {
-  const router = useRouter()
-  const freeSlots = [
-    { day: 'Tue', time: '09:00–12:00' },
-    { day: 'Fri', time: '14:00–17:00' },
-  ]
-  
-  return (
-    <div>
-      <h3 className="text-[12px] font-medium text-gray-900 mb-1.5">Free slots this week</h3>
-      <div className="space-y-1">
-        {freeSlots.map((slot, i) => (
-          <div key={i} className="bg-gray-50 border border-gray-100 rounded-md px-2 py-1.5 flex items-center justify-between">
-            <div className="text-[11px]">
-              <span className="font-medium text-gray-900">{slot.day}</span>
-              <span className="text-gray-500 ml-1">· {slot.time}</span>
-            </div>
-            <Link 
-              href="/coach/availability" 
-              className="text-[10px] font-medium text-[#0077CC] hover:underline"
-            >
-              Fill →
-            </Link>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-// CF-D02c FIX 2: Day session list with proper default state
-function DaySessionList({ selectedDate, onBackToWeek }: { selectedDate: number | null; onBackToWeek: () => void }) {
-  // Fix-25: Dynamic today detection
-  const now = new Date()
-  const todayDate = now.getDate()
-  const isToday = selectedDate === todayDate
-
-  // Fix-25: Dynamic day name generator
-  const getDayName = (date: number): string => {
-    const d = new Date(now.getFullYear(), now.getMonth(), date)
-    return d.toLocaleDateString('en-GB', {
-      weekday: 'long', day: 'numeric', month: 'short'
-    })
-  }
-
-  const todayLabel = now.toLocaleDateString('en-GB', {
-    weekday: 'long', day: 'numeric', month: 'short'
-  })
-
-  // AF-M-Wave-2: was 6 fake sessions with invented parent names — replaced with empty
-  // until real booking + programme data is wired to this panel.
-  // Type annotation explicit so TS doesn't infer never[] for the .filter below.
-  const allSessions: Array<{
-    date: number
-    day: string
-    name: string
-    time: string
-    sport: string
-    status: string
-    color: string
-  }> = []
-
-  const daySessions = allSessions.filter(s => s.date === selectedDate)
-
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-[12px] font-medium text-gray-900">
-          {/* Fix-25: Dynamic today label */}
-          {isToday ? `Today, ${now.getDate()} ${now.toLocaleDateString('en-GB', { month: 'short' })}` : selectedDate ? getDayName(selectedDate) : todayLabel}
-        </h3>
-        {/* CF-D02c FIX 2: Only show back link when viewing non-today date */}
-        {!isToday && selectedDate !== null && selectedDate !== todayDate && (
-          <button onClick={onBackToWeek} className="text-[11px] text-[#0077CC] font-medium hover:underline">
-            ← This week
+          <button
+            type="button"
+            onClick={() => router.push('/coach/bookings')}
+            className="mt-4 w-full bg-brand-600 hover:bg-[#0066AA] transition-colors text-white rounded-lg py-2 text-[13px] font-medium flex items-center justify-center gap-1 cursor-pointer"
+          >
+            View booking details
+            <ArrowRight className="w-3.5 h-3.5" />
           </button>
-        )}
-      </div>
-      
-      {daySessions.length > 0 ? (
-        <div className="divide-y divide-gray-100">
-          {daySessions.map((session, i) => (
-            <div key={i} className="flex items-start gap-2 py-1.5">
-              <div className="w-1 h-1 rounded-full mt-1.5 shrink-0" style={{ backgroundColor: session.color }} />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-baseline gap-2">
-                  <span className="text-[11px] font-medium text-gray-700">{session.time}</span>
-                  <span className="text-[11px] text-gray-900">{session.name}</span>
-                </div>
-                <div className="text-[10px] text-gray-400 mt-0.5">{session.sport} · {session.status.charAt(0).toUpperCase() + session.status.slice(1)}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <p className="text-[11px] text-gray-400 italic py-2">No sessions on this day</p>
-      )}
-    </div>
-  )
-}
-
-function SmartInsightCard() {
-  // AF-M-Wave-2: was hardcoded "Saturdays earn 30% more" shown to every coach —
-  // replaced with honest coming-soon placeholder until real earnings/availability derivation lands
-  return (
-    <div className="bg-[#E8F5F0] border-l-[3px] border-l-[#1D9E75] rounded-lg px-3 py-2.5">
-      <div className="text-[9px] text-[#0F6E56] uppercase tracking-wider font-medium mb-1">Insight</div>
-      <p className="text-gray-400 italic text-[12px]">
-        Smart insights coming soon — based on your bookings and earnings data.
-      </p>
-    </div>
-  )
-}
-
-function PendingApprovalCard() {
-  const router = useRouter()
-  
-  return (
-    <div className="bg-[#FFFBEB] border-l-[3px] border-l-amber-400 rounded-lg px-3 py-2.5">
-      <div className="text-[9px] text-amber-900 uppercase tracking-wider font-medium mb-1">Needs approval</div>
-      <p className="text-[11px] text-amber-900 font-medium mb-1.5">1 booking needs your approval</p>
-      <button 
-        onClick={() => router.push('/coach/bookings?tab=pending')}
-        className="text-[11px] text-[#0077CC] font-medium hover:underline"
-      >
-        Review now →
-      </button>
-    </div>
-  )
-}
-
-// CF-D03 CHANGE 7 / Fix-55: Bookings-specific right panel components
-// PERF-02-BOOKINGS-CACHE: own fetch + own `bookings`/`loading` state removed —
-// list now comes from useBookings() (single shared fetch lifecycle). The
-// approve/decline handler calls context.refresh() so all THREE cached lists
-// (upcoming + today + pendingApproval) update atomically — approving a
-// pending booking moves it to upcoming, and refresh() reflects that without
-// per-component stale-state risk.
-function BookingsPendingApprovals({ sportsMap }: { sportsMap: Record<string, string> }) {
-  const { pendingApproval: bookings, loading, refresh } = useBookings()
-  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null)
-  const [actionError, setActionError] = useState<string | null>(null)
-
-  const handleAction = async (id: string, action: 'approve' | 'decline') => {
-    setActionLoadingId(id)
-    setActionError(null)
-    try {
-      const res = await fetch(`/api/coaches/bookings/${id}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action }),
-      })
-      if (!res.ok) {
-        const data = await res.json() as { error?: string }
-        setActionError(data.error ?? 'Something went wrong')
-        return
-      }
-      // PERF-02-BOOKINGS-CACHE: refresh ALL three cached lists, not just
-      // pendingApproval — the approved booking moves to upcoming.
-      await refresh()
-    } catch {
-      setActionError('Network error — please try again')
-    } finally {
-      setActionLoadingId(null)
-    }
-  }
-
-  return (
-    <div>
-      <h3 className="text-[13px] font-medium text-gray-900 mb-2">Pending approvals</h3>
-      {loading ? (
-        <p className="text-[11px] text-gray-400">Loading...</p>
-      ) : bookings.length === 0 ? (
-        <p className="text-[11px] text-gray-400">No pending approvals</p>
-      ) : (
-        <div className="space-y-2">
-          {bookings.map((booking) => {
-            const clientName = booking.child_name ?? booking.booked_by_name ?? '—'
-            const sportName = sportsMap[booking.sport_id] ?? ''
-            const typeLabel = booking.session_type === 'group' ? 'Group' : '1-on-1'
-            const dateLabel = formatSessionDateShort(booking.session_date)
-            const timeLabel = booking.session_start_time.slice(0, 5)
-            const isActing = actionLoadingId === booking.id
-            return (
-              <div key={booking.id} className="bg-[#FFFBEB] border-[0.5px] border-gray-100 rounded-[10px] p-3">
-                <p className="text-[12px] font-medium text-gray-900 mb-1">{clientName}</p>
-                <p className="text-[10px] text-gray-500 mb-1">
-                  {[sportName, typeLabel, `${dateLabel} ${timeLabel}`].filter(Boolean).join(' · ')}
-                </p>
-                <p className="text-[10px] text-[#92400E] mb-2">Requested {formatRelativeTime(booking.created_at)}</p>
-                {actionError && actionLoadingId === null && (
-                  <p className="text-[10px] text-red-600 mb-1.5">{actionError}</p>
-                )}
-                <div className="flex gap-1.5">
-                  <button
-                    onClick={() => handleAction(booking.id, 'approve')}
-                    disabled={actionLoadingId !== null}
-                    className="flex-1 bg-[#0077CC] text-white text-[11px] font-medium rounded-md py-1.5 text-center hover:bg-[#0066AA] transition-colors disabled:opacity-60 flex items-center justify-center gap-1"
-                  >
-                    {isActing && actionLoadingId === booking.id ? <Loader2 size={11} className="animate-spin" /> : <Check size={11} />} Approve
-                  </button>
-                  <button
-                    onClick={() => handleAction(booking.id, 'decline')}
-                    disabled={actionLoadingId !== null}
-                    className="flex-1 bg-white border border-[#F09595] text-red-700 text-[11px] font-medium rounded-md py-1.5 text-center hover:bg-red-50 transition-colors disabled:opacity-60 flex items-center justify-center gap-1"
-                  >
-                    {isActing && actionLoadingId === booking.id ? <Loader2 size={11} className="animate-spin" /> : <X size={11} />} Decline
-                  </button>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// Fix-59-2: Programme create right panel — parent-facing preview card + step tracker
-function ProgrammeCreatePreviewPanel({ preview }: { preview: ProgrammePreviewState | null }) {
-  const DAYS_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-
-  const formatDays = (days: number[]): string => {
-    if (days.length === 0) return ''
-    return days.map((d) => DAYS_SHORT[d]).join(', ')
-  }
-
-  const formatTime = (hhmm: string): string => {
-    if (!hhmm) return ''
-    const [h, m] = hhmm.split(':')
-    const hour = parseInt(h, 10)
-    const suffix = hour >= 12 ? 'pm' : 'am'
-    const h12 = hour % 12 === 0 ? 12 : hour % 12
-    return `${h12}:${m}${suffix}`
-  }
-
-  const formatScheduleRow = (): string => {
-    if (!preview) return ''
-    const { days_of_week, start_time, duration_minutes } = preview.form
-    const parts: string[] = []
-    if (days_of_week.length > 0) parts.push(`Every ${formatDays(days_of_week)}`)
-    if (start_time) parts.push(formatTime(start_time))
-    if (duration_minutes > 0) parts.push(`${duration_minutes} min`)
-    return parts.join(' · ')
-  }
-
-  const formatSessionsRow = (): string => {
-    if (!preview) return ''
-    const { schedule_type, fixed_schedule_mode, session_count, programme_end_date } = preview.form
-    if (schedule_type === 'rolling') return 'Ongoing'
-    if (fixed_schedule_mode === 'count' && session_count > 0) return `${session_count} sessions`
-    if (fixed_schedule_mode === 'end_date' && programme_end_date) {
-      const d = new Date(programme_end_date + 'T00:00:00')
-      return `Ends ${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`
-    }
-    return ''
-  }
-
-  const sportName = preview
-    ? (preview.sports.find((s) => s.sport_id === preview.form.sport_id)?.sport_name ?? '')
-    : ''
-
-  const skillLabel = (): string => {
-    if (!preview?.form.skill_level || preview.form.skill_level === 'all') return 'All levels'
-    return preview.form.skill_level.charAt(0).toUpperCase() + preview.form.skill_level.slice(1)
-  }
-
-  const priceLabel = (): string => {
-    if (!preview?.form.price_pence) return ''
-    const amount = `£${(preview.form.price_pence / 100).toFixed(0)}`
-    return preview.form.payment_type === 'per_session' ? `${amount} / session` : `${amount} block`
-  }
-
-  const stepLabels = ['Details', 'Schedule', 'Spots & pricing', 'Review']
-  const scheduleRow = formatScheduleRow()
-  const sessionsRow = formatSessionsRow()
-  const price = priceLabel()
-  const hasTitle = !!(preview?.form.title)
-
-  return (
-    <div className="flex flex-col gap-5">
-      {/* Section 1 — Parent preview */}
-      <div>
-        <div className="text-[9px] font-medium text-gray-400 uppercase tracking-wider mb-2">PARENT PREVIEW</div>
-        {!hasTitle ? (
-          <p className="text-[12px] text-gray-400 italic leading-relaxed">
-            Fill in details to see how parents will see your programme
-          </p>
-        ) : (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-            <h3 className="text-[16px] font-bold text-gray-900 mb-2 leading-snug">{preview!.form.title}</h3>
-
-            {/* Badges */}
-            <div className="flex flex-wrap gap-1.5 mb-3">
-              {sportName && (
-                <span className="px-2 py-0.5 bg-[#E6F3FB] text-[#0077CC] text-[10px] font-medium rounded-full">
-                  {sportName}
-                </span>
-              )}
-              <span className="px-2 py-0.5 bg-gray-100 text-gray-500 text-[10px] font-medium rounded-full">
-                {skillLabel()}
-              </span>
-            </div>
-
-            <div className="space-y-2">
-              {/* Schedule */}
-              {scheduleRow && (
-                <div className="flex items-center gap-2 text-[11px] text-gray-600">
-                  <Calendar size={12} className="text-gray-400 shrink-0" />
-                  <span>{scheduleRow}</span>
-                </div>
-              )}
-
-              {/* Sessions */}
-              {sessionsRow && (
-                <div className="flex items-center gap-2 text-[11px] text-gray-600">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400 shrink-0">
-                    <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-                  </svg>
-                  <span>{sessionsRow}</span>
-                </div>
-              )}
-
-              {/* Capacity */}
-              {preview!.form.max_spots > 0 && (
-                <div className="flex items-center gap-2 text-[11px] text-gray-600">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400 shrink-0">
-                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-                  </svg>
-                  <span>{preview!.form.max_spots} spots available</span>
-                </div>
-              )}
-
-              {/* Price */}
-              {price && (
-                <div className="flex items-center gap-2 text-[12px] font-bold text-[#0077CC]">
-                  <PoundSterling size={12} className="shrink-0" />
-                  <span>{price}</span>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Section 2 — Steps */}
-      <div>
-        <div className="text-[9px] font-medium text-gray-400 uppercase tracking-wider mb-2">STEPS</div>
-        <div className="space-y-2">
-          {stepLabels.map((label, i) => {
-            const stepNum = i + 1
-            const isDone = preview ? stepNum < preview.step : false
-            const isCurrent = preview ? stepNum === preview.step : stepNum === 1
-            return (
-              <div key={i} className="flex items-center gap-2.5">
-                <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
-                  isDone ? 'bg-[#0077CC] text-white' :
-                  isCurrent ? 'bg-white border-2 border-[#0077CC] text-[#0077CC]' :
-                  'bg-gray-100 text-gray-400'
-                }`}>
-                  {isDone ? <Check size={12} strokeWidth={3} /> : stepNum}
-                </div>
-                <span className={`text-[12px] ${
-                  isDone ? 'text-[#0077CC] font-medium' :
-                  isCurrent ? 'text-gray-900 font-semibold' :
-                  'text-gray-400'
-                }`}>{label}</span>
-              </div>
-            )
-          })}
         </div>
       </div>
     </div>
   )
 }
-
-function BookingsTodaySessions({ sportsMap }: { sportsMap: Record<string, string> }) {
-  // PERF-02-BOOKINGS-CACHE: today's sessions sourced from the shared bookings
-  // context — own fetch + own state removed. Single shared fetch lifecycle.
-  const { today: sessions, loading } = useBookings()
-
-  return (
-    <div className="border-t-[0.5px] border-gray-100 pt-3.5">
-      <h3 className="text-[12px] text-gray-400 mb-2">Today's sessions</h3>
-      {loading ? (
-        <p className="text-[11px] text-gray-400">Loading...</p>
-      ) : sessions.length === 0 ? (
-        <p className="text-[11px] text-gray-400">No sessions today</p>
-      ) : (
-        <div className="space-y-3">
-          {sessions.map((session, idx) => {
-            const clientName = session.child_name ?? session.booked_by_name ?? session.booking_reference
-            const sportName = sportsMap[session.sport_id] ?? ''
-            const statusLabel = session.status.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
-            return (
-              <div key={session.id}>
-                <div className="flex items-start gap-2">
-                  <div
-                    className="w-[7px] h-[7px] rounded-full mt-1 shrink-0"
-                    style={{ backgroundColor: statusDotColor(session.status) }}
-                  />
-                  <div className="flex-1">
-                    <p className="text-[11px] font-medium text-gray-900">
-                      {session.session_start_time.slice(0, 5)} · {clientName}
-                    </p>
-                    <p className="text-[10px] text-gray-500 mt-0.5">
-                      {[sportName, statusLabel].filter(Boolean).join(' · ')}
-                    </p>
-                  </div>
-                </div>
-                {idx < sessions.length - 1 && (
-                  <div className="border-t-[0.5px] border-gray-100 mt-3" />
-                )}
-              </div>
-            )
-          })}
-        </div>
-      )}
-    </div>
-  )
-}
-

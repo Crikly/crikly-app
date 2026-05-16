@@ -9,10 +9,11 @@ import {
   X
 } from 'lucide-react'
 import { CoachRightPanel } from '@/components/coach/CoachRightPanel'
-// PERF-02-BOOKINGS-CACHE: shared bookings context for /coach/bookings.
-// Wraps both <main> (which renders BookingsManagement) and the right panel
-// (which renders BookingsPendingApprovals + BookingsTodaySessions) so all
-// three consumers read from a single fetch lifecycle.
+// DS-RIGHT-PANEL-01: BookingsProvider is now mounted on EVERY coach route
+// because the universal right-panel command-centre reads sessions from it.
+// Previously gated to /coach/bookings only. The cost is 4 parallel fetches
+// per coach page load (~200ms) — acceptable for the consistency win.
+// Follow-up: PERF-RIGHT-PANEL-DASHBOARD-DEDUPE.
 import { BookingsProvider } from '@/contexts/BookingsContext'
 import { createClient } from '@/lib/supabase/client'
 import { fetchCoachProfileCached } from '@/lib/onboarding-cache'
@@ -45,13 +46,11 @@ export function CoachLayoutClient({
 
   const nav = (path: string) => router.push(path)
 
-  // Hide right panel on onboarding AND dashboard (dashboard renders its own with data)
-  const showRightPanel = !pathname.includes('/onboarding') && pathname !== '/coach/dashboard'
-
-  // PERF-02-BOOKINGS-CACHE: gate BookingsProvider to the bookings route only —
-  // every other route has zero bookings consumers, so paying the fetch cost
-  // would be wasted.
-  const isBookingsRoute = pathname === '/coach/bookings' || pathname.startsWith('/coach/bookings/')
+  // DS-RIGHT-PANEL-01: panel renders on every coach route EXCEPT onboarding.
+  // The dashboard inclusion was added by this task — dashboard previously
+  // mounted CoachRightPanel from inside CoachHomeClient to pass dashboardData
+  // as a prop, but the universal panel reads from contexts directly now.
+  const showRightPanel = !pathname.includes('/onboarding')
 
   // Extract initials from coach name (same logic as OnboardingPreviewPanel)
   const initials = initialCoachName
@@ -229,28 +228,15 @@ export function CoachLayoutClient({
 
       </aside>
 
-      {/* PERF-02-BOOKINGS-CACHE: BookingsProvider wraps <main> + right panel
-          so BookingsManagement (left) and CoachRightPanel's sub-components
-          (right) read from one fetch lifecycle. Gated to the bookings route
-          so other pages don't pay the cost. */}
-      {isBookingsRoute ? (
-        <BookingsProvider>
-          <main className="flex-1 overflow-y-auto relative bg-white">
-            {children}
-          </main>
-          {showRightPanel && <CoachRightPanel />}
-        </BookingsProvider>
-      ) : (
-        <>
-          {/* Main content */}
-          <main className="flex-1 overflow-y-auto relative bg-white">
-            {children}
-          </main>
-
-          {/* Right Panel */}
-          {showRightPanel && <CoachRightPanel />}
-        </>
-      )}
+      {/* DS-RIGHT-PANEL-01: BookingsProvider wraps every coach route so the
+          universal right-panel command-centre can read sessions everywhere.
+          Both <main> and the right panel are inside the same provider. */}
+      <BookingsProvider>
+        <main className="flex-1 overflow-y-auto relative bg-white">
+          {children}
+        </main>
+        {showRightPanel && <CoachRightPanel />}
+      </BookingsProvider>
 
       {/* Mobile Bottom Nav */}
       <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 pb-6 pt-3 px-6 flex justify-between items-center z-50 shadow-[0_-10px_40px_rgba(0,0,0,0.04)]">
