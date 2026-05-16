@@ -7,8 +7,9 @@
 // src/app/coaches/[id]/page.tsx (ReviewCard + RatingBreakdown) so coaches see
 // a consistent visual treatment of their own ratings.
 //
-// Data: fetched from /api/coaches/reviews — STUB endpoint that returns 7
-// hardcoded reviews + computed stats. Sort is client-side over fetched state.
+// Data: fetched from /api/coaches/reviews — live join of reviews +
+// coach_replies, gated by RLS (the coach's own reviews only). Sort is
+// client-side over fetched state.
 //
 // Reply compose is local UI state only — POST endpoint is not wired yet.
 // Follow-up: BUG-REVIEWS-REPLY-PERSIST.
