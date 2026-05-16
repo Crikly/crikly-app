@@ -343,6 +343,7 @@ C-05, C-06, C-07, C-08 are safe to proceed without M-015.
 | Fix-12 | Insert user_roles row on role selection for OAuth and email users | @BackendDeveloper | 🔴 | feature/coach-data-2 | ✅ |
 | CF-REVIEWS-01 | Coach Reviews page — /coach/reviews + STUB GET /api/coaches/reviews + sidebar nav entry. Follow-ups: API-COACH-REVIEWS-REAL-WIRING, API-COACH-REVIEWS-PAGINATION, BUG-REVIEWS-REPLY-PERSIST, BUG-REVIEWS-FLAG-ACTION, BUG-REVIEWS-TOKEN-DEBT. | @FrontendDeveloper | 🟡 | feat/coach-reviews | ✅ |
 | DB-REVIEWS-SCHEMA | Extend reviews table (nullable booking_id/reviewer_user_id, ON DELETE SET NULL/CASCADE, add reviewer_name + sport_name, created_at DESC index, coach SELECT policy). Create coach_replies table with full RLS. Migration 029. Follow-up: BUG-REVIEWS-FK-LIFECYCLE (revisit CASCADE when soft-delete on coach_profiles lands). | @DatabaseArchitect | 🔴 | feat/reviews-schema | ✅ |
+| DB-REVIEWS-SEED | Seed file `supabase/seeds/reviews_seed.sql` — 7 demo reviews + 1 coach reply for the dev coach (18369fae-ad5b-4dbe-9108-3bd150c90df8). Idempotent (DELETEs prior seeded rows). Recomputes coach_profiles.rating_avg + rating_count from actual rows. Executed via Supabase SQL editor on hosted dev. | @DatabaseArchitect | 🟢 | fix/reviews-seed | ✅ |
 
 ### 3D — Screen Review & Polish (CF-D tasks)
 
