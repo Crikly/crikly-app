@@ -4,11 +4,12 @@ import React, { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import {
-  Clock, MapPin, Star, TrendingUp, AlertCircle, AlertTriangle,
-  ChevronRight, ChevronLeft, PoundSterling, Check, Calendar, Plus,
+  Clock, MapPin, AlertTriangle,
+  ChevronRight, PoundSterling, Check, Calendar, Plus,
   Search, Banknote, Copy, Share, ArrowRight
 } from 'lucide-react'
-import { CoachRightPanel } from '@/components/coach/CoachRightPanel'
+// DS-RIGHT-PANEL-01: CoachRightPanel is now mounted by CoachLayoutClient
+// on every coach route (was rendered here with dashboardData prop).
 // C-Settings-01-UI: pause banner reads is_paused from cached profile fetch
 import { fetchCoachProfileCached } from '@/lib/onboarding-cache'
 
@@ -323,15 +324,11 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
           )}
         </section>
 
-        {/* Mobile Only */}
-        <div className="md:hidden flex flex-col gap-8 mt-2">
-          <ThisWeekStrip />
-          <TodayLineup sessions={todaySessions} />
-        </div>
+        {/* DS-RIGHT-PANEL-01: removed mobile-only ThisWeekStrip + TodayLineup —
+            redundant with Up Next + Weekly Overview on mobile, and the
+            universal right panel covers the desktop case. */}
 
-        {/* CHANGE 7: Removed Earnings and Rating cards - now in right panel */}
-        {/* CHANGE 8: Weekly Overview 4-stat row */}
-        {/* FIX 1: Clickable cards with Link */}
+        {/* Weekly Overview 4-stat row */}
         <section className="flex flex-col gap-3 mt-2 md:mt-0">
           <h2 className="text-base font-semibold text-gray-900">Weekly Overview</h2>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -395,14 +392,9 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
         </div>
       </div>
 
-      {/* Right Panel with dashboard data */}
-      <CoachRightPanel dashboardData={{
-        todaySessions: data.todaySessions,
-        rating: data.rating,
-        weeklyStats: {
-          revenueThisWeek: data.weeklyStats.revenueThisWeek
-        }
-      }} />
+      {/* DS-RIGHT-PANEL-01: CoachRightPanel is mounted by CoachLayoutClient now.
+          The dashboardData prop was the only reason the dashboard route was
+          previously excluded from the layout-level panel mount. */}
 
       {/* Fix-36: Celebration modal */}
       {showCelebration && (
@@ -509,126 +501,11 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
   )
 }
 
-function ThisWeekStrip({ isDesktop }: { isDesktop?: boolean }) {
-  const [weekOffset, setWeekOffset] = React.useState(0)
-  
-  // Fix-21b: Calculate week dates dynamically with correct today highlighting
-  const getWeekDates = (offset: number) => {
-    const now = new Date()
-    const todayMidnight = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      now.getDate()
-    )
+// DS-RIGHT-PANEL-01: deleted local ThisWeekStrip + TodayLineup function
+// declarations — they duplicated the CoachRightPanel versions and only
+// rendered in the mobile-only md:hidden block (now also removed).
 
-    // Get Monday of current week (local time, no UTC conversion)
-    const currentDayOfWeek = todayMidnight.getDay() // 0=Sun, 1=Mon...6=Sat
-    const daysFromMonday = currentDayOfWeek === 0 ? 6 : currentDayOfWeek - 1
-    const monday = new Date(todayMidnight)
-    monday.setDate(todayMidnight.getDate() - daysFromMonday + offset * 7)
-
-    // Generate Mon–Sun
-    const weekDays = []
-    for (let i = 0; i < 7; i++) {
-      const day = new Date(monday)
-      day.setDate(monday.getDate() + i)
-      weekDays.push({
-        label: ['M','T','W','T','F','S','S'][i],
-        date: day.getDate(),
-        isToday: day.getTime() === todayMidnight.getTime(),
-        hasSession: false
-      })
-    }
-
-    // Month label from Thursday of the displayed week
-    const thursday = new Date(monday)
-    thursday.setDate(monday.getDate() + 3)
-    const monthName = thursday.toLocaleDateString('en-GB', { month: 'long' })
-
-    return { weekDays, monthName }
-  }
-  
-  const { weekDays, monthName } = getWeekDates(weekOffset)
-  
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="flex justify-between items-center">
-        <h3 className={`${isDesktop ? 'text-[22px]' : 'text-[19px]'} font-bold text-gray-900`}>This week</h3>
-        <div className="flex items-center gap-1 text-sm font-bold text-gray-500">
-          {weekOffset > 0 && (
-            <button 
-              onClick={() => setWeekOffset(weekOffset - 1)}
-              className="hover:text-gray-900 transition-colors"
-            >
-              <ChevronLeft size={16} />
-            </button>
-          )}
-          <span className="cursor-pointer hover:text-gray-900 transition-colors">
-            {monthName}
-          </span>
-          <button 
-            onClick={() => setWeekOffset(weekOffset + 1)}
-            className="hover:text-gray-900 transition-colors"
-          >
-            <ChevronRight size={16} />
-          </button>
-        </div>
-      </div>
-      <div className="flex justify-between items-center bg-gray-50 rounded-[20px] p-2.5 border border-gray-100/80 shadow-sm">
-        {weekDays.map((day, i) => (
-          <div key={i} className="flex flex-col items-center gap-2 cursor-pointer group">
-            <span className="text-[11px] text-gray-400 font-bold uppercase tracking-wider">{day.label}</span>
-            <div className={`w-9 h-9 rounded-full flex items-center justify-center text-[15px] font-bold transition-all ${day.isToday ? 'bg-[#0077CC] text-white shadow-md' : 'text-gray-700 group-hover:bg-gray-200'}`}>
-              {day.date}
-            </div>
-            <div className="h-1.5 flex justify-center w-full">
-              {day.hasSession && <div className={`w-1.5 h-1.5 rounded-full ${day.isToday ? 'bg-[#0077CC]' : 'bg-gray-300'}`}></div>}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function TodayLineup({ isDesktop, sessions }: { isDesktop?: boolean; sessions: Array<{time: string; duration: string; title: string; location: string; isActive: boolean; type?: string}> }) {
-  return (
-    <div className="flex flex-col gap-6 flex-1">
-      <div className="flex justify-between items-center">
-        <h3 className={`${isDesktop ? 'text-[22px]' : 'text-[19px]'} font-bold text-gray-900`}>Today's lineup</h3>
-        {isDesktop && <span className="text-[#0077CC] text-sm font-bold cursor-pointer hover:underline">View all</span>}
-      </div>
-      {sessions.length === 0 ? (
-        <p className="text-gray-400 text-sm">No sessions today</p>
-      ) : (
-        <div className="flex flex-col relative">
-          <div className="absolute left-[60px] top-4 bottom-8 w-[1.5px] bg-gray-100 -translate-x-1/2"></div>
-          {sessions.map((session, i) => (
-            <div key={i} className="flex gap-6 mb-7 relative group cursor-pointer">
-              <div className="flex flex-col items-center pt-3.5 z-10 w-12 shrink-0">
-                <span className={`text-[15px] font-bold ${session.isActive ? 'text-[#0077CC]' : 'text-gray-600'}`}>{session.time}</span>
-                <span className="text-[11px] text-gray-400 font-bold mt-1 uppercase tracking-wider">{session.duration}</span>
-              </div>
-              <div className={`absolute left-[60px] top-[26px] w-3.5 h-3.5 rounded-full border-[3px] bg-white z-20 transition-all -translate-x-1/2 -translate-y-1/2 ${session.isActive ? 'border-[#0077CC] shadow-[0_0_0_4px_rgba(0,119,204,0.1)] scale-110' : 'border-gray-300 group-hover:border-gray-400'}`}></div>
-              <div className={`flex-1 p-4 md:p-5 rounded-[20px] border transition-all ${session.isActive ? 'bg-[#0077CC]/[0.03] border-[#0077CC]/20 shadow-sm' : 'bg-white border-gray-100 shadow-[0_2px_12px_rgba(0,0,0,0.02)] hover:border-gray-200 hover:shadow-md'}`}>
-                <div className="flex justify-between items-start mb-2">
-                  <h4 className={`font-bold text-[16px] md:text-[17px] ${session.isActive ? 'text-[#0077CC]' : 'text-gray-900'} leading-tight pr-2`}>{session.title}</h4>
-                  {session.type === 'Private' && <span className="text-[10px] font-bold uppercase tracking-wider text-purple-600 bg-purple-50 px-2.5 py-1 rounded-full shrink-0 border border-purple-100/50">1:1</span>}
-                </div>
-                <div className="flex items-center gap-2 text-gray-500 text-[13px] font-medium">
-                  <MapPin size={14} className={session.isActive ? 'text-[#0077CC]/70' : ''} />
-                  <span className="truncate">{session.location}</span>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function ProfileChecklistItem({ title, completed, guidance, isFirstIncomplete, onNavigate }: { 
+function ProfileChecklistItem({ title, completed, guidance, isFirstIncomplete, onNavigate }: {
   title: string; 
   completed: boolean; 
   guidance?: string;
