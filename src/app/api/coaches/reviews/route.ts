@@ -1,14 +1,23 @@
 // ──────────────────────────────────────────────────────────────────────────────
-// STUB endpoint — CF-REVIEWS-01
+// GET /api/coaches/reviews — list a coach's own visible reviews + their replies.
 //
-// Returns hardcoded dummy reviews so the /coach/reviews page can render the
-// full design without a real backing schema. Auth is enforced (coach context
-// required) but the hardcoded payload is identical for every coach.
+// Auth: requireCoachContext — must be authenticated as a coach with a profile.
+// Query: nested select via reviews → coach_replies. Coach_replies is 0-or-1
+//        per review (UNIQUE(review_id)) but PostgREST returns it as an array.
+// Sort:  newest-first server-side; the page does additional client-side sort
+//        across all 4 SortKey values (newest / oldest / highest / lowest).
 //
-// Follow-up tasks (filed during CF-REVIEWS-01 planning):
-//   - API-COACH-REVIEWS-REAL-WIRING — join bookings + reviews + coach_replies
-//   - API-COACH-REVIEWS-PAGINATION — page/cursor params, today returns ≤8 rows
-//   - BUG-REVIEWS-REPLY-PERSIST — POST endpoint + coach_replies storage
+// rating_avg + rating_count are read from the denormalised cache columns on
+// coach_profiles rather than computed inline, so the coach's own view stays
+// consistent with the public profile + search results.
+//
+// Out-of-scope (filed as follow-ups):
+//   - API-COACH-REVIEWS-RATING-TREND — compute rating_change_30d via a
+//     30-day window aggregation. Hardcoded to 0 here.
+//   - API-COACH-REVIEWS-PAGINATION — page/cursor params; today returns all.
+//   - BUG-REVIEWS-REPLY-PERSIST — POST endpoint for creating/editing replies.
+//   - OPP-REVIEW-COMMENT-NULLABLE — broaden Review.comment to string | null
+//     so we don't have to coerce null → '' in the mapper.
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { NextResponse } from 'next/server'
@@ -33,104 +42,71 @@ interface ReviewsResponse {
   positive_share: { positive: number; total: number }
 }
 
-function daysAgoIso(days: number): string {
-  const d = new Date()
-  d.setDate(d.getDate() - days)
-  return d.toISOString()
-}
-
-// 7 reviews spanning today → ~8 months ago, mostly 4/5★, one 3★ with a reply.
-const STUB_REVIEWS: Review[] = [
-  {
-    id: 'rev-001',
-    rating: 5,
-    comment:
-      'My son has improved so much after just 8 sessions. He went from being nervous about facing fast bowling to actually asking for extra practice at home — that’s a huge shift. Patient, clear, and always on time.',
-    created_at: daysAgoIso(2),
-    reviewer_name: 'Sarah Johnson',
-    sport_name: 'Cricket',
-    coach_reply: null,
-  },
-  {
-    id: 'rev-002',
-    rating: 5,
-    comment:
-      'Fantastic coach. Patient and great with young players. My daughter is 9 and was hesitant to join because she didn’t know anyone — by the second week she was leading the warm-ups.',
-    created_at: daysAgoIso(7),
-    reviewer_name: 'Marcus Khan',
-    sport_name: 'Cricket',
-    coach_reply:
-      'Thank you! It’s been a pleasure working with your daughter — she has real focus for her age. See you Saturday.',
-  },
-  {
-    id: 'rev-003',
-    rating: 4,
-    comment:
-      'Really good sessions overall. Would’ve given five stars but a couple of sessions started 5–10 minutes late. Coaching itself was excellent.',
-    created_at: daysAgoIso(14),
-    reviewer_name: 'Rachel Patel',
-    sport_name: 'Cricket',
-    coach_reply: null,
-  },
-  {
-    id: 'rev-004',
-    rating: 5,
-    comment:
-      'Brilliant with my son who has ADHD — keeps him engaged and makes the drills feel like games. Worth every penny.',
-    created_at: daysAgoIso(28),
-    reviewer_name: 'Daniel Foster',
-    sport_name: 'Cricket',
-    coach_reply: null,
-  },
-  {
-    id: 'rev-005',
-    rating: 3,
-    comment:
-      'Coaching was fine but communication outside sessions was slow. Took two days to reply about rescheduling. Sessions themselves were good.',
-    created_at: daysAgoIso(56),
-    reviewer_name: 'Priya Ramanathan',
-    sport_name: 'Tennis',
-    coach_reply: null,
-  },
-  {
-    id: 'rev-006',
-    rating: 5,
-    comment:
-      'Couldn’t recommend more highly. My twins both want to come back next term — even the one who normally hates sport.',
-    created_at: daysAgoIso(98),
-    reviewer_name: 'Tom Bennett',
-    sport_name: 'Cricket',
-    coach_reply: null,
-  },
-  {
-    id: 'rev-007',
-    rating: 4,
-    comment:
-      'Solid foundations work. Daughter’s grip and footwork have improved a lot since starting. Sessions are well-structured.',
-    created_at: daysAgoIso(240),
-    reviewer_name: 'Helen Williams',
-    sport_name: 'Football',
-    coach_reply: null,
-  },
-]
-
 export async function GET() {
   const supabase = await createClient()
 
-  const { error } = await requireCoachContext(supabase)
+  const { context, error } = await requireCoachContext(supabase)
   if (error) return error
+  const { coachProfile } = context
 
-  const ratingCount = STUB_REVIEWS.length
-  const ratingAvg =
-    Math.round((STUB_REVIEWS.reduce((sum, r) => sum + r.rating, 0) / ratingCount) * 10) / 10
-  const positive = STUB_REVIEWS.filter((r) => r.rating >= 4).length
+  // Parallel — the reviews+replies join and the coach_profiles aggregate read
+  // are independent. RLS via the "Coaches can view own reviews" policy
+  // (migration 029) authorises the reviews read; coach_profiles is the
+  // coach's own row.
+  const [reviewsResult, coachResult] = await Promise.all([
+    supabase
+      .from('reviews')
+      .select(
+        'id, rating, comment, created_at, reviewer_name, sport_name, coach_replies(reply_text)'
+      )
+      .eq('coach_profile_id', coachProfile.id)
+      .eq('is_visible', true)
+      .order('created_at', { ascending: false }),
+    supabase
+      .from('coach_profiles')
+      .select('rating_avg, rating_count')
+      .eq('id', coachProfile.id)
+      .single(),
+  ])
+
+  if (reviewsResult.error) {
+    console.error('[GET /api/coaches/reviews] reviews query error:', reviewsResult.error)
+    return NextResponse.json({ error: 'Failed to load reviews' }, { status: 500 })
+  }
+  if (coachResult.error) {
+    console.error(
+      '[GET /api/coaches/reviews] coach_profiles query error:',
+      coachResult.error,
+    )
+    return NextResponse.json({ error: 'Failed to load coach stats' }, { status: 500 })
+  }
+
+  const rows = reviewsResult.data ?? []
+
+  const reviews: Review[] = rows.map((r) => ({
+    id: r.id,
+    rating: r.rating,
+    // DB column is nullable; coerce to '' so the page (which expects string)
+    // doesn't have to handle null. Follow-up: OPP-REVIEW-COMMENT-NULLABLE.
+    comment: r.comment ?? '',
+    created_at: r.created_at,
+    reviewer_name: r.reviewer_name,
+    sport_name: r.sport_name,
+    // coach_replies is one-to-one (UNIQUE(review_id) on coach_replies), so
+    // PostgREST returns it as a single object (or null when no reply exists).
+    coach_reply: r.coach_replies?.reply_text ?? null,
+  }))
+
+  const positive = reviews.filter((r) => r.rating >= 4).length
 
   const body: ReviewsResponse = {
-    reviews: STUB_REVIEWS,
-    rating_avg: ratingAvg,
-    rating_count: ratingCount,
-    rating_change_30d: 0.2,
-    positive_share: { positive, total: ratingCount },
+    reviews,
+    // coach_profiles.rating_avg is nullable for coaches with no reviews yet;
+    // coerce to 0 so the page's toFixed(1) call doesn't crash.
+    rating_avg: coachResult.data.rating_avg ?? 0,
+    rating_count: coachResult.data.rating_count,
+    rating_change_30d: 0,
+    positive_share: { positive, total: reviews.length },
   }
 
   return NextResponse.json(body, {

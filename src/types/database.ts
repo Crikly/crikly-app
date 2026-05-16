@@ -7,10 +7,30 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "14.4"
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
   }
   public: {
     Tables: {
@@ -123,8 +143,8 @@ export type Database = {
           sport_id: string | null
           start_time: string
           updated_at: string
-          venue_name: string | null
           venue_address: string | null
+          venue_name: string | null
         }
         Insert: {
           coach_profile_id: string
@@ -142,8 +162,8 @@ export type Database = {
           sport_id?: string | null
           start_time: string
           updated_at?: string
-          venue_name?: string | null
           venue_address?: string | null
+          venue_name?: string | null
         }
         Update: {
           coach_profile_id?: string
@@ -161,8 +181,8 @@ export type Database = {
           sport_id?: string | null
           start_time?: string
           updated_at?: string
-          venue_name?: string | null
           venue_address?: string | null
+          venue_name?: string | null
         }
         Relationships: [
           {
@@ -673,6 +693,48 @@ export type Database = {
             columns: ["coach_profile_id"]
             isOneToOne: false
             referencedRelation: "coach_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      coach_replies: {
+        Row: {
+          coach_profile_id: string
+          created_at: string
+          id: string
+          reply_text: string
+          review_id: string
+          updated_at: string
+        }
+        Insert: {
+          coach_profile_id: string
+          created_at?: string
+          id?: string
+          reply_text: string
+          review_id: string
+          updated_at?: string
+        }
+        Update: {
+          coach_profile_id?: string
+          created_at?: string
+          id?: string
+          reply_text?: string
+          review_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coach_replies_coach_profile_id_fkey"
+            columns: ["coach_profile_id"]
+            isOneToOne: false
+            referencedRelation: "coach_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coach_replies_review_id_fkey"
+            columns: ["review_id"]
+            isOneToOne: true
+            referencedRelation: "reviews"
             referencedColumns: ["id"]
           },
         ]
@@ -1533,37 +1595,37 @@ export type Database = {
       }
       interest_registrations: {
         Row: {
-          id: string
-          name: string
-          email: string
-          role: string
-          sports: string[]
-          location: string | null
-          consent_given: boolean
           consent_at: string | null
-          created_at: string
+          consent_given: boolean
+          created_at: string | null
+          email: string
+          id: string
+          location: string | null
+          name: string
+          role: string
+          sports: string[] | null
         }
         Insert: {
-          id?: string
-          name: string
-          email: string
-          role: string
-          sports?: string[]
-          location?: string | null
-          consent_given?: boolean
           consent_at?: string | null
-          created_at?: string
+          consent_given?: boolean
+          created_at?: string | null
+          email: string
+          id?: string
+          location?: string | null
+          name: string
+          role: string
+          sports?: string[] | null
         }
         Update: {
-          id?: string
-          name?: string
-          email?: string
-          role?: string
-          sports?: string[]
-          location?: string | null
-          consent_given?: boolean
           consent_at?: string | null
-          created_at?: string
+          consent_given?: boolean
+          created_at?: string | null
+          email?: string
+          id?: string
+          location?: string | null
+          name?: string
+          role?: string
+          sports?: string[] | null
         }
         Relationships: []
       }
@@ -2231,34 +2293,40 @@ export type Database = {
       }
       reviews: {
         Row: {
-          booking_id: string
+          booking_id: string | null
           coach_profile_id: string
           comment: string | null
           created_at: string
           id: string
           is_visible: boolean
           rating: number
-          reviewer_user_id: string
+          reviewer_name: string
+          reviewer_user_id: string | null
+          sport_name: string
         }
         Insert: {
-          booking_id: string
+          booking_id?: string | null
           coach_profile_id: string
           comment?: string | null
           created_at?: string
           id?: string
           is_visible?: boolean
           rating: number
-          reviewer_user_id: string
+          reviewer_name?: string
+          reviewer_user_id?: string | null
+          sport_name?: string
         }
         Update: {
-          booking_id?: string
+          booking_id?: string | null
           coach_profile_id?: string
           comment?: string | null
           created_at?: string
           id?: string
           is_visible?: boolean
           rating?: number
-          reviewer_user_id?: string
+          reviewer_name?: string
+          reviewer_user_id?: string | null
+          sport_name?: string
         }
         Relationships: [
           {
@@ -2589,28 +2657,28 @@ export type Database = {
       }
       waitlist_emails: {
         Row: {
-          id: string
-          email: string
-          role: string | null
-          consent_given: boolean
           consent_at: string | null
-          created_at: string
+          consent_given: boolean
+          created_at: string | null
+          email: string
+          id: string
+          role: string | null
         }
         Insert: {
-          id?: string
-          email: string
-          role?: string | null
-          consent_given?: boolean
           consent_at?: string | null
-          created_at?: string
+          consent_given?: boolean
+          created_at?: string | null
+          email: string
+          id?: string
+          role?: string | null
         }
         Update: {
-          id?: string
-          email?: string
-          role?: string | null
-          consent_given?: boolean
           consent_at?: string | null
-          created_at?: string
+          consent_given?: boolean
+          created_at?: string | null
+          email?: string
+          id?: string
+          role?: string | null
         }
         Relationships: []
       }
@@ -2748,7 +2816,11 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {},
   },
 } as const
+
