@@ -1,72 +1,62 @@
-// CF-PROGRAMMES-IMAGE-PICKER: curated programme cover photos by sport.
+// CF-PROGRAMMES-IMAGE-PICKER: programme cover photos via Unsplash Source.
 //
-// Coaches pick one of these in CreateProgramme / EditProgramme via the
-// "Choose a photo" tab of ProgrammeImagePicker. The "Upload your own" tab
-// pushes to Supabase Storage instead and writes that URL back. Either way
-// the chosen URL lands on group_programmes.image_url (migration 030).
+// Was a hardcoded array of 6 curated Cricket URLs. Now generates URLs
+// dynamically using the seed-based `source.unsplash.com` endpoint — no API
+// key, no rate-limit, royalty-free. Each `sig=N` returns a different image
+// from Unsplash's cricket pool, so the picker can show a fresh random set
+// every time it opens (see ProgrammeImagePicker's `seeds` state + Refresh
+// button).
 //
-// Phase 1 ships Cricket only — when other sports launch, add a new array
-// + SPORT_IMAGES entry keyed on the lowercase sport name. The fallback
-// keeps the picker functional for any sport not yet curated.
+// Phase 1 ships Cricket only — when other sports launch, branch in
+// getImagesForSport and add their own URL template.
 
 export interface ProgrammeImage {
-  /** Full Unsplash photo URL (already includes ?w=800&q=80 sizing). */
   url: string
-  /** Descriptive alt text for screen readers. */
   alt: string
-  /** Photographer name — surfaced once at the picker level, not per-photo. */
   credit: string
 }
 
-const CRICKET_IMAGES: ProgrammeImage[] = [
-  {
-    url: 'https://images.unsplash.com/photo-1531415074968-036ba1b575da?w=800&q=80',
-    alt: 'Cricket batting practice',
-    credit: 'Patrick Case',
-  },
-  {
-    url: 'https://images.unsplash.com/photo-1624280157150-4d1ed8632989?w=800&q=80',
-    alt: 'Cricket coaching session',
-    credit: 'Abhishek Chandra',
-  },
-  {
-    url: 'https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?w=800&q=80',
-    alt: 'Cricket match in progress',
-    credit: 'Stefan Grage',
-  },
-  {
-    url: 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=800&q=80',
-    alt: 'Cricket training drills',
-    credit: 'Baylee Gramling',
-  },
-  {
-    url: 'https://images.unsplash.com/photo-1593766788306-28561086694e?w=800&q=80',
-    alt: 'Cricket fielding practice',
-    credit: 'Patrick Case',
-  },
-  {
-    url: 'https://images.unsplash.com/photo-1624537996736-a79e84b1c7b3?w=800&q=80',
-    alt: 'Young cricketers playing',
-    credit: 'Rohit Shrivastava',
-  },
+/**
+ * Seed pool for Cricket — 18 distinct seeds gives the picker enough variety
+ * that the 6-image grid + a Refresh tap rarely repeats. Extend if needed.
+ */
+export const CRICKET_SEEDS = [
+  1, 2, 3, 4, 5, 6, 7, 8, 9,
+  10, 11, 12, 13, 14, 15, 16, 17, 18,
 ]
 
-export const SPORT_IMAGES: Record<string, ProgrammeImage[]> = {
-  cricket: CRICKET_IMAGES,
+/**
+ * Map a list of seeds to ProgrammeImage records. The Unsplash Source URL
+ * pattern returns a different image for each `sig` query string value.
+ */
+export function getCricketImages(seeds: number[]): ProgrammeImage[] {
+  return seeds.map((seed) => ({
+    url: `https://source.unsplash.com/featured/800x600/?cricket&sig=${seed}`,
+    alt: 'Cricket coaching session',
+    credit: 'Unsplash',
+  }))
 }
 
 /**
- * Returns the curated image set for a given sport name (case-insensitive).
- * Falls back to Cricket images for sports not yet curated, so the picker
- * is always populated and the UX is never empty.
+ * Default cover photo for programmes with no image_url set — uses seed=1
+ * so existing programmes always render the same fallback (no per-render
+ * randomisation that would shuffle the GroupCard hero on every refresh).
  */
-export function getImagesForSport(sportName: string): ProgrammeImage[] {
-  return SPORT_IMAGES[sportName.toLowerCase()] ?? CRICKET_IMAGES
-}
+export const DEFAULT_PROGRAMME_IMAGE =
+  'https://source.unsplash.com/featured/800x600/?cricket&sig=1'
 
 /**
- * Default cover photo when a programme has no `image_url` set. Used by
- * GroupCard on the dashboard + the programme list cards so existing
- * programmes (created before this feature) have a sensible visual.
+ * Returns 6 (or user-specified) curated images for a sport. Phase 1 only
+ * Cricket has its own pool — other sports fall back to the Cricket pool so
+ * the picker is never empty. When seeds are omitted, returns a fixed first
+ * 6 (deterministic) — the picker passes a shuffled subset for randomness.
  */
-export const DEFAULT_PROGRAMME_IMAGE = CRICKET_IMAGES[0].url
+export function getImagesForSport(sportName: string, seeds?: number[]): ProgrammeImage[] {
+  const activeSports = ['cricket']
+  const effectiveSeeds = seeds ?? [1, 2, 3, 4, 5, 6]
+  if (activeSports.includes(sportName.toLowerCase())) {
+    return getCricketImages(effectiveSeeds)
+  }
+  // Fallback: Cricket for any unsupported sport so the picker stays usable.
+  return getCricketImages(effectiveSeeds)
+}

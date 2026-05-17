@@ -16,13 +16,28 @@
 // INFRA-PROGRAMME-IMAGES-BUCKET in BUILD_PLAN.
 
 import { useEffect, useMemo, useState } from 'react'
-import { Upload, Image as ImageIcon, Loader2, AlertCircle } from 'lucide-react'
+import { Upload, Image as ImageIcon, Loader2, AlertCircle, RotateCw } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { getImagesForSport } from '@/lib/programme-images'
+import { getImagesForSport, CRICKET_SEEDS } from '@/lib/programme-images'
 import { fetchCoachProfileCached } from '@/lib/onboarding-cache'
 
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+const CURATED_GRID_SIZE = 6
+
+/**
+ * Fisher-Yates shuffle — picks `n` unique random elements from a pool. Used
+ * to seed the curated grid with a fresh random selection on each mount and
+ * on each Refresh click.
+ */
+function pickRandom<T>(pool: readonly T[], n: number): T[] {
+  const copy = [...pool]
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[copy[i], copy[j]] = [copy[j], copy[i]]
+  }
+  return copy.slice(0, Math.min(n, copy.length))
+}
 // Derive storage extension from validated MIME type rather than from the
 // user-supplied filename — a renamed `.webp` that's really PNG would land at
 // a misleading path otherwise. MIME is already gated by ACCEPTED_TYPES above.
@@ -48,7 +63,32 @@ export function ProgrammeImagePicker({
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [coachProfileId, setCoachProfileId] = useState<string | null>(null)
 
-  const curatedImages = useMemo(() => getImagesForSport(sportName), [sportName])
+  // CF-PROGRAMMES-IMAGE-PICKER (revision): seeds drive the curated grid.
+  // Random 6-of-18 on mount; Refresh re-rolls. Each `sig=N` maps to a
+  // different Unsplash cricket photo.
+  const [seeds, setSeeds] = useState<number[]>(() => pickRandom(CRICKET_SEEDS, CURATED_GRID_SIZE))
+  // Per-image load state — Unsplash Source redirects so first paint is blank
+  // until the network resolves. We track which URLs have loaded and fade the
+  // <img> in; the parent button shows bg-gray-100 underneath as a placeholder.
+  const [loadedUrls, setLoadedUrls] = useState<Set<string>>(new Set())
+
+  const curatedImages = useMemo(() => getImagesForSport(sportName, seeds), [sportName, seeds])
+
+  function handleRefreshPhotos() {
+    setSeeds(pickRandom(CRICKET_SEEDS, CURATED_GRID_SIZE))
+    // Reset the loaded set so the new tiles show placeholders until their
+    // network responses come back.
+    setLoadedUrls(new Set())
+  }
+
+  function handleImageLoaded(url: string) {
+    setLoadedUrls((prev) => {
+      if (prev.has(url)) return prev
+      const next = new Set(prev)
+      next.add(url)
+      return next
+    })
+  }
 
   // Coach profile ID needed for the storage path. Fetched via the cached
   // helper so we dedupe with the sidebar + other consumers.
@@ -141,9 +181,21 @@ export function ProgrammeImagePicker({
 
       {tab === 'curated' ? (
         <>
+          {/* Header row: Refresh button on the right re-rolls the 6-image set */}
+          <div className="flex items-center justify-end mb-2">
+            <button
+              type="button"
+              onClick={handleRefreshPhotos}
+              className="inline-flex items-center gap-1 text-[11px] text-[#0077CC] hover:text-[#0066AA] cursor-pointer transition-colors"
+            >
+              <RotateCw className="w-3 h-3" />
+              Refresh photos
+            </button>
+          </div>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5">
             {curatedImages.map((img) => {
               const isSelected = value === img.url
+              const isLoaded = loadedUrls.has(img.url)
               return (
                 <button
                   key={img.url}
@@ -151,14 +203,23 @@ export function ProgrammeImagePicker({
                   onClick={() => onChange(img.url)}
                   className={
                     isSelected
-                      ? 'relative aspect-video rounded-xl overflow-hidden ring-2 ring-[#0077CC] cursor-pointer'
-                      : 'relative aspect-video rounded-xl overflow-hidden cursor-pointer hover:ring-2 hover:ring-[#CBD5E1] transition-all'
+                      ? 'relative aspect-video rounded-xl overflow-hidden ring-2 ring-[#0077CC] cursor-pointer bg-gray-100'
+                      : 'relative aspect-video rounded-xl overflow-hidden cursor-pointer hover:ring-2 hover:ring-[#CBD5E1] transition-all bg-gray-100'
                   }
                   aria-label={`Select photo: ${img.alt}`}
                   aria-pressed={isSelected}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={img.url} alt={img.alt} className="absolute inset-0 w-full h-full object-cover" />
+                  <img
+                    src={img.url}
+                    alt={img.alt}
+                    onLoad={() => handleImageLoaded(img.url)}
+                    className={
+                      isLoaded
+                        ? 'absolute inset-0 w-full h-full object-cover opacity-100 transition-opacity duration-200'
+                        : 'absolute inset-0 w-full h-full object-cover opacity-0'
+                    }
+                  />
                 </button>
               )
             })}
