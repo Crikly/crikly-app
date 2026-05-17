@@ -40,6 +40,8 @@ interface DashboardData {
     endTime: string
     venue: string
     startsInMinutes: number
+    sessionType: '1-to-1' | 'group'
+    groupProgrammeId?: string
   } | null
   weeklyStats: {
     sessionsThisWeek: number
@@ -297,8 +299,14 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
             <div className="relative h-64 md:h-[340px] w-full rounded-2xl md:rounded-[24px] overflow-hidden shadow-sm group cursor-pointer isolate">
               <img src={upNextUrl} alt="Cricket Training" className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105 -z-10" />
               <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-transparent" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0) 55%)' }}></div>
-              <div className="absolute top-4 left-4 md:top-6 md:left-6 bg-white/20 backdrop-blur-md border border-white/20 text-white text-[13px] font-bold px-3.5 py-1.5 rounded-full shadow-sm">
-                Starts in {data.upNextSession.startsInMinutes > 0 ? `${data.upNextSession.startsInMinutes}m` : 'now'}
+              <div className="absolute top-4 left-4 md:top-6 md:left-6 flex items-center gap-2">
+                <div className="bg-white/20 backdrop-blur-md border border-white/20 text-white text-[13px] font-bold px-3.5 py-1.5 rounded-full shadow-sm">
+                  Starts in {data.upNextSession.startsInMinutes > 0 ? `${data.upNextSession.startsInMinutes}m` : 'now'}
+                </div>
+                {/* BUG-UPNEXT-PROGRAMME-SESSIONS: session-type badge */}
+                <div className="bg-white/20 backdrop-blur-md border border-white/20 text-white text-[13px] font-bold px-3.5 py-1.5 rounded-full shadow-sm">
+                  {data.upNextSession.sessionType === 'group' ? 'Group' : '1-to-1'}
+                </div>
               </div>
               <div className="absolute bottom-0 left-0 w-full p-5 md:p-8 flex flex-col gap-2.5 z-10">
                 <h3 className="text-white text-[26px] md:text-3xl font-bold leading-tight drop-shadow-sm">{data.upNextSession.title}</h3>

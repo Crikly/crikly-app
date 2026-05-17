@@ -23,6 +23,8 @@ interface DashboardData {
     endTime: string
     venue: string
     startsInMinutes: number
+    sessionType: '1-to-1' | 'group'
+    groupProgrammeId?: string
   } | null
   weeklyStats: {
     sessionsThisWeek: number
@@ -44,6 +46,64 @@ interface DashboardData {
     count: number
   }
   programmes: Programme[]
+}
+
+// BUG-UPNEXT-PROGRAMME-SESSIONS: helper to compute the next occurrence of a
+// group programme. Programmes recur on days_of_week at start_time — there
+// are no rows in the bookings table for them. We project forward up to 14
+// days from `now` and return the first slot that:
+//   - falls on one of the programme's days_of_week
+//   - is strictly in the future (not the time-of-day already passed today)
+//   - is before ends_at (if set; null means rolling/open-ended)
+// Returns null if no valid occurrence in the window or if the programme
+// has incomplete schedule data.
+interface ProgrammeScheduleRow {
+  id: string
+  title: string
+  days_of_week: number[] | null
+  start_time: string | null
+  duration_minutes: number
+  ends_at: string | null
+  venue_name: string | null
+  status: string
+}
+
+interface ProgrammeOccurrence {
+  datetime: Date
+  durationMinutes: number
+  title: string
+  venueName: string | null
+  programmeId: string
+}
+
+function nextProgrammeOccurrence(
+  programme: ProgrammeScheduleRow,
+  now: Date,
+): ProgrammeOccurrence | null {
+  const { days_of_week, start_time, duration_minutes, ends_at, title, venue_name, id } = programme
+  if (!days_of_week || days_of_week.length === 0 || !start_time) return null
+
+  const [h, m] = start_time.split(':').map(Number) // HH:MM[:SS] — seconds ignored
+  const endsAtMs = ends_at ? new Date(ends_at).getTime() : null
+
+  for (let dayOffset = 0; dayOffset < 14; dayOffset++) {
+    const candidate = new Date(now)
+    candidate.setDate(now.getDate() + dayOffset)
+    candidate.setHours(h, m, 0, 0)
+
+    if (!days_of_week.includes(candidate.getDay())) continue
+    if (candidate.getTime() <= now.getTime()) continue
+    if (endsAtMs !== null && candidate.getTime() > endsAtMs) continue
+
+    return {
+      datetime: candidate,
+      durationMinutes: duration_minutes,
+      title,
+      venueName: venue_name,
+      programmeId: id,
+    }
+  }
+  return null
 }
 
 export default async function CoachDashboardPage() {
@@ -143,7 +203,8 @@ export default async function CoachDashboardPage() {
     sunday.setHours(23, 59, 59, 999)
     const mondayDateStr = monday.toISOString().split('T')[0]
     const sundayDateStr = sunday.toISOString().split('T')[0]
-    const nowIso = new Date().toISOString()
+    const now = new Date()
+    const nowIso = now.toISOString()
 
     // PERF-02: all 11 dashboard queries run concurrently — no
     // interdependencies after coachProfile.id is known. Previously 8
@@ -249,9 +310,14 @@ export default async function CoachDashboardPage() {
       // CoachHomeClient's GroupCard). Also handles rolling programmes that
       // have no end date — `.or('ends_at.gte.<now>,ends_at.is.null')` keeps
       // both fixed-end (still upcoming) and rolling (open-ended) programmes.
+      //
+      // BUG-UPNEXT-PROGRAMME-SESSIONS: also selects days_of_week, start_time,
+      // duration_minutes, ends_at, venue_name so the Up Next computation below
+      // can derive the next programme session occurrence (group sessions live
+      // on group_programmes schedule, not on bookings).
       supabase
         .from('group_programmes')
-        .select('id, title, current_spots, max_spots, status')
+        .select('id, title, current_spots, max_spots, status, days_of_week, start_time, duration_minutes, ends_at, venue_name')
         .eq('coach_profile_id', coachProfile.id)
         .in('status', ['active', 'draft'])
         .or(`ends_at.gte.${nowIso},ends_at.is.null`)
@@ -285,12 +351,43 @@ export default async function CoachDashboardPage() {
       completedSteps: completionChecks,
     }
 
-    // Up next session — destructured from upNextResult
+    // BUG-UPNEXT-PROGRAMME-SESSIONS: compute the soonest upcoming session
+    // across BOTH 1-to-1 bookings AND active group programmes. Programme
+    // sessions are derived from days_of_week + start_time (no row exists in
+    // bookings for them), so the helper above projects forward to find the
+    // next occurrence. Tie-break: equal datetime favours the booking
+    // (booking has a real person attached; programme is generic).
     const upNextBooking = upNextResult.data
-    if (upNextBooking) {
-      const startDateTime = new Date(`${upNextBooking.session_date}T${upNextBooking.session_start_time}`)
-      const startsInMs = startDateTime.getTime() - Date.now()
-      const startsInMinutes = Math.floor(startsInMs / (1000 * 60))
+    const bookingDateTime = upNextBooking
+      ? new Date(`${upNextBooking.session_date}T${upNextBooking.session_start_time}`)
+      : null
+
+    const programmesForUpNext = programmesResult.data ?? []
+    const earliestProgramme = programmesForUpNext
+      .filter((p) => p.status === 'active')
+      .map((p) => nextProgrammeOccurrence(p as ProgrammeScheduleRow, now))
+      .filter((s): s is ProgrammeOccurrence => s !== null)
+      .sort((a, b) => a.datetime.getTime() - b.datetime.getTime())[0]
+      ?? null
+
+    // Decide which is soonest.
+    type ChosenSession =
+      | { kind: 'booking'; datetime: Date }
+      | { kind: 'programme'; datetime: Date; occurrence: ProgrammeOccurrence }
+      | null
+    let chosen: ChosenSession = null
+    if (bookingDateTime && earliestProgramme) {
+      chosen = bookingDateTime.getTime() <= earliestProgramme.datetime.getTime()
+        ? { kind: 'booking', datetime: bookingDateTime }
+        : { kind: 'programme', datetime: earliestProgramme.datetime, occurrence: earliestProgramme }
+    } else if (bookingDateTime) {
+      chosen = { kind: 'booking', datetime: bookingDateTime }
+    } else if (earliestProgramme) {
+      chosen = { kind: 'programme', datetime: earliestProgramme.datetime, occurrence: earliestProgramme }
+    }
+
+    if (chosen?.kind === 'booking' && upNextBooking) {
+      const startsInMinutes = Math.floor((chosen.datetime.getTime() - Date.now()) / (1000 * 60))
 
       // booker is a left join — Supabase returns object or array depending on relationship type
       const bookerData = Array.isArray(upNextBooking.booker)
@@ -300,7 +397,7 @@ export default async function CoachDashboardPage() {
 
       const title = upNextBooking.session_type === 'individual'
         ? (bookerName ? `Session with ${bookerName}` : '1-on-1 Session')
-        : 'Group Session' // programme-name lookup deferred (would require chained join)
+        : 'Group Session'
 
       dashboardData.upNextSession = {
         title,
@@ -308,6 +405,25 @@ export default async function CoachDashboardPage() {
         endTime: upNextBooking.session_end_time.substring(0, 5),
         venue: upNextBooking.venue_name ?? 'Venue TBC',
         startsInMinutes,
+        sessionType: upNextBooking.session_type === 'individual' ? '1-to-1' : 'group',
+      }
+    } else if (chosen?.kind === 'programme') {
+      const occ = chosen.occurrence
+      const startsInMinutes = Math.floor((occ.datetime.getTime() - Date.now()) / (1000 * 60))
+      const startHours = String(occ.datetime.getHours()).padStart(2, '0')
+      const startMins = String(occ.datetime.getMinutes()).padStart(2, '0')
+      const endDateTime = new Date(occ.datetime.getTime() + occ.durationMinutes * 60 * 1000)
+      const endHours = String(endDateTime.getHours()).padStart(2, '0')
+      const endMins = String(endDateTime.getMinutes()).padStart(2, '0')
+
+      dashboardData.upNextSession = {
+        title: occ.title,
+        startTime: `${startHours}:${startMins}`,
+        endTime: `${endHours}:${endMins}`,
+        venue: occ.venueName ?? 'Venue TBC',
+        startsInMinutes,
+        sessionType: 'group',
+        groupProgrammeId: occ.programmeId,
       }
     }
 
