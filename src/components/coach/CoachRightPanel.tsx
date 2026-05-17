@@ -49,6 +49,48 @@ interface ProfileData {
   cancellation_window_hours: number
 }
 
+interface ProfileCompleteness {
+  sports: boolean
+  qualifications: boolean
+  availability: boolean
+  unanswered_reviews: number
+}
+
+// API-CMD-CENTRE: 60s TTL session cache for /api/coaches/profile-completeness.
+// Mirrors the stripe-status-cache pattern (TTL gate + corrupt-entry guard +
+// write-fail no-op). Short TTL lets us skip explicit invalidation — when the
+// coach adds a sport/availability slot and navigates back, at most 60s of
+// staleness shows before the next mount refetches.
+const COMPLETENESS_CACHE_KEY = 'crikly:profile-completeness'
+const COMPLETENESS_TTL_MS = 60 * 1000
+
+interface CompletenessCacheEntry {
+  value: ProfileCompleteness
+  storedAt: number
+}
+
+function readCompletenessCache(): ProfileCompleteness | null {
+  try {
+    const raw = sessionStorage.getItem(COMPLETENESS_CACHE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as CompletenessCacheEntry
+    if (!Number.isFinite(parsed.storedAt)) return null
+    if (Date.now() - parsed.storedAt > COMPLETENESS_TTL_MS) return null
+    return parsed.value
+  } catch {
+    return null
+  }
+}
+
+function writeCompletenessCache(value: ProfileCompleteness): void {
+  try {
+    const entry: CompletenessCacheEntry = { value, storedAt: Date.now() }
+    sessionStorage.setItem(COMPLETENESS_CACHE_KEY, JSON.stringify(entry))
+  } catch {
+    // sessionStorage write failed — non-critical
+  }
+}
+
 interface Sport { id: string; name: string }
 
 // ─── Date helpers ────────────────────────────────────────────────────────────
@@ -169,6 +211,13 @@ export function CoachRightPanel() {
   // who had clicked "Connect Stripe" but never finished onboarding.
   const [stripeChargesEnabled, setStripeChargesEnabled] = useState(false)
   const [stripePayoutsEnabled, setStripePayoutsEnabled] = useState(false)
+
+  // API-CMD-CENTRE: server-side completeness checks (sports / quals / avail)
+  // plus the unanswered-reviews count. Replaces the previous +3 STUB and the
+  // hidden Section 3 reviews row (STUB 0). Cached in sessionStorage with a
+  // 60s TTL — completeness changes rarely so a short TTL keeps the UI fresh
+  // without explicit invalidation. Mirrors the stripe-status-cache pattern.
+  const [completeness, setCompleteness] = useState<ProfileCompleteness | null>(null)
   useEffect(() => {
     let cancelled = false
     const cached = readStripeStatusCache()
@@ -189,6 +238,27 @@ export function CoachRightPanel() {
         setStripeChargesEnabled(data.charges_enabled ?? false)
         setStripePayoutsEnabled(data.payouts_enabled ?? false)
         writeStripeStatusCache(data)
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [])
+
+  // API-CMD-CENTRE: server-side completeness — same pattern as the Stripe
+  // effect above (cache hit → instant; cache miss → fetch + writeCache).
+  useEffect(() => {
+    let cancelled = false
+    const cached = readCompletenessCache()
+    if (cached) {
+      setCompleteness(cached)
+      return
+    }
+    fetch('/api/coaches/profile-completeness')
+      .then(async (res) => {
+        if (!res.ok || cancelled) return
+        const data = await res.json() as ProfileCompleteness
+        if (cancelled) return
+        setCompleteness(data)
+        writeCompletenessCache(data)
       })
       .catch(() => {})
     return () => { cancelled = true }
@@ -251,42 +321,44 @@ export function CoachRightPanel() {
   const emptyDayText =
     selectedDayIso === todayIso ? 'No sessions today' : 'No sessions this day'
 
-  // Profile completeness — partial-real, partial-STUB.
+  // Profile completeness — 6 real checks, split between client-side and
+  // server-side data sources.
   //
-  // BUG-COMPLETION-YEARS-EXP fix: removed the years_experience check that
-  // nothing else uses. Now only evaluates checks that match the dashboard's
-  // canonical list.
+  // Client-side (cached profile + Stripe cache):
+  //   1. Basic profile  — name + bio + location
+  //   2. Booking policy — cancellation_window_hours > 0
+  //   3. Stripe         — chargesEnabled && payoutsEnabled
   //
-  // Three checks are evaluable client-side:
-  //   1. Basic profile  — name + bio + location (matches dashboard)
-  //   2. Booking policy — cancellation_window_hours > 0 (matches dashboard)
-  //   3. Stripe         — chargesEnabled && payoutsEnabled (matches ProfileEdit)
+  // Server-side (/api/coaches/profile-completeness, cached 60s):
+  //   4. Sports         — coach_sports count > 0
+  //   5. Qualifications — coach_qualifications count > 0
+  //   6. Availability   — availability_templates count > 0
   //
-  // Three checks need DB counts that the cached profile doesn't expose:
-  //   - Sports (coach_sports count > 0)
-  //   - Qualifications (coach_qualifications count > 0)
-  //   - Availability (availability_templates count > 0)
-  //
-  // API-CMD-CENTRE (follow-up): expose those 3 counts via a new aggregation
-  // endpoint so this stops being a STUB. Until then we assume they pass
-  // (count += 3) so the math reaches 6 max; the UI sub-text stays generic
-  // ("Some checks incomplete — view profile") to avoid implying precision
-  // the data doesn't support. Right-panel completionRow visibility
-  // (completedChecks < 6) therefore only fires when one of the 3 evaluable
-  // checks fails — which is the most actionable surface anyway.
+  // Until the server-side fetch resolves, completeness defaults to 6/6 so
+  // the action-needed row stays hidden (avoids a flash of "Complete your
+  // profile" on first paint for already-complete coaches). On a brand-new
+  // coach with no completeness data yet, the row appears once the fetch
+  // returns and the missing checks surface.
   const completedChecks = useMemo(() => {
     if (!profile) return 6
     let count = 0
     if (profile.full_name && profile.bio && profile.location_city) count++
     if (profile.cancellation_window_hours > 0) count++
     if (stripeChargesEnabled && stripePayoutsEnabled) count++
-    count += 3 // STUB: assume sports + qualifications + availability pass
+    if (completeness) {
+      if (completeness.sports) count++
+      if (completeness.qualifications) count++
+      if (completeness.availability) count++
+    } else {
+      // Pre-load assumption — see comment above.
+      count += 3
+    }
     return Math.min(count, 6)
-  }, [profile, stripeChargesEnabled, stripePayoutsEnabled])
+  }, [profile, stripeChargesEnabled, stripePayoutsEnabled, completeness])
 
-  // BUG-RIGHT-PANEL-UNANSWERED-REVIEWS: STUB 0 until coach_replies-aware
-  // count is exposed via an API endpoint. Row stays hidden in the meantime.
-  const unansweredReviewsCount = 0
+  // API-CMD-CENTRE: real unanswered-reviews count from the same endpoint.
+  // 0 until the fetch resolves — Section 3 row stays hidden in the interim.
+  const unansweredReviewsCount = completeness?.unanswered_reviews ?? 0
 
   const showPendingRow = pendingApproval.length > 0
   const showReviewsRow = unansweredReviewsCount > 0
