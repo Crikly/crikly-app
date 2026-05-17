@@ -40,6 +40,13 @@ interface ReviewsResponse {
   rating_count: number
   rating_change_30d: number
   positive_share: { positive: number; total: number }
+  /** Visible reviews without a coach_reply. API-CMD-CENTRE: exposed here
+   *  so the /coach/reviews page can show "X without a reply" callouts
+   *  without re-filtering client-side. Computed from the already-fetched
+   *  reviews array — no extra DB query. The right-panel command-centre
+   *  reads the same number via /api/coaches/profile-completeness, since
+   *  it doesn't need the full review list. */
+  unanswered_count: number
 }
 
 export async function GET() {
@@ -98,6 +105,7 @@ export async function GET() {
   }))
 
   const positive = reviews.filter((r) => r.rating >= 4).length
+  const unansweredCount = reviews.filter((r) => r.coach_reply === null).length
 
   const body: ReviewsResponse = {
     reviews,
@@ -107,6 +115,7 @@ export async function GET() {
     rating_count: coachResult.data.rating_count,
     rating_change_30d: 0,
     positive_share: { positive, total: reviews.length },
+    unanswered_count: unansweredCount,
   }
 
   return NextResponse.json(body, {
