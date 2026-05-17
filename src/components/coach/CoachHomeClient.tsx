@@ -311,7 +311,7 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
         </div>
 
         {/* Up Next Hero Card */}
-        <section className="flex flex-col gap-3.5">
+        <section className="flex flex-col gap-3.5 max-w-full">
           <div className="flex justify-between items-end">
             <h2 className="text-[19px] font-bold text-gray-900">Up next</h2>
             <span onClick={() => router.push('/coach/schedule')} className="text-[#0077CC] text-sm font-bold cursor-pointer md:hidden hover:underline">View schedule</span>
@@ -387,7 +387,7 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
         </section>
 
         {/* Group Programmes */}
-        <section className="flex flex-col gap-3.5 overflow-x-hidden">
+        <section className="flex flex-col gap-3.5">
           <div className="flex justify-between items-end">
             <h2 className="text-[19px] font-bold text-gray-900">Your programmes</h2>
             <Link href="/coach/programmes" className="text-[#0077CC] text-sm font-bold hover:underline">View all</Link>
