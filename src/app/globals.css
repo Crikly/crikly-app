@@ -16,6 +16,7 @@ html, body {
   background-color: #ffffff !important;
   color-scheme: light !important;
   font-family: 'DM Sans', sans-serif !important;
+  overflow-x: hidden;
 }
 
 .dark * {
