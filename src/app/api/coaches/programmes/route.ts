@@ -33,6 +33,8 @@ interface ProgrammeResponse {
   venue_address: string | null
   min_participants: number | null
   cancellation_window_hours: number
+  /** CF-PROGRAMMES-IMAGE-PICKER: cover photo URL. Null → UI falls back to sport-based placeholder. */
+  image_url: string | null
 }
 
 /**
@@ -77,7 +79,7 @@ export async function GET(
     const adminSupabase = createAdminClient()
     let query = adminSupabase
       .from('group_programmes')
-      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address, min_participants, cancellation_window_hours')
+      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address, min_participants, cancellation_window_hours, image_url')
       .eq('coach_profile_id', coachProfile.id)
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
@@ -128,6 +130,7 @@ export async function GET(
       venue_address: prog.venue_address,
       min_participants: prog.min_participants,
       cancellation_window_hours: prog.cancellation_window_hours,
+      image_url: prog.image_url ?? null,
     }))
 
     return NextResponse.json({ programmes: response }, { status: 200 })
@@ -253,6 +256,17 @@ export async function POST(
       }
     }
 
+    // CF-PROGRAMMES-IMAGE-PICKER: cap image_url at 2000 chars (browser URL
+    // limit). Unsplash URLs are ~100 chars, Storage URLs ~150 chars — 2000
+    // is generous headroom for any legitimate source.
+    if (body.image_url !== undefined && body.image_url !== null) {
+      if (typeof body.image_url !== 'string') {
+        validationErrors.push('image_url must be a string or null')
+      } else if (body.image_url.length > 2000) {
+        validationErrors.push('image_url must be 2000 characters or less')
+      }
+    }
+
     if (validationErrors.length > 0) {
       return NextResponse.json(
         { error: 'Validation failed', details: validationErrors },
@@ -303,6 +317,7 @@ export async function POST(
       block_session_count?: number | null
       late_joining_allowed: boolean
       min_participants?: number | null
+      image_url?: string | null
       cancellation_window_hours: number
       model: string
       skill_level: string
@@ -353,6 +368,10 @@ export async function POST(
 
     if (body.venue_name !== undefined) insertData.venue_name = body.venue_name || null
     if (body.venue_address !== undefined) insertData.venue_address = body.venue_address || null
+    // CF-PROGRAMMES-IMAGE-PICKER: nullable cover photo URL (Unsplash or upload).
+    if (body.image_url !== undefined) {
+      insertData.image_url = typeof body.image_url === 'string' && body.image_url ? body.image_url : null
+    }
 
     // Fix-58-DB-api: populate days_of_week — prefer explicit array, fall back to [day_of_week]
     if (Array.isArray(body.days_of_week) && body.days_of_week.length > 0) {
@@ -368,7 +387,7 @@ export async function POST(
     const { data: newProgramme, error: insertError } = await adminSupabase
       .from('group_programmes')
       .insert(insertData)
-      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address, min_participants, cancellation_window_hours')
+      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address, min_participants, cancellation_window_hours, image_url')
       .single()
 
     if (insertError) {
@@ -409,6 +428,7 @@ export async function POST(
       venue_address: newProgramme.venue_address,
       min_participants: newProgramme.min_participants,
       cancellation_window_hours: newProgramme.cancellation_window_hours,
+      image_url: newProgramme.image_url ?? null,
     }
 
     return NextResponse.json(response, { status: 201 })

@@ -712,7 +712,7 @@ Container for group sessions. Multiple bookings link to one group booking.
 Recurring group training programmes offered by coaches.
 
 **Purpose:** Ongoing weekly/recurring group sessions (e.g. "Saturday Morning Cricket Club").
-**Migration:** 015_coach_schema_gaps.sql
+**Migration:** 015_coach_schema_gaps.sql; 030_add_image_url_to_programmes.sql (image_url column added — CF-PROGRAMMES-IMAGE-PICKER)
 
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
@@ -733,6 +733,7 @@ Recurring group training programmes offered by coaches.
 | block_session_count | integer | YES | null | Number of sessions in block |
 | currency | text | NO | 'GBP' | ISO currency code |
 | status | text | NO | 'draft' | 'draft', 'active', 'full', 'completed', 'cancelled' |
+| image_url | text | YES | null | Cover photo URL — Unsplash curated pick or coach upload (migration 030). Null = use sport-based placeholder in UI. |
 | deleted_at | timestamptz | YES | null | Soft delete |
 | created_at | timestamptz | NO | now() | |
 | updated_at | timestamptz | NO | now() | |

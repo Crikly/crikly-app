@@ -7,6 +7,8 @@ interface Programme {
   current_spots: number
   max_spots: number
   status: string
+  /** CF-PROGRAMMES-IMAGE-PICKER */
+  image_url: string | null
 }
 
 interface DashboardData {
@@ -317,7 +319,7 @@ export default async function CoachDashboardPage() {
       // on group_programmes schedule, not on bookings).
       supabase
         .from('group_programmes')
-        .select('id, title, current_spots, max_spots, status, days_of_week, start_time, duration_minutes, ends_at, venue_name')
+        .select('id, title, current_spots, max_spots, status, days_of_week, start_time, duration_minutes, ends_at, venue_name, image_url')
         .eq('coach_profile_id', coachProfile.id)
         .in('status', ['active', 'draft'])
         .or(`ends_at.gte.${nowIso},ends_at.is.null`)
@@ -485,6 +487,7 @@ export default async function CoachDashboardPage() {
       current_spots: p.current_spots,
       max_spots: p.max_spots,
       status: p.status,
+      image_url: p.image_url ?? null,
     }))
 
   } catch (error) {

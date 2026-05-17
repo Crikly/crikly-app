@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, Lock, Check, Calendar, RefreshCw, CreditCard, Layers, Loader2 } from 'lucide-react'
 import { VenueAutocomplete, type VenueSelection } from '@/components/coach/shared/LocationAutocomplete'
+import { ProgrammeImagePicker } from '@/components/coach/shared/ProgrammeImagePicker'
 
 interface FormData {
   title: string
@@ -17,6 +18,8 @@ interface FormData {
   block_session_count: number | null
   venue_name: string
   venue_address: string
+  // CF-PROGRAMMES-IMAGE-PICKER: cover photo URL (Unsplash or upload).
+  image_url: string | null
 }
 
 interface ReadOnlyData {
@@ -149,6 +152,7 @@ export function EditProgramme({ programmeId }: { programmeId: string }) {
     block_session_count: null,
     venue_name: '',
     venue_address: '',
+    image_url: null,
   })
 
   useEffect(() => setMounted(true), [])
@@ -191,6 +195,7 @@ export function EditProgramme({ programmeId }: { programmeId: string }) {
           block_session_count: data.block_session_count ?? null,
           venue_name: data.venue_name || '',
           venue_address: data.venue_address || '',
+          image_url: data.image_url ?? null,
         })
       } catch {
         setFetchError('Something went wrong. Please try again.')
@@ -232,6 +237,7 @@ export function EditProgramme({ programmeId }: { programmeId: string }) {
         skill_level: form.skill_level,
         venue_name: form.venue_name || null,
         venue_address: form.venue_address || null,
+        image_url: form.image_url,
       }
 
       if (!isLocked) {
@@ -397,6 +403,18 @@ export function EditProgramme({ programmeId }: { programmeId: string }) {
                   </PillButton>
                 ))}
               </div>
+            </div>
+
+            {/* CF-PROGRAMMES-IMAGE-PICKER */}
+            <div className="mb-[22px]">
+              <label className="block text-[12px] font-medium text-[#475569] mb-2">
+                Cover photo <span className="text-[11px] text-[#94A3B8] font-normal ml-1">Optional</span>
+              </label>
+              <ProgrammeImagePicker
+                value={form.image_url}
+                sportName={readOnly.sport_name || 'Cricket'}
+                onChange={(url) => update('image_url', url)}
+              />
             </div>
           </div>
 
