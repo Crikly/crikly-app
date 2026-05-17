@@ -113,3 +113,15 @@ body {
 
 /* Google Places (.pac-container) overrides live in layout.tsx <head>
    so they apply after Google's async style injection. */
+
+/* UX-PROGRAMMES-SCROLL: hide the native scrollbar on horizontal snap rows.
+   Used by the dashboard programmes carousel — the [&::-webkit-scrollbar]
+   arbitrary-value variant broke Turbopack JSX parsing, so we inline the
+   utility here instead. */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}

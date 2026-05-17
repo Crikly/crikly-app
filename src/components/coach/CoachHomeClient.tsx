@@ -411,7 +411,7 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
                 snap-x snap-mandatory + snap-start on each card give a tap-to-scroll
                 feel; the [&::-webkit-scrollbar]:hidden selector hides the native
                 bar on WebKit (Safari/Chrome) — Firefox falls back to a slim native bar. */}
-            <div className="flex flex-row gap-4 overflow-x-auto pb-2 snap-x snap-mandatory [&::-webkit-scrollbar]:hidden">
+            <div className="flex flex-row gap-4 overflow-x-auto pb-2 snap-x snap-mandatory scrollbar-hide">
               {data.programmes.map((prog) => (
                 <div key={prog.id} className="flex-shrink-0 w-[280px] snap-start">
                   <GroupCard
