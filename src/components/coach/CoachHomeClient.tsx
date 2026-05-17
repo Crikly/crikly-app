@@ -12,10 +12,13 @@ import {
 // on every coach route (was rendered here with dashboardData prop).
 // C-Settings-01-UI: pause banner reads is_paused from cached profile fetch
 import { fetchCoachProfileCached } from '@/lib/onboarding-cache'
+// CF-PROGRAMMES-IMAGE-PICKER: shared default placeholder for programmes
+// without an image_url (existing programmes pre-dating the picker).
+import { DEFAULT_PROGRAMME_IMAGE } from '@/lib/programme-images'
 
 const upNextUrl = "https://images.unsplash.com/photo-1771909713672-4e351f1f8b62?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjcmlja2V0JTIwdHJhaW5pbmclMjBzcG9ydHN8ZW58MXx8fHwxNzc1NDg3OTc5fDA&ixlib=rb-4.1.0&q=80&w=1080"
-const group1Url = "https://images.unsplash.com/photo-1761039807856-9f412d0e0a3d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxzcG9ydHMlMjB0cmFpbmluZyUyMGdyb3VwfGVufDF8fHx8MTc3NTQ4Nzk3OXww&ixlib=rb-4.1.0&q=80&w=1080"
-const group2Url = "https://images.unsplash.com/photo-1609422644211-a85c36ee36a7?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxraWRzJTIwcGxheWluZyUyMHNwb3J0c3xlbnwxfHx8fDE3NzU0ODc5Nzl8MA&ixlib=rb-4.1.0&q=80&w=1080"
+// CF-PROGRAMMES-IMAGE-PICKER: group1Url + group2Url removed — GroupCard now
+// uses each programme's real image_url with DEFAULT_PROGRAMME_IMAGE fallback.
 const fallbackAvatarUrl = "https://images.unsplash.com/photo-1609422644211-a85c36ee36a7?w=100&q=80"
 
 interface Programme {
@@ -24,6 +27,8 @@ interface Programme {
   current_spots: number
   max_spots: number
   status: string
+  /** CF-PROGRAMMES-IMAGE-PICKER: nullable cover photo URL. */
+  image_url: string | null
 }
 
 interface DashboardData {
@@ -385,12 +390,12 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {data.programmes.slice(0, 2).map((prog, i) => (
+              {data.programmes.slice(0, 2).map((prog) => (
                 <GroupCard
                   key={prog.id}
                   title={prog.title}
                   spots={`${prog.current_spots} of ${prog.max_spots} spots taken`}
-                  image={i === 0 ? group1Url : group2Url}
+                  image={prog.image_url ?? DEFAULT_PROGRAMME_IMAGE}
                   active={prog.status === 'active'}
                   isDraft={prog.status === 'draft'}
                 />

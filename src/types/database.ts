@@ -1481,6 +1481,7 @@ export type Database = {
           duration_minutes: number
           ends_at: string | null
           id: string
+          image_url: string | null
           late_joining_allowed: boolean
           max_spots: number
           min_participants: number | null
@@ -1516,6 +1517,7 @@ export type Database = {
           duration_minutes: number
           ends_at?: string | null
           id?: string
+          image_url?: string | null
           late_joining_allowed?: boolean
           max_spots: number
           min_participants?: number | null
@@ -1551,6 +1553,7 @@ export type Database = {
           duration_minutes?: number
           ends_at?: string | null
           id?: string
+          image_url?: string | null
           late_joining_allowed?: boolean
           max_spots?: number
           min_participants?: number | null

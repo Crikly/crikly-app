@@ -27,6 +27,8 @@ interface ProgrammeResponse {
   created_at: string
   venue_name: string | null
   venue_address: string | null
+  /** CF-PROGRAMMES-IMAGE-PICKER */
+  image_url: string | null
   skill_level: string
   session_count: number | null
   min_participants: number | null
@@ -69,7 +71,7 @@ export async function GET(
     const adminSupabase = createAdminClient()
     const { data: programme, error: programmeError } = await adminSupabase
       .from('group_programmes')
-      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address, skill_level, session_count, min_participants, cancellation_window_hours')
+      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address, skill_level, session_count, min_participants, cancellation_window_hours, image_url')
       .eq('id', programmeId)
       .eq('coach_profile_id', coachProfile.id)
       .is('deleted_at', null)
@@ -110,6 +112,7 @@ export async function GET(
       created_at: programme.created_at,
       venue_name: programme.venue_name,
       venue_address: programme.venue_address,
+      image_url: programme.image_url ?? null,
       skill_level: programme.skill_level,
       session_count: programme.session_count,
       min_participants: programme.min_participants,
@@ -304,6 +307,15 @@ export async function PATCH(
       }
     }
 
+    // CF-PROGRAMMES-IMAGE-PICKER: matches POST validation — 2000 char cap.
+    if (body.image_url !== undefined && body.image_url !== null) {
+      if (typeof body.image_url !== 'string') {
+        validationErrors.push('image_url must be a string or null')
+      } else if (body.image_url.length > 2000) {
+        validationErrors.push('image_url must be 2000 characters or less')
+      }
+    }
+
     if (validationErrors.length > 0) {
       return NextResponse.json(
         { error: 'Validation failed', details: validationErrors },
@@ -331,6 +343,8 @@ export async function PATCH(
       venue_address?: string | null
       min_participants?: number | null
       cancellation_window_hours?: number
+      // CF-PROGRAMMES-IMAGE-PICKER
+      image_url?: string | null
     } = {
       updated_at: new Date().toISOString(),
     }
@@ -359,6 +373,11 @@ export async function PATCH(
     if (body.venue_address !== undefined) updateData.venue_address = body.venue_address || null
     if (body.min_participants !== undefined) updateData.min_participants = body.min_participants
     if (body.cancellation_window_hours !== undefined) updateData.cancellation_window_hours = body.cancellation_window_hours
+    // CF-PROGRAMMES-IMAGE-PICKER: coerce empty string to null so coaches can
+    // remove a cover photo by sending image_url: null (or '').
+    if (body.image_url !== undefined) {
+      updateData.image_url = typeof body.image_url === 'string' && body.image_url ? body.image_url : null
+    }
 
     // 7. Update programme (adminSupabase already created in step 4)
     const { data: updatedProgramme, error: updateError } = await adminSupabase
@@ -366,7 +385,7 @@ export async function PATCH(
       .update(updateData)
       .eq('id', programmeId)
       .eq('coach_profile_id', coachProfile.id)
-      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address, skill_level, session_count, min_participants, cancellation_window_hours')
+      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address, skill_level, session_count, min_participants, cancellation_window_hours, image_url')
       .single()
 
     if (updateError) {
@@ -405,6 +424,7 @@ export async function PATCH(
       created_at: updatedProgramme.created_at,
       venue_name: updatedProgramme.venue_name,
       venue_address: updatedProgramme.venue_address,
+      image_url: updatedProgramme.image_url ?? null,
       skill_level: updatedProgramme.skill_level,
       session_count: updatedProgramme.session_count,
       min_participants: updatedProgramme.min_participants,

@@ -32,6 +32,7 @@ interface ProgrammeResponse {
   venue_address: string | null
   min_participants: number | null
   cancellation_window_hours: number
+  image_url: string | null
 }
 
 // UI Programme type
@@ -56,6 +57,10 @@ interface Programme {
   duration_minutes: number
   block_price_pence: number | null
   block_session_count: number | null
+  /** CF-PROGRAMMES-IMAGE-PICKER: forward-compatible. Card UI not yet rendering
+   *  this — tracked as OPP-PROGRAMMES-CARD-IMAGE-HEADER. Used today only by
+   *  the dashboard GroupCard and the EditProgramme picker on load. */
+  image_url: string | null
 }
 
 // Module-level helper used by both main component and modal
@@ -176,6 +181,7 @@ export function ProgrammesManagement() {
           duration_minutes: prog.duration_minutes,
           block_price_pence: prog.block_price_pence,
           block_session_count: prog.block_session_count,
+          image_url: prog.image_url ?? null,
         }
       })
   }, [])

@@ -3,6 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, Check, Loader2, Calendar, RefreshCw, CreditCard, Layers, Clock, Users, PoundSterling } from 'lucide-react'
 import { VenueAutocomplete, type VenueSelection } from '@/components/coach/shared/LocationAutocomplete'
+import { ProgrammeImagePicker } from '@/components/coach/shared/ProgrammeImagePicker'
 
 // BUG-PROGRAMME-CREATE-PREVIEW-LOST: previous CustomEvent dispatch +
 // ProgrammePreviewEventDetail interface deleted — the right-panel consumer
@@ -42,6 +43,8 @@ interface FormData {
   price_pence: number
   late_joining_allowed: boolean
   cancellation_window_hours: number
+  // CF-PROGRAMMES-IMAGE-PICKER: cover photo URL (Unsplash curated or upload).
+  image_url: string | null
 }
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -264,6 +267,7 @@ export function CreateProgramme() {
     price_pence: 2800,
     late_joining_allowed: false,
     cancellation_window_hours: 24,
+    image_url: null,
   })
 
   // Fix-58-9: fetch from /api/coaches/sports (coach's configured sports + valid sport_ids)
@@ -374,6 +378,7 @@ export function CreateProgramme() {
       cancellation_window_hours: form.cancellation_window_hours,
       venue_name: form.venue_name || null,
       venue_address: form.venue_address || null,
+      image_url: form.image_url,
       status,
     }
     if (form.schedule_type === 'fixed' && form.fixed_schedule_mode === 'count') {
@@ -626,6 +631,21 @@ export function CreateProgramme() {
                   ))}
                 </div>
               </div>
+              {/* CF-PROGRAMMES-IMAGE-PICKER: only after sport is chosen — picker
+                  filters curated images by sport, and a sport must be selected
+                  for it to render anything meaningful. */}
+              {form.sport_id && (
+                <div className="mb-[22px]">
+                  <label className="block text-[12px] font-medium text-[#475569] mb-2">
+                    Cover photo <span className="text-[11px] text-[#94A3B8] font-normal ml-1">Optional</span>
+                  </label>
+                  <ProgrammeImagePicker
+                    value={form.image_url}
+                    sportName={sports.find((s) => s.sport_id === form.sport_id)?.sport_name ?? 'Cricket'}
+                    onChange={(url) => update('image_url', url)}
+                  />
+                </div>
+              )}
             </>
           )}
 
