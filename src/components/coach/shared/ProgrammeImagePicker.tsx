@@ -3,22 +3,26 @@
 // CF-PROGRAMMES-IMAGE-PICKER: image picker for group programmes.
 //
 // Two tabs:
-//   1. "Choose a photo" — grid of 6 curated Unsplash images filtered by
-//      sport. Selecting one calls onChange with its URL. Always available.
+//   1. "Choose a photo" — grid of 6 cricket images pulled from the Unsplash
+//      search API. The picker fetches 18 photos on mount (cached 24h in
+//      sessionStorage to stay under rate limits), then displays a random 6.
+//      "Refresh photos" re-slices to a different random 6 from the same
+//      cached 18 — no extra API call. Sport_name is Phase-1 unused (only
+//      Cricket today); the query string is hardcoded so future sports will
+//      need a switch on sportName.
 //   2. "Upload your own" — drag/drop or file-input upload to Supabase
 //      Storage bucket `programme-images`. Path is
 //      `{coach_profile_id}/{uuid}.{ext}`. Public URL is written back via
 //      onChange. Validates type + 5MB size client-side. Degrades
-//      gracefully if the bucket doesn't exist or RLS denies the write —
-//      shows "Upload unavailable" rather than throwing.
+//      gracefully if the bucket doesn't exist or RLS denies the write.
 //
 // Phase 1 bucket creation is out of scope here. Filed as
 // INFRA-PROGRAMME-IMAGES-BUCKET in BUILD_PLAN.
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Upload, Image as ImageIcon, Loader2, AlertCircle, RotateCw } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { getImagesForSport, CRICKET_SEEDS } from '@/lib/programme-images'
+import type { ProgrammeImage } from '@/lib/programme-images'
 import { fetchCoachProfileCached } from '@/lib/onboarding-cache'
 
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024
@@ -47,6 +51,60 @@ const MIME_TO_EXT: Record<string, string> = {
   'image/webp': 'webp',
 }
 
+// ─── Unsplash search-API integration ─────────────────────────────────────────
+// The picker fetches 18 cricket photos on first mount, caches the mapped
+// ProgrammeImage[] in sessionStorage for 24h, and displays a random 6 from
+// the pool. "Refresh photos" re-slices in-memory — no extra API call.
+
+const UNSPLASH_CACHE_KEY = 'crikly:unsplash:cricket'
+const UNSPLASH_TTL_MS = 24 * 60 * 60 * 1000
+
+interface UnsplashPhoto {
+  urls: { regular: string }
+  alt_description: string | null
+  user: { name: string }
+}
+
+interface UnsplashSearchResponse {
+  results: UnsplashPhoto[]
+}
+
+interface UnsplashCacheEntry {
+  value: ProgrammeImage[]
+  storedAt: number
+}
+
+function readUnsplashCache(): ProgrammeImage[] | null {
+  try {
+    const raw = sessionStorage.getItem(UNSPLASH_CACHE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as UnsplashCacheEntry
+    if (!Number.isFinite(parsed.storedAt)) return null
+    if (Date.now() - parsed.storedAt > UNSPLASH_TTL_MS) return null
+    if (!Array.isArray(parsed.value)) return null
+    return parsed.value
+  } catch {
+    return null
+  }
+}
+
+function writeUnsplashCache(value: ProgrammeImage[]): void {
+  try {
+    const entry: UnsplashCacheEntry = { value, storedAt: Date.now() }
+    sessionStorage.setItem(UNSPLASH_CACHE_KEY, JSON.stringify(entry))
+  } catch {
+    // non-critical — cache write failure just means we'll refetch next mount
+  }
+}
+
+function clearUnsplashCache(): void {
+  try {
+    sessionStorage.removeItem(UNSPLASH_CACHE_KEY)
+  } catch {
+    // non-critical
+  }
+}
+
 type Tab = 'curated' | 'upload'
 
 export function ProgrammeImagePicker({
@@ -55,30 +113,109 @@ export function ProgrammeImagePicker({
   onChange,
 }: {
   value: string | null
+  /** Phase 1 unused (Cricket-only API query). Kept for forward compatibility
+   *  — when Tennis/Football launch, switch on this to vary the search term. */
   sportName: string
   onChange: (url: string) => void
 }) {
+  // Acknowledge intentional Phase-1 non-use of sportName so lint stays quiet.
+  void sportName
+
   const [tab, setTab] = useState<Tab>('curated')
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [coachProfileId, setCoachProfileId] = useState<string | null>(null)
 
-  // CF-PROGRAMMES-IMAGE-PICKER (revision): seeds drive the curated grid.
-  // Random 6-of-18 on mount; Refresh re-rolls. Each `sig=N` maps to a
-  // different Unsplash cricket photo.
-  const [seeds, setSeeds] = useState<number[]>(() => pickRandom(CRICKET_SEEDS, CURATED_GRID_SIZE))
-  // Per-image load state — Unsplash Source redirects so first paint is blank
-  // until the network resolves. We track which URLs have loaded and fade the
-  // <img> in; the parent button shows bg-gray-100 underneath as a placeholder.
+  // Unsplash pool (18 photos) + displayed slice (random 6 of 18). Refresh
+  // re-rolls the slice without re-fetching. Retry token re-fires the fetch
+  // useEffect on error-retry.
+  const [photoPool, setPhotoPool] = useState<ProgrammeImage[] | null>(null)
+  const [displayedImages, setDisplayedImages] = useState<ProgrammeImage[]>([])
+  const [photoLoading, setPhotoLoading] = useState(true)
+  const [photoError, setPhotoError] = useState<string | null>(null)
+  const [retryToken, setRetryToken] = useState(0)
+
+  // Per-image load state — even with a CDN URL the network has a brief
+  // window where the cell is blank. We track loaded URLs and fade the
+  // <img> in once it paints; the parent button keeps bg-gray-100 underneath
+  // as a placeholder.
   const [loadedUrls, setLoadedUrls] = useState<Set<string>>(new Set())
 
-  const curatedImages = useMemo(() => getImagesForSport(sportName, seeds), [sportName, seeds])
+  // Mount + retry — fetch 18 cricket photos from Unsplash (cache-first).
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadPhotos() {
+      // Cache hit (skipped on retry — retry path clears the cache first).
+      const cached = readUnsplashCache()
+      if (cached && cached.length > 0) {
+        setPhotoPool(cached)
+        setDisplayedImages(pickRandom(cached, CURATED_GRID_SIZE))
+        setPhotoLoading(false)
+        setPhotoError(null)
+        return
+      }
+
+      setPhotoLoading(true)
+      setPhotoError(null)
+
+      const key = process.env.NEXT_PUBLIC_UNSPLASH_ACCESS_KEY
+      if (!key) {
+        // Missing env var — surface a friendly error rather than crashing.
+        console.error('[ProgrammeImagePicker] NEXT_PUBLIC_UNSPLASH_ACCESS_KEY is not set')
+        if (!cancelled) {
+          setPhotoError("Couldn't load photos. Check your connection.")
+          setPhotoLoading(false)
+        }
+        return
+      }
+
+      try {
+        const url = `https://api.unsplash.com/search/photos?query=cricket+coaching&per_page=18&orientation=landscape&client_id=${encodeURIComponent(key)}`
+        const res = await fetch(url)
+        if (!res.ok) throw new Error(`Unsplash search failed (${res.status})`)
+        const data = (await res.json()) as UnsplashSearchResponse
+        if (cancelled) return
+
+        const mapped: ProgrammeImage[] = (data.results ?? []).map((p) => ({
+          url: p.urls.regular,
+          alt: p.alt_description ?? 'Cricket coaching session',
+          credit: p.user.name,
+        }))
+
+        if (mapped.length === 0) {
+          setPhotoError("Couldn't load photos. Check your connection.")
+        } else {
+          setPhotoPool(mapped)
+          setDisplayedImages(pickRandom(mapped, CURATED_GRID_SIZE))
+          writeUnsplashCache(mapped)
+        }
+      } catch (err) {
+        if (cancelled) return
+        console.error('[ProgrammeImagePicker] unsplash fetch failed:', err)
+        setPhotoError("Couldn't load photos. Check your connection.")
+      } finally {
+        if (!cancelled) setPhotoLoading(false)
+      }
+    }
+
+    loadPhotos()
+    return () => { cancelled = true }
+  }, [retryToken])
 
   function handleRefreshPhotos() {
-    setSeeds(pickRandom(CRICKET_SEEDS, CURATED_GRID_SIZE))
-    // Reset the loaded set so the new tiles show placeholders until their
-    // network responses come back.
+    if (!photoPool || photoPool.length === 0) return
+    setDisplayedImages(pickRandom(photoPool, CURATED_GRID_SIZE))
+    // Reset the loaded set so the new tiles show placeholders briefly until
+    // their cached images repaint.
     setLoadedUrls(new Set())
+  }
+
+  function handleRetryFetch() {
+    clearUnsplashCache()
+    setPhotoPool(null)
+    setDisplayedImages([])
+    setRetryToken((t) => t + 1)
   }
 
   function handleImageLoaded(url: string) {
@@ -180,52 +317,74 @@ export function ProgrammeImagePicker({
       </div>
 
       {tab === 'curated' ? (
-        <>
-          {/* Header row: Refresh button on the right re-rolls the 6-image set */}
-          <div className="flex items-center justify-end mb-2">
+        photoError ? (
+          <div className="text-center py-8">
+            <p className="text-[13px] text-gray-700 mb-3">{photoError}</p>
             <button
               type="button"
-              onClick={handleRefreshPhotos}
-              className="inline-flex items-center gap-1 text-[11px] text-[#0077CC] hover:text-[#0066AA] cursor-pointer transition-colors"
+              onClick={handleRetryFetch}
+              className="inline-flex items-center gap-1.5 text-[12px] font-medium text-[#0077CC] hover:text-[#0066AA] cursor-pointer transition-colors"
             >
-              <RotateCw className="w-3 h-3" />
-              Refresh photos
+              <RotateCw className="w-3.5 h-3.5" />
+              Try again
             </button>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5">
-            {curatedImages.map((img) => {
-              const isSelected = value === img.url
-              const isLoaded = loadedUrls.has(img.url)
-              return (
-                <button
-                  key={img.url}
-                  type="button"
-                  onClick={() => onChange(img.url)}
-                  className={
-                    isSelected
-                      ? 'relative aspect-video rounded-xl overflow-hidden ring-2 ring-[#0077CC] cursor-pointer bg-gray-100'
-                      : 'relative aspect-video rounded-xl overflow-hidden cursor-pointer hover:ring-2 hover:ring-[#CBD5E1] transition-all bg-gray-100'
-                  }
-                  aria-label={`Select photo: ${img.alt}`}
-                  aria-pressed={isSelected}
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={img.url}
-                    alt={img.alt}
-                    onLoad={() => handleImageLoaded(img.url)}
-                    className={
-                      isLoaded
-                        ? 'absolute inset-0 w-full h-full object-cover opacity-100 transition-opacity duration-200'
-                        : 'absolute inset-0 w-full h-full object-cover opacity-0'
-                    }
-                  />
-                </button>
-              )
-            })}
-          </div>
-          <p className="text-[11px] text-[#94A3B8] mt-3 text-center">Photos from Unsplash</p>
-        </>
+        ) : (
+          <>
+            {/* Header row: Refresh button on the right re-rolls the 6-image set */}
+            <div className="flex items-center justify-end mb-2">
+              <button
+                type="button"
+                onClick={handleRefreshPhotos}
+                disabled={photoLoading || !photoPool || photoPool.length === 0}
+                className="inline-flex items-center gap-1 text-[11px] text-[#0077CC] hover:text-[#0066AA] cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <RotateCw className="w-3 h-3" />
+                Refresh photos
+              </button>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5">
+              {photoLoading || displayedImages.length === 0
+                ? Array.from({ length: CURATED_GRID_SIZE }).map((_, i) => (
+                    <div
+                      key={i}
+                      className="aspect-video rounded-xl bg-gray-100 animate-pulse"
+                    />
+                  ))
+                : displayedImages.map((img) => {
+                    const isSelected = value === img.url
+                    const isLoaded = loadedUrls.has(img.url)
+                    return (
+                      <button
+                        key={img.url}
+                        type="button"
+                        onClick={() => onChange(img.url)}
+                        className={
+                          isSelected
+                            ? 'relative aspect-video rounded-xl overflow-hidden ring-2 ring-[#0077CC] cursor-pointer bg-gray-100'
+                            : 'relative aspect-video rounded-xl overflow-hidden cursor-pointer hover:ring-2 hover:ring-[#CBD5E1] transition-all bg-gray-100'
+                        }
+                        aria-label={`Select photo: ${img.alt}`}
+                        aria-pressed={isSelected}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={img.url}
+                          alt={img.alt}
+                          onLoad={() => handleImageLoaded(img.url)}
+                          className={
+                            isLoaded
+                              ? 'absolute inset-0 w-full h-full object-cover opacity-100 transition-opacity duration-200'
+                              : 'absolute inset-0 w-full h-full object-cover opacity-0'
+                          }
+                        />
+                      </button>
+                    )
+                  })}
+            </div>
+            <p className="text-[11px] text-[#94A3B8] mt-3 text-center">Photos from Unsplash</p>
+          </>
+        )
       ) : (
         <div className="flex flex-col gap-3">
           <label

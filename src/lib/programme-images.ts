@@ -1,62 +1,34 @@
-// CF-PROGRAMMES-IMAGE-PICKER: programme cover photos via Unsplash Source.
+// CF-PROGRAMMES-IMAGE-PICKER: shared type + default cover image.
 //
-// Was a hardcoded array of 6 curated Cricket URLs. Now generates URLs
-// dynamically using the seed-based `source.unsplash.com` endpoint — no API
-// key, no rate-limit, royalty-free. Each `sig=N` returns a different image
-// from Unsplash's cricket pool, so the picker can show a fresh random set
-// every time it opens (see ProgrammeImagePicker's `seeds` state + Refresh
-// button).
+// History:
+//   - Initial cut shipped a hardcoded 6-URL array.
+//   - Mid-revision moved to seed-based source.unsplash.com URLs — those
+//     have been deprecated upstream and now redirect to a blank/fallback
+//     image, so the picker switched to calling the live Unsplash search API
+//     directly (see ProgrammeImagePicker). The previous CRICKET_SEEDS,
+//     getCricketImages, and getImagesForSport helpers were removed —
+//     nothing in the app calls them anymore.
 //
-// Phase 1 ships Cricket only — when other sports launch, branch in
-// getImagesForSport and add their own URL template.
+// This module now exists for two reasons:
+//   1. ProgrammeImage type shared across picker + storage helpers.
+//   2. DEFAULT_PROGRAMME_IMAGE — a single stable Unsplash CDN URL used by
+//      GroupCard (dashboard) and any other surface that needs to render
+//      a fallback when a programme has no image_url set. Stable URL
+//      (not a search query) so the fallback doesn't shuffle on every render.
 
 export interface ProgrammeImage {
+  /** Full image URL — either an Unsplash CDN URL or a Supabase Storage URL. */
   url: string
+  /** Alt text for accessibility. */
   alt: string
+  /** Photographer / source credit, surfaced at the picker level. */
   credit: string
 }
 
 /**
- * Seed pool for Cricket — 18 distinct seeds gives the picker enough variety
- * that the 6-image grid + a Refresh tap rarely repeats. Extend if needed.
- */
-export const CRICKET_SEEDS = [
-  1, 2, 3, 4, 5, 6, 7, 8, 9,
-  10, 11, 12, 13, 14, 15, 16, 17, 18,
-]
-
-/**
- * Map a list of seeds to ProgrammeImage records. The Unsplash Source URL
- * pattern returns a different image for each `sig` query string value.
- */
-export function getCricketImages(seeds: number[]): ProgrammeImage[] {
-  return seeds.map((seed) => ({
-    url: `https://source.unsplash.com/featured/800x600/?cricket&sig=${seed}`,
-    alt: 'Cricket coaching session',
-    credit: 'Unsplash',
-  }))
-}
-
-/**
- * Default cover photo for programmes with no image_url set — uses seed=1
- * so existing programmes always render the same fallback (no per-render
- * randomisation that would shuffle the GroupCard hero on every refresh).
+ * Fallback cover image for programmes with no `image_url` set. Stable
+ * Unsplash CDN URL — the same image renders every time, so the dashboard
+ * GroupCard hero stays consistent across page loads.
  */
 export const DEFAULT_PROGRAMME_IMAGE =
-  'https://source.unsplash.com/featured/800x600/?cricket&sig=1'
-
-/**
- * Returns 6 (or user-specified) curated images for a sport. Phase 1 only
- * Cricket has its own pool — other sports fall back to the Cricket pool so
- * the picker is never empty. When seeds are omitted, returns a fixed first
- * 6 (deterministic) — the picker passes a shuffled subset for randomness.
- */
-export function getImagesForSport(sportName: string, seeds?: number[]): ProgrammeImage[] {
-  const activeSports = ['cricket']
-  const effectiveSeeds = seeds ?? [1, 2, 3, 4, 5, 6]
-  if (activeSports.includes(sportName.toLowerCase())) {
-    return getCricketImages(effectiveSeeds)
-  }
-  // Fallback: Cricket for any unsupported sport so the picker stays usable.
-  return getCricketImages(effectiveSeeds)
-}
+  'https://images.unsplash.com/photo-1531415074968-036ba1b575da?w=800&q=80'
