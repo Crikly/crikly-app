@@ -384,6 +384,7 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
                   spots={`${prog.current_spots} of ${prog.max_spots} spots taken`}
                   image={i === 0 ? group1Url : group2Url}
                   active={prog.status === 'active'}
+                  isDraft={prog.status === 'draft'}
                 />
               ))}
             </div>
@@ -551,18 +552,22 @@ function ProfileChecklistItem({ title, completed, guidance, isFirstIncomplete, o
   )
 }
 
-function GroupCard({ title, spots, image, active }: { title: string; spots: string; image: string; active?: boolean }) {
+function GroupCard({ title, spots, image, active, isDraft }: { title: string; spots: string; image: string; active?: boolean; isDraft?: boolean }) {
   return (
-    <div className="flex flex-col bg-white border border-gray-100 rounded-[20px] overflow-hidden shadow-[0_2px_16px_rgba(0,0,0,0.03)] cursor-pointer hover:shadow-lg hover:border-gray-200 transition-all group">
+    <div className={`flex flex-col bg-white border border-gray-100 rounded-[20px] overflow-hidden shadow-[0_2px_16px_rgba(0,0,0,0.03)] cursor-pointer hover:shadow-lg hover:border-gray-200 transition-all group ${isDraft ? 'opacity-60' : ''}`}>
       <div className="h-[140px] w-full bg-gray-100 relative overflow-hidden">
         <img src={image} alt={title} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
         <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-        {active && <div className="absolute top-3 left-3 bg-green-500/90 backdrop-blur-sm text-white text-[10px] font-bold uppercase tracking-wide px-2.5 py-1 rounded-full shadow-sm">Active</div>}
+        {isDraft ? (
+          <div className="absolute top-3 left-3 bg-gray-700/90 backdrop-blur-sm text-white text-[10px] font-bold uppercase tracking-wide px-2.5 py-1 rounded-full shadow-sm">Draft</div>
+        ) : active && (
+          <div className="absolute top-3 left-3 bg-green-500/90 backdrop-blur-sm text-white text-[10px] font-bold uppercase tracking-wide px-2.5 py-1 rounded-full shadow-sm">Active</div>
+        )}
       </div>
       <div className="p-4 md:p-5 flex flex-col gap-1.5">
         <h4 className="font-bold text-[17px] text-gray-900 leading-tight group-hover:text-[#0077CC] transition-colors">{title}</h4>
         <div className="flex items-center justify-between mt-2">
-          <p className="text-[13px] font-medium text-gray-500">{spots}</p>
+          <p className="text-[13px] font-medium text-gray-500">{isDraft ? 'Not published yet' : spots}</p>
           <div className="flex -space-x-2">
             {[1,2,3].map(i => (
               <div key={i} className="w-6 h-6 rounded-full border-2 border-white bg-gray-200 shadow-sm overflow-hidden">

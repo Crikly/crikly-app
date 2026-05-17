@@ -67,6 +67,50 @@ function calculateEndTime(startTime: string, durationMinutes: number): string {
   return `${String(endHours).padStart(2, '0')}:${String(endMinutes).padStart(2, '0')}`
 }
 
+// PERF-PROGRAMMES-LOAD: 30s TTL sessionStorage cache for the programmes list.
+// API GET already does a single sports join (no N+1), so the perf gain here
+// is from skipping the round-trip on revisits, not from query work. Mirrors
+// the stripe-status-cache pattern (TTL gate + corrupt-entry guard +
+// write-fail no-op). Explicitly invalidated before refetch on every mutation
+// (publish / cancel / delete) so the cache never serves a stale list.
+const PROGRAMMES_CACHE_KEY = 'crikly:programmes'
+const PROGRAMMES_TTL_MS = 30 * 1000
+
+interface ProgrammesCacheEntry {
+  value: ProgrammeResponse[]
+  storedAt: number
+}
+
+function readProgrammesCache(): ProgrammeResponse[] | null {
+  try {
+    const raw = sessionStorage.getItem(PROGRAMMES_CACHE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as ProgrammesCacheEntry
+    if (!Number.isFinite(parsed.storedAt)) return null
+    if (Date.now() - parsed.storedAt > PROGRAMMES_TTL_MS) return null
+    return parsed.value
+  } catch {
+    return null
+  }
+}
+
+function writeProgrammesCache(value: ProgrammeResponse[]): void {
+  try {
+    const entry: ProgrammesCacheEntry = { value, storedAt: Date.now() }
+    sessionStorage.setItem(PROGRAMMES_CACHE_KEY, JSON.stringify(entry))
+  } catch {
+    // non-critical
+  }
+}
+
+function clearProgrammesCache(): void {
+  try {
+    sessionStorage.removeItem(PROGRAMMES_CACHE_KEY)
+  } catch {
+    // non-critical
+  }
+}
+
 export function ProgrammesManagement() {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<Tab>('Active')
@@ -81,20 +125,10 @@ export function ProgrammesManagement() {
   const [actionError, setActionError] = useState<{ id: string; message: string } | null>(null)
   const [detailProgramme, setDetailProgramme] = useState<Programme | null>(null)
 
-  // CD-08: Fetch programmes — useCallback so action handlers can call it
-  const fetchProgrammes = useCallback(async () => {
-    try {
-      setLoading(true)
-      setError(null)
-
-      const response = await fetch('/api/coaches/programmes')
-      if (!response.ok) {
-        throw new Error('Failed to fetch programmes')
-      }
-
-      const data = await response.json()
-
-      const transformed: Programme[] = (data.programmes || []).map((prog: ProgrammeResponse) => {
+  // CD-08: Fetch programmes — useCallback so action handlers can call it.
+  // PERF-PROGRAMMES-LOAD: cache-first read, fetch on miss, write back.
+  const transformProgrammes = useCallback((rawProgrammes: ProgrammeResponse[]): Programme[] => {
+    return rawProgrammes.map((prog: ProgrammeResponse) => {
         const daysArr = Array.isArray(prog.days_of_week) && prog.days_of_week.length > 0
           ? prog.days_of_week
           : prog.day_of_week !== null
@@ -144,15 +178,40 @@ export function ProgrammesManagement() {
           block_session_count: prog.block_session_count,
         }
       })
+  }, [])
 
-      setProgrammes(transformed)
+  const fetchProgrammes = useCallback(async () => {
+    // Cache hit → skip the round-trip and the loading spinner. Cache is
+    // invalidated by each mutation handler before refetch, so a hit always
+    // reflects pre-mutation state (or within the 30s TTL on first load).
+    const cached = readProgrammesCache()
+    if (cached) {
+      setProgrammes(transformProgrammes(cached))
+      setLoading(false)
+      setError(null)
+      return
+    }
+
+    try {
+      setLoading(true)
+      setError(null)
+
+      const response = await fetch('/api/coaches/programmes')
+      if (!response.ok) {
+        throw new Error('Failed to fetch programmes')
+      }
+
+      const data = await response.json()
+      const raw = (data.programmes ?? []) as ProgrammeResponse[]
+      writeProgrammesCache(raw)
+      setProgrammes(transformProgrammes(raw))
     } catch (err) {
       console.error('Failed to fetch programmes:', err)
       setError('Failed to load programmes. Please try again.')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [transformProgrammes])
 
   useEffect(() => {
     fetchProgrammes()
@@ -174,6 +233,7 @@ export function ProgrammesManagement() {
         setActionError({ id: programmeId, message: data.error || 'Failed to publish programme' })
         return
       }
+      clearProgrammesCache()
       await fetchProgrammes()
     } catch {
       setActionError({ id: programmeId, message: 'Something went wrong. Please try again.' })
@@ -198,6 +258,7 @@ export function ProgrammesManagement() {
         setActionError({ id: programmeId, message: data.error || 'Failed to cancel programme' })
         return
       }
+      clearProgrammesCache()
       await fetchProgrammes()
     } catch {
       setActionError({ id: programmeId, message: 'Something went wrong. Please try again.' })
@@ -221,6 +282,7 @@ export function ProgrammesManagement() {
         setActionError({ id: programmeId, message: data.error || 'Failed to delete programme' })
         return
       }
+      clearProgrammesCache()
       await fetchProgrammes()
     } catch {
       setActionError({ id: programmeId, message: 'Something went wrong. Please try again.' })

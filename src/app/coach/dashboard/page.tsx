@@ -244,13 +244,17 @@ export default async function CoachDashboardPage() {
         .eq('status', 'confirmed')
         .eq('session_date', todayDateStr)
         .order('session_start_time', { ascending: true }),
-      // Active group programmes
+      // BUG-DASHBOARD-PROGRAMMES-NOT-SHOWING: show drafts alongside active
+      // programmes (rendered with muted styling + "Draft" badge in
+      // CoachHomeClient's GroupCard). Also handles rolling programmes that
+      // have no end date — `.or('ends_at.gte.<now>,ends_at.is.null')` keeps
+      // both fixed-end (still upcoming) and rolling (open-ended) programmes.
       supabase
         .from('group_programmes')
         .select('id, title, current_spots, max_spots, status')
         .eq('coach_profile_id', coachProfile.id)
-        .eq('status', 'active')
-        .gte('ends_at', nowIso)
+        .in('status', ['active', 'draft'])
+        .or(`ends_at.gte.${nowIso},ends_at.is.null`)
         .is('deleted_at', null)
         .order('starts_at', { ascending: true }),
     ])
