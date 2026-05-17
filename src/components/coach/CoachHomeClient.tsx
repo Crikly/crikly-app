@@ -110,7 +110,7 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
   // CF-D11a: Profile completion tracking - now from real data
   const profileSteps = [
     { title: 'Basic profile', completed: data.profileCompletion.completedSteps[0] || false, guidance: '' },
-    { title: 'Sport & pricing', completed: data.profileCompletion.completedSteps[1] || false, guidance: '' },
+    { title: 'Sport', completed: data.profileCompletion.completedSteps[1] || false, guidance: '' },
     { title: 'Qualifications', completed: data.profileCompletion.completedSteps[2] || false, guidance: 'Add your coaching badge to boost trust' },
     { title: 'Availability', completed: data.profileCompletion.completedSteps[3] || false, guidance: 'Set when you coach so parents can book you' },
     { title: 'Booking policy', completed: data.profileCompletion.completedSteps[4] || false, guidance: 'Tell parents how you handle cancellations' },

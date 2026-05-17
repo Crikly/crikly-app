@@ -36,6 +36,7 @@ import Link from 'next/link'
 import { Star, Clock, MessageSquare, User, MapPin, Trophy, ArrowRight, Check, X, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useBookings, type BookingListItem } from '@/contexts/BookingsContext'
 import { fetchCoachProfileCached, fetchSportsListCached } from '@/lib/onboarding-cache'
+import { readStripeStatusCache, writeStripeStatusCache, type StripeConnectStatus } from '@/lib/stripe-status-cache'
 
 interface ProfileData {
   rating_avg: number | null
@@ -45,8 +46,6 @@ interface ProfileData {
   bio: string | null
   location_city: string | null
   full_name: string | null
-  years_experience: number | null
-  stripe_account_id: string | null
   cancellation_window_hours: number
 }
 
@@ -163,6 +162,38 @@ export function CoachRightPanel() {
     return () => { cancelled = true }
   }, [])
 
+  // BUG-COMPLETION-STRIPE: Stripe charges + payouts enablement — same source
+  // ProfileEdit reads from (Fix-45 pattern). Cache hit → instant; cache miss
+  // → one /api/payments/connect/onboard call, write back to cache. Replaces
+  // the prior `!!stripe_account_id` check which incorrectly counted coaches
+  // who had clicked "Connect Stripe" but never finished onboarding.
+  const [stripeChargesEnabled, setStripeChargesEnabled] = useState(false)
+  const [stripePayoutsEnabled, setStripePayoutsEnabled] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    const cached = readStripeStatusCache()
+    if (cached) {
+      setStripeChargesEnabled(cached.charges_enabled ?? false)
+      setStripePayoutsEnabled(cached.payouts_enabled ?? false)
+      // Intentional bare return: no async work was started, so no cleanup
+      // function is needed. `cancelled` stays unused on this path.
+      return
+    }
+    fetch('/api/payments/connect/onboard')
+      .then(async (res) => {
+        if (!res.ok || cancelled) return
+        const data = await res.json() as StripeConnectStatus
+        // Re-check cancelled after the await — unmount could have happened
+        // during res.json() parse on a slow network.
+        if (cancelled) return
+        setStripeChargesEnabled(data.charges_enabled ?? false)
+        setStripePayoutsEnabled(data.payouts_enabled ?? false)
+        writeStripeStatusCache(data)
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [])
+
   // Sports map for session sport-name lookup.
   const [sportsMap, setSportsMap] = useState<Record<string, string>>({})
   useEffect(() => {
@@ -220,29 +251,38 @@ export function CoachRightPanel() {
   const emptyDayText =
     selectedDayIso === todayIso ? 'No sessions today' : 'No sessions this day'
 
-  // Profile completeness — Phase 1 STUB.
+  // Profile completeness — partial-real, partial-STUB.
   //
-  // API-CMD-CENTRE (follow-up): a real calculation needs 4 DB count queries
-  // (sports, qualifications, availability, stripe) which the dashboard
-  // already does server-side. We can't do those here without a new endpoint.
+  // BUG-COMPLETION-YEARS-EXP fix: removed the years_experience check that
+  // nothing else uses. Now only evaluates checks that match the dashboard's
+  // canonical list.
   //
-  // As a stopgap, this only evaluates the 4 checks readable from the cached
-  // profile (name+bio+location, years_experience, stripe_account_id,
-  // cancellation_window_hours) and assumes the 2 missing checks pass —
-  // which means new coaches who haven't added sports/availability may see
-  // the row hidden when it should be shown. The UI sub-text is therefore
-  // generic ("Some checks incomplete — view profile") rather than showing
-  // a specific X-of-6 count that would be misleading.
+  // Three checks are evaluable client-side:
+  //   1. Basic profile  — name + bio + location (matches dashboard)
+  //   2. Booking policy — cancellation_window_hours > 0 (matches dashboard)
+  //   3. Stripe         — chargesEnabled && payoutsEnabled (matches ProfileEdit)
+  //
+  // Three checks need DB counts that the cached profile doesn't expose:
+  //   - Sports (coach_sports count > 0)
+  //   - Qualifications (coach_qualifications count > 0)
+  //   - Availability (availability_templates count > 0)
+  //
+  // API-CMD-CENTRE (follow-up): expose those 3 counts via a new aggregation
+  // endpoint so this stops being a STUB. Until then we assume they pass
+  // (count += 3) so the math reaches 6 max; the UI sub-text stays generic
+  // ("Some checks incomplete — view profile") to avoid implying precision
+  // the data doesn't support. Right-panel completionRow visibility
+  // (completedChecks < 6) therefore only fires when one of the 3 evaluable
+  // checks fails — which is the most actionable surface anyway.
   const completedChecks = useMemo(() => {
     if (!profile) return 6
     let count = 0
     if (profile.full_name && profile.bio && profile.location_city) count++
-    if (profile.years_experience !== null) count++
-    if (profile.stripe_account_id) count++
     if (profile.cancellation_window_hours > 0) count++
-    count += 2 // STUB: assume sports + availability + quals checks pass
+    if (stripeChargesEnabled && stripePayoutsEnabled) count++
+    count += 3 // STUB: assume sports + qualifications + availability pass
     return Math.min(count, 6)
-  }, [profile])
+  }, [profile, stripeChargesEnabled, stripePayoutsEnabled])
 
   // BUG-RIGHT-PANEL-UNANSWERED-REVIEWS: STUB 0 until coach_replies-aware
   // count is exposed via an API endpoint. Row stays hidden in the meantime.

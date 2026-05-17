@@ -268,15 +268,21 @@ export function ProfileStep() {
     }
   }
 
-  // AF-M-Wave-1: derive from 5 user-controlled fields (defaults excluded — travelRadius/selectedExperience/selectedLanguages have non-empty defaults that would always score as filled)
+  // BUG-COMPLETION-BASIC-PROFILE: derive from 4 user-controlled fields.
+  // Was 5 — removed `gender` because PRD REQ-C-028 doesn't list it as a
+  // completion gate. Gender stays in the form as a fillable field but is
+  // no longer scored against the step progress meter. Aligns this step's
+  // completeness with the dashboard's basic-profile check (name + bio +
+  // location + avatar). Defaults still excluded (travelRadius,
+  // selectedExperience, selectedLanguages have non-empty defaults that
+  // would always score as filled).
   const filledCount = [
     !!displayName.trim(),
     !!bio.trim(),
     !!(baseLocation.trim() || locationPostcode?.trim()),
-    !!gender,
     !!uploadedAvatarUrl,
   ].filter(Boolean).length
-  const profileCompleteness = Math.round((filledCount / 5) * 100)
+  const profileCompleteness = Math.round((filledCount / 4) * 100)
   
   return (
     <div className="flex-1 overflow-y-auto bg-transparent font-sans text-gray-900 flex">

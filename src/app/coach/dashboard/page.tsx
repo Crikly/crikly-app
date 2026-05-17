@@ -257,8 +257,18 @@ export default async function CoachDashboardPage() {
 
     // Profile completion — reconstruct array (order matters for completedSteps).
     // Fix-14B: Match Profile Hub logic (6 checks, not 7).
+    // BUG-COMPLETION-BASIC-PROFILE: avatar_url added to align with PRD REQ-C-028
+    // which requires a profile photo for parents to trust a coach. Gender is
+    // NOT a completion gate (PRD doesn't require it).
+    // BUG-COMPLETION-STRIPE: still using `!!stripe_account_id` here rather than
+    // `chargesEnabled && payoutsEnabled` because the dashboard is a server
+    // component — checking real Stripe status would require either an 800ms
+    // Stripe API call per page load or properly wiring `stripe_onboarding_complete`
+    // from the Stripe webhook (BUG-STRIPE-ONBOARDING-COMPLETE-WIRING). Until
+    // that follow-up lands, this check stays loose and may over-report Stripe
+    // completion vs ProfileEdit + the right panel.
     const completionChecks: boolean[] = [
-      !!(userProfile.full_name && coachProfile.bio && userProfile.location_city),
+      !!(userProfile.full_name && coachProfile.bio && userProfile.location_city && userProfile.avatar_url),
       (sportsCountResult.count ?? 0) > 0,
       (qualsCountResult.count ?? 0) > 0,
       (availCountResult.count ?? 0) > 0,
