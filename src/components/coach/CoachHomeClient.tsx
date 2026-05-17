@@ -407,7 +407,7 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
               </button>
             </div>
           ) : (
-            <div className="flex flex-row gap-4 overflow-x-auto pb-2 snap-x snap-mandatory scrollbar-hide">
+            <div className="flex flex-row gap-4 overflow-x-auto pb-2 snap-x snap-mandatory scrollbar-hide w-full">
               {data.programmes.map((prog) => (
                 <div key={prog.id} className="flex-shrink-0 w-[280px] snap-start">
                   <GroupCard

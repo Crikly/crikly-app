@@ -144,7 +144,7 @@ export function CoachLayoutClient({
   const notificationBadge = notificationCount > 9 ? '9+' : notificationCount.toString()
 
   return (
-    <div className="h-screen overflow-hidden bg-white text-gray-900 flex w-full max-w-[1600px] mx-auto">
+    <div className="h-screen overflow-hidden overflow-x-hidden bg-white text-gray-900 flex w-full max-w-[1600px] mx-auto">
       {/* Desktop Sidebar */}
       <aside className="hidden lg:flex w-72 shrink-0 flex-col bg-white border-r border-gray-100 p-6 sticky top-0 h-screen z-10">
         <Link href="/coach/dashboard" className="mb-6 flex justify-center">
@@ -232,7 +232,7 @@ export function CoachLayoutClient({
           universal right-panel command-centre can read sessions everywhere.
           Both <main> and the right panel are inside the same provider. */}
       <BookingsProvider>
-        <main className="flex-1 min-w-0 overflow-y-auto relative bg-white">
+        <main className="flex-1 overflow-y-auto relative bg-white">
           {children}
         </main>
         {showRightPanel && <CoachRightPanel />}
