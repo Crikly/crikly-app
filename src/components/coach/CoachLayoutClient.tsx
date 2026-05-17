@@ -232,7 +232,7 @@ export function CoachLayoutClient({
           universal right-panel command-centre can read sessions everywhere.
           Both <main> and the right panel are inside the same provider. */}
       <BookingsProvider>
-        <main className="flex-1 overflow-y-auto relative bg-white">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden relative bg-white">
           {children}
         </main>
         {showRightPanel && <CoachRightPanel />}
