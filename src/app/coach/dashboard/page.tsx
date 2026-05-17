@@ -27,6 +27,10 @@ interface DashboardData {
     startsInMinutes: number
     sessionType: '1-to-1' | 'group'
     groupProgrammeId?: string
+    /** BUG-UPNEXT-IMAGE: programme cover photo for group sessions. Null for
+     *  1-to-1 bookings — CoachHomeClient falls back to the hardcoded
+     *  upNextUrl hero image in that case. */
+    image_url?: string | null
   } | null
   weeklyStats: {
     sessionsThisWeek: number
@@ -68,6 +72,7 @@ interface ProgrammeScheduleRow {
   ends_at: string | null
   venue_name: string | null
   status: string
+  image_url: string | null
 }
 
 interface ProgrammeOccurrence {
@@ -76,13 +81,14 @@ interface ProgrammeOccurrence {
   title: string
   venueName: string | null
   programmeId: string
+  imageUrl: string | null
 }
 
 function nextProgrammeOccurrence(
   programme: ProgrammeScheduleRow,
   now: Date,
 ): ProgrammeOccurrence | null {
-  const { days_of_week, start_time, duration_minutes, ends_at, title, venue_name, id } = programme
+  const { days_of_week, start_time, duration_minutes, ends_at, title, venue_name, id, image_url } = programme
   if (!days_of_week || days_of_week.length === 0 || !start_time) return null
 
   const [h, m] = start_time.split(':').map(Number) // HH:MM[:SS] — seconds ignored
@@ -103,6 +109,7 @@ function nextProgrammeOccurrence(
       title,
       venueName: venue_name,
       programmeId: id,
+      imageUrl: image_url,
     }
   }
   return null
@@ -426,6 +433,7 @@ export default async function CoachDashboardPage() {
         startsInMinutes,
         sessionType: 'group',
         groupProgrammeId: occ.programmeId,
+        image_url: occ.imageUrl,
       }
     }
 

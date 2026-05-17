@@ -21,6 +21,20 @@ const upNextUrl = "https://images.unsplash.com/photo-1771909713672-4e351f1f8b62?
 // uses each programme's real image_url with DEFAULT_PROGRAMME_IMAGE fallback.
 const fallbackAvatarUrl = "https://images.unsplash.com/photo-1609422644211-a85c36ee36a7?w=100&q=80"
 
+// BUG-UPNEXT-TIME-FORMAT: smart "starts in" labels — minutes for the first
+// hour, then h+m up to a day, then days for sessions that are 24h+ out
+// (group programme sessions can be days away when the dashboard renders).
+function formatStartsIn(minutes: number): string {
+  if (minutes <= 0) return 'Starting now'
+  if (minutes < 60) return `${minutes}m`
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  if (h < 24) return m > 0 ? `${h}h ${m}m` : `${h}h`
+  const d = Math.floor(h / 24)
+  const rh = h % 24
+  return rh > 0 ? `${d}d ${rh}h` : `${d}d`
+}
+
 interface Programme {
   id: string
   title: string
@@ -47,6 +61,8 @@ interface DashboardData {
     startsInMinutes: number
     sessionType: '1-to-1' | 'group'
     groupProgrammeId?: string
+    /** BUG-UPNEXT-IMAGE: group sessions carry their programme's cover photo. */
+    image_url?: string | null
   } | null
   weeklyStats: {
     sessionsThisWeek: number
@@ -302,11 +318,13 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
           </div>
           {data.upNextSession ? (
             <div className="relative h-64 md:h-[340px] w-full rounded-2xl md:rounded-[24px] overflow-hidden shadow-sm group cursor-pointer isolate">
-              <img src={upNextUrl} alt="Cricket Training" className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105 -z-10" />
+              <img src={data.upNextSession.image_url ?? upNextUrl} alt="Cricket Training" className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105 -z-10" />
               <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-transparent" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0) 55%)' }}></div>
               <div className="absolute top-4 left-4 md:top-6 md:left-6 flex items-center gap-2">
                 <div className="bg-white/20 backdrop-blur-md border border-white/20 text-white text-[13px] font-bold px-3.5 py-1.5 rounded-full shadow-sm">
-                  Starts in {data.upNextSession.startsInMinutes > 0 ? `${data.upNextSession.startsInMinutes}m` : 'now'}
+                  {data.upNextSession.startsInMinutes <= 0
+                    ? formatStartsIn(data.upNextSession.startsInMinutes)
+                    : `Starts in ${formatStartsIn(data.upNextSession.startsInMinutes)}`}
                 </div>
                 {/* BUG-UPNEXT-PROGRAMME-SESSIONS: session-type badge */}
                 <div className="bg-white/20 backdrop-blur-md border border-white/20 text-white text-[13px] font-bold px-3.5 py-1.5 rounded-full shadow-sm">
@@ -389,16 +407,21 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {data.programmes.slice(0, 2).map((prog) => (
-                <GroupCard
-                  key={prog.id}
-                  title={prog.title}
-                  spots={`${prog.current_spots} of ${prog.max_spots} spots taken`}
-                  image={prog.image_url ?? DEFAULT_PROGRAMME_IMAGE}
-                  active={prog.status === 'active'}
-                  isDraft={prog.status === 'draft'}
-                />
+            {/* UX-PROGRAMMES-SCROLL: horizontal swipeable row replaces the 2-card grid.
+                snap-x snap-mandatory + snap-start on each card give a tap-to-scroll
+                feel; the [&::-webkit-scrollbar]:hidden selector hides the native
+                bar on WebKit (Safari/Chrome) — Firefox falls back to a slim native bar. */}
+            <div className="flex flex-row gap-4 overflow-x-auto pb-2 snap-x snap-mandatory [&::-webkit-scrollbar]:hidden">
+              {data.programmes.map((prog) => (
+                <div key={prog.id} className="flex-shrink-0 w-[280px] snap-start">
+                  <GroupCard
+                    title={prog.title}
+                    spots={`${prog.current_spots} of ${prog.max_spots} spots taken`}
+                    image={prog.image_url ?? DEFAULT_PROGRAMME_IMAGE}
+                    active={prog.status === 'active'}
+                    isDraft={prog.status === 'draft'}
+                  />
+                </div>
               ))}
             </div>
           )}
