@@ -5,6 +5,7 @@ import { ArrowLeft, Lock, Check, Calendar, RefreshCw, CreditCard, Layers, Loader
 import { VenueAutocomplete, type VenueSelection } from '@/components/coach/shared/LocationAutocomplete'
 import { ProgrammeImagePicker } from '@/components/coach/shared/ProgrammeImagePicker'
 import { PROGRAMME_AGE_GROUPS, type ProgrammeAgeGroup, ALL_AGES_LABEL, isProgrammeAgeGroup } from './programmeConstants'
+import { generateProgrammeSessionDates } from '@/lib/programme-sessions'
 
 interface FormData {
   title: string
@@ -15,6 +16,8 @@ interface FormData {
   days_of_week: number[]
   start_time: string
   duration_minutes: number
+  // CF-PROG-START-DATE: first session date / enrolment open date, YYYY-MM-DD.
+  starts_at: string
   max_spots: number
   payment_type: 'per_session' | 'block_upfront'
   price_pence: number
@@ -31,6 +34,8 @@ interface ReadOnlyData {
   current_spots: number
   status: string
   session_count: number | null
+  // CF-PROG-START-DATE: needed for sessions preview in end-date-mode programmes.
+  ends_at: string | null
 }
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -140,6 +145,7 @@ export function EditProgramme({ programmeId }: { programmeId: string }) {
     current_spots: 0,
     status: 'draft',
     session_count: null,
+    ends_at: null,
   })
 
   const [form, setForm] = useState<FormData>({
@@ -150,6 +156,7 @@ export function EditProgramme({ programmeId }: { programmeId: string }) {
     days_of_week: [6],
     start_time: '09:00',
     duration_minutes: 60,
+    starts_at: '',
     max_spots: 8,
     payment_type: 'per_session',
     price_pence: 0,
@@ -177,6 +184,9 @@ export function EditProgramme({ programmeId }: { programmeId: string }) {
           current_spots: data.current_spots ?? 0,
           status: data.status || 'draft',
           session_count: data.session_count ?? null,
+          // CF-PROG-START-DATE: API returns ends_at on the single-programme GET
+          // (not the list). Used by the sessions preview in end-date mode.
+          ends_at: typeof data.ends_at === 'string' ? data.ends_at : null,
         })
         setForm({
           title: data.title || '',
@@ -197,6 +207,11 @@ export function EditProgramme({ programmeId }: { programmeId: string }) {
               : [data.day_of_week ?? 6],
           start_time: data.start_time ? (data.start_time as string).substring(0, 5) : '09:00',
           duration_minutes: data.duration_minutes || 60,
+          // CF-PROG-START-DATE: convert timestamptz from API → YYYY-MM-DD for
+          // the <input type="date"> control. Empty string when absent.
+          starts_at: typeof data.starts_at === 'string' && data.starts_at
+            ? new Date(data.starts_at).toISOString().split('T')[0]
+            : '',
           max_spots: data.max_spots || 8,
           payment_type: data.payment_type === 'block_upfront' ? 'block_upfront' : 'per_session',
           price_pence:
@@ -280,6 +295,10 @@ export function EditProgramme({ programmeId }: { programmeId: string }) {
         patchBody.day_of_week = form.days_of_week[0] ?? 0
         patchBody.start_time = form.start_time
         patchBody.duration_minutes = form.duration_minutes
+        // CF-PROG-START-DATE: locked alongside the rest of the schedule once
+        // enrolments exist. Send only when non-empty so the server doesn't
+        // null-out an existing value.
+        if (form.starts_at) patchBody.starts_at = form.starts_at
         patchBody.max_spots = form.max_spots
         patchBody.payment_type = form.payment_type
         if (form.payment_type === 'per_session') {
@@ -529,6 +548,75 @@ export function EditProgramme({ programmeId }: { programmeId: string }) {
                     ))}
                   </div>
                 </div>
+              </div>
+
+              {/* CF-PROG-START-DATE: first session / enrolment open date. Inside
+                  the schedule lock wrapper — also locked once current_spots > 0.
+                  DEBT: restyle to match design system in CF-R04 audit. */}
+              <div className="mb-[22px]">
+                <div className="flex items-center gap-2 mb-2">
+                  <Calendar size={16} className="text-neutral-400" />
+                  <label className="block text-xs font-medium text-neutral-600">
+                    {readOnly.schedule_type === 'fixed' ? 'FIRST SESSION DATE' : 'ENROLMENT OPENS FROM'}
+                    {readOnly.schedule_type === 'rolling' && (
+                      <span className="text-[11px] text-[#94A3B8] font-normal ml-1">Optional</span>
+                    )}
+                  </label>
+                </div>
+                <input
+                  type="date"
+                  value={form.starts_at}
+                  min={new Date().toISOString().split('T')[0]}
+                  onChange={(e) => update('starts_at', e.target.value)}
+                  className="w-full h-11 px-3 rounded-[10px] bg-neutral-50 border border-neutral-100 text-sm text-neutral-900 focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20"
+                />
+                {/* Sessions preview — fixed programmes only. Count-mode uses
+                    readOnly.session_count; end-date-mode falls back to
+                    readOnly.ends_at (exposed by the single-programme GET).
+                    Known approximation: if the coach changes form.starts_at in
+                    this session, the end-date-mode preview still bounds against
+                    the originally-loaded readOnly.ends_at (not a server-recomputed
+                    value). The server PATCH recompute uses the merged state, so
+                    the persisted result is correct — the preview is cosmetic.
+                    Acceptable since this only affects the unlocked draft case. */}
+                {readOnly.schedule_type === 'fixed' && form.starts_at && form.days_of_week.length > 0 && (() => {
+                  const hasCount = typeof readOnly.session_count === 'number' && readOnly.session_count > 0
+                  const endDateStr = readOnly.ends_at
+                    ? new Date(readOnly.ends_at).toISOString().split('T')[0]
+                    : ''
+                  const mode: 'count' | 'end_date' = hasCount ? 'count' : 'end_date'
+                  const preview = generateProgrammeSessionDates({
+                    startDate: form.starts_at,
+                    days: form.days_of_week,
+                    mode,
+                    count: hasCount ? (readOnly.session_count ?? 0) : 0,
+                    endDate: endDateStr,
+                  })
+                  if (preview.length === 0) return null
+                  const startLabel = new Date(form.starts_at + 'T00:00:00').toLocaleDateString('en-GB', {
+                    weekday: 'long', day: 'numeric', month: 'long',
+                  })
+                  const shown = preview.slice(0, 12).map((yyyymmdd) => {
+                    const d = new Date(yyyymmdd + 'T00:00:00')
+                    const today = new Date()
+                    const sameYear = d.getFullYear() === today.getFullYear()
+                    return d.toLocaleDateString('en-GB', {
+                      weekday: 'short', day: 'numeric', month: 'short',
+                      ...(sameYear ? {} : { year: 'numeric' }),
+                    })
+                  })
+                  const overflow = preview.length - 12
+                  return (
+                    <div className="mt-3 p-3 bg-brand-50 rounded-[10px]">
+                      <p className="text-xs font-medium text-brand-800 mb-1">
+                        {preview.length} session{preview.length === 1 ? '' : 's'} starting {startLabel}
+                      </p>
+                      <p className="text-xs text-brand-600">
+                        {shown.join(' · ')}{overflow > 0 ? ` · +${overflow} more` : ''}
+                      </p>
+                    </div>
+                  )
+                })()}
               </div>
 
             </div>

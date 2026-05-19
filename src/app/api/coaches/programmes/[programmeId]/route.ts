@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireCoachContext } from '@/lib/auth/require-coach'
 import { PROGRAMME_AGE_GROUPS } from '@/components/coach/programmeConstants'
+import { generateProgrammeSessionDates } from '@/lib/programme-sessions'
 
 interface ProgrammeResponse {
   id: string
@@ -32,6 +33,12 @@ interface ProgrammeResponse {
   image_url: string | null
   /** CF-PROG-AGE-GROUP: target age groups (min 1, "All ages" XOR specific). */
   age_groups: string[]
+  /** CF-PROG-START-DATE: first session (fixed) / enrolment open (rolling). */
+  starts_at: string | null
+  /** CF-PROG-START-DATE: derived end timestamp. Exposed on this single-programme
+   *  GET so the Edit screen's sessions preview can render end-date-mode programmes.
+   *  Intentionally absent from the list endpoint. */
+  ends_at: string | null
   skill_level: string
   session_count: number | null
   min_participants: number | null
@@ -74,7 +81,7 @@ export async function GET(
     const adminSupabase = createAdminClient()
     const { data: programme, error: programmeError } = await adminSupabase
       .from('group_programmes')
-      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address, skill_level, session_count, min_participants, cancellation_window_hours, image_url, age_groups')
+      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address, skill_level, session_count, min_participants, cancellation_window_hours, image_url, age_groups, starts_at, ends_at')
       .eq('id', programmeId)
       .eq('coach_profile_id', coachProfile.id)
       .is('deleted_at', null)
@@ -117,6 +124,8 @@ export async function GET(
       venue_address: programme.venue_address,
       image_url: programme.image_url ?? null,
       age_groups: Array.isArray(programme.age_groups) ? programme.age_groups : [],
+      starts_at: programme.starts_at ?? null,
+      ends_at: programme.ends_at ?? null,
       skill_level: programme.skill_level,
       session_count: programme.session_count,
       min_participants: programme.min_participants,
@@ -152,9 +161,11 @@ export async function PATCH(
     // Fix-64: Use admin client — bypasses RLS auth_user_id mismatch (dev DB).
     // Ownership enforced explicitly via .eq('coach_profile_id', coachProfile.id).
     const adminSupabase = createAdminClient()
+    // CF-PROG-START-DATE: select schedule fields too — needed to recompute
+    // ends_at against the merged (existing ∪ body) state on PATCH.
     const { data: existingProgramme, error: programmeCheckError } = await adminSupabase
       .from('group_programmes')
-      .select('id, status, current_spots, max_spots')
+      .select('id, status, current_spots, max_spots, schedule_type, days_of_week, day_of_week, session_count, starts_at, ends_at')
       .eq('id', programmeId)
       .eq('coach_profile_id', coachProfile.id)
       .is('deleted_at', null)
@@ -339,6 +350,17 @@ export async function PATCH(
       }
     }
 
+    // CF-PROG-START-DATE: validate the three date inputs as YYYY-MM-DD strings.
+    // ends_at is derived, not patched directly.
+    for (const field of ['starts_at', 'programme_end_date', 'rolling_end_date'] as const) {
+      const v = body[field]
+      if (v !== undefined && v !== null && v !== '') {
+        if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v) || Number.isNaN(new Date(v + 'T00:00:00').getTime())) {
+          validationErrors.push(`${field} must be a YYYY-MM-DD date string`)
+        }
+      }
+    }
+
     if (validationErrors.length > 0) {
       return NextResponse.json(
         { error: 'Validation failed', details: validationErrors },
@@ -370,6 +392,9 @@ export async function PATCH(
       image_url?: string | null
       // CF-PROG-AGE-GROUP
       age_groups?: string[]
+      // CF-PROG-START-DATE: starts_at is user-supplied, ends_at is derived.
+      starts_at?: string | null
+      ends_at?: string | null
     } = {
       updated_at: new Date().toISOString(),
     }
@@ -410,13 +435,86 @@ export async function PATCH(
       updateData.age_groups = body.age_groups
     }
 
+    // CF-PROG-START-DATE: write starts_at, then recompute ends_at against the
+    // merged state (existing ∪ body) whenever any schedule input changes.
+    if (typeof body.starts_at === 'string' && body.starts_at) {
+      updateData.starts_at = new Date(body.starts_at + 'T00:00:00').toISOString()
+    }
+
+    const scheduleFieldTouched =
+      body.starts_at !== undefined ||
+      body.programme_end_date !== undefined ||
+      body.rolling_end_date !== undefined ||
+      body.session_count !== undefined ||
+      body.days_of_week !== undefined ||
+      body.schedule_type !== undefined
+
+    if (scheduleFieldTouched) {
+      const mergedScheduleType: string =
+        typeof body.schedule_type === 'string' ? body.schedule_type : existingProgramme.schedule_type
+      const mergedDays: number[] = Array.isArray(body.days_of_week)
+        ? body.days_of_week
+        : ((existingProgramme.days_of_week as number[] | null) ?? [])
+      const mergedSessionCount: number | null =
+        typeof body.session_count === 'number'
+          ? body.session_count
+          : ((existingProgramme.session_count as number | null) ?? null)
+      const mergedStartsAt: string | null = updateData.starts_at
+        ? new Date(updateData.starts_at).toISOString().split('T')[0]
+        : existingProgramme.starts_at
+          ? new Date(existingProgramme.starts_at).toISOString().split('T')[0]
+          : null
+
+      let nextEndsAt: string | null = null
+      if (mergedScheduleType === 'fixed') {
+        if (typeof body.programme_end_date === 'string' && body.programme_end_date) {
+          nextEndsAt = body.programme_end_date
+        } else if (
+          mergedStartsAt &&
+          typeof mergedSessionCount === 'number' &&
+          mergedSessionCount > 0 &&
+          mergedDays.length > 0
+        ) {
+          const computed = generateProgrammeSessionDates({
+            startDate: mergedStartsAt,
+            days: mergedDays,
+            mode: 'count',
+            count: mergedSessionCount,
+            endDate: '',
+          })
+          nextEndsAt = computed.length > 0 ? computed[computed.length - 1] : null
+        }
+      } else if (mergedScheduleType === 'rolling') {
+        if (typeof body.rolling_end_date === 'string' && body.rolling_end_date) {
+          nextEndsAt = body.rolling_end_date
+        } else if (body.rolling_end_date === null || body.rolling_end_date === '') {
+          nextEndsAt = null
+        } else if (
+          body.schedule_type === 'rolling' &&
+          existingProgramme.schedule_type !== 'rolling'
+        ) {
+          // Switching from fixed → rolling with no rolling_end_date provided.
+          // The previously-derived ends_at was a fixed-mode value and no longer
+          // applies. Null it out rather than carrying stale state forward.
+          nextEndsAt = null
+        } else {
+          // Field not in body and schedule type unchanged — keep existing.
+          nextEndsAt = existingProgramme.ends_at
+            ? new Date(existingProgramme.ends_at).toISOString().split('T')[0]
+            : null
+        }
+      }
+
+      updateData.ends_at = nextEndsAt ? new Date(nextEndsAt + 'T00:00:00').toISOString() : null
+    }
+
     // 7. Update programme (adminSupabase already created in step 4)
     const { data: updatedProgramme, error: updateError } = await adminSupabase
       .from('group_programmes')
       .update(updateData)
       .eq('id', programmeId)
       .eq('coach_profile_id', coachProfile.id)
-      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address, skill_level, session_count, min_participants, cancellation_window_hours, image_url, age_groups')
+      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address, skill_level, session_count, min_participants, cancellation_window_hours, image_url, age_groups, starts_at, ends_at')
       .single()
 
     if (updateError) {
@@ -457,6 +555,8 @@ export async function PATCH(
       venue_address: updatedProgramme.venue_address,
       image_url: updatedProgramme.image_url ?? null,
       age_groups: Array.isArray(updatedProgramme.age_groups) ? updatedProgramme.age_groups : [],
+      starts_at: updatedProgramme.starts_at ?? null,
+      ends_at: updatedProgramme.ends_at ?? null,
       skill_level: updatedProgramme.skill_level,
       session_count: updatedProgramme.session_count,
       min_participants: updatedProgramme.min_participants,

@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireCoachContext } from '@/lib/auth/require-coach'
 import { PROGRAMME_AGE_GROUPS } from '@/components/coach/programmeConstants'
+import { generateProgrammeSessionDates } from '@/lib/programme-sessions'
 
 
 /**
@@ -38,6 +39,10 @@ interface ProgrammeResponse {
   image_url: string | null
   /** CF-PROG-AGE-GROUP: target age groups (min 1, "All ages" XOR specific). */
   age_groups: string[]
+  /** CF-PROG-START-DATE: first session (fixed) / enrolment open (rolling).
+   *  ISO timestamp string or null. ends_at is NOT exposed on the list endpoint
+   *  by design — it is internal-only here, returned only on the single-programme GET. */
+  starts_at: string | null
 }
 
 /**
@@ -82,7 +87,7 @@ export async function GET(
     const adminSupabase = createAdminClient()
     let query = adminSupabase
       .from('group_programmes')
-      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address, min_participants, cancellation_window_hours, image_url, age_groups')
+      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address, min_participants, cancellation_window_hours, image_url, age_groups, starts_at')
       .eq('coach_profile_id', coachProfile.id)
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
@@ -135,6 +140,9 @@ export async function GET(
       cancellation_window_hours: prog.cancellation_window_hours,
       image_url: prog.image_url ?? null,
       age_groups: Array.isArray(prog.age_groups) ? prog.age_groups : [],
+      // CF-PROG-START-DATE: list endpoint exposes starts_at only. ends_at is
+      // internal — returned only on the single-programme GET.
+      starts_at: prog.starts_at ?? null,
     }))
 
     return NextResponse.json({ programmes: response }, { status: 200 })
@@ -290,6 +298,18 @@ export async function POST(
       }
     }
 
+    // CF-PROG-START-DATE: three optional date inputs, all 'YYYY-MM-DD'.
+    // starts_at is required by the UI for fixed programmes (UI canContinue),
+    // not by the server — server treats all three as nullable.
+    for (const field of ['starts_at', 'programme_end_date', 'rolling_end_date'] as const) {
+      const v = body[field]
+      if (v !== undefined && v !== null && v !== '') {
+        if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v) || Number.isNaN(new Date(v + 'T00:00:00').getTime())) {
+          validationErrors.push(`${field} must be a YYYY-MM-DD date string`)
+        }
+      }
+    }
+
     if (validationErrors.length > 0) {
       return NextResponse.json(
         { error: 'Validation failed', details: validationErrors },
@@ -342,6 +362,9 @@ export async function POST(
       min_participants?: number | null
       image_url?: string | null
       age_groups?: string[]
+      // CF-PROG-START-DATE: ISO timestamp strings, both nullable in DB.
+      starts_at?: string | null
+      ends_at?: string | null
       cancellation_window_hours: number
       model: string
       skill_level: string
@@ -403,6 +426,50 @@ export async function POST(
       insertData.age_groups = body.age_groups
     }
 
+    // CF-PROG-START-DATE: derive starts_at + ends_at, both as ISO timestamps.
+    //
+    //   schedule_type === 'fixed':
+    //     - programme_end_date provided → ends_at = programme_end_date
+    //     - else if starts_at + session_count + days_of_week → compute last date
+    //     - else → ends_at = null
+    //   schedule_type === 'rolling':
+    //     - rolling_end_date provided → ends_at = rolling_end_date
+    //     - else → ends_at = null
+    const startsAtStr: string | null =
+      typeof body.starts_at === 'string' && body.starts_at ? body.starts_at : null
+    if (startsAtStr) {
+      insertData.starts_at = new Date(startsAtStr + 'T00:00:00').toISOString()
+    }
+
+    let endsAtStr: string | null = null
+    if (body.schedule_type === 'fixed') {
+      if (typeof body.programme_end_date === 'string' && body.programme_end_date) {
+        endsAtStr = body.programme_end_date
+      } else if (
+        startsAtStr &&
+        typeof body.session_count === 'number' &&
+        body.session_count > 0 &&
+        Array.isArray(insertData.days_of_week) &&
+        insertData.days_of_week.length > 0
+      ) {
+        const computed = generateProgrammeSessionDates({
+          startDate: startsAtStr,
+          days: insertData.days_of_week,
+          mode: 'count',
+          count: body.session_count,
+          endDate: '',
+        })
+        endsAtStr = computed.length > 0 ? computed[computed.length - 1] : null
+      }
+    } else if (body.schedule_type === 'rolling') {
+      if (typeof body.rolling_end_date === 'string' && body.rolling_end_date) {
+        endsAtStr = body.rolling_end_date
+      }
+    }
+    if (endsAtStr) {
+      insertData.ends_at = new Date(endsAtStr + 'T00:00:00').toISOString()
+    }
+
     // Fix-58-DB-api: populate days_of_week — prefer explicit array, fall back to [day_of_week]
     if (Array.isArray(body.days_of_week) && body.days_of_week.length > 0) {
       insertData.days_of_week = body.days_of_week
@@ -417,7 +484,7 @@ export async function POST(
     const { data: newProgramme, error: insertError } = await adminSupabase
       .from('group_programmes')
       .insert(insertData)
-      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address, min_participants, cancellation_window_hours, image_url, age_groups')
+      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address, min_participants, cancellation_window_hours, image_url, age_groups, starts_at')
       .single()
 
     if (insertError) {
@@ -460,6 +527,9 @@ export async function POST(
       cancellation_window_hours: newProgramme.cancellation_window_hours,
       image_url: newProgramme.image_url ?? null,
       age_groups: Array.isArray(newProgramme.age_groups) ? newProgramme.age_groups : [],
+      // CF-PROG-START-DATE: ends_at intentionally NOT exposed on the list/POST
+      // surface — internal-only. Returned by the single-programme GET below.
+      starts_at: newProgramme.starts_at ?? null,
     }
 
     return NextResponse.json(response, { status: 201 })
