@@ -19,7 +19,14 @@ export interface SessionDatesInput {
 }
 
 function toYYYYMMDD(d: Date): string {
-  return d.toISOString().split('T')[0]
+  // CF-PROG-SESSION-LIST: format from LOCAL components, not UTC.
+  // `d.toISOString()` returns UTC, which in positive-UTC timezones (e.g. BST)
+  // shifts local midnight back to the previous calendar day — produced session
+  // dates one day before the selected weekday.
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
 }
 
 export function generateProgrammeSessionDates(input: SessionDatesInput): string[] {
