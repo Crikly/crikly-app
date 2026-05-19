@@ -639,7 +639,16 @@ export function EditProgramme({ programmeId }: { programmeId: string }) {
                   scheduleType={readOnly.schedule_type === 'rolling' ? 'rolling' : 'fixed'}
                   selectedDays={form.days_of_week}
                   defaultStartTime={form.start_time}
-                  defaultDurationMinutes={form.duration_minutes}
+                  // CF-PROG-SESSION-LIST: Edit still tracks duration_minutes
+                  // (no end_time field yet — see CF-PROG-EDIT-PARITY follow-up).
+                  // Derive end-time on the fly to satisfy the new prop shape.
+                  defaultEndTime={(() => {
+                    const [h, m] = form.start_time.split(':').map((s) => parseInt(s, 10))
+                    const total = ((h * 60 + m + form.duration_minutes) % 1440 + 1440) % 1440
+                    const eh = String(Math.floor(total / 60)).padStart(2, '0')
+                    const em = String(total % 60).padStart(2, '0')
+                    return `${eh}:${em}`
+                  })()}
                   campMode={form.campMode}
                   startDate={form.starts_at}
                   endDate={''}

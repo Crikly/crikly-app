@@ -3,8 +3,8 @@
 // creation + editing. Replaces the previous separate date input + flat sessions
 // list. Self-contained — the parent only owns `sessions: SessionEntry[]` and
 // triggers re-seeds via prop changes.
-import React, { useEffect, useMemo, useState, useCallback } from 'react'
-import { ChevronLeft, ChevronRight, Pencil, Plus, Trash2, X } from 'lucide-react'
+import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react'
+import { ChevronLeft, ChevronRight, Plus, Trash2, X } from 'lucide-react'
 import { generateProgrammeSessionDates } from '@/lib/programme-sessions'
 import type { SessionEntry, SessionEntrySlot } from './programmeConstants'
 
@@ -54,13 +54,19 @@ interface SessionCalendarProps {
   scheduleType: 'fixed' | 'rolling'
   selectedDays: number[]            // 0=Sun..6=Sat
   defaultStartTime: string          // 'HH:MM'
-  defaultDurationMinutes: number
+  // CF-PROG-SESSION-LIST: end time replaces duration as the user-facing input.
+  defaultEndTime: string            // 'HH:MM'
   campMode: boolean
   startDate: string                 // 'YYYY-MM-DD' (Rolling = required, Fixed = '' falls back to today)
   endDate: string                   // 'YYYY-MM-DD' (Rolling end, optional)
   sessionCount: number              // Fixed seed count
   sessions: SessionEntry[]          // controlled
   onChange: (sessions: SessionEntry[]) => void
+  // CF-PROG-SESSION-LIST: called when the coach taps a non-pattern calendar
+  // day. Parent should add `day` (0=Sun..6=Sat) to its days_of_week so the
+  // matching pill highlights. The internal re-seed is suppressed for this
+  // change so manual session selections are preserved.
+  onSelectedDaysAdd?: (day: number) => void
   disabled?: boolean
 }
 
@@ -68,15 +74,19 @@ export function SessionCalendar({
   scheduleType,
   selectedDays,
   defaultStartTime,
-  defaultDurationMinutes,
+  defaultEndTime,
   campMode,
   startDate,
   endDate,
   sessionCount,
   sessions,
   onChange,
+  onSelectedDaysAdd,
   disabled = false,
 }: SessionCalendarProps) {
+  // CF-PROG-SESSION-LIST: derived in-component because CampEditor + makeEntry
+  // still need a minutes value to advance "+ Add another slot" entries.
+  const defaultDurationMinutes = diffMinutes(defaultStartTime, defaultEndTime)
   // ── State ──
   const [viewMonth, setViewMonth] = useState<Date>(() => {
     const seed = startDate || todayLocalYYYYMMDD()
@@ -86,11 +96,21 @@ export function SessionCalendar({
   const [editorDate, setEditorDate] = useState<string | null>(null)
   const [autoSeeded, setAutoSeeded] = useState<string[]>([])
 
+  // CF-PROG-SESSION-LIST: when the coach taps a non-pattern calendar day, we
+  // call onSelectedDaysAdd → parent updates days_of_week → our effect re-fires.
+  // Without suppression the auto-seed would wipe the just-added session. Set
+  // this ref before the parent callback so the next effect run is skipped.
+  const skipNextSeedRef = useRef(false)
+
   // ── Auto-seed when schedule inputs change ──
   // Per CF-PROG-SESSION-LIST flag 1: re-seed wipes user customizations.
   // Per flag 2: server derives day-of-week from session_dates rather than from
   // the form input — the calendar is the truth.
   useEffect(() => {
+    if (skipNextSeedRef.current) {
+      skipNextSeedRef.current = false
+      return
+    }
     if (selectedDays.length === 0) {
       setAutoSeeded([])
       onChange([])
@@ -124,13 +144,12 @@ export function SessionCalendar({
         endDate: '',
       })
     }
-    const endTime = addMinutes(defaultStartTime, defaultDurationMinutes)
     const seeded: SessionEntry[] = candidates.map((d) => ({
       date: d,
       startTime: defaultStartTime,
-      endTime,
+      endTime: defaultEndTime,
       ...(campMode
-        ? { slots: [{ startTime: defaultStartTime, endTime }] }
+        ? { slots: [{ startTime: defaultStartTime, endTime: defaultEndTime }] }
         : {}),
     }))
     setAutoSeeded(candidates)
@@ -162,17 +181,24 @@ export function SessionCalendar({
   // ── Cell action helpers ──
   const makeEntry = useCallback(
     (date: string): SessionEntry => {
-      const endTime = addMinutes(defaultStartTime, defaultDurationMinutes)
       return campMode
-        ? { date, startTime: defaultStartTime, endTime, slots: [{ startTime: defaultStartTime, endTime }] }
-        : { date, startTime: defaultStartTime, endTime }
+        ? { date, startTime: defaultStartTime, endTime: defaultEndTime, slots: [{ startTime: defaultStartTime, endTime: defaultEndTime }] }
+        : { date, startTime: defaultStartTime, endTime: defaultEndTime }
     },
-    [defaultStartTime, defaultDurationMinutes, campMode],
+    [defaultStartTime, defaultEndTime, campMode],
   )
 
   function addSession(date: string) {
     if (disabled) return
     if (sessionByDate.has(date)) return
+    // CF-PROG-SESSION-LIST: auto-add day-of-week when the coach taps a date
+    // outside the current pattern. Suppress the upcoming re-seed so the
+    // freshly-added session isn't wiped when selectedDays changes.
+    const jsDay = new Date(date + 'T00:00:00').getDay()
+    if (!selectedDays.includes(jsDay) && onSelectedDaysAdd) {
+      skipNextSeedRef.current = true
+      onSelectedDaysAdd(jsDay)
+    }
     const next = [...sessions, makeEntry(date)].sort((a, b) => a.date.localeCompare(b.date))
     onChange(next)
   }
@@ -289,9 +315,24 @@ export function SessionCalendar({
           const isSession = sessionByDate.has(date)
           const isSkipped = autoSeeded.includes(date) && !isSession
           const isAddable = isPattern && inMonth && !isPast && !isSession && !isSkipped
+          // CF-PROG-SESSION-LIST: non-pattern future in-month days are now
+          // tappable. Tapping triggers auto-add of the day-of-week (via
+          // addSession → onSelectedDaysAdd) so the matching pill highlights.
+          const isNonPatternTappable = !isPattern && inMonth && !isPast && !isSession
           const isActiveRing = editorDate === date
 
-          const slotCount = campMode && isSession ? (sessionByDate.get(date)?.slots?.length ?? 1) : 0
+          // Custom-time indicator: session uses non-default times.
+          // Active-ring (editor open) takes visual priority over custom-time ring.
+          const session = isSession ? sessionByDate.get(date) : undefined
+          const isCustomTime = !!session && !isActiveRing && (
+            campMode
+              ? ((session.slots?.length ?? 1) > 1 ||
+                 session.slots?.[0]?.startTime !== defaultStartTime ||
+                 session.slots?.[0]?.endTime !== defaultEndTime)
+              : (session.startTime !== defaultStartTime || session.endTime !== defaultEndTime)
+          )
+
+          const slotCount = campMode && isSession ? (session?.slots?.length ?? 1) : 0
 
           return (
             <CellButton
@@ -304,19 +345,18 @@ export function SessionCalendar({
               isSession={isSession}
               isSkipped={isSkipped}
               isAddable={isAddable}
+              isNonPatternTappable={isNonPatternTappable}
               isActiveRing={isActiveRing}
+              isCustomTime={isCustomTime}
               campBadgeCount={slotCount}
               campMode={campMode}
-              onDotTap={() => {
-                if (campMode) openEditor(date)
-                else removeSession(date)
-              }}
-              onPencilTap={() => openEditor(date)}
+              // CF-PROG-SESSION-LIST: dot tap on a session ALWAYS opens the
+              // editor (no pencil badge). Removal happens via the editor's
+              // "Remove date" button.
+              onSessionTap={() => openEditor(date)}
               onSkippedTap={() => addSession(date)}
-              onAddableTap={() => {
-                addSession(date)
-                openEditor(date)
-              }}
+              onAddableTap={() => addSession(date)}
+              onNonPatternTap={() => addSession(date)}
             />
           )
         })}
@@ -373,13 +413,15 @@ interface CellButtonProps {
   isSession: boolean
   isSkipped: boolean
   isAddable: boolean
+  isNonPatternTappable: boolean
   isActiveRing: boolean
+  isCustomTime: boolean
   campBadgeCount: number
   campMode: boolean
-  onDotTap: () => void
-  onPencilTap: () => void
+  onSessionTap: () => void
   onSkippedTap: () => void
   onAddableTap: () => void
+  onNonPatternTap: () => void
 }
 
 function CellButton({
@@ -391,46 +433,42 @@ function CellButton({
   isSession,
   isSkipped,
   isAddable,
+  isNonPatternTappable,
   isActiveRing,
+  isCustomTime,
   campBadgeCount,
   campMode,
-  onDotTap,
-  onPencilTap,
+  onSessionTap,
   onSkippedTap,
   onAddableTap,
+  onNonPatternTap,
 }: CellButtonProps) {
   const baseCls = 'relative w-10 h-10 mx-auto rounded-full flex items-center justify-center text-[13px] select-none'
 
   if (isSession) {
-    const ringCls = isActiveRing
-      ? 'shadow-[0_0_0_2px_white,0_0_0_4px_var(--color-brand-600)]'
-      : ''
+    // Ring priority: active-ring (editor open) wins over custom-time ring.
+    // Both wrap the brand-600 dot in a white inner halo so the indicator is
+    // visible against the white page; active-ring adds an outer brand ring.
+    let ringCls = ''
+    if (isActiveRing) {
+      ringCls = 'shadow-[0_0_0_2px_white,0_0_0_4px_var(--color-brand-600)]'
+    } else if (isCustomTime) {
+      ringCls = 'shadow-[0_0_0_2px_white,0_0_0_3px_var(--color-brand-100)]'
+    }
     return (
       <div className={`${baseCls} bg-brand-600 text-white font-semibold ${ringCls}`}>
         <button
           type="button"
-          onClick={onDotTap}
+          onClick={onSessionTap}
           className="absolute inset-0 rounded-full"
-          aria-label={`${campMode ? 'Edit slots for' : 'Remove session on'} ${date}`}
+          aria-label={`Edit session on ${date}`}
         />
         <span className="pointer-events-none">{dayNum}</span>
-        {/* Badge top-right: pencil in normal mode, slot count in camp mode */}
-        {campMode ? (
+        {/* Camp-mode slot-count badge top-right. No pencil badge in normal mode. */}
+        {campMode && (
           <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-white text-brand-600 text-[10px] font-bold flex items-center justify-center shadow-sm pointer-events-none">
             {campBadgeCount || 1}
           </span>
-        ) : (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation()
-              onPencilTap()
-            }}
-            className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-white text-brand-600 flex items-center justify-center shadow-sm hover:bg-brand-50 transition-colors z-10"
-            aria-label={`Edit session on ${date}`}
-          >
-            <Pencil size={9} strokeWidth={2.4} />
-          </button>
         )}
       </div>
     )
@@ -456,6 +494,19 @@ function CellButton({
         onClick={onAddableTap}
         className={`${baseCls} border-[1.5px] border-dashed border-brand-100 text-brand-600 hover:bg-brand-50 transition-colors`}
         aria-label={`Add session on ${date}`}
+      >
+        {dayNum}
+      </button>
+    )
+  }
+
+  if (isNonPatternTappable) {
+    return (
+      <button
+        type="button"
+        onClick={onNonPatternTap}
+        className={`${baseCls} text-neutral-900 hover:bg-brand-50 hover:text-brand-600 transition-colors`}
+        aria-label={`Add session on ${date} (also adds this weekday to the pattern)`}
       >
         {dayNum}
       </button>
@@ -530,7 +581,6 @@ function TimeEditor({
   onRemove: () => void
   onChange: (patch: Partial<SessionEntry>) => void
 }) {
-  const duration = diffMinutes(entry.startTime, entry.endTime)
   return (
     <div className="mt-4 bg-neutral-50 border border-neutral-100 rounded-md p-3.5">
       <div className="flex justify-between items-center mb-3">
@@ -570,7 +620,6 @@ function TimeEditor({
           />
         </div>
       </div>
-      <p className="text-[12px] text-neutral-400 mb-3">Duration: {duration} min</p>
       <div className="flex justify-between items-center">
         <button
           type="button"

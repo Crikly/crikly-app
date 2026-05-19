@@ -30,6 +30,9 @@ interface FormData {
   schedule_type: 'fixed' | 'rolling'
   days_of_week: number[]          // Fix-58-4: multi-select
   start_time: string
+  // CF-PROG-SESSION-LIST: end_time replaces the Duration pill row in Step 2.
+  // duration_minutes is now DERIVED from (end_time − start_time) at API write time.
+  end_time: string
   duration_minutes: number
   session_count: number
   rolling_end_date: string        // Fix-58-8: optional rolling end
@@ -56,7 +59,6 @@ interface FormData {
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const DAY_FULL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-const DURATIONS = [30, 45, 60, 90, 120]
 const SKILL_LEVELS: { value: FormData['skill_level']; label: string }[] = [
   { value: 'beginner', label: 'Beginner' },
   { value: 'intermediate', label: 'Intermediate' },
@@ -84,6 +86,22 @@ function displayToPence(val: string): number {
 function formatDaysLabel(days: number[]): string {
   if (days.length === 0) return '—'
   return [...days].sort((a, b) => a - b).map((d) => DAYS[d]).join(', ')
+}
+
+// CF-PROG-SESSION-LIST: derive duration_minutes from start+end HH:MM strings.
+// Handles same-day cross-midnight programmes (end < start → wraps to next day).
+function diffMinutes(start: string, end: string): number {
+  const [sh, sm] = start.split(':').map((s) => parseInt(s, 10))
+  const [eh, em] = end.split(':').map((s) => parseInt(s, 10))
+  const diff = eh * 60 + em - (sh * 60 + sm)
+  return diff < 0 ? diff + 1440 : diff
+}
+
+// CF-PROG-SESSION-LIST: today's YYYY-MM-DD from LOCAL components — avoids
+// the `toISOString().split` TZ pitfall fixed in src/lib/programme-sessions.ts.
+function todayYYYYMMDD(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
 // CF-PROG-SESSION-LIST: session enumeration + preview now live inside
@@ -221,6 +239,7 @@ export function CreateProgramme() {
     schedule_type: 'fixed',
     days_of_week: [6],             // Saturday default
     start_time: '09:00',
+    end_time: '10:00',             // CF-PROG-SESSION-LIST: start + 60 min on init
     duration_minutes: 60,
     session_count: 8,
     rolling_end_date: '',
@@ -311,12 +330,14 @@ export function CreateProgramme() {
         form.age_groups.length > 0
       )
     if (step === 2) {
-      if (form.days_of_week.length === 0 || !form.start_time || !form.duration_minutes) return false
-      // CF-PROG-SESSION-LIST gating:
-      //   Fixed   → at least one session in the calendar
-      //   Rolling → a Start date is set
+      if (form.days_of_week.length === 0 || !form.start_time || !form.end_time) return false
+      // CF-PROG-SESSION-LIST step-2 gating (this task tightens it):
+      //   Fixed   → session_dates.length EXACTLY matches session_count
+      //             AND starts_at (Commencing date) is set
+      //   Rolling → Start date set
       if (form.schedule_type === 'fixed') {
-        return form.session_dates.length > 0
+        if (!form.starts_at) return false
+        return form.session_dates.length === form.session_count
       }
       return form.starts_at.length > 0
     }
@@ -336,7 +357,8 @@ export function CreateProgramme() {
       day_of_week: form.days_of_week[0] ?? 6,
       days_of_week: form.days_of_week,
       start_time: form.start_time,
-      duration_minutes: form.duration_minutes,
+      // CF-PROG-SESSION-LIST: derived from end_time − start_time (no UI pill).
+      duration_minutes: diffMinutes(form.start_time, form.end_time),
       max_spots: form.max_spots,
       min_participants: form.min_participants || null,
       payment_type: form.payment_type,
@@ -396,7 +418,7 @@ export function CreateProgramme() {
           day_of_week: form.days_of_week[0] ?? 6,
           days_of_week: form.days_of_week,
           start_time: form.start_time,
-          duration_minutes: form.duration_minutes,
+          duration_minutes: diffMinutes(form.start_time, form.end_time),
           venue_name: form.venue_name || null,
           venue_address: form.venue_address || null,
           // CF-PROG-SESSION-LIST: session_dates is now the canonical source.
@@ -691,31 +713,50 @@ export function CreateProgramme() {
                 </div>
               </div>
 
-              {/* Start time + Duration */}
-              <div className="flex gap-6 flex-wrap mb-[22px]">
-                <div className="flex-none">
-                  <label className="block text-[12px] font-medium text-[#475569] mb-2">Start time</label>
+              {/* CF-PROG-SESSION-LIST: Commencing date — Fixed only.
+                  Required. Rolling keeps its existing Start/End date range below. */}
+              {form.schedule_type === 'fixed' && (
+                <div className="mb-[22px]">
+                  <label className="block text-[11px] font-semibold text-neutral-600 uppercase tracking-wide mb-2">
+                    Commencing date
+                  </label>
                   <input
-                    type="time"
-                    value={form.start_time}
-                    onChange={(e) => update('start_time', e.target.value)}
-                    className="text-[18px] font-medium px-4 py-3.5 border border-[#E2E8F0] rounded-[12px] w-[140px] tracking-wide outline-none focus:border-[#0077CC] focus:shadow-[0_0_0_3px_rgba(0,119,204,0.15)]"
+                    type="date"
+                    value={form.starts_at}
+                    min={todayYYYYMMDD()}
+                    onChange={(e) => update('starts_at', e.target.value)}
+                    className="w-full h-11 px-3 rounded-md bg-neutral-50 border border-neutral-100 text-sm text-neutral-900 focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20"
                   />
                 </div>
-                <div className="flex-1 min-w-[260px]">
-                  <label className="block text-[12px] font-medium text-[#475569] mb-2">Duration</label>
-                  <div className="flex flex-wrap gap-2">
-                    {DURATIONS.map((d) => (
-                      <PillButton
-                        key={d}
-                        active={form.duration_minutes === d}
-                        onClick={() => update('duration_minutes', d)}
-                      >
-                        {d} min
-                      </PillButton>
-                    ))}
+              )}
+
+              {/* CF-PROG-SESSION-LIST: Start time + End time (Duration pills removed) */}
+              <div className="mb-[22px]">
+                <div className="flex gap-4 flex-wrap">
+                  <div className="flex-1 min-w-[140px]">
+                    <label className="block text-[11px] font-semibold text-neutral-600 uppercase tracking-wide mb-2">Start time</label>
+                    <input
+                      type="time"
+                      value={form.start_time}
+                      onChange={(e) => update('start_time', e.target.value)}
+                      className="w-full h-11 px-3 rounded-md bg-neutral-50 border border-neutral-100 text-sm text-neutral-900 focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20"
+                    />
+                  </div>
+                  <div className="flex-1 min-w-[140px]">
+                    <label className="block text-[11px] font-semibold text-neutral-600 uppercase tracking-wide mb-2">End time</label>
+                    <input
+                      type="time"
+                      value={form.end_time}
+                      onChange={(e) => update('end_time', e.target.value)}
+                      className="w-full h-11 px-3 rounded-md bg-neutral-50 border border-neutral-100 text-sm text-neutral-900 focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20"
+                    />
                   </div>
                 </div>
+                {form.end_time <= form.start_time && (
+                  <p className="text-[12px] text-red-600 mt-2">
+                    End time should be after start time.
+                  </p>
+                )}
               </div>
 
               {/* CF-PROG-SESSION-LIST: position 4 — Number of sessions (Fixed)
@@ -853,15 +894,32 @@ export function CreateProgramme() {
                   scheduleType={form.schedule_type}
                   selectedDays={form.days_of_week}
                   defaultStartTime={form.start_time}
-                  defaultDurationMinutes={form.duration_minutes}
+                  defaultEndTime={form.end_time}
                   campMode={form.campMode}
                   startDate={form.starts_at}
                   endDate={form.rolling_end_date}
                   sessionCount={form.session_count}
                   sessions={form.session_dates}
                   onChange={(next) => update('session_dates', next)}
+                  onSelectedDaysAdd={(day) => {
+                    // CF-PROG-SESSION-LIST: auto-add day-of-week when coach taps
+                    // a non-pattern calendar date. The pill highlights without
+                    // wiping their manual session selections (re-seed suppressed
+                    // internally via skipNextSeedRef).
+                    if (!form.days_of_week.includes(day)) {
+                      update('days_of_week', [...form.days_of_week, day].sort((a, b) => a - b))
+                    }
+                  }}
                 />
               </div>
+
+              {/* CF-PROG-SESSION-LIST: strict count match before Continue. */}
+              {form.schedule_type === 'fixed' && form.session_dates.length !== form.session_count && (
+                <p className="text-[12px] text-red-600 mt-3">
+                  Select exactly {form.session_count} date{form.session_count === 1 ? '' : 's'} to continue
+                  {' '}({form.session_dates.length} currently selected)
+                </p>
+              )}
             </>
           )}
 
