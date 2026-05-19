@@ -1,11 +1,11 @@
 'use client'
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Check, Loader2, Calendar, RefreshCw, CreditCard, Layers } from 'lucide-react'
+import { ArrowLeft, Check, Loader2, Calendar, RefreshCw, CreditCard, Layers, Sun, Info } from 'lucide-react'
 import { VenueAutocomplete, type VenueSelection } from '@/components/coach/shared/LocationAutocomplete'
 import { ProgrammeImagePicker } from '@/components/coach/shared/ProgrammeImagePicker'
-import { PROGRAMME_AGE_GROUPS, type ProgrammeAgeGroup, ALL_AGES_LABEL } from './programmeConstants'
-import { generateProgrammeSessionDates } from '@/lib/programme-sessions'
+import { PROGRAMME_AGE_GROUPS, type ProgrammeAgeGroup, ALL_AGES_LABEL, type SessionEntry } from './programmeConstants'
+import { SessionCalendar } from './SessionCalendar'
 
 // BUG-PROGRAMME-CREATE-PREVIEW-LOST: accepted as a regression. The previous
 // CustomEvent dispatch + ProgrammePreviewEventDetail interface were deleted
@@ -31,14 +31,15 @@ interface FormData {
   days_of_week: number[]          // Fix-58-4: multi-select
   start_time: string
   duration_minutes: number
-  fixed_schedule_mode: 'count' | 'end_date'  // Fix-58-5
   session_count: number
-  programme_end_date: string      // Fix-58-5: for fixed end-date mode
   rolling_end_date: string        // Fix-58-8: optional rolling end
-  excluded_dates: string[]        // Fix-58-6: session exclusions
-  // CF-PROG-START-DATE: first session date (fixed, required) or enrolment
-  // open date (rolling, optional). YYYY-MM-DD string, never undefined.
+  // CF-PROG-START-DATE: anchor date — Rolling Start date (UI-exposed),
+  // Fixed seed anchor (UI-hidden, defaults to today on calendar seed).
   starts_at: string
+  // CF-PROG-SESSION-LIST: SessionCalendar-managed list of scheduled sessions.
+  // Server derives starts_at / session_count / ends_at from this array.
+  session_dates: SessionEntry[]
+  campMode: boolean
   // Step 2 — venue (optional)
   venue_name: string
   venue_address: string
@@ -85,28 +86,10 @@ function formatDaysLabel(days: number[]): string {
   return [...days].sort((a, b) => a - b).map((d) => DAYS[d]).join(', ')
 }
 
-function formatSessionDate(dateStr: string): string {
-  const d = new Date(dateStr + 'T00:00:00')
-  return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
-}
-
-// CF-PROG-START-DATE: session-date enumeration moved to @/lib/programme-sessions
-// (also used server-side for ends_at derivation). Previous in-file helper
-// always started from "tomorrow" — now starts from user-picked starts_at.
-
-// CF-PROG-START-DATE: short label like 'Sat 13 Jun' (or 'Sat 13 Jun 2027'
-// when the year differs from today). Used in the Step 2 sessions preview.
-function formatPreviewDate(yyyymmdd: string): string {
-  const d = new Date(yyyymmdd + 'T00:00:00')
-  const today = new Date()
-  const sameYear = d.getFullYear() === today.getFullYear()
-  return d.toLocaleDateString('en-GB', {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-    ...(sameYear ? {} : { year: 'numeric' }),
-  })
-}
+// CF-PROG-SESSION-LIST: session enumeration + preview now live inside
+// SessionCalendar. Old in-file generateSessionDates / formatSessionDate /
+// formatPreviewDate helpers removed alongside the deleted Step 2 date
+// input + flat list.
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
@@ -239,12 +222,11 @@ export function CreateProgramme() {
     days_of_week: [6],             // Saturday default
     start_time: '09:00',
     duration_minutes: 60,
-    fixed_schedule_mode: 'count',
     session_count: 8,
-    programme_end_date: '',
     rolling_end_date: '',
-    excluded_dates: [],
     starts_at: '',
+    session_dates: [],
+    campMode: false,
     venue_name: '',
     venue_address: '',
     max_spots: 8,
@@ -317,41 +299,9 @@ export function CreateProgramme() {
     }
   }
 
-  // Fix-58-6: toggle a session date in/out of excluded_dates
-  function toggleExcludeDate(dateStr: string) {
-    const current = form.excluded_dates
-    if (current.includes(dateStr)) {
-      update('excluded_dates', current.filter((d) => d !== dateStr))
-    } else {
-      update('excluded_dates', [...current, dateStr])
-    }
-  }
-
-  // Fix-58-6 + CF-PROG-START-DATE: computed session dates — now anchored on
-  // the user-picked starts_at instead of "tomorrow".
-  const sessionDates = useMemo(() => {
-    if (form.schedule_type !== 'fixed') return []
-    if (!form.starts_at) return []
-    if (form.days_of_week.length === 0) return []
-    if (form.fixed_schedule_mode === 'count' && form.session_count < 2) return []
-    if (form.fixed_schedule_mode === 'end_date' && !form.programme_end_date) return []
-    return generateProgrammeSessionDates({
-      startDate: form.starts_at,
-      days: form.days_of_week,
-      mode: form.fixed_schedule_mode,
-      count: form.session_count,
-      endDate: form.programme_end_date,
-    })
-  }, [
-    form.schedule_type,
-    form.starts_at,
-    form.days_of_week,
-    form.fixed_schedule_mode,
-    form.session_count,
-    form.programme_end_date,
-  ])
-
-  const activeSessionCount = sessionDates.filter((d) => !form.excluded_dates.includes(d)).length
+  // CF-PROG-SESSION-LIST: excluded_dates + sessionDates useMemo deleted
+  // alongside the flat list UI. SessionCalendar manages its own internal
+  // state and emits the canonical session_dates array back via onChange.
 
   function canContinue(): boolean {
     if (step === 1)
@@ -362,13 +312,13 @@ export function CreateProgramme() {
       )
     if (step === 2) {
       if (form.days_of_week.length === 0 || !form.start_time || !form.duration_minutes) return false
+      // CF-PROG-SESSION-LIST gating:
+      //   Fixed   → at least one session in the calendar
+      //   Rolling → a Start date is set
       if (form.schedule_type === 'fixed') {
-        // CF-PROG-START-DATE: fixed programmes require a first session date.
-        if (!form.starts_at) return false
-        if (form.fixed_schedule_mode === 'count') return form.session_count >= 2
-        return form.programme_end_date.length > 0
+        return form.session_dates.length > 0
       }
-      return true
+      return form.starts_at.length > 0
     }
     if (step === 3) return form.max_spots >= 2 && form.price_pence >= 100
     return true
@@ -395,17 +345,18 @@ export function CreateProgramme() {
       venue_name: form.venue_name || null,
       venue_address: form.venue_address || null,
       image_url: form.image_url,
-      // CF-PROG-START-DATE: server derives ends_at from these three inputs.
+      // CF-PROG-SESSION-LIST: server now derives starts_at, ends_at, and
+      // session_count from session_dates (when non-empty). starts_at and
+      // rolling_end_date remain as fallbacks for Rolling-with-no-sessions.
       starts_at: form.starts_at || null,
-      programme_end_date:
-        form.schedule_type === 'fixed' && form.fixed_schedule_mode === 'end_date' && form.programme_end_date
-          ? form.programme_end_date
-          : null,
       rolling_end_date:
         form.schedule_type === 'rolling' && form.rolling_end_date ? form.rolling_end_date : null,
+      session_dates: form.session_dates,
+      // CF-PROG-SESSION-LIST: STUB — server ignores this until CF-PROG-SESSIONS-DB.
+      campMode: form.campMode,
       status,
     }
-    if (form.schedule_type === 'fixed' && form.fixed_schedule_mode === 'count') {
+    if (form.schedule_type === 'fixed') {
       body.session_count = form.session_count
     }
     if (form.payment_type === 'per_session') {
@@ -448,19 +399,15 @@ export function CreateProgramme() {
           duration_minutes: form.duration_minutes,
           venue_name: form.venue_name || null,
           venue_address: form.venue_address || null,
-          // CF-PROG-START-DATE: forward the schedule-derived inputs so the
-          // server's ends_at recompute on PATCH uses fresh values instead of
-          // the Step 1 draft defaults (which are empty for the date fields).
+          // CF-PROG-SESSION-LIST: session_dates is now the canonical source.
+          // starts_at + rolling_end_date stay for Rolling-with-no-sessions.
           starts_at: form.starts_at || null,
-          programme_end_date:
-            form.schedule_type === 'fixed' && form.fixed_schedule_mode === 'end_date'
-              ? form.programme_end_date || null
-              : null,
           rolling_end_date:
             form.schedule_type === 'rolling' ? form.rolling_end_date || null : null,
+          session_dates: form.session_dates,
+          campMode: form.campMode,
         }
-        // session_count is only meaningful in fixed-count mode.
-        if (form.schedule_type === 'fixed' && form.fixed_schedule_mode === 'count') {
+        if (form.schedule_type === 'fixed') {
           patchBody.session_count = form.session_count
         }
         const res = await fetch(`/api/coaches/programmes/${programmeId}`, {
@@ -552,21 +499,24 @@ export function CreateProgramme() {
   const daysLabel = formatDaysLabel(form.days_of_week)
   const priceDisplay = form.price_pence > 0 ? `£${penceToDisplay(form.price_pence)}` : '£—'
 
+  // CF-PROG-SESSION-LIST: derive review summaries from session_dates (calendar
+  // truth) rather than from removed form fields.
+  const sessionCount = form.session_dates.length
+  const firstSessionDate = sessionCount > 0 ? form.session_dates[0].date : ''
+  const lastSessionDate = sessionCount > 0 ? form.session_dates[sessionCount - 1].date : ''
+  function fmtShortDate(d: string): string {
+    return d
+      ? new Date(d + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+      : '—'
+  }
   let scheduleTypeValue: string
   if (form.schedule_type === 'fixed') {
-    if (form.fixed_schedule_mode === 'count') {
-      scheduleTypeValue = `Fixed · ${form.session_count} sessions`
-    } else {
-      const endFmt = form.programme_end_date
-        ? new Date(form.programme_end_date + 'T00:00:00').toLocaleDateString('en-GB', {
-            day: 'numeric', month: 'short',
-          })
-        : '—'
-      scheduleTypeValue = `Fixed · ends ${endFmt}`
-    }
+    scheduleTypeValue = sessionCount > 0
+      ? `Fixed · ${sessionCount} session${sessionCount === 1 ? '' : 's'}`
+      : 'Fixed'
   } else {
     scheduleTypeValue = form.rolling_end_date
-      ? `Rolling · ends ${new Date(form.rolling_end_date + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`
+      ? `Rolling · ends ${fmtShortDate(form.rolling_end_date)}`
       : 'Rolling · ongoing'
   }
 
@@ -768,142 +718,60 @@ export function CreateProgramme() {
                 </div>
               </div>
 
-              {/* CF-PROG-START-DATE: starting date (fixed = required first session,
-                  rolling = optional enrolment open date). Sessions preview below
-                  renders for fixed programmes once starts_at + days + mode inputs
-                  are set. Server derives ends_at from these inputs.
-                  DEBT: restyle to match design system in CF-R04 audit. */}
-              <div className="mb-[22px]">
-                <div className="flex items-center gap-2 mb-2">
-                  <Calendar size={16} className="text-neutral-400" />
-                  <label className="block text-xs font-medium text-neutral-600">
-                    {form.schedule_type === 'fixed' ? 'FIRST SESSION DATE' : 'ENROLMENT OPENS FROM'}
-                    {form.schedule_type === 'rolling' && (
-                      <span className="text-[11px] text-[#94A3B8] font-normal ml-1">Optional</span>
-                    )}
-                  </label>
-                </div>
-                <input
-                  type="date"
-                  value={form.starts_at}
-                  min={new Date().toISOString().split('T')[0]}
-                  onChange={(e) => update('starts_at', e.target.value)}
-                  className="w-full h-11 px-3 rounded-[10px] bg-neutral-50 border border-neutral-100 text-sm text-neutral-900 focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20"
-                />
-                {/* Sessions preview — fixed programmes only. Reuses the memoised
-                    `sessionDates` (above, ~L332) — no duplicate compute. */}
-                {form.schedule_type === 'fixed' && sessionDates.length > 0 && (() => {
-                  const startLabel = new Date(form.starts_at + 'T00:00:00').toLocaleDateString('en-GB', {
-                    weekday: 'long', day: 'numeric', month: 'long',
-                  })
-                  const shown = sessionDates.slice(0, 12).map(formatPreviewDate)
-                  const overflow = sessionDates.length - 12
-                  return (
-                    <div className="mt-3 p-3 bg-brand-50 rounded-[10px]">
-                      <p className="text-xs font-medium text-brand-800 mb-1">
-                        {sessionDates.length} session{sessionDates.length === 1 ? '' : 's'} starting {startLabel}
-                      </p>
-                      <p className="text-xs text-brand-600">
-                        {shown.join(' · ')}{overflow > 0 ? ` · +${overflow} more` : ''}
-                      </p>
-                    </div>
-                  )
-                })()}
-              </div>
-
-              {/* Fix-58-5: Fixed — sessions count OR end date */}
-              {form.schedule_type === 'fixed' && (
+              {/* CF-PROG-SESSION-LIST: position 4 — Number of sessions (Fixed)
+                  OR Start/End date range (Rolling). Calendar below handles
+                  individual session dates. */}
+              {form.schedule_type === 'fixed' ? (
                 <div className="mb-[22px]">
-                  <label className="block text-[12px] font-medium text-[#475569] mb-3">Programme length</label>
-                  <div className="flex flex-col gap-3">
-                    {/* Radio: Number of sessions */}
-                    <label className="flex items-start gap-3 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="fixed_schedule_mode"
-                        checked={form.fixed_schedule_mode === 'count'}
-                        onChange={() => {
-                          update('fixed_schedule_mode', 'count')
-                          update('programme_end_date', '')
-                        }}
-                        className="mt-1 accent-[#0077CC]"
-                      />
-                      <div className="flex-1">
-                        <span className="text-[14px] font-medium text-[#0F172A]">Number of sessions</span>
-                        {form.fixed_schedule_mode === 'count' && (
-                          <div className="mt-2">
-                            <input
-                              type="number"
-                              min={2}
-                              max={52}
-                              value={form.session_count}
-                              onChange={(e) => update('session_count', Math.max(2, parseInt(e.target.value) || 2))}
-                              className="w-[120px] px-4 py-2.5 border border-[#E2E8F0] rounded-[12px] text-[15px] text-[#0F172A] outline-none focus:border-[#0077CC] focus:shadow-[0_0_0_3px_rgba(0,119,204,0.15)]"
-                            />
-                            <p className="text-[12px] text-[#94A3B8] mt-1.5">
-                              Runs for {form.session_count} consecutive{' '}
-                              {form.days_of_week.length === 1
-                                ? `${DAY_FULL[form.days_of_week[0]]}s`
-                                : 'sessions'}.
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    </label>
-
-                    {/* Radio: End date */}
-                    <label className="flex items-start gap-3 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="fixed_schedule_mode"
-                        checked={form.fixed_schedule_mode === 'end_date'}
-                        onChange={() => {
-                          update('fixed_schedule_mode', 'end_date')
-                          update('session_count', 0)
-                        }}
-                        className="mt-1 accent-[#0077CC]"
-                      />
-                      <div className="flex-1">
-                        <span className="text-[14px] font-medium text-[#0F172A]">End date</span>
-                        {form.fixed_schedule_mode === 'end_date' && (
-                          <div className="mt-2">
-                            <input
-                              type="date"
-                              value={form.programme_end_date}
-                              min={new Date(Date.now() + 86400000).toISOString().split('T')[0]}
-                              onChange={(e) => update('programme_end_date', e.target.value)}
-                              className="px-4 py-2.5 border border-[#E2E8F0] rounded-[12px] text-[15px] text-[#0F172A] outline-none focus:border-[#0077CC] focus:shadow-[0_0_0_3px_rgba(0,119,204,0.15)]"
-                            />
-                            {form.programme_end_date && (
-                              <p className="text-[12px] text-[#94A3B8] mt-1.5">
-                                Programme ends{' '}
-                                {new Date(form.programme_end_date + 'T00:00:00').toLocaleDateString('en-GB', {
-                                  weekday: 'long', day: 'numeric', month: 'long',
-                                })}.
-                              </p>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </label>
-                  </div>
-                </div>
-              )}
-
-              {/* Fix-58-8: Rolling — optional end date */}
-              {form.schedule_type === 'rolling' && (
-                <div className="mb-[22px]">
-                  <label className="block text-[12px] font-medium text-[#475569] mb-2">
-                    End date <span className="text-[11px] text-[#94A3B8] font-normal ml-1">Optional</span>
+                  <label className="block text-[11px] font-semibold text-neutral-600 uppercase tracking-wide mb-2">
+                    Number of sessions
                   </label>
                   <input
-                    type="date"
-                    value={form.rolling_end_date}
-                    min={new Date(Date.now() + 86400000).toISOString().split('T')[0]}
-                    onChange={(e) => update('rolling_end_date', e.target.value)}
-                    className="px-4 py-2.5 border border-[#E2E8F0] rounded-[12px] text-[15px] text-[#0F172A] outline-none focus:border-[#0077CC] focus:shadow-[0_0_0_3px_rgba(0,119,204,0.15)]"
+                    type="number"
+                    min={1}
+                    max={52}
+                    value={form.session_count}
+                    onChange={(e) => update('session_count', Math.max(1, parseInt(e.target.value) || 1))}
+                    className="w-full h-11 px-3 rounded-md bg-neutral-50 border border-neutral-100 text-sm text-[#0F172A] focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20"
                   />
-                  <p className="text-[12px] text-[#94A3B8] mt-2">Leave blank for an ongoing programme.</p>
+                  <p className="text-[12px] text-[#94A3B8] mt-1.5">
+                    {form.days_of_week.length === 1
+                      ? `Runs for ${form.session_count} consecutive ${DAY_FULL[form.days_of_week[0]]}s.`
+                      : `Runs for ${form.session_count} sessions across the days you selected.`}
+                  </p>
+                </div>
+              ) : (
+                <div className="mb-[22px]">
+                  <label className="block text-[11px] font-semibold text-neutral-600 uppercase tracking-wide mb-2">
+                    Date range
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-medium text-[#475569] mb-1.5">Start date</label>
+                      <input
+                        type="date"
+                        value={form.starts_at}
+                        min={new Date().toISOString().split('T')[0]}
+                        onChange={(e) => update('starts_at', e.target.value)}
+                        className="w-full h-11 px-3 rounded-md bg-neutral-50 border border-neutral-100 text-sm text-[#0F172A] focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-medium text-[#475569] mb-1.5">
+                        End date <span className="text-[10px] text-[#94A3B8] font-normal ml-1">Optional</span>
+                      </label>
+                      <input
+                        type="date"
+                        value={form.rolling_end_date}
+                        min={form.starts_at || new Date().toISOString().split('T')[0]}
+                        onChange={(e) => update('rolling_end_date', e.target.value)}
+                        className="w-full h-11 px-3 rounded-md bg-neutral-50 border border-neutral-100 text-sm text-[#0F172A] focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-[12px] text-[#94A3B8] mt-1.5">
+                    Leave end date blank for an ongoing programme.
+                  </p>
                 </div>
               )}
 
@@ -943,49 +811,57 @@ export function CreateProgramme() {
                 )}
               </div>
 
-              {/* Fix-58-6: Session exclusion editor */}
-              {sessionDates.length > 0 && (
-                <div className="mb-[22px]">
-                  <div className="flex items-center justify-between mb-3">
-                    <label className="text-[12px] font-medium text-[#475569]">Sessions</label>
-                    <span className="text-[12px] text-[#64748B]">
-                      {activeSessionCount} of {sessionDates.length} active
-                    </span>
-                  </div>
-                  <div className="border border-[#E2E8F0] rounded-[12px] overflow-hidden">
-                    {sessionDates.map((dateStr, idx) => {
-                      const isExcluded = form.excluded_dates.includes(dateStr)
-                      return (
-                        <div
-                          key={dateStr}
-                          className={`flex items-center justify-between px-4 py-3 ${
-                            idx < sessionDates.length - 1 ? 'border-b border-[#F1F5F9]' : ''
-                          }`}
-                        >
-                          <span
-                            className={`text-[14px] font-medium ${
-                              isExcluded ? 'line-through text-[#94A3B8]' : 'text-[#0F172A]'
-                            }`}
-                          >
-                            {formatSessionDate(dateStr)}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => toggleExcludeDate(dateStr)}
-                            className={`text-[12px] font-medium px-2.5 py-1 rounded-[6px] transition-colors ${
-                              isExcluded
-                                ? 'text-[#0077CC] bg-[#E6F3FB] hover:bg-[#D0EAFA]'
-                                : 'text-[#94A3B8] hover:text-[#475569] hover:bg-[#F1F5F9]'
-                            }`}
-                          >
-                            {isExcluded ? 'Include' : 'Skip'}
-                          </button>
-                        </div>
-                      )
-                    })}
-                  </div>
+              {/* CF-PROG-SESSION-LIST: section divider before camp + calendar */}
+              <hr className="border-0 border-t border-neutral-100 my-4" />
+
+              {/* CF-PROG-SESSION-LIST: camp mode toggle + info banner */}
+              <div className={`flex items-center gap-3 p-3.5 rounded-md border mb-3 ${form.campMode ? 'border-brand-600 bg-brand-50' : 'border-neutral-100 bg-white'}`}>
+                <div className={`w-9 h-9 rounded-md flex items-center justify-center flex-shrink-0 ${form.campMode ? 'bg-white text-brand-600' : 'bg-neutral-50 text-[#94A3B8]'}`}>
+                  <Sun size={18} strokeWidth={1.8} />
+                </div>
+                <div className="flex-1">
+                  <h4 className="text-sm font-semibold text-[#0F172A] m-0">Camp mode</h4>
+                  <p className="text-[12px] text-[#64748B] mt-0.5 m-0">Multiple sessions per day.</p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={form.campMode}
+                  onClick={() => update('campMode', !form.campMode)}
+                  className={`w-10 h-6 rounded-full relative flex-shrink-0 transition-colors ${form.campMode ? 'bg-brand-600' : 'bg-[#CBD5E1]'}`}
+                >
+                  <span
+                    className={`absolute top-[2px] w-5 h-5 bg-white rounded-full shadow-[0_1px_2px_rgba(0,0,0,0.15)] transition-[left] ${form.campMode ? 'left-[18px]' : 'left-[2px]'}`}
+                  />
+                </button>
+              </div>
+
+              {form.campMode && (
+                <div className="bg-brand-50 rounded-md p-3 flex gap-2.5 items-start mb-[18px]">
+                  <Info size={16} className="text-brand-600 flex-shrink-0 mt-0.5" />
+                  <p className="text-[13px] text-brand-800 m-0 leading-snug">
+                    Parents book the full day. Each day can have multiple time blocks.
+                  </p>
                 </div>
               )}
+
+              {/* CF-PROG-SESSION-LIST: SessionCalendar handles grid + editor +
+                  skipped section. Self-contained — emits the canonical
+                  session_dates array via onChange. */}
+              <div className="bg-white border border-neutral-100 rounded-md p-4">
+                <SessionCalendar
+                  scheduleType={form.schedule_type}
+                  selectedDays={form.days_of_week}
+                  defaultStartTime={form.start_time}
+                  defaultDurationMinutes={form.duration_minutes}
+                  campMode={form.campMode}
+                  startDate={form.starts_at}
+                  endDate={form.rolling_end_date}
+                  sessionCount={form.session_count}
+                  sessions={form.session_dates}
+                  onChange={(next) => update('session_dates', next)}
+                />
+              </div>
             </>
           )}
 
@@ -1146,15 +1022,30 @@ export function CreateProgramme() {
                     key: 'Schedule',
                     value: `Every ${daysLabel} · ${formatTime(form.start_time)} · ${form.duration_minutes} min`,
                   },
+                  // CF-PROG-SESSION-LIST: use session_dates[0]/[last] for fixed,
+                  // form.starts_at for rolling (calendar may show ongoing).
                   {
-                    key: form.schedule_type === 'fixed' ? 'First session' : 'Enrolment opens',
-                    value: form.starts_at
-                      ? new Date(form.starts_at + 'T00:00:00').toLocaleDateString('en-GB', {
-                          weekday: 'long', day: 'numeric', month: 'long',
-                        })
-                      : '—',
-                    muted: !form.starts_at,
+                    key: form.schedule_type === 'fixed' ? 'First session' : 'Starts',
+                    value: form.schedule_type === 'fixed'
+                      ? (firstSessionDate
+                          ? new Date(firstSessionDate + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })
+                          : '—')
+                      : (form.starts_at
+                          ? new Date(form.starts_at + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })
+                          : '—'),
+                    muted: form.schedule_type === 'fixed' ? !firstSessionDate : !form.starts_at,
                   },
+                  ...(form.schedule_type === 'fixed' && lastSessionDate
+                    ? [{
+                        key: 'Last session',
+                        value: new Date(lastSessionDate + 'T00:00:00').toLocaleDateString('en-GB', {
+                          weekday: 'long', day: 'numeric', month: 'long',
+                        }),
+                      }]
+                    : []),
+                  ...(form.campMode
+                    ? [{ key: 'Format', value: 'Camp mode · multiple sessions per day' }]
+                    : []),
                   { key: 'Type', value: scheduleTypeValue },
                   { key: 'Capacity', value: `${form.max_spots} spots` },
                   {

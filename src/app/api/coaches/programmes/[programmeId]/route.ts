@@ -361,6 +361,15 @@ export async function PATCH(
       }
     }
 
+    // CF-PROG-SESSION-LIST: shape check only — per-entry validation deferred
+    // to CF-PROG-SESSIONS-DB.
+    if (body.session_dates !== undefined && !Array.isArray(body.session_dates)) {
+      validationErrors.push('session_dates must be an array')
+    }
+    if (body.campMode !== undefined && typeof body.campMode !== 'boolean') {
+      validationErrors.push('campMode must be a boolean')
+    }
+
     if (validationErrors.length > 0) {
       return NextResponse.json(
         { error: 'Validation failed', details: validationErrors },
@@ -395,6 +404,9 @@ export async function PATCH(
       // CF-PROG-START-DATE: starts_at is user-supplied, ends_at is derived.
       starts_at?: string | null
       ends_at?: string | null
+      // CF-PROG-SESSION-LIST: session_count derived from session_dates.length
+      // when the array is non-empty.
+      session_count?: number | null
     } = {
       updated_at: new Date().toISOString(),
     }
@@ -435,19 +447,46 @@ export async function PATCH(
       updateData.age_groups = body.age_groups
     }
 
+    // CF-PROG-SESSION-LIST: when session_dates is non-empty, it is the canonical
+    // source for starts_at / ends_at / session_count / days_of_week — overrides
+    // the CF-PROG-START-DATE merged-state fallback below.
+    const sessionDatesBody: Array<{ date?: unknown }> | null =
+      Array.isArray(body.session_dates) && body.session_dates.length > 0
+        ? body.session_dates
+        : null
+
+    if (sessionDatesBody) {
+      const sortedDates = sessionDatesBody
+        .map((s) => (typeof s?.date === 'string' ? s.date : ''))
+        .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
+        .sort()
+      if (sortedDates.length > 0) {
+        updateData.starts_at = new Date(sortedDates[0] + 'T00:00:00').toISOString()
+        updateData.ends_at = new Date(sortedDates[sortedDates.length - 1] + 'T00:00:00').toISOString()
+        updateData.session_count = sortedDates.length
+        const derivedDays = Array.from(new Set(
+          sortedDates.map((d) => new Date(d + 'T00:00:00').getDay()),
+        )).sort((a, b) => a - b)
+        updateData.days_of_week = derivedDays
+        updateData.day_of_week = derivedDays[0]
+      }
+    }
+
     // CF-PROG-START-DATE: write starts_at, then recompute ends_at against the
-    // merged state (existing ∪ body) whenever any schedule input changes.
-    if (typeof body.starts_at === 'string' && body.starts_at) {
+    // merged state (existing ∪ body) whenever any schedule input changes — but
+    // only when session_dates wasn't provided.
+    if (!sessionDatesBody && typeof body.starts_at === 'string' && body.starts_at) {
       updateData.starts_at = new Date(body.starts_at + 'T00:00:00').toISOString()
     }
 
     const scheduleFieldTouched =
-      body.starts_at !== undefined ||
-      body.programme_end_date !== undefined ||
-      body.rolling_end_date !== undefined ||
-      body.session_count !== undefined ||
-      body.days_of_week !== undefined ||
-      body.schedule_type !== undefined
+      !sessionDatesBody &&
+      (body.starts_at !== undefined ||
+        body.programme_end_date !== undefined ||
+        body.rolling_end_date !== undefined ||
+        body.session_count !== undefined ||
+        body.days_of_week !== undefined ||
+        body.schedule_type !== undefined)
 
     if (scheduleFieldTouched) {
       const mergedScheduleType: string =

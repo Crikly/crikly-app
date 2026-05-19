@@ -1,11 +1,12 @@
 'use client'
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Lock, Check, Calendar, RefreshCw, CreditCard, Layers, Loader2 } from 'lucide-react'
+import { ArrowLeft, Lock, Check, Calendar, RefreshCw, CreditCard, Layers, Loader2, Sun, Info } from 'lucide-react'
 import { VenueAutocomplete, type VenueSelection } from '@/components/coach/shared/LocationAutocomplete'
 import { ProgrammeImagePicker } from '@/components/coach/shared/ProgrammeImagePicker'
-import { PROGRAMME_AGE_GROUPS, type ProgrammeAgeGroup, ALL_AGES_LABEL, isProgrammeAgeGroup } from './programmeConstants'
+import { PROGRAMME_AGE_GROUPS, type ProgrammeAgeGroup, ALL_AGES_LABEL, isProgrammeAgeGroup, type SessionEntry } from './programmeConstants'
 import { generateProgrammeSessionDates } from '@/lib/programme-sessions'
+import { SessionCalendar } from './SessionCalendar'
 
 interface FormData {
   title: string
@@ -18,6 +19,9 @@ interface FormData {
   duration_minutes: number
   // CF-PROG-START-DATE: first session date / enrolment open date, YYYY-MM-DD.
   starts_at: string
+  // CF-PROG-SESSION-LIST: calendar-managed session list (replaces sessions preview).
+  session_dates: SessionEntry[]
+  campMode: boolean
   max_spots: number
   payment_type: 'per_session' | 'block_upfront'
   price_pence: number
@@ -46,6 +50,40 @@ const SKILL_LEVELS: { value: FormData['skill_level']; label: string }[] = [
   { value: 'advanced', label: 'Advanced' },
   { value: 'all', label: 'All levels' },
 ]
+
+// CF-PROG-SESSION-LIST: build the initial SessionEntry[] on Edit load.
+// Prefer server-persisted session_dates (STUB until CF-PROG-SESSIONS-DB)
+// then fall back to deriving from starts_at + days_of_week + session_count.
+function deriveInitialSessions(data: Record<string, unknown>): SessionEntry[] {
+  if (Array.isArray(data.session_dates) && data.session_dates.length > 0) {
+    return data.session_dates as SessionEntry[]
+  }
+  const startsAtRaw = typeof data.starts_at === 'string' ? data.starts_at : ''
+  if (!startsAtRaw) return []
+  const days: number[] = Array.isArray(data.days_of_week) && data.days_of_week.length > 0
+    ? (data.days_of_week as number[])
+    : typeof data.day_of_week === 'number' ? [data.day_of_week] : []
+  if (days.length === 0) return []
+  const startDate = new Date(startsAtRaw).toISOString().split('T')[0]
+  const sessionCount = typeof data.session_count === 'number' ? data.session_count : 0
+  const endsAtRaw = typeof data.ends_at === 'string' ? data.ends_at : ''
+  const endDate = endsAtRaw ? new Date(endsAtRaw).toISOString().split('T')[0] : ''
+  const candidates = sessionCount > 0
+    ? generateProgrammeSessionDates({ startDate, days, mode: 'count', count: sessionCount, endDate: '' })
+    : endDate
+      ? generateProgrammeSessionDates({ startDate, days, mode: 'end_date', count: 0, endDate })
+      : []
+  const startTime = typeof data.start_time === 'string' ? (data.start_time as string).substring(0, 5) : '09:00'
+  const durationMinutes = typeof data.duration_minutes === 'number' ? data.duration_minutes : 60
+  function pad(n: number): string { return n < 10 ? `0${n}` : String(n) }
+  function addMinutes(hhmm: string, m: number): string {
+    const [h, mm] = hhmm.split(':').map((s) => parseInt(s, 10))
+    const total = ((h * 60 + mm + m) % 1440 + 1440) % 1440
+    return `${pad(Math.floor(total / 60))}:${pad(total % 60)}`
+  }
+  const endTime = addMinutes(startTime, durationMinutes)
+  return candidates.map((d) => ({ date: d, startTime, endTime }))
+}
 
 function penceToDisplay(pence: number): string {
   return (pence / 100).toFixed(0)
@@ -157,6 +195,8 @@ export function EditProgramme({ programmeId }: { programmeId: string }) {
     start_time: '09:00',
     duration_minutes: 60,
     starts_at: '',
+    session_dates: [],
+    campMode: false,
     max_spots: 8,
     payment_type: 'per_session',
     price_pence: 0,
@@ -212,6 +252,11 @@ export function EditProgramme({ programmeId }: { programmeId: string }) {
           starts_at: typeof data.starts_at === 'string' && data.starts_at
             ? new Date(data.starts_at).toISOString().split('T')[0]
             : '',
+          // CF-PROG-SESSION-LIST: seed session_dates from API if persisted (STUB
+          // until CF-PROG-SESSIONS-DB) — otherwise derive from existing schedule
+          // metadata so the SessionCalendar has something to display on load.
+          session_dates: deriveInitialSessions(data),
+          campMode: typeof data.campMode === 'boolean' ? data.campMode : false,
           max_spots: data.max_spots || 8,
           payment_type: data.payment_type === 'block_upfront' ? 'block_upfront' : 'per_session',
           price_pence:
@@ -299,6 +344,10 @@ export function EditProgramme({ programmeId }: { programmeId: string }) {
         // enrolments exist. Send only when non-empty so the server doesn't
         // null-out an existing value.
         if (form.starts_at) patchBody.starts_at = form.starts_at
+        // CF-PROG-SESSION-LIST: server derives starts_at / session_count /
+        // ends_at from session_dates when non-empty. campMode STUB.
+        patchBody.session_dates = form.session_dates
+        patchBody.campMode = form.campMode
         patchBody.max_spots = form.max_spots
         patchBody.payment_type = form.payment_type
         if (form.payment_type === 'per_session') {
@@ -550,73 +599,55 @@ export function EditProgramme({ programmeId }: { programmeId: string }) {
                 </div>
               </div>
 
-              {/* CF-PROG-START-DATE: first session / enrolment open date. Inside
-                  the schedule lock wrapper — also locked once current_spots > 0.
-                  DEBT: restyle to match design system in CF-R04 audit. */}
-              <div className="mb-[22px]">
-                <div className="flex items-center gap-2 mb-2">
-                  <Calendar size={16} className="text-neutral-400" />
-                  <label className="block text-xs font-medium text-neutral-600">
-                    {readOnly.schedule_type === 'fixed' ? 'FIRST SESSION DATE' : 'ENROLMENT OPENS FROM'}
-                    {readOnly.schedule_type === 'rolling' && (
-                      <span className="text-[11px] text-[#94A3B8] font-normal ml-1">Optional</span>
-                    )}
-                  </label>
+              {/* CF-PROG-SESSION-LIST: camp mode toggle + info banner */}
+              <div className={`flex items-center gap-3 p-3.5 rounded-md border mb-3 ${form.campMode ? 'border-brand-600 bg-brand-50' : 'border-neutral-100 bg-white'}`}>
+                <div className={`w-9 h-9 rounded-md flex items-center justify-center flex-shrink-0 ${form.campMode ? 'bg-white text-brand-600' : 'bg-neutral-50 text-[#94A3B8]'}`}>
+                  <Sun size={18} strokeWidth={1.8} />
                 </div>
-                <input
-                  type="date"
-                  value={form.starts_at}
-                  min={new Date().toISOString().split('T')[0]}
-                  onChange={(e) => update('starts_at', e.target.value)}
-                  className="w-full h-11 px-3 rounded-[10px] bg-neutral-50 border border-neutral-100 text-sm text-neutral-900 focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20"
+                <div className="flex-1">
+                  <h4 className="text-sm font-semibold text-[#0F172A] m-0">Camp mode</h4>
+                  <p className="text-[12px] text-[#64748B] mt-0.5 m-0">Multiple sessions per day.</p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={form.campMode}
+                  onClick={() => update('campMode', !form.campMode)}
+                  className={`w-10 h-6 rounded-full relative flex-shrink-0 transition-colors ${form.campMode ? 'bg-brand-600' : 'bg-[#CBD5E1]'}`}
+                >
+                  <span
+                    className={`absolute top-[2px] w-5 h-5 bg-white rounded-full shadow-[0_1px_2px_rgba(0,0,0,0.15)] transition-[left] ${form.campMode ? 'left-[18px]' : 'left-[2px]'}`}
+                  />
+                </button>
+              </div>
+
+              {form.campMode && (
+                <div className="bg-brand-50 rounded-md p-3 flex gap-2.5 items-start mb-[18px]">
+                  <Info size={16} className="text-brand-600 flex-shrink-0 mt-0.5" />
+                  <p className="text-[13px] text-brand-800 m-0 leading-snug">
+                    Parents book the full day. Each day can have multiple time blocks.
+                  </p>
+                </div>
+              )}
+
+              {/* CF-PROG-SESSION-LIST: SessionCalendar replaces the prior date
+                  input + preview. `disabled={isLocked}` so the entire calendar
+                  becomes inert once enrolments exist (stricter than before — by
+                  design, the schedule is contractual). */}
+              <div className="bg-white border border-neutral-100 rounded-md p-4">
+                <SessionCalendar
+                  scheduleType={readOnly.schedule_type === 'rolling' ? 'rolling' : 'fixed'}
+                  selectedDays={form.days_of_week}
+                  defaultStartTime={form.start_time}
+                  defaultDurationMinutes={form.duration_minutes}
+                  campMode={form.campMode}
+                  startDate={form.starts_at}
+                  endDate={''}
+                  sessionCount={readOnly.session_count ?? form.session_dates.length}
+                  sessions={form.session_dates}
+                  onChange={(next) => update('session_dates', next)}
+                  disabled={isLocked}
                 />
-                {/* Sessions preview — fixed programmes only. Count-mode uses
-                    readOnly.session_count; end-date-mode falls back to
-                    readOnly.ends_at (exposed by the single-programme GET).
-                    Known approximation: if the coach changes form.starts_at in
-                    this session, the end-date-mode preview still bounds against
-                    the originally-loaded readOnly.ends_at (not a server-recomputed
-                    value). The server PATCH recompute uses the merged state, so
-                    the persisted result is correct — the preview is cosmetic.
-                    Acceptable since this only affects the unlocked draft case. */}
-                {readOnly.schedule_type === 'fixed' && form.starts_at && form.days_of_week.length > 0 && (() => {
-                  const hasCount = typeof readOnly.session_count === 'number' && readOnly.session_count > 0
-                  const endDateStr = readOnly.ends_at
-                    ? new Date(readOnly.ends_at).toISOString().split('T')[0]
-                    : ''
-                  const mode: 'count' | 'end_date' = hasCount ? 'count' : 'end_date'
-                  const preview = generateProgrammeSessionDates({
-                    startDate: form.starts_at,
-                    days: form.days_of_week,
-                    mode,
-                    count: hasCount ? (readOnly.session_count ?? 0) : 0,
-                    endDate: endDateStr,
-                  })
-                  if (preview.length === 0) return null
-                  const startLabel = new Date(form.starts_at + 'T00:00:00').toLocaleDateString('en-GB', {
-                    weekday: 'long', day: 'numeric', month: 'long',
-                  })
-                  const shown = preview.slice(0, 12).map((yyyymmdd) => {
-                    const d = new Date(yyyymmdd + 'T00:00:00')
-                    const today = new Date()
-                    const sameYear = d.getFullYear() === today.getFullYear()
-                    return d.toLocaleDateString('en-GB', {
-                      weekday: 'short', day: 'numeric', month: 'short',
-                      ...(sameYear ? {} : { year: 'numeric' }),
-                    })
-                  })
-                  const overflow = preview.length - 12
-                  return (
-                    <div className="mt-3 p-3 bg-brand-50 rounded-[10px]">
-                      <p className="text-xs font-medium text-brand-800 mb-1">
-                        {preview.length} session{preview.length === 1 ? '' : 's'} starting {startLabel}
-                      </p>
-                      <p className="text-xs text-brand-600">
-                        {shown.join(' · ')}{overflow > 0 ? ` · +${overflow} more` : ''}
-                      </p>
-                    </div>
-                  )
-                })()}
               </div>
 
             </div>

@@ -310,6 +310,15 @@ export async function POST(
       }
     }
 
+    // CF-PROG-SESSION-LIST: shape check only — per-entry validation deferred
+    // to CF-PROG-SESSIONS-DB.
+    if (body.session_dates !== undefined && !Array.isArray(body.session_dates)) {
+      validationErrors.push('session_dates must be an array')
+    }
+    if (body.campMode !== undefined && typeof body.campMode !== 'boolean') {
+      validationErrors.push('campMode must be a boolean')
+    }
+
     if (validationErrors.length > 0) {
       return NextResponse.json(
         { error: 'Validation failed', details: validationErrors },
@@ -426,56 +435,87 @@ export async function POST(
       insertData.age_groups = body.age_groups
     }
 
-    // CF-PROG-START-DATE: derive starts_at + ends_at, both as ISO timestamps.
-    //
-    //   schedule_type === 'fixed':
-    //     - programme_end_date provided → ends_at = programme_end_date
-    //     - else if starts_at + session_count + days_of_week → compute last date
-    //     - else → ends_at = null
-    //   schedule_type === 'rolling':
-    //     - rolling_end_date provided → ends_at = rolling_end_date
-    //     - else → ends_at = null
-    const startsAtStr: string | null =
-      typeof body.starts_at === 'string' && body.starts_at ? body.starts_at : null
-    if (startsAtStr) {
-      insertData.starts_at = new Date(startsAtStr + 'T00:00:00').toISOString()
+    // CF-PROG-SESSION-LIST: when session_dates is non-empty, it is the canonical
+    // source. Derive starts_at, ends_at, session_count, days_of_week from it.
+    // Otherwise fall back to the CF-PROG-START-DATE derivation matrix below.
+    const sessionDatesBody: Array<{ date?: unknown }> | null =
+      Array.isArray(body.session_dates) && body.session_dates.length > 0
+        ? body.session_dates
+        : null
+
+    if (sessionDatesBody) {
+      const sortedDates = sessionDatesBody
+        .map((s) => (typeof s?.date === 'string' ? s.date : ''))
+        .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
+        .sort()
+      if (sortedDates.length > 0) {
+        insertData.starts_at = new Date(sortedDates[0] + 'T00:00:00').toISOString()
+        insertData.ends_at = new Date(sortedDates[sortedDates.length - 1] + 'T00:00:00').toISOString()
+        insertData.session_count = sortedDates.length
+        // Derive days_of_week from the actual scheduled dates (calendar truth)
+        // rather than from the form's pill row, per CF-PROG-SESSION-LIST flag 2.
+        const derivedDays = Array.from(new Set(
+          sortedDates.map((d) => new Date(d + 'T00:00:00').getDay()),
+        )).sort((a, b) => a - b)
+        insertData.days_of_week = derivedDays
+        insertData.day_of_week = derivedDays[0]
+      }
+    } else {
+      // CF-PROG-START-DATE fallback:
+      //   schedule_type === 'fixed':
+      //     - programme_end_date → ends_at = programme_end_date
+      //     - else starts_at + session_count + days_of_week → compute last date
+      //   schedule_type === 'rolling':
+      //     - rolling_end_date → ends_at = rolling_end_date
+      const startsAtStr: string | null =
+        typeof body.starts_at === 'string' && body.starts_at ? body.starts_at : null
+      if (startsAtStr) {
+        insertData.starts_at = new Date(startsAtStr + 'T00:00:00').toISOString()
+      }
+
+      let endsAtStr: string | null = null
+      if (body.schedule_type === 'fixed') {
+        if (typeof body.programme_end_date === 'string' && body.programme_end_date) {
+          endsAtStr = body.programme_end_date
+        } else if (
+          startsAtStr &&
+          typeof body.session_count === 'number' &&
+          body.session_count > 0 &&
+          Array.isArray(insertData.days_of_week) &&
+          insertData.days_of_week.length > 0
+        ) {
+          const computed = generateProgrammeSessionDates({
+            startDate: startsAtStr,
+            days: insertData.days_of_week,
+            mode: 'count',
+            count: body.session_count,
+            endDate: '',
+          })
+          endsAtStr = computed.length > 0 ? computed[computed.length - 1] : null
+        }
+      } else if (body.schedule_type === 'rolling') {
+        if (typeof body.rolling_end_date === 'string' && body.rolling_end_date) {
+          endsAtStr = body.rolling_end_date
+        }
+      }
+      if (endsAtStr) {
+        insertData.ends_at = new Date(endsAtStr + 'T00:00:00').toISOString()
+      }
     }
 
-    let endsAtStr: string | null = null
-    if (body.schedule_type === 'fixed') {
-      if (typeof body.programme_end_date === 'string' && body.programme_end_date) {
-        endsAtStr = body.programme_end_date
-      } else if (
-        startsAtStr &&
-        typeof body.session_count === 'number' &&
-        body.session_count > 0 &&
-        Array.isArray(insertData.days_of_week) &&
-        insertData.days_of_week.length > 0
-      ) {
-        const computed = generateProgrammeSessionDates({
-          startDate: startsAtStr,
-          days: insertData.days_of_week,
-          mode: 'count',
-          count: body.session_count,
-          endDate: '',
-        })
-        endsAtStr = computed.length > 0 ? computed[computed.length - 1] : null
+    // Fix-58-DB-api: populate days_of_week — prefer explicit array, fall back
+    // to [day_of_week]. Session-dates derivation above already populated
+    // days_of_week when applicable; this is the legacy fallback path.
+    if (!Array.isArray(insertData.days_of_week)) {
+      if (Array.isArray(body.days_of_week) && body.days_of_week.length > 0) {
+        insertData.days_of_week = body.days_of_week
+      } else if (typeof body.day_of_week === 'number') {
+        insertData.days_of_week = [body.day_of_week]
       }
-    } else if (body.schedule_type === 'rolling') {
-      if (typeof body.rolling_end_date === 'string' && body.rolling_end_date) {
-        endsAtStr = body.rolling_end_date
-      }
-    }
-    if (endsAtStr) {
-      insertData.ends_at = new Date(endsAtStr + 'T00:00:00').toISOString()
     }
 
-    // Fix-58-DB-api: populate days_of_week — prefer explicit array, fall back to [day_of_week]
-    if (Array.isArray(body.days_of_week) && body.days_of_week.length > 0) {
-      insertData.days_of_week = body.days_of_week
-    } else if (typeof body.day_of_week === 'number') {
-      insertData.days_of_week = [body.day_of_week]
-    }
+    // CF-PROG-SESSION-LIST: campMode is accepted but ignored server-side
+    // (STUB until CF-PROG-SESSIONS-DB adds the column).
 
     // Fix-62: Use admin client for INSERT only — user is already authenticated and
     // coach ownership verified above. Bypasses RLS to avoid auth_user_id mapping
