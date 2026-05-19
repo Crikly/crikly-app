@@ -5,6 +5,7 @@ import { ArrowLeft, Check, Loader2, Calendar, RefreshCw, CreditCard, Layers } fr
 import { VenueAutocomplete, type VenueSelection } from '@/components/coach/shared/LocationAutocomplete'
 import { ProgrammeImagePicker } from '@/components/coach/shared/ProgrammeImagePicker'
 import { PROGRAMME_AGE_GROUPS, type ProgrammeAgeGroup, ALL_AGES_LABEL } from './programmeConstants'
+import { generateProgrammeSessionDates } from '@/lib/programme-sessions'
 
 // BUG-PROGRAMME-CREATE-PREVIEW-LOST: accepted as a regression. The previous
 // CustomEvent dispatch + ProgrammePreviewEventDetail interface were deleted
@@ -35,6 +36,9 @@ interface FormData {
   programme_end_date: string      // Fix-58-5: for fixed end-date mode
   rolling_end_date: string        // Fix-58-8: optional rolling end
   excluded_dates: string[]        // Fix-58-6: session exclusions
+  // CF-PROG-START-DATE: first session date (fixed, required) or enrolment
+  // open date (rolling, optional). YYYY-MM-DD string, never undefined.
+  starts_at: string
   // Step 2 — venue (optional)
   venue_name: string
   venue_address: string
@@ -86,44 +90,22 @@ function formatSessionDate(dateStr: string): string {
   return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
 }
 
-function generateSessionDates(
-  days: number[],
-  mode: 'count' | 'end_date',
-  count: number,
-  endDateStr: string,
-): string[] {
-  const dates: string[] = []
-  if (days.length === 0) return dates
+// CF-PROG-START-DATE: session-date enumeration moved to @/lib/programme-sessions
+// (also used server-side for ends_at derivation). Previous in-file helper
+// always started from "tomorrow" — now starts from user-picked starts_at.
 
+// CF-PROG-START-DATE: short label like 'Sat 13 Jun' (or 'Sat 13 Jun 2027'
+// when the year differs from today). Used in the Step 2 sessions preview.
+function formatPreviewDate(yyyymmdd: string): string {
+  const d = new Date(yyyymmdd + 'T00:00:00')
   const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const start = new Date(today)
-  start.setDate(start.getDate() + 1)
-
-  if (mode === 'count') {
-    const cur = new Date(start)
-    let generated = 0
-    const limit = count * 7 + 30
-    let iter = 0
-    while (generated < count && iter < limit) {
-      if (days.includes(cur.getDay())) {
-        dates.push(cur.toISOString().split('T')[0])
-        generated++
-      }
-      cur.setDate(cur.getDate() + 1)
-      iter++
-    }
-  } else if (mode === 'end_date' && endDateStr) {
-    const end = new Date(endDateStr + 'T00:00:00')
-    const cur = new Date(start)
-    while (cur <= end) {
-      if (days.includes(cur.getDay())) {
-        dates.push(cur.toISOString().split('T')[0])
-      }
-      cur.setDate(cur.getDate() + 1)
-    }
-  }
-  return dates
+  const sameYear = d.getFullYear() === today.getFullYear()
+  return d.toLocaleDateString('en-GB', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    ...(sameYear ? {} : { year: 'numeric' }),
+  })
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -262,6 +244,7 @@ export function CreateProgramme() {
     programme_end_date: '',
     rolling_end_date: '',
     excluded_dates: [],
+    starts_at: '',
     venue_name: '',
     venue_address: '',
     max_spots: 8,
@@ -344,20 +327,24 @@ export function CreateProgramme() {
     }
   }
 
-  // Fix-58-6: computed session dates
+  // Fix-58-6 + CF-PROG-START-DATE: computed session dates — now anchored on
+  // the user-picked starts_at instead of "tomorrow".
   const sessionDates = useMemo(() => {
     if (form.schedule_type !== 'fixed') return []
+    if (!form.starts_at) return []
     if (form.days_of_week.length === 0) return []
     if (form.fixed_schedule_mode === 'count' && form.session_count < 2) return []
     if (form.fixed_schedule_mode === 'end_date' && !form.programme_end_date) return []
-    return generateSessionDates(
-      form.days_of_week,
-      form.fixed_schedule_mode,
-      form.session_count,
-      form.programme_end_date,
-    )
+    return generateProgrammeSessionDates({
+      startDate: form.starts_at,
+      days: form.days_of_week,
+      mode: form.fixed_schedule_mode,
+      count: form.session_count,
+      endDate: form.programme_end_date,
+    })
   }, [
     form.schedule_type,
+    form.starts_at,
     form.days_of_week,
     form.fixed_schedule_mode,
     form.session_count,
@@ -376,6 +363,8 @@ export function CreateProgramme() {
     if (step === 2) {
       if (form.days_of_week.length === 0 || !form.start_time || !form.duration_minutes) return false
       if (form.schedule_type === 'fixed') {
+        // CF-PROG-START-DATE: fixed programmes require a first session date.
+        if (!form.starts_at) return false
         if (form.fixed_schedule_mode === 'count') return form.session_count >= 2
         return form.programme_end_date.length > 0
       }
@@ -406,6 +395,14 @@ export function CreateProgramme() {
       venue_name: form.venue_name || null,
       venue_address: form.venue_address || null,
       image_url: form.image_url,
+      // CF-PROG-START-DATE: server derives ends_at from these three inputs.
+      starts_at: form.starts_at || null,
+      programme_end_date:
+        form.schedule_type === 'fixed' && form.fixed_schedule_mode === 'end_date' && form.programme_end_date
+          ? form.programme_end_date
+          : null,
+      rolling_end_date:
+        form.schedule_type === 'rolling' && form.rolling_end_date ? form.rolling_end_date : null,
       status,
     }
     if (form.schedule_type === 'fixed' && form.fixed_schedule_mode === 'count') {
@@ -451,6 +448,20 @@ export function CreateProgramme() {
           duration_minutes: form.duration_minutes,
           venue_name: form.venue_name || null,
           venue_address: form.venue_address || null,
+          // CF-PROG-START-DATE: forward the schedule-derived inputs so the
+          // server's ends_at recompute on PATCH uses fresh values instead of
+          // the Step 1 draft defaults (which are empty for the date fields).
+          starts_at: form.starts_at || null,
+          programme_end_date:
+            form.schedule_type === 'fixed' && form.fixed_schedule_mode === 'end_date'
+              ? form.programme_end_date || null
+              : null,
+          rolling_end_date:
+            form.schedule_type === 'rolling' ? form.rolling_end_date || null : null,
+        }
+        // session_count is only meaningful in fixed-count mode.
+        if (form.schedule_type === 'fixed' && form.fixed_schedule_mode === 'count') {
+          patchBody.session_count = form.session_count
         }
         const res = await fetch(`/api/coaches/programmes/${programmeId}`, {
           method: 'PATCH',
@@ -755,6 +766,49 @@ export function CreateProgramme() {
                     ))}
                   </div>
                 </div>
+              </div>
+
+              {/* CF-PROG-START-DATE: starting date (fixed = required first session,
+                  rolling = optional enrolment open date). Sessions preview below
+                  renders for fixed programmes once starts_at + days + mode inputs
+                  are set. Server derives ends_at from these inputs.
+                  DEBT: restyle to match design system in CF-R04 audit. */}
+              <div className="mb-[22px]">
+                <div className="flex items-center gap-2 mb-2">
+                  <Calendar size={16} className="text-neutral-400" />
+                  <label className="block text-xs font-medium text-neutral-600">
+                    {form.schedule_type === 'fixed' ? 'FIRST SESSION DATE' : 'ENROLMENT OPENS FROM'}
+                    {form.schedule_type === 'rolling' && (
+                      <span className="text-[11px] text-[#94A3B8] font-normal ml-1">Optional</span>
+                    )}
+                  </label>
+                </div>
+                <input
+                  type="date"
+                  value={form.starts_at}
+                  min={new Date().toISOString().split('T')[0]}
+                  onChange={(e) => update('starts_at', e.target.value)}
+                  className="w-full h-11 px-3 rounded-[10px] bg-neutral-50 border border-neutral-100 text-sm text-neutral-900 focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20"
+                />
+                {/* Sessions preview — fixed programmes only. Reuses the memoised
+                    `sessionDates` (above, ~L332) — no duplicate compute. */}
+                {form.schedule_type === 'fixed' && sessionDates.length > 0 && (() => {
+                  const startLabel = new Date(form.starts_at + 'T00:00:00').toLocaleDateString('en-GB', {
+                    weekday: 'long', day: 'numeric', month: 'long',
+                  })
+                  const shown = sessionDates.slice(0, 12).map(formatPreviewDate)
+                  const overflow = sessionDates.length - 12
+                  return (
+                    <div className="mt-3 p-3 bg-brand-50 rounded-[10px]">
+                      <p className="text-xs font-medium text-brand-800 mb-1">
+                        {sessionDates.length} session{sessionDates.length === 1 ? '' : 's'} starting {startLabel}
+                      </p>
+                      <p className="text-xs text-brand-600">
+                        {shown.join(' · ')}{overflow > 0 ? ` · +${overflow} more` : ''}
+                      </p>
+                    </div>
+                  )
+                })()}
               </div>
 
               {/* Fix-58-5: Fixed — sessions count OR end date */}
@@ -1091,6 +1145,15 @@ export function CreateProgramme() {
                   {
                     key: 'Schedule',
                     value: `Every ${daysLabel} · ${formatTime(form.start_time)} · ${form.duration_minutes} min`,
+                  },
+                  {
+                    key: form.schedule_type === 'fixed' ? 'First session' : 'Enrolment opens',
+                    value: form.starts_at
+                      ? new Date(form.starts_at + 'T00:00:00').toLocaleDateString('en-GB', {
+                          weekday: 'long', day: 'numeric', month: 'long',
+                        })
+                      : '—',
+                    muted: !form.starts_at,
                   },
                   { key: 'Type', value: scheduleTypeValue },
                   { key: 'Capacity', value: `${form.max_spots} spots` },
