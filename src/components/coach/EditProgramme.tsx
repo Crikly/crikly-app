@@ -4,11 +4,14 @@ import { useRouter } from 'next/navigation'
 import { ArrowLeft, Lock, Check, Calendar, RefreshCw, CreditCard, Layers, Loader2 } from 'lucide-react'
 import { VenueAutocomplete, type VenueSelection } from '@/components/coach/shared/LocationAutocomplete'
 import { ProgrammeImagePicker } from '@/components/coach/shared/ProgrammeImagePicker'
+import { PROGRAMME_AGE_GROUPS, type ProgrammeAgeGroup, ALL_AGES_LABEL, isProgrammeAgeGroup } from './programmeConstants'
 
 interface FormData {
   title: string
   description: string
   skill_level: 'beginner' | 'intermediate' | 'advanced' | 'all'
+  // CF-PROG-AGE-GROUP: target age groups (min 1, "All ages" XOR specific groups)
+  age_groups: ProgrammeAgeGroup[]
   days_of_week: number[]
   start_time: string
   duration_minutes: number
@@ -143,6 +146,7 @@ export function EditProgramme({ programmeId }: { programmeId: string }) {
     title: '',
     description: '',
     skill_level: 'all',
+    age_groups: [ALL_AGES_LABEL],
     days_of_week: [6],
     start_time: '09:00',
     duration_minutes: 60,
@@ -180,6 +184,13 @@ export function EditProgramme({ programmeId }: { programmeId: string }) {
           skill_level: (['beginner', 'intermediate', 'advanced', 'all'].includes(data.skill_level)
             ? data.skill_level
             : 'all') as FormData['skill_level'],
+          age_groups: (() => {
+            // CF-PROG-AGE-GROUP: filter to allowlist; fall back to ['All ages']
+            // for legacy rows where DB default '{}' left the array empty.
+            const raw: unknown[] = Array.isArray(data.age_groups) ? data.age_groups : []
+            const filtered = raw.filter(isProgrammeAgeGroup)
+            return filtered.length > 0 ? filtered : [ALL_AGES_LABEL]
+          })(),
           days_of_week:
             Array.isArray(data.days_of_week) && data.days_of_week.length > 0
               ? (data.days_of_week as number[])
@@ -220,11 +231,34 @@ export function EditProgramme({ programmeId }: { programmeId: string }) {
     }
   }
 
+  // CF-PROG-AGE-GROUP: "All ages" XOR specific groups; min 1 enforced
+  // (last-pill click is a no-op). Not locked by current_spots — age groups are
+  // descriptive metadata, not contractual like price/schedule.
+  function toggleAgeGroup(group: ProgrammeAgeGroup) {
+    const current = form.age_groups
+    if (group === ALL_AGES_LABEL) {
+      if (current.includes(ALL_AGES_LABEL)) return
+      update('age_groups', [ALL_AGES_LABEL])
+      return
+    }
+    const without = current.filter((g) => g !== ALL_AGES_LABEL && g !== group)
+    if (current.includes(group)) {
+      if (without.length === 0) return
+      update('age_groups', without)
+    } else {
+      update('age_groups', [...without, group])
+    }
+  }
+
   const isLocked = readOnly.current_spots > 0
 
   async function handleSave() {
     if (!form.title.trim()) {
       setSaveError('Programme title is required.')
+      return
+    }
+    if (form.age_groups.length === 0) {
+      setSaveError('Select at least one age group.')
       return
     }
     setSaving(true)
@@ -235,6 +269,7 @@ export function EditProgramme({ programmeId }: { programmeId: string }) {
         title: form.title.trim(),
         description: form.description.trim() || null,
         skill_level: form.skill_level,
+        age_groups: form.age_groups,
         venue_name: form.venue_name || null,
         venue_address: form.venue_address || null,
         image_url: form.image_url,
@@ -400,6 +435,22 @@ export function EditProgramme({ programmeId }: { programmeId: string }) {
                     onClick={() => update('skill_level', sl.value)}
                   >
                     {sl.label}
+                  </PillButton>
+                ))}
+              </div>
+            </div>
+
+            {/* CF-PROG-AGE-GROUP: target age groups — not locked by current_spots */}
+            <div className="mb-[22px]">
+              <label className="block text-xs font-medium text-neutral-600 mb-2">Age groups</label>
+              <div className="flex flex-wrap gap-2">
+                {PROGRAMME_AGE_GROUPS.map((g) => (
+                  <PillButton
+                    key={g}
+                    active={form.age_groups.includes(g)}
+                    onClick={() => toggleAgeGroup(g)}
+                  >
+                    {g}
                   </PillButton>
                 ))}
               </div>

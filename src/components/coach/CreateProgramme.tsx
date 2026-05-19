@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { ArrowLeft, Check, Loader2, Calendar, RefreshCw, CreditCard, Layers } from 'lucide-react'
 import { VenueAutocomplete, type VenueSelection } from '@/components/coach/shared/LocationAutocomplete'
 import { ProgrammeImagePicker } from '@/components/coach/shared/ProgrammeImagePicker'
+import { PROGRAMME_AGE_GROUPS, type ProgrammeAgeGroup, ALL_AGES_LABEL } from './programmeConstants'
 
 // BUG-PROGRAMME-CREATE-PREVIEW-LOST: accepted as a regression. The previous
 // CustomEvent dispatch + ProgrammePreviewEventDetail interface were deleted
@@ -22,6 +23,8 @@ interface FormData {
   description: string
   sport_id: string
   skill_level: 'beginner' | 'intermediate' | 'advanced' | 'all'
+  // CF-PROG-AGE-GROUP: target age groups (min 1, "All ages" XOR specific groups)
+  age_groups: ProgrammeAgeGroup[]
   // Step 2
   schedule_type: 'fixed' | 'rolling'
   days_of_week: number[]          // Fix-58-4: multi-select
@@ -249,6 +252,7 @@ export function CreateProgramme() {
     description: '',
     sport_id: '',
     skill_level: 'all',
+    age_groups: [ALL_AGES_LABEL],
     schedule_type: 'fixed',
     days_of_week: [6],             // Saturday default
     start_time: '09:00',
@@ -312,6 +316,24 @@ export function CreateProgramme() {
     }
   }
 
+  // CF-PROG-AGE-GROUP: "All ages" is mutually exclusive with specific groups.
+  // Min 1 selection enforced — last-pill click is a no-op.
+  function toggleAgeGroup(group: ProgrammeAgeGroup) {
+    const current = form.age_groups
+    if (group === ALL_AGES_LABEL) {
+      if (current.includes(ALL_AGES_LABEL)) return
+      update('age_groups', [ALL_AGES_LABEL])
+      return
+    }
+    const without = current.filter((g) => g !== ALL_AGES_LABEL && g !== group)
+    if (current.includes(group)) {
+      if (without.length === 0) return
+      update('age_groups', without)
+    } else {
+      update('age_groups', [...without, group])
+    }
+  }
+
   // Fix-58-6: toggle a session date in/out of excluded_dates
   function toggleExcludeDate(dateStr: string) {
     const current = form.excluded_dates
@@ -345,7 +367,12 @@ export function CreateProgramme() {
   const activeSessionCount = sessionDates.filter((d) => !form.excluded_dates.includes(d)).length
 
   function canContinue(): boolean {
-    if (step === 1) return form.title.trim().length > 0 && form.sport_id.length > 0
+    if (step === 1)
+      return (
+        form.title.trim().length > 0 &&
+        form.sport_id.length > 0 &&
+        form.age_groups.length > 0
+      )
     if (step === 2) {
       if (form.days_of_week.length === 0 || !form.start_time || !form.duration_minutes) return false
       if (form.schedule_type === 'fixed') {
@@ -365,6 +392,7 @@ export function CreateProgramme() {
       title: form.title.trim(),
       description: form.description.trim() || null,
       skill_level: form.skill_level,
+      age_groups: form.age_groups,
       schedule_type: form.schedule_type,
       day_of_week: form.days_of_week[0] ?? 6,
       days_of_week: form.days_of_week,
@@ -622,6 +650,22 @@ export function CreateProgramme() {
                       onClick={() => update('skill_level', sl.value)}
                     >
                       {sl.label}
+                    </PillButton>
+                  ))}
+                </div>
+              </div>
+              {/* CF-PROG-AGE-GROUP: age group multi-select. Mirrors days_of_week
+                  pattern — same PillButton, same min-1 rule, "All ages" XOR. */}
+              <div className="mb-[22px]">
+                <label className="block text-xs font-medium text-neutral-600 mb-2">Age groups</label>
+                <div className="flex flex-wrap gap-2">
+                  {PROGRAMME_AGE_GROUPS.map((g) => (
+                    <PillButton
+                      key={g}
+                      active={form.age_groups.includes(g)}
+                      onClick={() => toggleAgeGroup(g)}
+                    >
+                      {g}
                     </PillButton>
                   ))}
                 </div>
@@ -1043,6 +1087,7 @@ export function CreateProgramme() {
                   { key: 'Programme', value: form.title },
                   { key: 'Sport', value: sport?.sport_name ?? '—', chip: true },
                   { key: 'Skill level', value: skillLabel },
+                  { key: 'Age groups', value: form.age_groups.join(', ') },
                   {
                     key: 'Schedule',
                     value: `Every ${daysLabel} · ${formatTime(form.start_time)} · ${form.duration_minutes} min`,
