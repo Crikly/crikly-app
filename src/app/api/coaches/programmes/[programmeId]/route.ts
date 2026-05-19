@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireCoachContext } from '@/lib/auth/require-coach'
+import { PROGRAMME_AGE_GROUPS } from '@/components/coach/programmeConstants'
 
 interface ProgrammeResponse {
   id: string
@@ -29,6 +30,8 @@ interface ProgrammeResponse {
   venue_address: string | null
   /** CF-PROGRAMMES-IMAGE-PICKER */
   image_url: string | null
+  /** CF-PROG-AGE-GROUP: target age groups (min 1, "All ages" XOR specific). */
+  age_groups: string[]
   skill_level: string
   session_count: number | null
   min_participants: number | null
@@ -71,7 +74,7 @@ export async function GET(
     const adminSupabase = createAdminClient()
     const { data: programme, error: programmeError } = await adminSupabase
       .from('group_programmes')
-      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address, skill_level, session_count, min_participants, cancellation_window_hours, image_url')
+      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address, skill_level, session_count, min_participants, cancellation_window_hours, image_url, age_groups')
       .eq('id', programmeId)
       .eq('coach_profile_id', coachProfile.id)
       .is('deleted_at', null)
@@ -113,6 +116,7 @@ export async function GET(
       venue_name: programme.venue_name,
       venue_address: programme.venue_address,
       image_url: programme.image_url ?? null,
+      age_groups: Array.isArray(programme.age_groups) ? programme.age_groups : [],
       skill_level: programme.skill_level,
       session_count: programme.session_count,
       min_participants: programme.min_participants,
@@ -316,6 +320,25 @@ export async function PATCH(
       }
     }
 
+    // CF-PROG-AGE-GROUP: non-empty array within allowlist. Same shape as POST —
+    // PATCH cannot clear to empty (UI also blocks this).
+    if (body.age_groups !== undefined) {
+      if (
+        !Array.isArray(body.age_groups) ||
+        body.age_groups.length < 1 ||
+        body.age_groups.length > PROGRAMME_AGE_GROUPS.length
+      ) {
+        validationErrors.push('age_groups must be a non-empty array')
+      } else if (
+        !body.age_groups.every(
+          (g: unknown) =>
+            typeof g === 'string' && (PROGRAMME_AGE_GROUPS as readonly string[]).includes(g),
+        )
+      ) {
+        validationErrors.push('age_groups contains invalid values')
+      }
+    }
+
     if (validationErrors.length > 0) {
       return NextResponse.json(
         { error: 'Validation failed', details: validationErrors },
@@ -345,6 +368,8 @@ export async function PATCH(
       cancellation_window_hours?: number
       // CF-PROGRAMMES-IMAGE-PICKER
       image_url?: string | null
+      // CF-PROG-AGE-GROUP
+      age_groups?: string[]
     } = {
       updated_at: new Date().toISOString(),
     }
@@ -379,13 +404,19 @@ export async function PATCH(
       updateData.image_url = typeof body.image_url === 'string' && body.image_url ? body.image_url : null
     }
 
+    // CF-PROG-AGE-GROUP: write only if a valid non-empty array was provided
+    // (validation above guarantees shape + allowlist when defined).
+    if (Array.isArray(body.age_groups) && body.age_groups.length > 0) {
+      updateData.age_groups = body.age_groups
+    }
+
     // 7. Update programme (adminSupabase already created in step 4)
     const { data: updatedProgramme, error: updateError } = await adminSupabase
       .from('group_programmes')
       .update(updateData)
       .eq('id', programmeId)
       .eq('coach_profile_id', coachProfile.id)
-      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address, skill_level, session_count, min_participants, cancellation_window_hours, image_url')
+      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address, skill_level, session_count, min_participants, cancellation_window_hours, image_url, age_groups')
       .single()
 
     if (updateError) {
@@ -425,6 +456,7 @@ export async function PATCH(
       venue_name: updatedProgramme.venue_name,
       venue_address: updatedProgramme.venue_address,
       image_url: updatedProgramme.image_url ?? null,
+      age_groups: Array.isArray(updatedProgramme.age_groups) ? updatedProgramme.age_groups : [],
       skill_level: updatedProgramme.skill_level,
       session_count: updatedProgramme.session_count,
       min_participants: updatedProgramme.min_participants,

@@ -33,6 +33,8 @@ interface ProgrammeResponse {
   min_participants: number | null
   cancellation_window_hours: number
   image_url: string | null
+  /** CF-PROG-AGE-GROUP: target age groups */
+  age_groups: string[]
 }
 
 // UI Programme type
@@ -61,6 +63,8 @@ interface Programme {
    *  this — tracked as OPP-PROGRAMMES-CARD-IMAGE-HEADER. Used today only by
    *  the dashboard GroupCard and the EditProgramme picker on load. */
   image_url: string | null
+  /** CF-PROG-AGE-GROUP: rendered as chip row on list card + section in modal. */
+  age_groups: string[]
 }
 
 // Module-level helper used by both main component and modal
@@ -182,6 +186,7 @@ export function ProgrammesManagement() {
           block_price_pence: prog.block_price_pence,
           block_session_count: prog.block_session_count,
           image_url: prog.image_url ?? null,
+          age_groups: Array.isArray(prog.age_groups) ? prog.age_groups : [],
         }
       })
   }, [])
@@ -417,6 +422,20 @@ export function ProgrammesManagement() {
                     <Calendar size={14} className="text-gray-400 shrink-0" />
                     <span className="text-[12px]">{programme.schedule}</span>
                   </div>
+
+                  {/* CF-PROG-AGE-GROUP: age group chip row */}
+                  {programme.age_groups.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mb-2">
+                      {programme.age_groups.map((g) => (
+                        <span
+                          key={g}
+                          className="inline-flex items-center px-2 py-0.5 bg-brand-50 text-brand-800 rounded-md text-[11px] font-medium"
+                        >
+                          {g}
+                        </span>
+                      ))}
+                    </div>
+                  )}
 
                   {/* 3. Price meta */}
                   <div className="flex items-center gap-2 text-gray-500 mb-3">
@@ -827,6 +846,23 @@ function ProgrammeDetailModal({
             <div className="mt-[22px]">
               <div className="text-[11px] font-medium text-[#64748B] uppercase tracking-[0.08em] mb-[10px]">About</div>
               <p className="text-[13px] text-[#475569] leading-relaxed">{programme.description}</p>
+            </div>
+          )}
+
+          {/* CF-PROG-AGE-GROUP: Age groups section */}
+          {programme.age_groups.length > 0 && (
+            <div className="mt-[22px]">
+              <div className="text-[11px] font-medium text-slate-500 uppercase tracking-[0.08em] mb-[10px]">Age groups</div>
+              <div className="flex flex-wrap gap-2">
+                {programme.age_groups.map((g) => (
+                  <span
+                    key={g}
+                    className="inline-flex items-center px-[10px] py-1 bg-brand-50 text-brand-800 rounded-[6px] text-xs font-medium leading-4"
+                  >
+                    {g}
+                  </span>
+                ))}
+              </div>
             </div>
           )}
 

@@ -421,7 +421,7 @@ export function ProgrammeImagePicker({
           </label>
 
           {/* Preview of currently-uploaded image, if any */}
-          {value && !curatedImages.some((c) => c.url === value) && !uploadError && (
+          {value && !displayedImages.some((c) => c.url === value) && !uploadError && (
             <div className="relative aspect-video rounded-xl overflow-hidden border border-[#E2E8F0]">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={value} alt="Uploaded cover" className="absolute inset-0 w-full h-full object-cover" />
