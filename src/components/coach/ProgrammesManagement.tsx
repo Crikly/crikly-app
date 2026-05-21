@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { ChevronRight, Calendar, Users, Tag, Plus, BookOpen, X, Share2, MapPin, Clock, Shield } from 'lucide-react'
+import { ShareCardModal } from './ShareCardModal'
 
 type Tab = 'Active' | 'Draft'
 
@@ -35,6 +36,8 @@ interface ProgrammeResponse {
   image_url: string | null
   /** CF-PROG-AGE-GROUP: target age groups */
   age_groups: string[]
+  /** CF-PROG-START-DATE: list endpoint exposes starts_at. Used by ShareCard. */
+  starts_at: string | null
 }
 
 // UI Programme type
@@ -65,6 +68,8 @@ interface Programme {
   image_url: string | null
   /** CF-PROG-AGE-GROUP: rendered as chip row on list card + section in modal. */
   age_groups: string[]
+  /** CF-PROG-SHARE-CARD: first session anchor for the share preview. */
+  starts_at: string | null
 }
 
 // Module-level helper used by both main component and modal
@@ -133,6 +138,11 @@ export function ProgrammesManagement() {
   const [cancelConfirmId, setCancelConfirmId] = useState<string | null>(null)
   const [actionError, setActionError] = useState<{ id: string; message: string } | null>(null)
   const [detailProgramme, setDetailProgramme] = useState<Programme | null>(null)
+  // CF-PROG-SHARE-CARD: opens ShareCardModal for the selected programme.
+  const [shareProgramme, setShareProgramme] = useState<Programme | null>(null)
+  // Stable onClose ref so ShareCardModal's keydown effect doesn't re-register
+  // on every parent render.
+  const handleShareClose = useCallback(() => setShareProgramme(null), [])
 
   // CD-08: Fetch programmes — useCallback so action handlers can call it.
   // PERF-PROGRAMMES-LOAD: cache-first read, fetch on miss, write back.
@@ -187,6 +197,7 @@ export function ProgrammesManagement() {
           block_session_count: prog.block_session_count,
           image_url: prog.image_url ?? null,
           age_groups: Array.isArray(prog.age_groups) ? prog.age_groups : [],
+          starts_at: prog.starts_at ?? null,
         }
       })
   }, [])
@@ -569,6 +580,16 @@ export function ProgrammesManagement() {
                       >
                         New cohort ↗
                       </button>
+                      {/* CF-PROG-SHARE-CARD: Share works on Full programmes too (waitlist push) */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setShareProgramme(programme)
+                        }}
+                        className="flex-1 bg-brand-50 border border-[#BFE0F4] text-brand-600 rounded-md text-[11px] py-1.5 text-center hover:bg-brand-100 transition-all duration-150"
+                      >
+                        Share
+                      </button>
                       <button
                         onClick={(e) => {
                           e.stopPropagation()
@@ -624,6 +645,16 @@ export function ProgrammesManagement() {
                         >
                           Promote ↗
                         </button>
+                        {/* CF-PROG-SHARE-CARD: brand-tinted Share pill */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setShareProgramme(programme)
+                          }}
+                          className="flex-1 bg-brand-50 border border-[#BFE0F4] text-brand-600 rounded-md text-[11px] py-1.5 text-center hover:bg-brand-100 transition-all duration-150"
+                        >
+                          Share
+                        </button>
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
@@ -667,6 +698,25 @@ export function ProgrammesManagement() {
           onNavigate={(path) => {
             setDetailProgramme(null)
             router.push(path)
+          }}
+        />
+      )}
+
+      {/* CF-PROG-SHARE-CARD: ShareCardModal — lazy coach-meta fetch on first open */}
+      {shareProgramme && (
+        <ShareCardModal
+          isOpen={!!shareProgramme}
+          onClose={handleShareClose}
+          programme={{
+            id: shareProgramme.id,
+            title: shareProgramme.name,
+            imageUrl: shareProgramme.image_url,
+            sportName: shareProgramme.sport_name,
+            schedule: shareProgramme.schedule,
+            startsAt: shareProgramme.starts_at,
+            priceLabel: shareProgramme.price,
+            spotsLeft: shareProgramme.spotsTotal - shareProgramme.spotsFilled,
+            maxSpots: shareProgramme.spotsTotal,
           }}
         />
       )}

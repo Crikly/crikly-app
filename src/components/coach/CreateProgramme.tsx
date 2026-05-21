@@ -1,11 +1,12 @@
 'use client'
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, Check, Loader2, Calendar, RefreshCw, CreditCard, Layers, Sun, Info } from 'lucide-react'
 import { VenueAutocomplete, type VenueSelection } from '@/components/coach/shared/LocationAutocomplete'
 import { ProgrammeImagePicker } from '@/components/coach/shared/ProgrammeImagePicker'
 import { PROGRAMME_AGE_GROUPS, type ProgrammeAgeGroup, ALL_AGES_LABEL, type SessionEntry } from './programmeConstants'
 import { SessionCalendar } from './SessionCalendar'
+import { ShareCardModal } from './ShareCardModal'
 
 // BUG-PROGRAMME-CREATE-PREVIEW-LOST: accepted as a regression. The previous
 // CustomEvent dispatch + ProgrammePreviewEventDetail interface were deleted
@@ -229,6 +230,14 @@ export function CreateProgramme() {
   // Step 4 final save
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // CF-PROG-SHARE-CARD: when a programme is published successfully, open the
+  // share modal in place. Router push to /coach/programmes happens on close.
+  const [publishedShareId, setPublishedShareId] = useState<string | null>(null)
+  // Stable onClose so ShareCardModal's effects don't re-register every render.
+  const handlePublishedShareClose = useCallback(() => {
+    setPublishedShareId(null)
+    router.push('/coach/programmes')
+  }, [router])
 
   const [form, setForm] = useState<FormData>({
     title: '',
@@ -485,8 +494,9 @@ export function CreateProgramme() {
     setSaving(true)
     setError(null)
     try {
-      if (programmeId) {
-        const res = await fetch(`/api/coaches/programmes/${programmeId}`, {
+      let activeId = programmeId
+      if (activeId) {
+        const res = await fetch(`/api/coaches/programmes/${activeId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ status: 'active' }),
@@ -506,8 +516,11 @@ export function CreateProgramme() {
           const data = await res.json()
           throw new Error(data.error || 'Failed to create programme')
         }
+        const created: { id: string } = await res.json()
+        activeId = created.id
       }
-      router.push('/coach/programmes')
+      // CF-PROG-SHARE-CARD: open share modal in place; router push deferred to close.
+      setPublishedShareId(activeId)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong')
     } finally {
@@ -1204,6 +1217,27 @@ export function CreateProgramme() {
         </div>
       </div>
 
+      {/* CF-PROG-SHARE-CARD: post-publish share modal. Push to /coach/programmes
+          on close (regardless of whether the coach interacted with the buttons). */}
+      {publishedShareId && (
+        <ShareCardModal
+          isOpen={!!publishedShareId}
+          onClose={handlePublishedShareClose}
+          programme={{
+            id: publishedShareId,
+            title: form.title.trim() || 'New programme',
+            imageUrl: form.image_url,
+            sportName: sport?.sport_name ?? '',
+            schedule: `Every ${daysLabel} · ${form.start_time} – ${form.end_time}`,
+            startsAt: form.session_dates[0]?.date ?? (form.starts_at || null),
+            priceLabel: form.payment_type === 'per_session'
+              ? `£${penceToDisplay(form.price_pence)} per session`
+              : `£${penceToDisplay(form.price_pence)} upfront`,
+            spotsLeft: form.max_spots,
+            maxSpots: form.max_spots,
+          }}
+        />
+      )}
     </div>
   )
 }
