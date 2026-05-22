@@ -526,6 +526,7 @@ export function ProgrammesManagement() {
                         </div>
                       )}
 
+                      <div className="flex-1" aria-hidden="true" />
                       <hr className="border-0 border-t border-neutral-100 my-2" />
 
                       {/* Price + spots */}
