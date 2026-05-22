@@ -451,7 +451,7 @@ export function ProgrammesManagement() {
                   <div
                     key={programme.id}
                     onClick={() => setDetailProgramme(programme)}
-                    className="bg-white rounded-2xl overflow-hidden cursor-pointer shadow-[0_1px_3px_rgba(15,23,42,0.06),0_4px_12px_-4px_rgba(15,23,42,0.06)] transition-all duration-200 ease-out hover:scale-[1.015] hover:-translate-y-0.5 hover:shadow-lg"
+                    className="bg-white rounded-2xl overflow-hidden cursor-pointer flex flex-col h-full shadow-[0_1px_3px_rgba(15,23,42,0.06),0_4px_12px_-4px_rgba(15,23,42,0.06)] transition-all duration-200 ease-out hover:scale-[1.015] hover:-translate-y-0.5 hover:shadow-lg"
                   >
                     {/* 1. Cover */}
                     <div className="relative h-[120px] overflow-hidden bg-neutral-100">
@@ -474,7 +474,7 @@ export function ProgrammesManagement() {
                     </div>
 
                     {/* 2. Content area */}
-                    <div className="p-3 flex flex-col gap-1.5">
+                    <div className="p-3 flex flex-col gap-1.5 flex-1">
                       {/* Title + sport pill */}
                       <div className="flex items-start justify-between gap-1.5">
                         <span className="flex-1 min-w-0 truncate text-[15px] font-bold text-neutral-900 tracking-tight leading-tight">
