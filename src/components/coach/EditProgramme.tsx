@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import { ArrowLeft, Lock, Check, Calendar, RefreshCw, CreditCard, Layers, Loader2, Sun, Info } from 'lucide-react'
 import { VenueAutocomplete, type VenueSelection } from '@/components/coach/shared/LocationAutocomplete'
 import { ProgrammeImagePicker } from '@/components/coach/shared/ProgrammeImagePicker'
-import { TimePicker } from '@/components/ui'
+import { DatePicker, TimePicker, todayYYYYMMDD } from '@/components/ui'
 import { PROGRAMME_AGE_GROUPS, type ProgrammeAgeGroup, ALL_AGES_LABEL, isProgrammeAgeGroup, type SessionEntry } from './programmeConstants'
 import { generateProgrammeSessionDates } from '@/lib/programme-sessions'
 import { SessionCalendar } from './SessionCalendar'
@@ -17,9 +17,15 @@ interface FormData {
   age_groups: ProgrammeAgeGroup[]
   days_of_week: number[]
   start_time: string
+  // CF-PROG-EDIT-PARITY: end_time mirrors CreateProgramme. duration_minutes
+  // is now derived from (end_time − start_time) at PATCH time; kept in form
+  // state as a dead field (seeded from the API on load, never mutated by UI).
+  end_time: string
   duration_minutes: number
   // CF-PROG-START-DATE: first session date / enrolment open date, YYYY-MM-DD.
   starts_at: string
+  // CF-PROG-EDIT-PARITY: optional Rolling end date (YYYY-MM-DD), '' when unset.
+  rolling_end_date: string
   // CF-PROG-SESSION-LIST: calendar-managed session list (replaces sessions preview).
   session_dates: SessionEntry[]
   campMode: boolean
@@ -44,7 +50,7 @@ interface ReadOnlyData {
 }
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-const DURATIONS = [30, 45, 60, 90, 120]
+// CF-PROG-EDIT-PARITY: DURATIONS removed — Duration pills replaced by an End time TimePicker.
 const SKILL_LEVELS: { value: FormData['skill_level']; label: string }[] = [
   { value: 'beginner', label: 'Beginner' },
   { value: 'intermediate', label: 'Intermediate' },
@@ -84,6 +90,27 @@ function deriveInitialSessions(data: Record<string, unknown>): SessionEntry[] {
   }
   const endTime = addMinutes(startTime, durationMinutes)
   return candidates.map((d) => ({ date: d, startTime, endTime }))
+}
+
+// CF-PROG-EDIT-PARITY: derive duration_minutes from end_time − start_time at
+// PATCH time. Mirrors the helper in CreateProgramme.tsx so Edit and Create
+// emit identical PATCH bodies. Handles same-day cross-midnight wrap.
+function diffMinutes(start: string, end: string): number {
+  const [sh, sm] = start.split(':').map((s) => parseInt(s, 10))
+  const [eh, em] = end.split(':').map((s) => parseInt(s, 10))
+  const diff = eh * 60 + em - (sh * 60 + sm)
+  return diff < 0 ? diff + 1440 : diff
+}
+
+// CF-PROG-EDIT-PARITY: addMinutes for seeding end_time from start_time +
+// duration_minutes on API load. Same arithmetic as the local helper inside
+// deriveInitialSessions, kept separate so seeding doesn't share state.
+function addMinutesToHHMM(hhmm: string, minutes: number): string {
+  const [h, m] = hhmm.split(':').map((s) => parseInt(s, 10))
+  const total = ((h * 60 + m + minutes) % 1440 + 1440) % 1440
+  const eh = String(Math.floor(total / 60)).padStart(2, '0')
+  const em = String(total % 60).padStart(2, '0')
+  return `${eh}:${em}`
 }
 
 function penceToDisplay(pence: number): string {
@@ -194,8 +221,10 @@ export function EditProgramme({ programmeId }: { programmeId: string }) {
     age_groups: [ALL_AGES_LABEL],
     days_of_week: [6],
     start_time: '09:00',
+    end_time: '10:00',
     duration_minutes: 60,
     starts_at: '',
+    rolling_end_date: '',
     session_dates: [],
     campMode: false,
     max_spots: 8,
@@ -247,11 +276,21 @@ export function EditProgramme({ programmeId }: { programmeId: string }) {
               ? (data.days_of_week as number[])
               : [data.day_of_week ?? 6],
           start_time: data.start_time ? (data.start_time as string).substring(0, 5) : '09:00',
+          // CF-PROG-EDIT-PARITY: seed end_time from existing start + duration.
+          end_time: addMinutesToHHMM(
+            data.start_time ? (data.start_time as string).substring(0, 5) : '09:00',
+            typeof data.duration_minutes === 'number' ? data.duration_minutes : 60,
+          ),
           duration_minutes: data.duration_minutes || 60,
           // CF-PROG-START-DATE: convert timestamptz from API → YYYY-MM-DD for
-          // the <input type="date"> control. Empty string when absent.
+          // the date control. Empty string when absent.
           starts_at: typeof data.starts_at === 'string' && data.starts_at
             ? new Date(data.starts_at).toISOString().split('T')[0]
+            : '',
+          // CF-PROG-EDIT-PARITY: seed rolling_end_date from data.ends_at —
+          // same conversion pattern as starts_at above.
+          rolling_end_date: typeof data.ends_at === 'string' && data.ends_at
+            ? new Date(data.ends_at).toISOString().split('T')[0]
             : '',
           // CF-PROG-SESSION-LIST: seed session_dates from API if persisted (STUB
           // until CF-PROG-SESSIONS-DB) — otherwise derive from existing schedule
@@ -340,11 +379,18 @@ export function EditProgramme({ programmeId }: { programmeId: string }) {
         patchBody.days_of_week = form.days_of_week
         patchBody.day_of_week = form.days_of_week[0] ?? 0
         patchBody.start_time = form.start_time
-        patchBody.duration_minutes = form.duration_minutes
+        // CF-PROG-EDIT-PARITY: derive duration_minutes from end_time − start_time
+        // (matches CreateProgramme). The server only accepts duration_minutes.
+        patchBody.duration_minutes = diffMinutes(form.start_time, form.end_time)
         // CF-PROG-START-DATE: locked alongside the rest of the schedule once
         // enrolments exist. Send only when non-empty so the server doesn't
         // null-out an existing value.
         if (form.starts_at) patchBody.starts_at = form.starts_at
+        // CF-PROG-EDIT-PARITY: Rolling end date — null when fixed or cleared.
+        patchBody.rolling_end_date =
+          readOnly.schedule_type === 'rolling'
+            ? form.rolling_end_date || null
+            : null
         // CF-PROG-SESSION-LIST: server derives starts_at / session_count /
         // ends_at from session_dates when non-empty. campMode STUB.
         patchBody.session_dates = form.session_dates
@@ -574,28 +620,74 @@ export function EditProgramme({ programmeId }: { programmeId: string }) {
                 </div>
               </div>
 
-              <div className="flex gap-6 flex-wrap mb-[22px]">
-                <div className="flex-none w-[160px]">
-                  <label className="block text-[12px] font-medium text-[#475569] mb-2">Start time</label>
-                  <TimePicker
-                    value={form.start_time}
-                    onChange={(v) => update('start_time', v)}
+              {/* CF-PROG-EDIT-PARITY: Commencing date (Fixed) / Rolling date range — matches CreateProgramme position */}
+              {readOnly.schedule_type === 'fixed' && (
+                <div className="mb-[22px]">
+                  <label className="block text-[11px] font-semibold text-neutral-600 uppercase tracking-wide mb-2">
+                    Commencing date
+                  </label>
+                  <DatePicker
+                    value={form.starts_at}
+                    minDate={todayYYYYMMDD()}
+                    onChange={(v) => update('starts_at', v)}
+                    disabled={isLocked}
                   />
                 </div>
-                <div className="flex-1 min-w-[260px]">
-                  <label className="block text-[12px] font-medium text-[#475569] mb-2">Duration</label>
-                  <div className="flex flex-wrap gap-2">
-                    {DURATIONS.map((d) => (
-                      <PillButton
-                        key={d}
-                        active={form.duration_minutes === d}
-                        onClick={() => update('duration_minutes', d)}
-                      >
-                        {d} min
-                      </PillButton>
-                    ))}
+              )}
+
+              {readOnly.schedule_type === 'rolling' && (
+                <div className="grid grid-cols-2 gap-3 mb-[22px]">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-neutral-600 uppercase tracking-wide mb-2">
+                      Start date
+                    </label>
+                    <DatePicker
+                      value={form.starts_at}
+                      minDate={todayYYYYMMDD()}
+                      onChange={(v) => update('starts_at', v)}
+                      disabled={isLocked}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-neutral-600 uppercase tracking-wide mb-2">
+                      End date
+                      <span className="text-neutral-400 font-normal text-[10px] ml-1">Optional</span>
+                    </label>
+                    <DatePicker
+                      value={form.rolling_end_date}
+                      minDate={form.starts_at || todayYYYYMMDD()}
+                      onChange={(v) => update('rolling_end_date', v)}
+                      disabled={isLocked}
+                    />
                   </div>
                 </div>
+              )}
+
+              {/* CF-PROG-EDIT-PARITY: Start time + End time row (Duration pills removed) */}
+              <div className="mb-[22px]">
+                <div className="flex gap-4 flex-wrap">
+                  <div className="flex-1 min-w-[140px]">
+                    <label className="block text-[11px] font-semibold text-neutral-600 uppercase tracking-wide mb-2">Start time</label>
+                    <TimePicker
+                      value={form.start_time}
+                      onChange={(v) => update('start_time', v)}
+                      disabled={isLocked}
+                    />
+                  </div>
+                  <div className="flex-1 min-w-[140px]">
+                    <label className="block text-[11px] font-semibold text-neutral-600 uppercase tracking-wide mb-2">End time</label>
+                    <TimePicker
+                      value={form.end_time}
+                      onChange={(v) => update('end_time', v)}
+                      disabled={isLocked}
+                    />
+                  </div>
+                </div>
+                {form.end_time <= form.start_time && (
+                  <p className="text-[12px] text-red-600 mt-2">
+                    End time should be after start time.
+                  </p>
+                )}
               </div>
 
               {/* CF-PROG-SESSION-LIST: camp mode toggle + info banner */}
@@ -638,22 +730,25 @@ export function EditProgramme({ programmeId }: { programmeId: string }) {
                   scheduleType={readOnly.schedule_type === 'rolling' ? 'rolling' : 'fixed'}
                   selectedDays={form.days_of_week}
                   defaultStartTime={form.start_time}
-                  // CF-PROG-SESSION-LIST: Edit still tracks duration_minutes
-                  // (no end_time field yet — see CF-PROG-EDIT-PARITY follow-up).
-                  // Derive end-time on the fly to satisfy the new prop shape.
-                  defaultEndTime={(() => {
-                    const [h, m] = form.start_time.split(':').map((s) => parseInt(s, 10))
-                    const total = ((h * 60 + m + form.duration_minutes) % 1440 + 1440) % 1440
-                    const eh = String(Math.floor(total / 60)).padStart(2, '0')
-                    const em = String(total % 60).padStart(2, '0')
-                    return `${eh}:${em}`
-                  })()}
+                  // CF-PROG-EDIT-PARITY: now driven by form.end_time directly
+                  // (Duration pills removed; end_time is the source of truth).
+                  defaultEndTime={form.end_time}
                   campMode={form.campMode}
                   startDate={form.starts_at}
-                  endDate={''}
+                  // CF-PROG-EDIT-PARITY: rolling end date now editable in form
+                  endDate={form.rolling_end_date}
                   sessionCount={readOnly.session_count ?? form.session_dates.length}
                   sessions={form.session_dates}
                   onChange={(next) => update('session_dates', next)}
+                  // CF-PROG-EDIT-PARITY: auto-add day-of-week when coach taps a
+                  // non-pattern calendar date (mirrors CreateProgramme). The
+                  // `disabled={isLocked}` guard on SessionCalendar prevents
+                  // taps from firing this when enrolments exist.
+                  onSelectedDaysAdd={(day) => {
+                    if (!form.days_of_week.includes(day)) {
+                      update('days_of_week', [...form.days_of_week, day].sort((a, b) => a - b))
+                    }
+                  }}
                   disabled={isLocked}
                 />
               </div>
