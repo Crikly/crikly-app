@@ -229,14 +229,8 @@ export function ShareCardModal({ isOpen, onClose, programme }: ShareCardModalPro
       {/* Sheet */}
       <div
         onClick={(e) => e.stopPropagation()}
-        className="absolute inset-x-0 bottom-0 bg-white rounded-t-[20px] pt-3.5 px-5 pb-7 shadow-[0_-12px_32px_-8px_rgba(15,23,42,0.25)] max-h-[92vh] overflow-y-auto max-w-[560px] mx-auto"
+        className="absolute inset-x-4 top-1/2 -translate-y-1/2 left-0 right-0 mx-auto bg-white rounded-[20px] pt-3.5 px-5 pb-7 shadow-[0_-12px_32px_-8px_rgba(15,23,42,0.25)] max-h-[92vh] overflow-y-auto max-w-[480px]"
       >
-        {/* Grabber */}
-        <div
-          aria-hidden="true"
-          className="w-9 h-1 rounded-full bg-neutral-100 mx-auto mb-3.5"
-        />
-
         {/* Header */}
         <div className="flex justify-between items-center mb-[18px]">
           <h2
