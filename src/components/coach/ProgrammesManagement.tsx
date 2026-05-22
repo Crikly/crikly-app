@@ -682,16 +682,6 @@ export function ProgrammesManagement() {
                           >
                             Edit
                           </button>
-                          <button
-                            // AF-H-12: dead button — disabled until CF-D05 wires the action
-                            disabled
-                            aria-disabled="true"
-                            title="Promote coming soon"
-                            onClick={(e) => e.stopPropagation()}
-                            className={pillDisabledSolid}
-                          >
-                            Promote ↗
-                          </button>
                           {/* CF-PROG-SHARE-CARD: brand-tinted Share pill */}
                           <button
                             onClick={(e) => {
