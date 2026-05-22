@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { ArrowLeft, Lock, Check, Calendar, RefreshCw, CreditCard, Layers, Loader2, Sun, Info } from 'lucide-react'
 import { VenueAutocomplete, type VenueSelection } from '@/components/coach/shared/LocationAutocomplete'
 import { ProgrammeImagePicker } from '@/components/coach/shared/ProgrammeImagePicker'
+import { TimePicker } from '@/components/ui'
 import { PROGRAMME_AGE_GROUPS, type ProgrammeAgeGroup, ALL_AGES_LABEL, isProgrammeAgeGroup, type SessionEntry } from './programmeConstants'
 import { generateProgrammeSessionDates } from '@/lib/programme-sessions'
 import { SessionCalendar } from './SessionCalendar'
@@ -574,13 +575,11 @@ export function EditProgramme({ programmeId }: { programmeId: string }) {
               </div>
 
               <div className="flex gap-6 flex-wrap mb-[22px]">
-                <div className="flex-none">
+                <div className="flex-none w-[160px]">
                   <label className="block text-[12px] font-medium text-[#475569] mb-2">Start time</label>
-                  <input
-                    type="time"
+                  <TimePicker
                     value={form.start_time}
-                    onChange={(e) => update('start_time', e.target.value)}
-                    className="text-[18px] font-medium px-4 py-3.5 border border-[#E2E8F0] rounded-[12px] w-[140px] tracking-wide outline-none focus:border-[#0077CC] focus:shadow-[0_0_0_3px_rgba(0,119,204,0.15)]"
+                    onChange={(v) => update('start_time', v)}
                   />
                 </div>
                 <div className="flex-1 min-w-[260px]">

@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { ArrowLeft, Check, Loader2, Calendar, RefreshCw, CreditCard, Layers, Sun, Info } from 'lucide-react'
 import { VenueAutocomplete, type VenueSelection } from '@/components/coach/shared/LocationAutocomplete'
 import { ProgrammeImagePicker } from '@/components/coach/shared/ProgrammeImagePicker'
+import { DatePicker, TimePicker, todayYYYYMMDD } from '@/components/ui'
 import { PROGRAMME_AGE_GROUPS, type ProgrammeAgeGroup, ALL_AGES_LABEL, type SessionEntry } from './programmeConstants'
 import { SessionCalendar } from './SessionCalendar'
 import { ShareCardModal } from './ShareCardModal'
@@ -98,12 +99,8 @@ function diffMinutes(start: string, end: string): number {
   return diff < 0 ? diff + 1440 : diff
 }
 
-// CF-PROG-SESSION-LIST: today's YYYY-MM-DD from LOCAL components — avoids
-// the `toISOString().split` TZ pitfall fixed in src/lib/programme-sessions.ts.
-function todayYYYYMMDD(): string {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
+// UI-DATE-PICKER: todayYYYYMMDD() now lives in src/components/ui/DatePicker.tsx
+// (BST-safe shared helper) — imported above. Local definition removed.
 
 // CF-PROG-SESSION-LIST: session enumeration + preview now live inside
 // SessionCalendar. Old in-file generateSessionDates / formatSessionDate /
@@ -733,12 +730,10 @@ export function CreateProgramme() {
                   <label className="block text-[11px] font-semibold text-neutral-600 uppercase tracking-wide mb-2">
                     Commencing date
                   </label>
-                  <input
-                    type="date"
+                  <DatePicker
                     value={form.starts_at}
-                    min={todayYYYYMMDD()}
-                    onChange={(e) => update('starts_at', e.target.value)}
-                    className="w-full h-11 px-3 rounded-md bg-neutral-50 border border-neutral-100 text-sm text-neutral-900 focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20"
+                    minDate={todayYYYYMMDD()}
+                    onChange={(v) => update('starts_at', v)}
                   />
                 </div>
               )}
@@ -748,20 +743,16 @@ export function CreateProgramme() {
                 <div className="flex gap-4 flex-wrap">
                   <div className="flex-1 min-w-[140px]">
                     <label className="block text-[11px] font-semibold text-neutral-600 uppercase tracking-wide mb-2">Start time</label>
-                    <input
-                      type="time"
+                    <TimePicker
                       value={form.start_time}
-                      onChange={(e) => update('start_time', e.target.value)}
-                      className="w-full h-11 px-3 rounded-md bg-neutral-50 border border-neutral-100 text-sm text-neutral-900 focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20"
+                      onChange={(v) => update('start_time', v)}
                     />
                   </div>
                   <div className="flex-1 min-w-[140px]">
                     <label className="block text-[11px] font-semibold text-neutral-600 uppercase tracking-wide mb-2">End time</label>
-                    <input
-                      type="time"
+                    <TimePicker
                       value={form.end_time}
-                      onChange={(e) => update('end_time', e.target.value)}
-                      className="w-full h-11 px-3 rounded-md bg-neutral-50 border border-neutral-100 text-sm text-neutral-900 focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20"
+                      onChange={(v) => update('end_time', v)}
                     />
                   </div>
                 </div>
@@ -802,24 +793,20 @@ export function CreateProgramme() {
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="block text-[11px] font-medium text-[#475569] mb-1.5">Start date</label>
-                      <input
-                        type="date"
+                      <DatePicker
                         value={form.starts_at}
-                        min={new Date().toISOString().split('T')[0]}
-                        onChange={(e) => update('starts_at', e.target.value)}
-                        className="w-full h-11 px-3 rounded-md bg-neutral-50 border border-neutral-100 text-sm text-[#0F172A] focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20"
+                        minDate={todayYYYYMMDD()}
+                        onChange={(v) => update('starts_at', v)}
                       />
                     </div>
                     <div>
                       <label className="block text-[11px] font-medium text-[#475569] mb-1.5">
                         End date <span className="text-[10px] text-[#94A3B8] font-normal ml-1">Optional</span>
                       </label>
-                      <input
-                        type="date"
+                      <DatePicker
                         value={form.rolling_end_date}
-                        min={form.starts_at || new Date().toISOString().split('T')[0]}
-                        onChange={(e) => update('rolling_end_date', e.target.value)}
-                        className="w-full h-11 px-3 rounded-md bg-neutral-50 border border-neutral-100 text-sm text-[#0F172A] focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20"
+                        minDate={form.starts_at || todayYYYYMMDD()}
+                        onChange={(v) => update('rolling_end_date', v)}
                       />
                     </div>
                   </div>

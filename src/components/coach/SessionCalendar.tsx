@@ -5,6 +5,7 @@
 // triggers re-seeds via prop changes.
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { ChevronLeft, ChevronRight, Plus, Trash2, X } from 'lucide-react'
+import { TimePicker } from '@/components/ui'
 import { generateProgrammeSessionDates } from '@/lib/programme-sessions'
 import type { SessionEntry, SessionEntrySlot } from './programmeConstants'
 
@@ -601,22 +602,18 @@ function TimeEditor({
           <label className="block text-[11px] font-semibold text-neutral-600 uppercase tracking-wide mb-1.5">
             Start
           </label>
-          <input
-            type="time"
+          <TimePicker
             value={entry.startTime}
-            onChange={(e) => onChange({ startTime: e.target.value })}
-            className="w-full h-11 px-3 rounded-md bg-white border border-neutral-100 text-sm text-neutral-900 focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20"
+            onChange={(v) => onChange({ startTime: v })}
           />
         </div>
         <div>
           <label className="block text-[11px] font-semibold text-neutral-600 uppercase tracking-wide mb-1.5">
             End
           </label>
-          <input
-            type="time"
+          <TimePicker
             value={entry.endTime}
-            onChange={(e) => onChange({ endTime: e.target.value })}
-            className="w-full h-11 px-3 rounded-md bg-white border border-neutral-100 text-sm text-neutral-900 focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20"
+            onChange={(v) => onChange({ endTime: v })}
           />
         </div>
       </div>
@@ -701,17 +698,13 @@ function CampEditor({
             Slot {idx + 1}
           </span>
           <div className="grid grid-cols-[1fr_1fr_32px] gap-2 items-center">
-            <input
-              type="time"
+            <TimePicker
               value={slot.startTime}
-              onChange={(e) => setSlot(idx, { startTime: e.target.value })}
-              className="h-10 px-3 rounded-md bg-white border border-neutral-100 text-sm text-neutral-900 focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20"
+              onChange={(v) => setSlot(idx, { startTime: v })}
             />
-            <input
-              type="time"
+            <TimePicker
               value={slot.endTime}
-              onChange={(e) => setSlot(idx, { endTime: e.target.value })}
-              className="h-10 px-3 rounded-md bg-white border border-neutral-100 text-sm text-neutral-900 focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20"
+              onChange={(v) => setSlot(idx, { endTime: v })}
             />
             <button
               type="button"

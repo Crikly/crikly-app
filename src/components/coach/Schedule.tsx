@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { ChevronLeft, ChevronRight, Plus, Check, User, RefreshCw, Users, Ban, X, Calendar, MapPin, PoundSterling, AlertCircle, AlertTriangle, Info } from 'lucide-react'
 import { VenueAutocomplete, type VenueSelection } from '@/components/coach/shared/LocationAutocomplete'
+import { DatePicker, TimePicker, todayYYYYMMDD } from '@/components/ui'
 // AF-P-Wave-1: sports cache adoption
 import { fetchSportsListCached } from '@/lib/onboarding-cache'
 
@@ -921,12 +922,10 @@ export function Schedule() {
                   <div className="space-y-4">
                     <div>
                       <label className="block text-[12px] font-medium text-gray-700 mb-1">Date</label>
-                      <input
-                        type="date"
+                      <DatePicker
                         value={adHocDate}
-                        min={new Date().toISOString().split('T')[0]}
-                        onChange={e => setAdHocDate(e.target.value)}
-                        className="w-full text-[13px] border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#0077CC]"
+                        minDate={todayYYYYMMDD()}
+                        onChange={setAdHocDate}
                       />
                     </div>
 
@@ -978,20 +977,16 @@ export function Schedule() {
                     <div className="flex gap-3">
                       <div className="flex-1">
                         <label className="block text-[12px] font-medium text-gray-700 mb-1">Start</label>
-                        <input
-                          type="time"
+                        <TimePicker
                           value={adHocStartTime}
-                          onChange={e => setAdHocStartTime(e.target.value)}
-                          className="w-full text-[13px] border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#0077CC]"
+                          onChange={setAdHocStartTime}
                         />
                       </div>
                       <div className="flex-1">
                         <label className="block text-[12px] font-medium text-gray-700 mb-1">End</label>
-                        <input
-                          type="time"
+                        <TimePicker
                           value={adHocEndTime}
-                          onChange={e => setAdHocEndTime(e.target.value)}
-                          className="w-full text-[13px] border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#0077CC]"
+                          onChange={setAdHocEndTime}
                         />
                       </div>
                     </div>
@@ -1346,6 +1341,8 @@ function CreationPopover({ x, y, source, date, time, onClose }: { x: number; y: 
     const endHour = (hours + 1).toString().padStart(2, '0')
     return `${endHour}:${mins.toString().padStart(2, '0')}`
   })
+  // UI-DATE-PICKER: wire the previously-uncontrolled stub date input.
+  const [stubDate, setStubDate] = useState(todayYYYYMMDD())
 
   const timeOptions = Array.from({ length: 17 }, (_, i) => {
     const hour = (i + 6).toString().padStart(2, '0')
@@ -1379,14 +1376,15 @@ function CreationPopover({ x, y, source, date, time, onClose }: { x: number; y: 
         />
         
         <div className="flex gap-2">
-          {/* CF-D02e BUG FIX 3: Native date input when triggered from button, read-only text when from slot */}
+          {/* CF-D02e BUG FIX 3 / UI-DATE-PICKER: controlled DatePicker when triggered from button, read-only text when from slot */}
           {source === 'button' ? (
-            <input
-              type="date"
-              defaultValue={new Date().toISOString().split('T')[0]}
-              min={new Date().toISOString().split('T')[0]}
-              className="text-[13px] border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-brand-600"
-            />
+            <div className="flex-1">
+              <DatePicker
+                value={stubDate}
+                minDate={todayYYYYMMDD()}
+                onChange={setStubDate}
+              />
+            </div>
           ) : (
             <div className="text-[13px] text-gray-600 py-2">{date}</div>
           )}
