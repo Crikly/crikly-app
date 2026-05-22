@@ -1,7 +1,7 @@
 'use client'
 import React, { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { ChevronRight, Calendar, Users, Tag, Plus, BookOpen, X, Share2, MapPin, Clock, Shield } from 'lucide-react'
+import { Calendar, Clock, MapPin, Plus, BookOpen, Image as ImageIcon } from 'lucide-react'
 import { ShareCardModal } from './ShareCardModal'
 
 type Tab = 'Active' | 'Draft'
@@ -79,6 +79,34 @@ function calculateEndTime(startTime: string, durationMinutes: number): string {
   const endHours = Math.floor(totalMinutes / 60) % 24
   const endMinutes = totalMinutes % 60
   return `${String(endHours).padStart(2, '0')}:${String(endMinutes).padStart(2, '0')}`
+}
+
+// UI-PROG-GRID: format starts_at (YYYY-MM-DD) → "Starting Sat 7 Jun 2026". Returns '' for null/invalid.
+function formatStartingDate(yyyymmdd: string | null): string {
+  if (!yyyymmdd) return ''
+  const d = new Date(`${yyyymmdd}T00:00:00`)
+  if (Number.isNaN(d.getTime())) return ''
+  const formatted = d.toLocaleDateString('en-GB', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  })
+  return `Starting ${formatted}`
+}
+
+// UI-PROG-GRID: status pill — light bg + dark text per design system.
+function getStatusPillClass(status: 'Active' | 'Full' | 'Draft'): string {
+  if (status === 'Active') return 'bg-[#E6F4EC]/95 text-[#1A7A4A]'
+  if (status === 'Full') return 'bg-[#FEF3C7]/95 text-[#B45309]'
+  return 'bg-[#F1F5F9]/95 text-[#475569]'
+}
+
+// UI-PROG-GRID: capacity bar — green at 100%, amber ≥90%, brand below.
+function getFillBarClass(fillPercentage: number): string {
+  if (fillPercentage >= 100) return 'bg-[#1A7A4A]'
+  if (fillPercentage >= 90) return 'bg-[#B45309]'
+  return 'bg-brand-600'
 }
 
 // PERF-PROGRAMMES-LOAD: 30s TTL sessionStorage cache for the programmes list.
@@ -314,15 +342,6 @@ export function ProgrammesManagement() {
     }
   }
 
-  const getStatusStyles = (status: Programme['status']) => {
-    switch (status) {
-      case 'Active': return 'bg-[#DCFCE7] text-[#15803D]'
-      case 'Full': return 'bg-[#0077CC] text-white'
-      case 'Draft': return 'bg-[#F3F4F6] text-[#6B7280]'
-      default: return 'bg-gray-100 text-gray-800'
-    }
-  }
-
   // CD-08: Filter programmes by tab
   const activeProgrammes = programmes.filter(p => p.status === 'Active' || p.status === 'Full')
   const draftProgrammes = programmes.filter(p => p.status === 'Draft')
@@ -348,18 +367,39 @@ export function ProgrammesManagement() {
           <p className="text-[13px] text-gray-500 mt-1 mb-4">
             {activeCount} active · {fullCount} full{spotsRemaining > 0 && leastFullProgramme ? ` · ${spotsRemaining} spots available in ${leastFullProgramme.name}` : ''}
           </p>
-          <div className="flex items-center gap-6 border-b border-gray-100">
-            {(['Active', 'Draft'] as Tab[]).map((tab) => (
-              <button key={tab} onClick={() => setActiveTab(tab)} className={`pb-3 text-[15px] font-bold transition-colors relative whitespace-nowrap ${activeTab === tab ? 'text-[#0077CC]' : 'text-gray-500 hover:text-gray-700'}`}>
-                {tab === 'Draft' && draftProgrammes.length > 0
-                  ? `Draft (${draftProgrammes.length})`
-                  : tab}
-                {activeTab === tab && <div className="absolute bottom-0 left-0 w-full h-[2px] bg-[#0077CC]" />}
-              </button>
-            ))}
+          <div className="flex items-center gap-[22px] border-b border-gray-100">
+            {(['Active', 'Draft'] as Tab[]).map((tab) => {
+              const count = tab === 'Active' ? activeProgrammes.length : draftProgrammes.length
+              const isActive = activeTab === tab
+              return (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`pb-3 text-[15px] transition-colors relative whitespace-nowrap inline-flex items-center ${
+                    isActive
+                      ? 'text-neutral-900 font-bold'
+                      : 'text-neutral-500 font-medium hover:text-neutral-700'
+                  }`}
+                >
+                  {tab}
+                  {count > 0 && (
+                    <span
+                      className={`ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full text-[11px] font-semibold ${
+                        isActive ? 'bg-brand-50 text-brand-600' : 'bg-neutral-100 text-neutral-600'
+                      }`}
+                    >
+                      {count}
+                    </span>
+                  )}
+                  {isActive && (
+                    <span className="absolute -bottom-px left-0 right-0 h-[2px] bg-brand-600 rounded-t-sm" />
+                  )}
+                </button>
+              )
+            })}
           </div>
         </div>
-        <div className="flex-1 px-5 py-5 space-y-3" style={{ background: 'transparent' }}>
+        <div className="flex-1">
           {/* CD-08: Loading state */}
           {loading ? (
             <div className="py-16 flex flex-col items-center justify-center">
@@ -381,311 +421,312 @@ export function ProgrammesManagement() {
                 Try Again
               </button>
             </div>
-          ) : currentProgrammes.length > 0 ? currentProgrammes.map(programme => {
-            const fillPercentage = (programme.spotsFilled / programme.spotsTotal) * 100
-            const isDraft = programme.status === 'Draft'
-            const isFull = programme.status === 'Full'
-            const spotsLeft = programme.spotsTotal - programme.spotsFilled
-
-            // CF-D05 CHANGE 2: Fill rate colors
-            const getFillValueColor = () => {
-              if (fillPercentage < 25) return '#92400E'
-              return '#1F2937'
-            }
-            const getBarColor = () => {
-              if (fillPercentage < 25) return '#F59E0B'
-              return '#0077CC'
-            }
-            const getSpotsTextColor = () => {
-              if (fillPercentage < 25) return '#92400E'
-              return '#6B7280'
-            }
-
-            return (
-              <div
-                key={programme.id}
-                className={`rounded-xl cursor-pointer overflow-hidden ${isDraft ? 'opacity-80' : ''}`}
-                style={{
-                  background: isFull ? '#F0F7FF' : '#FFFFFF',
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
-                  transition: 'all 150ms ease'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)'
-                  e.currentTarget.style.transform = 'scale(1.005)'
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.06)'
-                  e.currentTarget.style.transform = 'scale(1)'
-                }}
-                onClick={() => setDetailProgramme(programme)}
-              >
-                <div className="p-4">
-                  {/* CF-D05 CHANGE 2: Restructured card */}
-                  {/* 1. Programme name + status badge */}
-                  <div className="flex justify-between items-start gap-2 mb-2">
-                    <h3 className="text-[14px] font-medium text-gray-900 leading-tight">{programme.name}</h3>
-                    <div className={`px-2.5 py-1 rounded-full text-[12px] font-bold shrink-0 ${getStatusStyles(programme.status)}`}>{programme.status}</div>
-                  </div>
-
-                  {/* 2. Schedule meta */}
-                  <div className="flex items-center gap-2 text-gray-500 mb-2">
-                    <Calendar size={14} className="text-gray-400 shrink-0" />
-                    <span className="text-[12px]">{programme.schedule}</span>
-                  </div>
-
-                  {/* CF-PROG-AGE-GROUP: age group chip row */}
-                  {programme.age_groups.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 mb-2">
-                      {programme.age_groups.map((g) => (
-                        <span
-                          key={g}
-                          className="inline-flex items-center px-2 py-0.5 bg-brand-50 text-brand-800 rounded-md text-[11px] font-medium"
-                        >
-                          {g}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* 3. Price meta */}
-                  <div className="flex items-center gap-2 text-gray-500 mb-3">
-                    <Tag size={14} className="text-gray-400 shrink-0" />
-                    <span className="text-[12px]">{programme.price}</span>
-                  </div>
-
-                  {/* 4. Fill rate section */}
-                  <div className="mb-3">
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-[11px] text-gray-400">Fill rate</span>
-                      <span
-                        className="text-[13px] font-medium"
-                        style={{ color: isFull ? '#0077CC' : getFillValueColor() }}
-                      >
-                        {isFull ? '100% full' : `${Math.round(fillPercentage)}% full`}
-                      </span>
-                    </div>
-                    <div className="h-[6px] bg-gray-100 rounded-full overflow-hidden mb-1.5">
-                      <div
-                        className="h-full rounded-full transition-all"
-                        style={{
-                          width: `${fillPercentage}%`,
-                          backgroundColor: isFull ? '#0077CC' : getBarColor()
-                        }}
-                      />
-                    </div>
-                    <p
-                      className="text-[11px]"
-                      style={{ color: isFull ? '#0077CC' : getSpotsTextColor() }}
-                    >
-                      {isFull
-                        ? `All ${programme.spotsTotal} spots filled · open a new cohort?`
-                        : `${programme.spotsFilled} / ${programme.spotsTotal} spots filled · ${spotsLeft} remaining`
-                      }
-                    </p>
-                  </div>
-
-                  {/* 5. Price + chevron row */}
-                  <div className="flex items-center justify-between pt-2 border-t-[0.5px] border-gray-100">
-                    <span className="text-[16px] font-bold text-gray-900">{programme.price.split(' ')[0]}</span>
-                    <ChevronRight size={20} className="text-gray-400" />
-                  </div>
-                </div>
-
-                {/* Fix-69-1: Inline action error */}
-                {actionError?.id === programme.id && (
-                  <div className="border-t-[0.5px] border-gray-100 px-4 pt-2 bg-white">
-                    <p className="text-[11px] text-red-500 leading-snug">{actionError.message}</p>
-                  </div>
-                )}
-
-                {/* CF-D05 CHANGE 4: Quick action row */}
-                <div className="border-t-[0.5px] border-gray-100 px-4 py-2 flex gap-2 bg-white">
-                  {isDraft ? (
-                    // Draft programme actions
-                    <>
-                      <button
-                        disabled={actionLoading === programme.id}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handlePublish(programme.id)
-                        }}
-                        className="flex-1 bg-[#0077CC] text-white rounded-md text-[11px] py-1.5 text-center hover:bg-[#0066AA] transition-all duration-150 disabled:opacity-60 disabled:cursor-not-allowed"
-                      >
-                        {actionLoading === programme.id ? 'Publishing...' : 'Publish'}
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          router.push(`/coach/programmes/${programme.id}/edit`)
-                        }}
-                        className="flex-1 bg-white border border-gray-200 text-gray-600 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 hover:border-gray-300 hover:text-gray-700 transition-all duration-150"
-                      >
-                        Edit
-                      </button>
-                      {deleteConfirmId === programme.id ? (
-                        <>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              setDeleteConfirmId(null)
-                            }}
-                            className="flex-1 bg-white border border-gray-200 text-gray-600 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 hover:border-gray-300 transition-all duration-150"
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            disabled={actionLoading === programme.id}
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleDelete(programme.id)
-                            }}
-                            className="flex-1 bg-red-600 text-white rounded-md text-[11px] py-1.5 text-center hover:bg-red-700 transition-all duration-150 disabled:opacity-60 disabled:cursor-not-allowed"
-                          >
-                            {actionLoading === programme.id ? 'Deleting...' : 'Confirm delete'}
-                          </button>
-                        </>
-                      ) : (
-                        <button
-                          disabled={!!actionLoading}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setDeleteConfirmId(programme.id)
-                          }}
-                          className="flex-1 bg-white border border-gray-200 text-red-600 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 hover:border-gray-300 transition-all duration-150 disabled:opacity-60 disabled:cursor-not-allowed"
-                        >
-                          Delete
-                        </button>
-                      )}
-                    </>
-                  ) : isFull ? (
-                    // Full programme actions
-                    <>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          router.push(`/coach/programmes/${programme.id}/edit`)
-                        }}
-                        className="flex-1 bg-white border border-gray-200 text-gray-600 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 hover:border-gray-300 hover:text-gray-700 transition-all duration-150"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        // AF-H-12: dead button — disabled until CF-D05 wires the action
-                        disabled
-                        aria-disabled="true"
-                        title="New cohort coming soon"
-                        onClick={(e) => e.stopPropagation()}
-                        className="flex-1 bg-[#0077CC] text-white rounded-md text-[11px] py-1.5 text-center transition-all duration-150 opacity-50 cursor-not-allowed"
-                      >
-                        New cohort ↗
-                      </button>
-                      {/* CF-PROG-SHARE-CARD: Share works on Full programmes too (waitlist push) */}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setShareProgramme(programme)
-                        }}
-                        className="flex-1 bg-brand-50 border border-[#BFE0F4] text-brand-600 rounded-md text-[11px] py-1.5 text-center hover:bg-brand-100 transition-all duration-150"
-                      >
-                        Share
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          router.push(`/coach/programmes/${programme.id}/roster`)
-                        }}
-                        className="flex-1 bg-white border border-gray-200 text-gray-600 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 hover:border-gray-300 hover:text-gray-700 transition-all duration-150"
-                      >
-                        Manage →
-                      </button>
-                    </>
-                  ) : (
-                    // Active (not full) programme actions
-                    cancelConfirmId === programme.id ? (
-                      <>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setCancelConfirmId(null)
-                          }}
-                          className="flex-1 bg-white border border-gray-200 text-gray-600 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 hover:border-gray-300 transition-all duration-150"
-                        >
-                          Keep programme
-                        </button>
-                        <button
-                          disabled={actionLoading === programme.id}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleCancelProgramme(programme.id)
-                          }}
-                          className="flex-1 bg-red-600 text-white rounded-md text-[11px] py-1.5 text-center hover:bg-red-700 transition-all duration-150 disabled:opacity-60 disabled:cursor-not-allowed"
-                        >
-                          {actionLoading === programme.id ? 'Cancelling...' : 'Confirm cancel'}
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            router.push(`/coach/programmes/${programme.id}/edit`)
-                          }}
-                          className="flex-1 bg-white border border-gray-200 text-gray-600 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 hover:border-gray-300 hover:text-gray-700 transition-all duration-150"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          // AF-H-12: dead button — disabled until CF-D05 wires the action
-                          disabled
-                          aria-disabled="true"
-                          title="Promote coming soon"
-                          onClick={(e) => e.stopPropagation()}
-                          className="flex-1 bg-[#0077CC] text-white rounded-md text-[11px] py-1.5 text-center transition-all duration-150 opacity-50 cursor-not-allowed"
-                        >
-                          Promote ↗
-                        </button>
-                        {/* CF-PROG-SHARE-CARD: brand-tinted Share pill */}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setShareProgramme(programme)
-                          }}
-                          className="flex-1 bg-brand-50 border border-[#BFE0F4] text-brand-600 rounded-md text-[11px] py-1.5 text-center hover:bg-brand-100 transition-all duration-150"
-                        >
-                          Share
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            router.push(`/coach/programmes/${programme.id}/roster`)
-                          }}
-                          className="flex-1 bg-white border border-gray-200 text-gray-600 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 hover:border-gray-300 hover:text-gray-700 transition-all duration-150"
-                        >
-                          Manage →
-                        </button>
-                        <button
-                          disabled={!!actionLoading}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setCancelConfirmId(programme.id)
-                          }}
-                          className="flex-1 bg-white border border-red-200 text-red-600 rounded-md text-[11px] py-1.5 text-center hover:bg-red-50 hover:border-red-300 transition-all duration-150 disabled:opacity-60 disabled:cursor-not-allowed"
-                        >
-                          Cancel
-                        </button>
-                      </>
-                    )
-                  )}
-                </div>
-              </div>
-            )
-          }) : (
+          ) : currentProgrammes.length === 0 ? (
             <div className="py-16 flex flex-col items-center justify-center text-center px-4">
               <div className="w-16 h-16 bg-[#E6F3FB] text-[#0077CC] rounded-full flex items-center justify-center mb-4"><BookOpen size={28} /></div>
               <h3 className="text-[18px] font-bold text-gray-900 mb-2">No programmes yet</h3>
               <p className="text-[14px] text-gray-500 font-medium mb-6 max-w-[260px] leading-relaxed">Create your first programme to start accepting group bookings</p>
               <button onClick={() => router.push('/coach/programmes/create')} className="bg-[#0077CC] hover:bg-[#0066AA] text-white px-6 py-3 rounded-xl text-[15px] font-bold flex items-center gap-2 transition-colors shadow-sm w-full max-w-[200px] justify-center"><Plus size={18} />Create Programme</button>
+            </div>
+          ) : (
+            // UI-PROG-GRID: 2-column grid (mobile + desktop). Used for both Active and Draft tabs.
+            <div className="grid grid-cols-2 gap-3 p-4">
+              {currentProgrammes.map((programme) => {
+                const fillPercentage = (programme.spotsFilled / programme.spotsTotal) * 100
+                const fillWidth = Math.min(100, Math.max(0, fillPercentage))
+                const startingLabel = formatStartingDate(programme.starts_at)
+                const isDraft = programme.status === 'Draft'
+                const isFull = programme.status === 'Full'
+
+                // Pill style presets — kept inline so closures over handlers stay readable.
+                const PILL = 'flex-1 min-w-0 h-7 rounded-lg text-[11px] font-semibold transition-all disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center justify-center px-1'
+                const pillNeutral = `${PILL} bg-neutral-50 text-neutral-700 hover:bg-white hover:shadow-[inset_0_0_0_1px_#CBD5E1]`
+                const pillBrand = `${PILL} bg-brand-50 text-brand-600 hover:bg-white hover:shadow-[inset_0_0_0_1px_#BFE0F4]`
+                const pillPrimary = `${PILL} bg-brand-600 text-white hover:bg-[#0066AA]`
+                const pillDangerGhost = `${PILL} bg-red-50 text-red-600 hover:bg-red-100`
+                const pillDangerSolid = `${PILL} bg-red-600 text-white hover:bg-red-700`
+                const pillDisabledSolid = `${PILL} bg-brand-600 text-white opacity-50 cursor-not-allowed`
+
+                return (
+                  <div
+                    key={programme.id}
+                    onClick={() => setDetailProgramme(programme)}
+                    className="bg-white rounded-2xl overflow-hidden cursor-pointer shadow-[0_1px_3px_rgba(15,23,42,0.06),0_4px_12px_-4px_rgba(15,23,42,0.06)] transition-all duration-200 ease-out hover:scale-[1.015] hover:-translate-y-0.5 hover:shadow-lg"
+                  >
+                    {/* 1. Cover */}
+                    <div className="relative h-[120px] overflow-hidden bg-neutral-100">
+                      {programme.image_url ? (
+                        <img
+                          src={programme.image_url}
+                          alt={programme.name}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-brand-600 to-[#004A80]">
+                          <ImageIcon size={40} className="text-white/40" />
+                        </div>
+                      )}
+                      <span
+                        className={`absolute top-2.5 left-2.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider backdrop-blur-sm ${getStatusPillClass(programme.status)}`}
+                      >
+                        {programme.status}
+                      </span>
+                    </div>
+
+                    {/* 2. Content area */}
+                    <div className="p-3 flex flex-col gap-1.5">
+                      {/* Title + sport pill */}
+                      <div className="flex items-start justify-between gap-1.5">
+                        <span className="flex-1 min-w-0 truncate text-[15px] font-bold text-neutral-900 tracking-tight leading-tight">
+                          {programme.name}
+                        </span>
+                        <span className="shrink-0 bg-brand-50 text-brand-600 text-[10px] font-bold px-[7px] py-0.5 rounded-full tracking-wide">
+                          {programme.sport_name}
+                        </span>
+                      </div>
+
+                      {/* Age group chips (max 2 + overflow) */}
+                      {programme.age_groups.length > 0 && (
+                        <div className="flex items-center gap-1 flex-nowrap overflow-hidden">
+                          {programme.age_groups.slice(0, 2).map((g) => (
+                            <span
+                              key={g}
+                              className="whitespace-nowrap bg-neutral-100 text-neutral-600 text-[10px] font-semibold px-[7px] py-[3px] rounded-full"
+                            >
+                              {g}
+                            </span>
+                          ))}
+                          {programme.age_groups.length > 2 && (
+                            <span className="text-neutral-400 text-[10px] font-semibold pl-0.5">
+                              +{programme.age_groups.length - 2}
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Schedule */}
+                      <div className="flex items-center gap-1.5 text-[12px] font-medium text-neutral-600 min-w-0">
+                        <Calendar size={12} className="shrink-0 text-neutral-400" />
+                        <span className="truncate flex-1 min-w-0">{programme.schedule}</span>
+                      </div>
+
+                      {/* Starting date (skip if null/invalid) */}
+                      {startingLabel && (
+                        <div className="flex items-center gap-1.5 text-[12px] text-neutral-500 min-w-0">
+                          <Clock size={12} className="shrink-0 text-neutral-400" />
+                          <span className="truncate flex-1 min-w-0">{startingLabel}</span>
+                        </div>
+                      )}
+
+                      {/* Venue (skip if null) */}
+                      {programme.venue_name && (
+                        <div className="flex items-center gap-1.5 text-[12px] text-neutral-500 min-w-0">
+                          <MapPin size={12} className="shrink-0 text-neutral-400" />
+                          <span className="truncate flex-1 min-w-0">{programme.venue_name}</span>
+                        </div>
+                      )}
+
+                      <hr className="border-0 border-t border-neutral-100 my-2" />
+
+                      {/* Price + spots */}
+                      <div className="flex items-baseline justify-between">
+                        <span className="text-[13px] font-bold text-neutral-900">{programme.price}</span>
+                        <span className="text-[12px] text-neutral-500 font-medium">
+                          {programme.spotsFilled} of {programme.spotsTotal}
+                        </span>
+                      </div>
+
+                      {/* Fill bar — colour-coded: brand <90% / amber ≥90% / green 100%. */}
+                      <div className="w-full h-1 bg-neutral-100 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full ${getFillBarClass(fillPercentage)}`}
+                          style={{ width: `${fillWidth}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Inline action error — preserved from CF-D05 */}
+                    {actionError?.id === programme.id && (
+                      <p className="px-3 pb-2 text-[11px] text-red-500 leading-snug">{actionError.message}</p>
+                    )}
+
+                    {/* 3. Action row — preserves every current handler + disabled state */}
+                    <div className="p-3 pt-0 flex gap-1.5">
+                      {isDraft ? (
+                        deleteConfirmId === programme.id ? (
+                          <>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setDeleteConfirmId(null)
+                              }}
+                              className={pillNeutral}
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              disabled={actionLoading === programme.id}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleDelete(programme.id)
+                              }}
+                              className={pillDangerSolid}
+                            >
+                              {actionLoading === programme.id ? 'Deleting…' : 'Confirm delete'}
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              disabled={actionLoading === programme.id}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handlePublish(programme.id)
+                              }}
+                              className={pillPrimary}
+                            >
+                              {actionLoading === programme.id ? 'Publishing…' : 'Publish'}
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                router.push(`/coach/programmes/${programme.id}/edit`)
+                              }}
+                              className={pillNeutral}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              disabled={!!actionLoading}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setDeleteConfirmId(programme.id)
+                              }}
+                              className={pillDangerGhost}
+                            >
+                              Delete
+                            </button>
+                          </>
+                        )
+                      ) : isFull ? (
+                        <>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              router.push(`/coach/programmes/${programme.id}/edit`)
+                            }}
+                            className={pillNeutral}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            // AF-H-12: dead button — disabled until CF-D05 wires the action
+                            disabled
+                            aria-disabled="true"
+                            title="New cohort coming soon"
+                            onClick={(e) => e.stopPropagation()}
+                            className={pillDisabledSolid}
+                          >
+                            New cohort ↗
+                          </button>
+                          {/* CF-PROG-SHARE-CARD: Share works on Full programmes too (waitlist push) */}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setShareProgramme(programme)
+                            }}
+                            className={pillBrand}
+                          >
+                            Share
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              router.push(`/coach/programmes/${programme.id}/roster`)
+                            }}
+                            className={pillNeutral}
+                          >
+                            Manage →
+                          </button>
+                        </>
+                      ) : cancelConfirmId === programme.id ? (
+                        <>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setCancelConfirmId(null)
+                            }}
+                            className={pillNeutral}
+                          >
+                            Keep programme
+                          </button>
+                          <button
+                            disabled={actionLoading === programme.id}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleCancelProgramme(programme.id)
+                            }}
+                            className={pillDangerSolid}
+                          >
+                            {actionLoading === programme.id ? 'Cancelling…' : 'Confirm cancel'}
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              router.push(`/coach/programmes/${programme.id}/edit`)
+                            }}
+                            className={pillNeutral}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            // AF-H-12: dead button — disabled until CF-D05 wires the action
+                            disabled
+                            aria-disabled="true"
+                            title="Promote coming soon"
+                            onClick={(e) => e.stopPropagation()}
+                            className={pillDisabledSolid}
+                          >
+                            Promote ↗
+                          </button>
+                          {/* CF-PROG-SHARE-CARD: brand-tinted Share pill */}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setShareProgramme(programme)
+                            }}
+                            className={pillBrand}
+                          >
+                            Share
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              router.push(`/coach/programmes/${programme.id}/roster`)
+                            }}
+                            className={pillNeutral}
+                          >
+                            Manage →
+                          </button>
+                          <button
+                            disabled={!!actionLoading}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setCancelConfirmId(programme.id)
+                            }}
+                            className={pillDangerGhost}
+                          >
+                            Cancel
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           )}
         </div>
