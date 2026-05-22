@@ -407,18 +407,21 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
               </button>
             </div>
           ) : (
-            <div className="flex flex-row gap-4 overflow-x-auto pb-2 snap-x snap-mandatory scrollbar-hide w-full">
-              {data.programmes.map((prog) => (
-                <div key={prog.id} className="flex-shrink-0 w-[280px] snap-start">
-                  <GroupCard
-                    title={prog.title}
-                    spots={`${prog.current_spots} of ${prog.max_spots} spots taken`}
-                    image={prog.image_url ?? DEFAULT_PROGRAMME_IMAGE}
-                    active={prog.status === 'active'}
-                    isDraft={prog.status === 'draft'}
-                  />
-                </div>
-              ))}
+            <div className="relative">
+              <div className="flex flex-row items-stretch gap-4 overflow-x-auto pb-2 snap-x snap-mandatory scrollbar-hide w-full">
+                {data.programmes.map((prog) => (
+                  <div key={prog.id} className="flex-shrink-0 w-[280px] snap-start">
+                    <GroupCard
+                      title={prog.title}
+                      spots={`${prog.current_spots} of ${prog.max_spots} spots taken`}
+                      image={prog.image_url ?? DEFAULT_PROGRAMME_IMAGE}
+                      active={prog.status === 'active'}
+                      isDraft={prog.status === 'draft'}
+                    />
+                  </div>
+                ))}
+              </div>
+              <div className="absolute right-0 top-0 bottom-0 w-12 bg-gradient-to-l from-white to-transparent pointer-events-none z-10" />
             </div>
           )}
         </section>
@@ -586,8 +589,8 @@ function ProfileChecklistItem({ title, completed, guidance, isFirstIncomplete, o
 
 function GroupCard({ title, spots, image, active, isDraft }: { title: string; spots: string; image: string; active?: boolean; isDraft?: boolean }) {
   return (
-    <div className={`flex flex-col bg-white border border-gray-100 rounded-[20px] overflow-hidden shadow-[0_2px_16px_rgba(0,0,0,0.03)] cursor-pointer hover:shadow-lg hover:border-gray-200 transition-all group ${isDraft ? 'opacity-60' : ''}`}>
-      <div className="h-[140px] w-full bg-gray-100 relative overflow-hidden">
+    <div className={`flex flex-col h-full bg-white border border-gray-100 rounded-[20px] overflow-hidden shadow-[0_2px_16px_rgba(0,0,0,0.03)] cursor-pointer hover:shadow-lg hover:border-gray-200 transition-all group ${isDraft ? 'opacity-60' : ''}`}>
+      <div className="h-[140px] w-full bg-gray-100 relative overflow-hidden flex-none">
         <img src={image} alt={title} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
         <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
         {isDraft ? (
@@ -596,8 +599,9 @@ function GroupCard({ title, spots, image, active, isDraft }: { title: string; sp
           <div className="absolute top-3 left-3 bg-green-500/90 backdrop-blur-sm text-white text-[10px] font-bold uppercase tracking-wide px-2.5 py-1 rounded-full shadow-sm">Active</div>
         )}
       </div>
-      <div className="p-4 md:p-5 flex flex-col gap-1.5">
-        <h4 className="font-bold text-[17px] text-gray-900 leading-tight group-hover:text-[#0077CC] transition-colors">{title}</h4>
+      <div className="p-4 md:p-5 flex flex-col gap-1.5 flex-1">
+        <h4 className="font-bold text-[17px] text-gray-900 leading-tight group-hover:text-[#0077CC] transition-colors line-clamp-2 flex-none">{title}</h4>
+        <div className="flex-1" aria-hidden="true" />
         <div className="flex items-center justify-between mt-2">
           <p className="text-[13px] font-medium text-gray-500">{isDraft ? 'Not published yet' : spots}</p>
           <div className="flex -space-x-2">
