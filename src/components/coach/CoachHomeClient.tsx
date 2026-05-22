@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -98,6 +98,17 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
   const [copied, setCopied] = useState(false)
   // C-Settings-01-UI: pause banner state (cached fetch — no extra round-trip if already warm)
   const [isPaused, setIsPaused] = useState(false)
+  // UI-CARD-FIX: track programmes-row scroll position to show left-edge fade after scroll
+  const programmesScrollRef = useRef<HTMLDivElement>(null)
+  const [programmesScrolled, setProgrammesScrolled] = useState(false)
+
+  useEffect(() => {
+    const el = programmesScrollRef.current
+    if (!el) return
+    const handler = () => setProgrammesScrolled(el.scrollLeft > 10)
+    el.addEventListener('scroll', handler, { passive: true })
+    return () => el.removeEventListener('scroll', handler)
+  }, [data.programmes.length])
 
   // Fix-36: Detect celebration query param and show modal
   useEffect(() => {
@@ -408,7 +419,7 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
             </div>
           ) : (
             <div className="relative">
-              <div className="flex flex-row items-stretch gap-4 overflow-x-auto pb-2 snap-x snap-mandatory scrollbar-hide w-full">
+              <div ref={programmesScrollRef} className="flex flex-row items-stretch gap-4 overflow-x-auto pb-2 snap-x snap-mandatory scrollbar-hide w-full">
                 {data.programmes.map((prog) => (
                   <div key={prog.id} className="flex-shrink-0 w-[280px] snap-start">
                     <GroupCard
@@ -421,7 +432,10 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
                   </div>
                 ))}
               </div>
-              <div className="absolute right-0 top-0 bottom-0 w-12 bg-gradient-to-l from-white to-transparent pointer-events-none z-10" />
+              {programmesScrolled && (
+                <div className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-white/80 to-transparent pointer-events-none z-10" />
+              )}
+              <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-white/80 to-transparent pointer-events-none z-10" />
             </div>
           )}
         </section>
