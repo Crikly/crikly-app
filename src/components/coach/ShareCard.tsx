@@ -108,18 +108,20 @@ export const ShareCard = forwardRef<HTMLDivElement, ShareCardProps>(function Sha
       >
         {/* Top row — wordmark + sport badge */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <div
+          {/* Fix-58: brand logo image (whitened via filter) replaces two-tone
+              text wordmark. crossOrigin keeps html-to-image canvas capture
+              working when the PNG download runs. */}
+          <img
+            src="/logo.png"
+            alt="Crikly"
+            crossOrigin="anonymous"
             style={{
-              fontSize: 16,
-              fontWeight: 700,
-              letterSpacing: '-0.01em',
-              color: '#FFFFFF',
-              textShadow: '0 1px 4px rgba(0,0,0,0.4)',
+              height: 28,
+              width: 'auto',
+              objectFit: 'contain',
+              filter: 'brightness(0) invert(1)',
             }}
-          >
-            crik
-            <span style={{ color: '#BFDBFE' }}>ly</span>
-          </div>
+          />
           <div
             style={{
               background: 'rgba(255,255,255,0.85)',

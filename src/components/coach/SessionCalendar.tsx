@@ -456,8 +456,14 @@ function CellButton({
     } else if (isCustomTime) {
       ringCls = 'shadow-[0_0_0_2px_white,0_0_0_3px_var(--color-brand-100)]'
     }
+    // Fix-56: when a selected session falls in the previous/next month overflow,
+    // render a lighter swatch so it reads as "session in another month" not
+    // "session this month". Ring chrome is unchanged.
+    const sessionCls = inMonth
+      ? 'bg-brand-600 text-white'
+      : 'bg-brand-100 text-brand-600'
     return (
-      <div className={`${baseCls} bg-brand-600 text-white font-semibold ${ringCls}`}>
+      <div className={`${baseCls} ${sessionCls} font-semibold ${ringCls}`}>
         <button
           type="button"
           onClick={onSessionTap}

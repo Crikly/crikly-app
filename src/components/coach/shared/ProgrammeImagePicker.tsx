@@ -19,7 +19,7 @@
 // Phase 1 bucket creation is out of scope here. Filed as
 // INFRA-PROGRAMME-IMAGES-BUCKET in BUILD_PLAN.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Upload, Image as ImageIcon, Loader2, AlertCircle, RotateCw } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { ProgrammeImage } from '@/lib/programme-images'
@@ -52,12 +52,25 @@ const MIME_TO_EXT: Record<string, string> = {
 }
 
 // ─── Unsplash search-API integration ─────────────────────────────────────────
-// The picker fetches 18 cricket photos on first mount, caches the mapped
-// ProgrammeImage[] in sessionStorage for 24h, and displays a random 6 from
-// the pool. "Refresh photos" re-slices in-memory — no extra API call.
+// Fix-55: on each fresh fetch we pick a random Unsplash page (1–10) so the
+// underlying 18-photo pool varies — previously the URL had no `page` param,
+// so every coach saw the same 18 results regardless of refresh. Cache key now
+// includes the page so different pages don't collide; TTL shortened to 30 min
+// so accidental remounts dedupe but real revisits surface fresh photos.
+// "Refresh photos" advances to a new random page (re-fetch), no longer just
+// re-slicing the same pool.
 
-const UNSPLASH_CACHE_KEY = 'crikly:unsplash:cricket'
-const UNSPLASH_TTL_MS = 24 * 60 * 60 * 1000
+const UNSPLASH_CACHE_KEY_PREFIX = 'crikly:unsplash:cricket:p'
+const UNSPLASH_TTL_MS = 30 * 60 * 1000
+const UNSPLASH_PAGE_RANGE = 10 // pages 1..10 — Unsplash search supports far more
+
+function unsplashCacheKey(page: number): string {
+  return `${UNSPLASH_CACHE_KEY_PREFIX}${page}`
+}
+
+function pickRandomUnsplashPage(): number {
+  return Math.floor(Math.random() * UNSPLASH_PAGE_RANGE) + 1
+}
 
 interface UnsplashPhoto {
   urls: { regular: string }
@@ -74,9 +87,9 @@ interface UnsplashCacheEntry {
   storedAt: number
 }
 
-function readUnsplashCache(): ProgrammeImage[] | null {
+function readUnsplashCache(page: number): ProgrammeImage[] | null {
   try {
-    const raw = sessionStorage.getItem(UNSPLASH_CACHE_KEY)
+    const raw = sessionStorage.getItem(unsplashCacheKey(page))
     if (!raw) return null
     const parsed = JSON.parse(raw) as UnsplashCacheEntry
     if (!Number.isFinite(parsed.storedAt)) return null
@@ -88,18 +101,28 @@ function readUnsplashCache(): ProgrammeImage[] | null {
   }
 }
 
-function writeUnsplashCache(value: ProgrammeImage[]): void {
+function writeUnsplashCache(page: number, value: ProgrammeImage[]): void {
   try {
     const entry: UnsplashCacheEntry = { value, storedAt: Date.now() }
-    sessionStorage.setItem(UNSPLASH_CACHE_KEY, JSON.stringify(entry))
+    sessionStorage.setItem(unsplashCacheKey(page), JSON.stringify(entry))
   } catch {
     // non-critical — cache write failure just means we'll refetch next mount
   }
 }
 
-function clearUnsplashCache(): void {
+function clearUnsplashCache(page?: number): void {
   try {
-    sessionStorage.removeItem(UNSPLASH_CACHE_KEY)
+    if (typeof page === 'number') {
+      sessionStorage.removeItem(unsplashCacheKey(page))
+      return
+    }
+    // Wipe every per-page entry (used by the retry path).
+    const toRemove: string[] = []
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const k = sessionStorage.key(i)
+      if (k && k.startsWith(UNSPLASH_CACHE_KEY_PREFIX)) toRemove.push(k)
+    }
+    toRemove.forEach((k) => sessionStorage.removeItem(k))
   } catch {
     // non-critical
   }
@@ -126,14 +149,18 @@ export function ProgrammeImagePicker({
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [coachProfileId, setCoachProfileId] = useState<string | null>(null)
 
-  // Unsplash pool (18 photos) + displayed slice (random 6 of 18). Refresh
-  // re-rolls the slice without re-fetching. Retry token re-fires the fetch
-  // useEffect on error-retry.
+  // Unsplash pool (18 photos for the current random page) + displayed slice
+  // (random 6 of 18). Fix-55: the page itself is now randomised on every fresh
+  // fetch; Refresh advances to a different page rather than re-slicing.
   const [photoPool, setPhotoPool] = useState<ProgrammeImage[] | null>(null)
   const [displayedImages, setDisplayedImages] = useState<ProgrammeImage[]>([])
   const [photoLoading, setPhotoLoading] = useState(true)
   const [photoError, setPhotoError] = useState<string | null>(null)
   const [retryToken, setRetryToken] = useState(0)
+  // Fix-55: random Unsplash page held in a ref so the effect's cache read/write
+  // both target the same key. First mount seeds a random page; Refresh + Retry
+  // overwrite this before bumping retryToken.
+  const pageRef = useRef<number>(pickRandomUnsplashPage())
 
   // Per-image load state — even with a CDN URL the network has a brief
   // window where the cell is blank. We track loaded URLs and fade the
@@ -141,13 +168,14 @@ export function ProgrammeImagePicker({
   // as a placeholder.
   const [loadedUrls, setLoadedUrls] = useState<Set<string>>(new Set())
 
-  // Mount + retry — fetch 18 cricket photos from Unsplash (cache-first).
+  // Mount + retry — fetch 18 cricket photos from a random Unsplash page (cache-first).
   useEffect(() => {
     let cancelled = false
+    const page = pageRef.current
 
     async function loadPhotos() {
-      // Cache hit (skipped on retry — retry path clears the cache first).
-      const cached = readUnsplashCache()
+      // Cache hit for this specific page (skipped on retry — retry path clears).
+      const cached = readUnsplashCache(page)
       if (cached && cached.length > 0) {
         setPhotoPool(cached)
         setDisplayedImages(pickRandom(cached, CURATED_GRID_SIZE))
@@ -171,7 +199,7 @@ export function ProgrammeImagePicker({
       }
 
       try {
-        const url = `https://api.unsplash.com/search/photos?query=cricket+coaching&per_page=18&orientation=landscape&client_id=${encodeURIComponent(key)}`
+        const url = `https://api.unsplash.com/search/photos?query=cricket+coaching&page=${page}&per_page=18&orientation=landscape&client_id=${encodeURIComponent(key)}`
         const res = await fetch(url)
         if (!res.ok) throw new Error(`Unsplash search failed (${res.status})`)
         const data = (await res.json()) as UnsplashSearchResponse
@@ -188,7 +216,7 @@ export function ProgrammeImagePicker({
         } else {
           setPhotoPool(mapped)
           setDisplayedImages(pickRandom(mapped, CURATED_GRID_SIZE))
-          writeUnsplashCache(mapped)
+          writeUnsplashCache(page, mapped)
         }
       } catch (err) {
         if (cancelled) return
@@ -204,15 +232,26 @@ export function ProgrammeImagePicker({
   }, [retryToken])
 
   function handleRefreshPhotos() {
-    if (!photoPool || photoPool.length === 0) return
-    setDisplayedImages(pickRandom(photoPool, CURATED_GRID_SIZE))
-    // Reset the loaded set so the new tiles show placeholders briefly until
-    // their cached images repaint.
+    // Fix-55: Refresh now advances to a NEW random Unsplash page (re-fetch).
+    // Previously it re-sliced the same 18-photo pool. Avoid landing on the
+    // same page back-to-back when possible.
+    const currentPage = pageRef.current
+    let nextPage = pickRandomUnsplashPage()
+    if (UNSPLASH_PAGE_RANGE > 1) {
+      // One re-roll guard — at p=10 collision risk is 10%, this drops it to 1%.
+      if (nextPage === currentPage) nextPage = pickRandomUnsplashPage()
+    }
+    pageRef.current = nextPage
+    setPhotoPool(null)
+    setDisplayedImages([])
     setLoadedUrls(new Set())
+    setRetryToken((t) => t + 1)
   }
 
   function handleRetryFetch() {
+    // Wipe every per-page cache entry and pick a fresh random page.
     clearUnsplashCache()
+    pageRef.current = pickRandomUnsplashPage()
     setPhotoPool(null)
     setDisplayedImages([])
     setRetryToken((t) => t + 1)

@@ -128,7 +128,8 @@ function PillButton({
           : 'bg-white text-[#334155] border-[#E2E8F0] hover:border-[#CBD5E1]'
       }`}
     >
-      {active && <Check size={13} strokeWidth={2.5} />}
+      {/* Fix-54: Check icon removed — brand bg + white text already signals selection,
+          and the icon caused layout shift on toggle (extra ~19px when active). */}
       {children}
     </button>
   )
@@ -699,13 +700,55 @@ export function CreateProgramme() {
                   />
                   <SelectCard
                     active={form.schedule_type === 'rolling'}
-                    onClick={() => update('schedule_type', 'rolling')}
+                    onClick={() => {
+                      update('schedule_type', 'rolling')
+                      // Fix-62: camp mode is Fixed-only — clear it on switch.
+                      if (form.campMode) update('campMode', false)
+                    }}
                     icon={<RefreshCw size={20} strokeWidth={1.8} />}
                     title="Rolling"
                     description="Ongoing — participants join anytime."
                   />
                 </div>
               </div>
+
+              {/* Fix-60 + Fix-62: camp mode toggle + info banner. Hoisted above
+                  Days of week (was previously after Venue) so coaches see the
+                  schedule shape before they pick days. Fixed-only — Rolling
+                  programmes can't be camp-format. */}
+              {form.schedule_type === 'fixed' && (
+                <>
+                  <div className={`flex items-center gap-3 p-3.5 rounded-md border mb-3 ${form.campMode ? 'border-brand-600 bg-brand-50' : 'border-neutral-100 bg-white'}`}>
+                    <div className={`w-9 h-9 rounded-md flex items-center justify-center flex-shrink-0 ${form.campMode ? 'bg-white text-brand-600' : 'bg-neutral-50 text-[#94A3B8]'}`}>
+                      <Sun size={18} strokeWidth={1.8} />
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="text-sm font-semibold text-[#0F172A] m-0">Camp mode</h4>
+                      <p className="text-[12px] text-[#64748B] mt-0.5 m-0">Multiple sessions per day.</p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={form.campMode}
+                      onClick={() => update('campMode', !form.campMode)}
+                      className={`w-10 h-6 rounded-full relative flex-shrink-0 transition-colors ${form.campMode ? 'bg-brand-600' : 'bg-[#CBD5E1]'}`}
+                    >
+                      <span
+                        className={`absolute top-[2px] w-5 h-5 bg-white rounded-full shadow-[0_1px_2px_rgba(0,0,0,0.15)] transition-[left] ${form.campMode ? 'left-[18px]' : 'left-[2px]'}`}
+                      />
+                    </button>
+                  </div>
+
+                  {form.campMode && (
+                    <div className="bg-brand-50 rounded-md p-3 flex gap-2.5 items-start mb-[18px]">
+                      <Info size={16} className="text-brand-600 flex-shrink-0 mt-0.5" />
+                      <p className="text-[13px] text-brand-800 m-0 leading-snug">
+                        Parents book the full day. Each day can have multiple time blocks.
+                      </p>
+                    </div>
+                  )}
+                </>
+              )}
 
               {/* Day of week — Fix-58-4: multi-select */}
               <div className="mb-[22px]">
@@ -738,54 +781,10 @@ export function CreateProgramme() {
                 </div>
               )}
 
-              {/* CF-PROG-SESSION-LIST: Start time + End time (Duration pills removed) */}
-              <div className="mb-[22px]">
-                <div className="flex gap-4 flex-wrap">
-                  <div className="flex-1 min-w-[140px]">
-                    <label className="block text-[11px] font-semibold text-neutral-600 uppercase tracking-wide mb-2">Start time</label>
-                    <TimePicker
-                      value={form.start_time}
-                      onChange={(v) => update('start_time', v)}
-                    />
-                  </div>
-                  <div className="flex-1 min-w-[140px]">
-                    <label className="block text-[11px] font-semibold text-neutral-600 uppercase tracking-wide mb-2">End time</label>
-                    <TimePicker
-                      value={form.end_time}
-                      onChange={(v) => update('end_time', v)}
-                    />
-                  </div>
-                </div>
-                {form.end_time <= form.start_time && (
-                  <p className="text-[12px] text-red-600 mt-2">
-                    End time should be after start time.
-                  </p>
-                )}
-              </div>
-
-              {/* CF-PROG-SESSION-LIST: position 4 — Number of sessions (Fixed)
-                  OR Start/End date range (Rolling). Calendar below handles
-                  individual session dates. */}
-              {form.schedule_type === 'fixed' ? (
-                <div className="mb-[22px]">
-                  <label className="block text-[11px] font-semibold text-neutral-600 uppercase tracking-wide mb-2">
-                    Number of sessions
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={52}
-                    value={form.session_count}
-                    onChange={(e) => update('session_count', Math.max(1, parseInt(e.target.value) || 1))}
-                    className="w-full h-11 px-3 rounded-md bg-neutral-50 border border-neutral-100 text-sm text-[#0F172A] focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20"
-                  />
-                  <p className="text-[12px] text-[#94A3B8] mt-1.5">
-                    {form.days_of_week.length === 1
-                      ? `Runs for ${form.session_count} consecutive ${DAY_FULL[form.days_of_week[0]]}s.`
-                      : `Runs for ${form.session_count} sessions across the days you selected.`}
-                  </p>
-                </div>
-              ) : (
+              {/* Fix-61: Rolling date range hoisted to BEFORE the time row so the order
+                  (Days → Dates → Times) matches Fixed. Was previously in the trailing
+                  ternary's `else` branch. */}
+              {form.schedule_type === 'rolling' && (
                 <div className="mb-[22px]">
                   <label className="block text-[11px] font-semibold text-neutral-600 uppercase tracking-wide mb-2">
                     Date range
@@ -812,6 +811,58 @@ export function CreateProgramme() {
                   </div>
                   <p className="text-[12px] text-[#94A3B8] mt-1.5">
                     Leave end date blank for an ongoing programme.
+                  </p>
+                </div>
+              )}
+
+              {/* Fix-60: Start/End time row hidden when camp mode is ON — in camp mode
+                  each day's slot times are captured in the SessionCalendar editor,
+                  making these top-level fields redundant. */}
+              {!form.campMode && (
+                <div className="mb-[22px]">
+                  <div className="flex gap-4 flex-wrap">
+                    <div className="flex-1 min-w-[140px]">
+                      <label className="block text-[11px] font-semibold text-neutral-600 uppercase tracking-wide mb-2">Start time</label>
+                      <TimePicker
+                        value={form.start_time}
+                        onChange={(v) => update('start_time', v)}
+                      />
+                    </div>
+                    <div className="flex-1 min-w-[140px]">
+                      <label className="block text-[11px] font-semibold text-neutral-600 uppercase tracking-wide mb-2">End time</label>
+                      <TimePicker
+                        value={form.end_time}
+                        onChange={(v) => update('end_time', v)}
+                      />
+                    </div>
+                  </div>
+                  {form.end_time <= form.start_time && (
+                    <p className="text-[12px] text-red-600 mt-2">
+                      End time should be after start time.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Fix-61: Number of sessions — Fixed-only standalone conditional
+                  (Rolling date range hoisted above). */}
+              {form.schedule_type === 'fixed' && (
+                <div className="mb-[22px]">
+                  <label className="block text-[11px] font-semibold text-neutral-600 uppercase tracking-wide mb-2">
+                    Number of sessions
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={52}
+                    value={form.session_count}
+                    onChange={(e) => update('session_count', Math.max(1, parseInt(e.target.value) || 1))}
+                    className="w-full h-11 px-3 rounded-md bg-neutral-50 border border-neutral-100 text-sm text-[#0F172A] focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20"
+                  />
+                  <p className="text-[12px] text-[#94A3B8] mt-1.5">
+                    {form.days_of_week.length === 1
+                      ? `Runs for ${form.session_count} consecutive ${DAY_FULL[form.days_of_week[0]]}s.`
+                      : `Runs for ${form.session_count} sessions across the days you selected.`}
                   </p>
                 </div>
               )}
@@ -852,39 +903,10 @@ export function CreateProgramme() {
                 )}
               </div>
 
-              {/* CF-PROG-SESSION-LIST: section divider before camp + calendar */}
+              {/* Fix-60: divider preserved — separates inputs (above) from
+                  the SessionCalendar (below). Camp toggle + banner relocated
+                  up to sit beneath Schedule type. */}
               <hr className="border-0 border-t border-neutral-100 my-4" />
-
-              {/* CF-PROG-SESSION-LIST: camp mode toggle + info banner */}
-              <div className={`flex items-center gap-3 p-3.5 rounded-md border mb-3 ${form.campMode ? 'border-brand-600 bg-brand-50' : 'border-neutral-100 bg-white'}`}>
-                <div className={`w-9 h-9 rounded-md flex items-center justify-center flex-shrink-0 ${form.campMode ? 'bg-white text-brand-600' : 'bg-neutral-50 text-[#94A3B8]'}`}>
-                  <Sun size={18} strokeWidth={1.8} />
-                </div>
-                <div className="flex-1">
-                  <h4 className="text-sm font-semibold text-[#0F172A] m-0">Camp mode</h4>
-                  <p className="text-[12px] text-[#64748B] mt-0.5 m-0">Multiple sessions per day.</p>
-                </div>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={form.campMode}
-                  onClick={() => update('campMode', !form.campMode)}
-                  className={`w-10 h-6 rounded-full relative flex-shrink-0 transition-colors ${form.campMode ? 'bg-brand-600' : 'bg-[#CBD5E1]'}`}
-                >
-                  <span
-                    className={`absolute top-[2px] w-5 h-5 bg-white rounded-full shadow-[0_1px_2px_rgba(0,0,0,0.15)] transition-[left] ${form.campMode ? 'left-[18px]' : 'left-[2px]'}`}
-                  />
-                </button>
-              </div>
-
-              {form.campMode && (
-                <div className="bg-brand-50 rounded-md p-3 flex gap-2.5 items-start mb-[18px]">
-                  <Info size={16} className="text-brand-600 flex-shrink-0 mt-0.5" />
-                  <p className="text-[13px] text-brand-800 m-0 leading-snug">
-                    Parents book the full day. Each day can have multiple time blocks.
-                  </p>
-                </div>
-              )}
 
               {/* CF-PROG-SESSION-LIST: SessionCalendar handles grid + editor +
                   skipped section. Self-contained — emits the canonical
@@ -1141,23 +1163,25 @@ export function CreateProgramme() {
 
               {error && <p className="text-sm text-red-600 mb-4 text-center">{error}</p>}
 
+              {/* Fix-57: Publish now is the primary CTA (top, filled brand-600).
+                  Save as draft is the secondary fallback (below, outlined). */}
               <div className="flex flex-col gap-2.5 max-w-[560px] mx-auto w-full">
                 <button
                   type="button"
                   disabled={saving}
-                  onClick={() => submit(false)}
+                  onClick={() => submit(true)}
                   className="h-[52px] rounded-full bg-[#0077CC] hover:bg-[#0066AA] text-white text-[15px] font-medium flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
                 >
                   {saving ? <Loader2 size={16} className="animate-spin" /> : null}
-                  Save as draft
+                  Publish now
                 </button>
                 <button
                   type="button"
                   disabled={saving}
-                  onClick={() => submit(true)}
+                  onClick={() => submit(false)}
                   className="h-[52px] rounded-full bg-white border-[1.5px] border-[#0077CC] text-[#0077CC] hover:bg-[#F0F7FF] text-[15px] font-medium flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
                 >
-                  Publish now
+                  Save as draft
                 </button>
                 <p className="text-[13px] text-[#64748B] text-center mt-1 leading-snug">
                   Drafts are only visible to you. Publish when ready for parents to book.
