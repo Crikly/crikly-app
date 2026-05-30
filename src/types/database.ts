@@ -1414,6 +1414,7 @@ export type Database = {
           group_programme_id: string
           id: string
           session_date: string
+          slots: Json | null
           start_time: string
           status: string
           updated_at: string
@@ -1428,6 +1429,7 @@ export type Database = {
           group_programme_id: string
           id?: string
           session_date: string
+          slots?: Json | null
           start_time: string
           status?: string
           updated_at?: string
@@ -1442,6 +1444,7 @@ export type Database = {
           group_programme_id?: string
           id?: string
           session_date?: string
+          slots?: Json | null
           start_time?: string
           status?: string
           updated_at?: string
@@ -1468,6 +1471,7 @@ export type Database = {
           age_groups: string[]
           block_price_pence: number | null
           block_session_count: number | null
+          camp_mode: boolean
           cancellation_window_hours: number
           coach_profile_id: string
           coach_venue_id: string | null
@@ -1504,6 +1508,7 @@ export type Database = {
           age_groups?: string[]
           block_price_pence?: number | null
           block_session_count?: number | null
+          camp_mode?: boolean
           cancellation_window_hours?: number
           coach_profile_id: string
           coach_venue_id?: string | null
@@ -1540,6 +1545,7 @@ export type Database = {
           age_groups?: string[]
           block_price_pence?: number | null
           block_session_count?: number | null
+          camp_mode?: boolean
           cancellation_window_hours?: number
           coach_profile_id?: string
           coach_venue_id?: string | null

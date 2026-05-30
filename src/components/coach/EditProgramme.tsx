@@ -59,8 +59,11 @@ const SKILL_LEVELS: { value: FormData['skill_level']; label: string }[] = [
 ]
 
 // CF-PROG-SESSION-LIST: build the initial SessionEntry[] on Edit load.
-// Prefer server-persisted session_dates (STUB until CF-PROG-SESSIONS-DB)
-// then fall back to deriving from starts_at + days_of_week + session_count.
+// CF-PROG-SESSIONS-DB: prefer the API's persisted session list (the single-
+// programme GET now returns `session_dates` projected from
+// group_programme_sessions rows since migration 031). Fall back to deriving
+// from starts_at + days_of_week + session_count for legacy programmes that
+// were saved before the migration and have no session rows yet.
 function deriveInitialSessions(data: Record<string, unknown>): SessionEntry[] {
   if (Array.isArray(data.session_dates) && data.session_dates.length > 0) {
     return data.session_dates as SessionEntry[]
@@ -292,11 +295,20 @@ export function EditProgramme({ programmeId }: { programmeId: string }) {
           rolling_end_date: typeof data.ends_at === 'string' && data.ends_at
             ? new Date(data.ends_at).toISOString().split('T')[0]
             : '',
-          // CF-PROG-SESSION-LIST: seed session_dates from API if persisted (STUB
-          // until CF-PROG-SESSIONS-DB) — otherwise derive from existing schedule
-          // metadata so the SessionCalendar has something to display on load.
+          // CF-PROG-SESSIONS-DB: API now returns the persisted session list on
+          // single-programme GET, so deriveInitialSessions takes the data.session_dates
+          // branch for any programme saved after migration 031. Legacy programmes
+          // (saved pre-031, no rows in group_programme_sessions) still fall back
+          // to the in-memory derivation from starts_at + days + session_count.
           session_dates: deriveInitialSessions(data),
-          campMode: typeof data.campMode === 'boolean' ? data.campMode : false,
+          // CF-PROG-SESSIONS-DB: API returns snake_case `camp_mode` (matches the
+          // DB column). The legacy `data.campMode` was never populated server-side;
+          // kept as a soft-fallback for any in-flight cached responses.
+          // TODO: remove the campMode fallback once migration 031 has been live
+          // for at least one cache TTL across all environments — no API response
+          // will carry `campMode` without `camp_mode` after that point.
+          campMode: data.camp_mode === true
+            || (typeof data.campMode === 'boolean' ? data.campMode : false),
           max_spots: data.max_spots || 8,
           payment_type: data.payment_type === 'block_upfront' ? 'block_upfront' : 'per_session',
           price_pence:

@@ -4,6 +4,92 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { requireCoachContext } from '@/lib/auth/require-coach'
 import { PROGRAMME_AGE_GROUPS } from '@/components/coach/programmeConstants'
 import { generateProgrammeSessionDates } from '@/lib/programme-sessions'
+import type { Json } from '@/types/database'
+
+// MIRROR OF programmeConstants.SessionEntry — kept inline so this API route
+// does not import from a client-side component module. Update both if the
+// shape ever changes (CF-PROG-SESSIONS-DB).
+interface SessionEntrySlot {
+  startTime: string  // 'HH:MM'
+  endTime: string    // 'HH:MM'
+}
+interface SessionEntry {
+  date: string       // 'YYYY-MM-DD'
+  startTime: string  // 'HH:MM'
+  endTime: string    // 'HH:MM'
+  slots?: SessionEntrySlot[]
+}
+
+/**
+ * CF-PROG-SESSIONS-DB: per-entry validator for body.session_dates. Mirrors
+ * the helper in `/api/coaches/programmes/route.ts` (POST) so create and edit
+ * apply identical validation.
+ */
+function isHHMM(value: unknown): boolean {
+  if (typeof value !== 'string' || !/^\d{2}:\d{2}$/.test(value)) return false
+  const [h, m] = value.split(':').map(Number)
+  return h >= 0 && h <= 23 && m >= 0 && m <= 59
+}
+
+function validateSessionEntries(arr: unknown[]): string[] {
+  const errors: string[] = []
+  arr.forEach((item, idx) => {
+    if (typeof item !== 'object' || item === null) {
+      errors.push(`session_dates[${idx}] must be an object`)
+      return
+    }
+    const s = item as Record<string, unknown>
+    if (typeof s.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(s.date)) {
+      errors.push(`session_dates[${idx}].date must be a YYYY-MM-DD string`)
+    }
+    if (!isHHMM(s.startTime)) {
+      errors.push(`session_dates[${idx}].startTime must be HH:MM`)
+    }
+    if (!isHHMM(s.endTime)) {
+      errors.push(`session_dates[${idx}].endTime must be HH:MM`)
+    }
+    if (s.slots !== undefined && s.slots !== null) {
+      if (!Array.isArray(s.slots)) {
+        errors.push(`session_dates[${idx}].slots must be an array if present`)
+      } else {
+        s.slots.forEach((sl, si) => {
+          if (typeof sl !== 'object' || sl === null) {
+            errors.push(`session_dates[${idx}].slots[${si}] must be an object`)
+            return
+          }
+          const slot = sl as Record<string, unknown>
+          if (!isHHMM(slot.startTime)) errors.push(`session_dates[${idx}].slots[${si}].startTime must be HH:MM`)
+          if (!isHHMM(slot.endTime)) errors.push(`session_dates[${idx}].slots[${si}].endTime must be HH:MM`)
+        })
+      }
+    }
+  })
+  return errors
+}
+
+/**
+ * CF-PROG-SESSIONS-DB: project group_programme_sessions DB rows to the
+ * SessionEntry shape consumed by the form. start_time/end_time come back
+ * from PostgreSQL as 'HH:MM:SS' — trim to 'HH:MM'. Slots reflect the jsonb
+ * column when non-empty, otherwise the field is omitted to match the form's
+ * "single block" representation.
+ */
+function rowsToSessionEntries(
+  rows: ReadonlyArray<{ session_date: string; start_time: string; end_time: string; slots: unknown }>,
+): SessionEntry[] {
+  return rows.map((r) => {
+    const startTime = r.start_time.substring(0, 5)
+    const endTime = r.end_time.substring(0, 5)
+    const entry: SessionEntry = { date: r.session_date, startTime, endTime }
+    if (Array.isArray(r.slots) && r.slots.length > 0) {
+      const slots = (r.slots as Array<Record<string, unknown>>)
+        .filter((s) => typeof s.startTime === 'string' && typeof s.endTime === 'string')
+        .map((s) => ({ startTime: s.startTime as string, endTime: s.endTime as string }))
+      if (slots.length > 0) entry.slots = slots
+    }
+    return entry
+  })
+}
 
 interface ProgrammeResponse {
   id: string
@@ -43,6 +129,12 @@ interface ProgrammeResponse {
   session_count: number | null
   min_participants: number | null
   cancellation_window_hours: number
+  /** CF-PROG-SESSIONS-DB: persisted per-session list, ordered by date. Empty
+   *  array when the programme has no session rows (legacy programmes saved
+   *  before migration 031 — the next coach save backfills them). */
+  session_dates: SessionEntry[]
+  /** CF-PROG-SESSIONS-DB: per-programme camp-mode flag (migration 031). */
+  camp_mode: boolean
 }
 
 function getDayName(dayOfWeek: number | null): string | null {
@@ -81,7 +173,7 @@ export async function GET(
     const adminSupabase = createAdminClient()
     const { data: programme, error: programmeError } = await adminSupabase
       .from('group_programmes')
-      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address, skill_level, session_count, min_participants, cancellation_window_hours, image_url, age_groups, starts_at, ends_at')
+      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address, skill_level, session_count, min_participants, cancellation_window_hours, image_url, age_groups, starts_at, ends_at, camp_mode')
       .eq('id', programmeId)
       .eq('coach_profile_id', coachProfile.id)
       .is('deleted_at', null)
@@ -97,6 +189,19 @@ export async function GET(
       const { data: sportRow } = await supabase.from('sports').select('name').eq('id', programme.sport_id).single()
       getSportName = sportRow?.name || ''
     }
+
+    // CF-PROG-SESSIONS-DB: fetch persisted session rows (migration 031). Reuses
+    // the admin client from the programme SELECT — the existing RLS policy on
+    // group_programme_sessions only grants public SELECT when the parent
+    // programme is 'active', so a coach viewing their own draft would otherwise
+    // see an empty list. Ownership is already enforced by the programme SELECT
+    // above (.eq('coach_profile_id', coachProfile.id)).
+    const { data: sessionRows } = await adminSupabase
+      .from('group_programme_sessions')
+      .select('session_date, start_time, end_time, slots')
+      .eq('group_programme_id', programme.id)
+      .order('session_date', { ascending: true })
+    const sessionDates: SessionEntry[] = sessionRows ? rowsToSessionEntries(sessionRows) : []
 
     const response: ProgrammeResponse = {
       id: programme.id,
@@ -130,6 +235,8 @@ export async function GET(
       session_count: programme.session_count,
       min_participants: programme.min_participants,
       cancellation_window_hours: programme.cancellation_window_hours,
+      session_dates: sessionDates,
+      camp_mode: programme.camp_mode === true,
     }
 
     return NextResponse.json(response, { status: 200 })
@@ -165,7 +272,7 @@ export async function PATCH(
     // ends_at against the merged (existing ∪ body) state on PATCH.
     const { data: existingProgramme, error: programmeCheckError } = await adminSupabase
       .from('group_programmes')
-      .select('id, status, current_spots, max_spots, schedule_type, days_of_week, day_of_week, session_count, starts_at, ends_at')
+      .select('id, status, current_spots, max_spots, schedule_type, days_of_week, day_of_week, session_count, starts_at, ends_at, camp_mode')
       .eq('id', programmeId)
       .eq('coach_profile_id', coachProfile.id)
       .is('deleted_at', null)
@@ -361,10 +468,13 @@ export async function PATCH(
       }
     }
 
-    // CF-PROG-SESSION-LIST: shape check only — per-entry validation deferred
-    // to CF-PROG-SESSIONS-DB.
-    if (body.session_dates !== undefined && !Array.isArray(body.session_dates)) {
-      validationErrors.push('session_dates must be an array')
+    // CF-PROG-SESSIONS-DB: per-entry validation (was shape-only under CF-PROG-SESSION-LIST).
+    if (body.session_dates !== undefined) {
+      if (!Array.isArray(body.session_dates)) {
+        validationErrors.push('session_dates must be an array')
+      } else {
+        validationErrors.push(...validateSessionEntries(body.session_dates))
+      }
     }
     if (body.campMode !== undefined && typeof body.campMode !== 'boolean') {
       validationErrors.push('campMode must be a boolean')
@@ -407,6 +517,8 @@ export async function PATCH(
       // CF-PROG-SESSION-LIST: session_count derived from session_dates.length
       // when the array is non-empty.
       session_count?: number | null
+      // CF-PROG-SESSIONS-DB: per-programme camp-mode flag (migration 031).
+      camp_mode?: boolean
     } = {
       updated_at: new Date().toISOString(),
     }
@@ -423,6 +535,8 @@ export async function PATCH(
     if (body.block_price_pence !== undefined) updateData.block_price_pence = body.block_price_pence
     if (body.block_session_count !== undefined) updateData.block_session_count = body.block_session_count
     if (body.status !== undefined) updateData.status = body.status
+    // CF-PROG-SESSIONS-DB: camp_mode is now persisted (was a STUB no-op).
+    if (body.campMode !== undefined) updateData.camp_mode = body.campMode === true
 
     // Fix-58-DB-api: populate days_of_week — prefer explicit array, fall back to [day_of_week]
     if (Array.isArray(body.days_of_week) && body.days_of_week.length > 0) {
@@ -553,12 +667,79 @@ export async function PATCH(
       .update(updateData)
       .eq('id', programmeId)
       .eq('coach_profile_id', coachProfile.id)
-      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address, skill_level, session_count, min_participants, cancellation_window_hours, image_url, age_groups, starts_at, ends_at')
+      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address, skill_level, session_count, min_participants, cancellation_window_hours, image_url, age_groups, starts_at, ends_at, camp_mode')
       .single()
 
     if (updateError) {
       console.error('[PATCH /api/coaches/programmes/[programmeId]] update error:', updateError)
       return NextResponse.json({ error: 'Failed to update programme' }, { status: 500 })
+    }
+
+    // CF-PROG-SESSIONS-DB: session reconciliation. Only runs when the programme
+    // is not locked (current_spots === 0) AND the body carried a non-empty
+    // session_dates array. When current_spots > 0 we silently skip — the UI
+    // already hides the SessionCalendar so this is just defence-in-depth.
+    const patchIsLocked = (existingProgramme.current_spots as number) > 0
+    if (!patchIsLocked && sessionDatesBody && sessionDatesBody.length > 0) {
+      // Effective camp_mode for slot-write decisions: merged body ∪ existing.
+      const effectiveCampMode =
+        updateData.camp_mode !== undefined
+          ? updateData.camp_mode
+          : existingProgramme.camp_mode === true
+
+      // Step 1: delete rows whose session_date is no longer in the form.
+      // Fetch existing rows, set-diff in memory, then delete by id — avoids
+      // PostgREST `.not('col', 'in', '(...)')` quoting subtleties.
+      const { data: existingSessions, error: existingSessionsError } = await adminSupabase
+        .from('group_programme_sessions')
+        .select('id, session_date')
+        .eq('group_programme_id', programmeId)
+      if (existingSessionsError) {
+        console.error('[PATCH /api/coaches/programmes/[programmeId]] session fetch failed:', existingSessionsError)
+        return NextResponse.json({ error: 'Failed to update programme sessions' }, { status: 500 })
+      }
+      const formDateSet = new Set(
+        (sessionDatesBody as SessionEntry[]).map((s) => s.date),
+      )
+      const toDeleteIds = (existingSessions ?? [])
+        .filter((r) => !formDateSet.has(r.session_date as string))
+        .map((r) => r.id as string)
+      if (toDeleteIds.length > 0) {
+        const { error: sessionDeleteError } = await adminSupabase
+          .from('group_programme_sessions')
+          .delete()
+          .in('id', toDeleteIds)
+        if (sessionDeleteError) {
+          console.error('[PATCH /api/coaches/programmes/[programmeId]] session delete failed:', sessionDeleteError)
+          return NextResponse.json({ error: 'Failed to update programme sessions' }, { status: 500 })
+        }
+      }
+
+      // Step 2: UPSERT every form session via ON CONFLICT
+      // (group_programme_id, session_date) — relies on the unique constraint
+      // added in migration 031.
+      const sessionRows = (sessionDatesBody as SessionEntry[]).map((entry) => ({
+        group_programme_id: programmeId,
+        session_date: entry.date,
+        start_time: entry.startTime,
+        end_time: entry.endTime,
+        slots:
+          effectiveCampMode && Array.isArray(entry.slots) && entry.slots.length > 0
+            ? // SessionEntrySlot[] is structurally JSON-compatible but TS won't
+              // unify it with the Json index-signature without a cast.
+              (entry.slots as unknown as Json)
+            : null,
+      }))
+      const { error: sessionUpsertError } = await adminSupabase
+        .from('group_programme_sessions')
+        .upsert(sessionRows, { onConflict: 'group_programme_id,session_date' })
+      if (sessionUpsertError) {
+        console.error('[PATCH /api/coaches/programmes/[programmeId]] session upsert failed:', sessionUpsertError)
+        return NextResponse.json({ error: 'Failed to update programme sessions' }, { status: 500 })
+      }
+    } else if (patchIsLocked && body.session_dates !== undefined) {
+      // Audit-only log: a locked programme's incoming session_dates was ignored.
+      console.info(`[PATCH /api/coaches/programmes/${programmeId}] session reconciliation skipped — programme locked (current_spots > 0)`)
     }
 
     // 8. Fetch sport name separately (Fix-65-1 pattern — no nested join)
@@ -567,6 +748,16 @@ export async function PATCH(
       const { data: sportRow } = await supabase.from('sports').select('name').eq('id', updatedProgramme.sport_id).single()
       patchSportName = sportRow?.name || ''
     }
+
+    // CF-PROG-SESSIONS-DB: re-fetch the (now reconciled) session list for the response.
+    const { data: patchSessionRows } = await adminSupabase
+      .from('group_programme_sessions')
+      .select('session_date, start_time, end_time, slots')
+      .eq('group_programme_id', programmeId)
+      .order('session_date', { ascending: true })
+    const patchSessionDates: SessionEntry[] = patchSessionRows
+      ? rowsToSessionEntries(patchSessionRows)
+      : []
 
     const response: ProgrammeResponse = {
       id: updatedProgramme.id,
@@ -600,6 +791,8 @@ export async function PATCH(
       session_count: updatedProgramme.session_count,
       min_participants: updatedProgramme.min_participants,
       cancellation_window_hours: updatedProgramme.cancellation_window_hours,
+      session_dates: patchSessionDates,
+      camp_mode: updatedProgramme.camp_mode === true,
     }
 
     return NextResponse.json(response, { status: 200 })

@@ -4,7 +4,67 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { requireCoachContext } from '@/lib/auth/require-coach'
 import { PROGRAMME_AGE_GROUPS } from '@/components/coach/programmeConstants'
 import { generateProgrammeSessionDates } from '@/lib/programme-sessions'
+import type { Json } from '@/types/database'
 
+// MIRROR OF programmeConstants.SessionEntry — kept inline so this API route
+// does not import from a client-side component module. Update both if the
+// shape ever changes (CF-PROG-SESSIONS-DB).
+interface SessionEntrySlot {
+  startTime: string  // 'HH:MM'
+  endTime: string    // 'HH:MM'
+}
+interface SessionEntry {
+  date: string       // 'YYYY-MM-DD'
+  startTime: string  // 'HH:MM'
+  endTime: string    // 'HH:MM'
+  slots?: SessionEntrySlot[]
+}
+
+/**
+ * CF-PROG-SESSIONS-DB: per-entry validator for body.session_dates. Returns
+ * an array of error strings ([] = OK).
+ */
+function isHHMM(value: unknown): boolean {
+  if (typeof value !== 'string' || !/^\d{2}:\d{2}$/.test(value)) return false
+  const [h, m] = value.split(':').map(Number)
+  return h >= 0 && h <= 23 && m >= 0 && m <= 59
+}
+
+function validateSessionEntries(arr: unknown[]): string[] {
+  const errors: string[] = []
+  arr.forEach((item, idx) => {
+    if (typeof item !== 'object' || item === null) {
+      errors.push(`session_dates[${idx}] must be an object`)
+      return
+    }
+    const s = item as Record<string, unknown>
+    if (typeof s.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(s.date)) {
+      errors.push(`session_dates[${idx}].date must be a YYYY-MM-DD string`)
+    }
+    if (!isHHMM(s.startTime)) {
+      errors.push(`session_dates[${idx}].startTime must be HH:MM`)
+    }
+    if (!isHHMM(s.endTime)) {
+      errors.push(`session_dates[${idx}].endTime must be HH:MM`)
+    }
+    if (s.slots !== undefined && s.slots !== null) {
+      if (!Array.isArray(s.slots)) {
+        errors.push(`session_dates[${idx}].slots must be an array if present`)
+      } else {
+        s.slots.forEach((sl, si) => {
+          if (typeof sl !== 'object' || sl === null) {
+            errors.push(`session_dates[${idx}].slots[${si}] must be an object`)
+            return
+          }
+          const slot = sl as Record<string, unknown>
+          if (!isHHMM(slot.startTime)) errors.push(`session_dates[${idx}].slots[${si}].startTime must be HH:MM`)
+          if (!isHHMM(slot.endTime)) errors.push(`session_dates[${idx}].slots[${si}].endTime must be HH:MM`)
+        })
+      }
+    }
+  })
+  return errors
+}
 
 /**
  * Programme response
@@ -310,10 +370,13 @@ export async function POST(
       }
     }
 
-    // CF-PROG-SESSION-LIST: shape check only — per-entry validation deferred
-    // to CF-PROG-SESSIONS-DB.
-    if (body.session_dates !== undefined && !Array.isArray(body.session_dates)) {
-      validationErrors.push('session_dates must be an array')
+    // CF-PROG-SESSIONS-DB: per-entry validation (was shape-only under CF-PROG-SESSION-LIST).
+    if (body.session_dates !== undefined) {
+      if (!Array.isArray(body.session_dates)) {
+        validationErrors.push('session_dates must be an array')
+      } else {
+        validationErrors.push(...validateSessionEntries(body.session_dates))
+      }
     }
     if (body.campMode !== undefined && typeof body.campMode !== 'boolean') {
       validationErrors.push('campMode must be a boolean')
@@ -381,6 +444,8 @@ export async function POST(
       currency: string
       venue_name?: string | null
       venue_address?: string | null
+      // CF-PROG-SESSIONS-DB: per-programme camp-mode flag (migration 031).
+      camp_mode?: boolean
     } = {
       coach_profile_id: coachProfile.id,
       sport_id: body.sport_id,
@@ -398,6 +463,8 @@ export async function POST(
       skill_level: skillLevel,
       status: requestedStatus,
       currency: 'GBP',
+      // CF-PROG-SESSIONS-DB: camp_mode is now persisted (was a STUB no-op).
+      camp_mode: body.campMode === true,
     }
 
     if (body.min_participants !== undefined) {
@@ -514,8 +581,8 @@ export async function POST(
       }
     }
 
-    // CF-PROG-SESSION-LIST: campMode is accepted but ignored server-side
-    // (STUB until CF-PROG-SESSIONS-DB adds the column).
+    // CF-PROG-SESSIONS-DB: camp_mode is now persisted on insertData above
+    // (migration 031). Session rows are inserted in a second statement below.
 
     // Fix-62: Use admin client for INSERT only — user is already authenticated and
     // coach ownership verified above. Bypasses RLS to avoid auth_user_id mapping
@@ -530,6 +597,46 @@ export async function POST(
     if (insertError) {
       console.error('[POST /api/coaches/programmes] insert error:', insertError)
       return NextResponse.json({ error: 'Failed to create programme' }, { status: 500 })
+    }
+
+    // CF-PROG-SESSIONS-DB: persist session rows. If this fails we delete the
+    // orphan programme to give the coach atomic semantics — either the
+    // programme exists with its full session list, or nothing was created.
+    if (sessionDatesBody && sessionDatesBody.length > 0) {
+      const sessionRows = (sessionDatesBody as SessionEntry[]).map((entry) => ({
+        group_programme_id: newProgramme.id as string,
+        session_date: entry.date,
+        start_time: entry.startTime,
+        end_time: entry.endTime,
+        // Slots are only persisted when camp mode is on AND the entry actually
+        // carries a non-empty slots array. Otherwise the row's single
+        // start_time/end_time is authoritative and slots stays NULL.
+        slots:
+          insertData.camp_mode && Array.isArray(entry.slots) && entry.slots.length > 0
+            ? // SessionEntrySlot[] is structurally JSON-compatible but TS won't
+              // unify it with the Json index-signature without a cast.
+              (entry.slots as unknown as Json)
+            : null,
+      }))
+
+      const { error: sessionsError } = await adminSupabase
+        .from('group_programme_sessions')
+        .insert(sessionRows)
+
+      if (sessionsError) {
+        console.error('[POST /api/coaches/programmes] session insert failed — rolling back programme:', sessionsError)
+        // Soft-delete the orphan programme (CLAUDE.md: "Soft deletes only —
+        // never hard DELETE"). The coach never saw this programme; the row
+        // remains queryable for ops/audit until a separate cleanup job runs.
+        await adminSupabase
+          .from('group_programmes')
+          .update({ deleted_at: new Date().toISOString() })
+          .eq('id', newProgramme.id)
+        return NextResponse.json(
+          { error: 'Failed to save programme sessions. Please try again.' },
+          { status: 500 },
+        )
+      }
     }
 
     // 7. Fetch sport name separately (Fix-65-1 pattern — no nested join)

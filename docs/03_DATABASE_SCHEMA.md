@@ -1,8 +1,8 @@
 # Crikly — Database Schema
 
-**Version:** 1.3
-**Last Updated:** April 2026
-**Changed:** Migration 015 — 5 coach schema gaps (blocked_dates range+label, coach_session_types table, group_programmes table, group_programme_enrolments table, coach_venues table, availability_templates price override)
+**Version:** 1.4
+**Last Updated:** May 2026
+**Changed:** Migration 031 — CF-PROG-SESSIONS-DB. Adds `group_programmes.camp_mode` (boolean) and `group_programme_sessions.slots` (jsonb), plus a `UNIQUE (group_programme_id, session_date)` constraint that enables UPSERT reconciliation in the programmes PATCH route. Also documents `group_programme_sessions` for the first time (table created in migration 011 but never written into this doc).
 **Maintainer:** Lasith Jayarathne
 **Single source of truth for all database tables.**
 
@@ -712,7 +712,7 @@ Container for group sessions. Multiple bookings link to one group booking.
 Recurring group training programmes offered by coaches.
 
 **Purpose:** Ongoing weekly/recurring group sessions (e.g. "Saturday Morning Cricket Club").
-**Migration:** 015_coach_schema_gaps.sql; 030_add_image_url_to_programmes.sql (image_url column added — CF-PROGRAMMES-IMAGE-PICKER)
+**Migration:** 015_coach_schema_gaps.sql; 030_add_image_url_to_programmes.sql (image_url column added — CF-PROGRAMMES-IMAGE-PICKER); 031_persist_programme_sessions_and_camp_mode.sql (camp_mode column added — CF-PROG-SESSIONS-DB)
 
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
@@ -723,17 +723,28 @@ Recurring group training programmes offered by coaches.
 | description | text | YES | null | What the programme covers |
 | schedule_type | text | NO | 'fixed' | 'fixed' = set start/end, 'rolling' = ongoing |
 | day_of_week | integer | NO | — | 0=Sunday, 1=Monday...6=Saturday |
+| days_of_week | integer[] | YES | null | Multi-day pattern (Fix-58 / migration 018). Authoritative when present; day_of_week is the single-day legacy field. |
 | start_time | time | NO | — | Session start time |
 | duration_minutes | integer | NO | — | Session length |
+| session_count | integer | YES | null | Number of sessions (Fixed) — derived from `session_dates.length` when sessions are persisted. |
+| starts_at | timestamptz | YES | null | First session anchor — derived from `session_dates[0]` when sessions persisted, else from form's start date. |
+| ends_at | timestamptz | YES | null | Last session anchor (Fixed) or rolling end date (Rolling). Derived from `session_dates[-1]` when sessions persisted. |
 | max_spots | integer | NO | — | Maximum participants |
-| current_spots | integer | NO | 0 | Current enrolled participants |
+| current_spots | integer | NO | 0 | Current enrolled participants — when > 0, schedule/price are locked at the API and UI. |
 | payment_type | text | NO | 'per_session' | 'per_session' or 'block_upfront' |
 | price_per_session_pence | integer | YES | null | Price per session in pence |
 | block_price_pence | integer | YES | null | Upfront block price in pence |
 | block_session_count | integer | YES | null | Number of sessions in block |
 | currency | text | NO | 'GBP' | ISO currency code |
 | status | text | NO | 'draft' | 'draft', 'active', 'full', 'completed', 'cancelled' |
+| skill_level | text | NO | — | 'beginner', 'intermediate', 'advanced', 'all' |
+| age_groups | text[] | NO | '{}' | Target age groups (CF-PROG-AGE-GROUP). 'All ages' is XOR with specific groups; min 1 enforced UI+API. |
+| venue_name | text | YES | null | Coach-entered or autocomplete-picked venue label. |
+| venue_address | text | YES | null | Full address from autocomplete (Google Places). |
+| min_participants | integer | YES | null | Minimum to run (informational). |
+| cancellation_window_hours | integer | NO | 24 | Hours before a session that parents can cancel for refund. |
 | image_url | text | YES | null | Cover photo URL — Unsplash curated pick or coach upload (migration 030). Null = use sport-based placeholder in UI. |
+| camp_mode | boolean | NO | false | When true, each `group_programme_sessions` row may carry a non-null `slots` jsonb array (multi-slot days). When false, every session row's `slots` is null. (Migration 031, CF-PROG-SESSIONS-DB.) |
 | deleted_at | timestamptz | YES | null | Soft delete |
 | created_at | timestamptz | NO | now() | |
 | updated_at | timestamptz | NO | now() | |
@@ -749,7 +760,50 @@ Recurring group training programmes offered by coaches.
 
 ---
 
-### 6.4 group_programme_enrolments
+### 6.4 group_programme_sessions
+
+Individual scheduled sessions within a `group_programmes` row. The session list is the canonical schedule — `group_programmes.starts_at` / `ends_at` / `session_count` / `days_of_week` are derived from it on POST and PATCH.
+
+**Purpose:** One row per scheduled date, with optional camp-mode multi-slot times.
+**Migration:** 015_coach_schema_gaps.sql (initial table); 031_persist_programme_sessions_and_camp_mode.sql (slots column + UNIQUE constraint, CF-PROG-SESSIONS-DB — also when the POST/PATCH routes started actually writing into this table).
+
+| Column | Type | Nullable | Default | Notes |
+|---|---|---|---|---|
+| id | uuid | NO | gen_random_uuid() | Primary key |
+| group_programme_id | uuid | NO | — | FK → group_programmes(id) ON DELETE CASCADE |
+| session_date | date | NO | — | The calendar date this session falls on. |
+| start_time | time | NO | — | Single block start. When `slots` is non-null, this mirrors `slots[0].startTime` for downstream consumers that read only this column. |
+| end_time | time | NO | — | Single block end. Mirrors `slots[0].endTime` when `slots` is non-null. |
+| slots | jsonb | YES | null | Camp-mode time blocks: array of `{"startTime":"HH:MM","endTime":"HH:MM"}`. NULL means single block. CHECK constraint enforces `jsonb_typeof = 'array'` when present; per-element shape enforced server-side. |
+| coach_venue_id | uuid | YES | null | FK → coach_venues(id) ON DELETE SET NULL. Per-session venue override (rarely used today). |
+| status | text | NO | 'scheduled' | 'scheduled', 'completed', 'cancelled'. |
+| cancelled_at | timestamptz | YES | null | Set when a single session is cancelled (refunds processed elsewhere). |
+| cancellation_reason | text | YES | null | Coach-provided context for cancellation. |
+| completed_at | timestamptz | YES | null | Set on completion. |
+| created_at | timestamptz | NO | now() | |
+| updated_at | timestamptz | NO | now() | Bumped on every UPSERT during PATCH reconciliation. |
+
+**Constraints:**
+- UNIQUE (group_programme_id, session_date) — migration 031. Enables UPSERT-by-conflict during PATCH reconciliation.
+- CHECK (slots IS NULL OR jsonb_typeof(slots) = 'array') — migration 031.
+
+**RLS Policies:**
+- SELECT: Public when the parent programme is `status = 'active'`.
+- INSERT / UPDATE / DELETE: Coach only (verified by joining through `group_programmes` to `coach_profiles.user_profile_id = auth.uid()`).
+
+**Indexes:**
+- (group_programme_id, session_date) — implicit BTREE from the UNIQUE constraint. Serves queries filtered by `group_programme_id` alone too.
+
+**Reconciliation model (CF-PROG-SESSIONS-DB):**
+- POST `/api/coaches/programmes`: after the `group_programmes` insert, bulk inserts every entry of `body.session_dates`. If the bulk insert fails the orphan programme row is deleted (atomic semantics from the coach's POV).
+- PATCH `/api/coaches/programmes/{id}` (when `current_spots = 0`): deletes rows whose `session_date` is no longer in the form's list, then UPSERTs the form's list with `ON CONFLICT (group_programme_id, session_date) DO UPDATE`.
+- PATCH when `current_spots > 0`: session reconciliation is silently skipped (a single `console.info` audit log is emitted server-side). Other PATCH fields still update.
+- GET `/api/coaches/programmes/{id}`: returns `session_dates` projected from this table (sorted by `session_date` ascending) and `camp_mode` from `group_programmes`.
+- The list endpoint `GET /api/coaches/programmes` deliberately does **not** return `session_dates` (N+1 risk) — list consumers use the existing `starts_at` / `ends_at` summary.
+
+---
+
+### 6.5 group_programme_enrolments
 
 Tracks which children/players are enrolled in group programmes.
 
