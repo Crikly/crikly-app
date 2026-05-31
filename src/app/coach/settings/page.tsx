@@ -837,8 +837,8 @@ function Toggle({
   disabled?: boolean
   ariaLabel?: string
 }) {
-  // Fix B: inline backgroundColor guarantees both ON (#0077CC) and OFF (#CBD5E1) render
-  // reliably regardless of Tailwind JIT pickup for bg-brand-600 / bg-slate-300.
+  // CF-R04: Tailwind classes (bg-brand-600 / bg-neutral-100) now in safelist, so
+  // the JIT bypass via inline style is no longer needed.
   return (
     <button
       type="button"
@@ -847,8 +847,7 @@ function Toggle({
       aria-label={ariaLabel}
       onClick={onClick}
       disabled={disabled}
-      style={{ backgroundColor: on ? '#0077CC' : '#CBD5E1' }}
-      className="relative w-[42px] h-6 rounded-full shrink-0 transition-colors duration-150 border-0 p-0 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+      className={`relative w-[42px] h-6 rounded-full shrink-0 transition-colors duration-150 border-0 p-0 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${on ? 'bg-brand-600' : 'bg-neutral-100'}`}
     >
       <span
         className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-[0_1px_3px_rgba(15,23,42,0.15)] transition-transform duration-[180ms] ease-[cubic-bezier(0.4,0,0.2,1)] ${

@@ -56,6 +56,8 @@ export default function RootLayout({
   return (
     <html lang="en" className={dmSans.variable}>
       <head>
+        <meta name="color-scheme" content="light" />
+        <meta name="theme-color" content="#FFFFFF" />
         {/* eslint-disable-next-line react/no-danger */}
         <style dangerouslySetInnerHTML={{ __html: pacStyles }} />
       </head>

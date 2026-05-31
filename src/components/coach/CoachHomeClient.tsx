@@ -197,7 +197,7 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
             {data.coachAvatarUrl && data.coachAvatarUrl.trim() !== '' ? (
               <img src={data.coachAvatarUrl} alt={data.coachName || 'Coach'} className="w-10 h-10 rounded-full object-cover shadow-sm border border-gray-100" />
             ) : (
-              <div className="w-10 h-10 rounded-full bg-[#0077CC] text-white flex items-center justify-center text-[14px] font-bold shadow-sm border border-gray-100">
+              <div className="w-10 h-10 rounded-full bg-brand-600 text-white flex items-center justify-center text-[14px] font-bold shadow-sm border border-gray-100">
                 {(data.coachName || 'C').charAt(0).toUpperCase()}
               </div>
             )}
@@ -231,29 +231,29 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
         {/* CF-D11a: Onboarding completion banner — hidden at 100% (Fix-44) */}
         {completionPercentage < 100 && (
         <div className="flex flex-col gap-3">
-          <div className="bg-[#EFF7FF] border-l-4 border-[#0077CC] rounded-r-lg overflow-hidden transition-all duration-300">
+          <div className="bg-neutral-50 border-l-4 border-brand-600 rounded-r-lg overflow-hidden transition-all duration-300">
             {/* CF-D11a CHANGE 1: Banner header with completion % inline */}
             <div
               onClick={() => setProfileExpanded(!profileExpanded)}
               className="p-3.5 flex items-center justify-between gap-2 text-blue-800 cursor-pointer hover:bg-blue-100/50 transition-colors"
             >
               <div className="flex items-center gap-2.5 md:gap-3 min-w-0">
-                <span className="text-[13px] font-bold text-[#0077CC] shrink-0">{completionPercentage}% complete</span>
+                <span className="text-[13px] font-bold text-brand-600 shrink-0">{completionPercentage}% complete</span>
                 <span className="text-[14px] md:text-[15px] font-medium truncate">Complete your profile to appear in search</span>
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                <span className="text-[#0077CC] text-sm font-bold cursor-pointer hover:underline hidden md:inline">Finish setup</span>
-                <ChevronRight size={18} className={`text-[#0077CC]/60 transition-transform duration-300 shrink-0 ${profileExpanded ? 'rotate-90' : ''}`} />
+                <span className="text-brand-600 text-sm font-bold cursor-pointer hover:underline hidden md:inline">Finish setup</span>
+                <ChevronRight size={18} className={`text-brand-600/60 transition-transform duration-300 shrink-0 ${profileExpanded ? 'rotate-90' : ''}`} />
               </div>
             </div>
             {profileExpanded && (
-              <div className="px-4 pb-4 pt-3 border-t border-gray-200/40 bg-gray-50">
+              <div className="px-4 pb-4 pt-3 border-t border-gray-200/40 bg-neutral-50">
                 {/* CF-D11a CHANGE 4: Progress bar */}
                 <div className="mb-4">
                   <div className="w-full h-1 bg-gray-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-[#0077CC] rounded-full transition-all duration-500" style={{ width: `${completionPercentage}%` }}></div>
+                    <div className="h-full bg-brand-600 rounded-full transition-all duration-500" style={{ width: `${completionPercentage}%` }}></div>
                   </div>
-                  <p className="text-[10px] text-gray-400 mt-1.5">{completedCount} of {totalCount} steps complete</p>
+                  <p className="text-[11px] text-gray-400 mt-1.5">{completedCount} of {totalCount} steps complete</p>
                 </div>
                 <ul className="flex flex-col gap-2">
                   {profileSteps.map((step, index) => (
@@ -300,21 +300,21 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
         <div className="flex flex-col md:flex-row gap-3">
           <button
             onClick={() => router.push('/coach/schedule?action=new-session')}
-            className="flex-1 h-10 bg-[#0077CC] text-white rounded-lg text-sm font-medium flex items-center justify-center gap-2 hover:bg-[#0066AA] transition-colors"
+            className="flex-1 h-10 bg-brand-600 text-white rounded-lg text-sm font-medium flex items-center justify-center gap-2 hover:bg-brand-700 transition-colors"
           >
             <Plus size={16} />
             Create Session
           </button>
           <button
             onClick={() => router.push('/coach/availability')}
-            className="flex-1 h-10 bg-white text-gray-700 border border-gray-200 rounded-lg text-sm font-medium flex items-center justify-center gap-2 hover:bg-gray-50 transition-colors"
+            className="flex-1 h-10 bg-white text-gray-700 border border-gray-200 rounded-lg text-sm font-medium flex items-center justify-center gap-2 hover:bg-neutral-50 transition-colors"
           >
             <Plus size={16} />
             Add Availability
           </button>
           <button
             onClick={() => router.push('/coach/programmes')}
-            className="flex-1 h-10 bg-white text-gray-700 border border-gray-200 rounded-lg text-sm font-medium flex items-center justify-center gap-2 hover:bg-gray-50 transition-colors"
+            className="flex-1 h-10 bg-white text-gray-700 border border-gray-200 rounded-lg text-sm font-medium flex items-center justify-center gap-2 hover:bg-neutral-50 transition-colors"
           >
             <Plus size={16} />
             Create Programme
@@ -325,7 +325,7 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
         <section className="flex flex-col gap-3.5 max-w-full">
           <div className="flex justify-between items-end">
             <h2 className="text-[19px] font-bold text-gray-900">Up next</h2>
-            <span onClick={() => router.push('/coach/schedule')} className="text-[#0077CC] text-sm font-bold cursor-pointer md:hidden hover:underline">View schedule</span>
+            <span onClick={() => router.push('/coach/schedule')} className="text-brand-600 text-sm font-bold cursor-pointer md:hidden hover:underline">View schedule</span>
           </div>
           {data.upNextSession ? (
             <div className="relative h-64 md:h-[340px] w-full rounded-2xl md:rounded-[24px] overflow-hidden shadow-sm group cursor-pointer isolate">
@@ -351,13 +351,13 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
               </div>
             </div>
           ) : (
-            <div className="relative h-64 md:h-[340px] w-full rounded-2xl md:rounded-[24px] overflow-hidden shadow-sm border-2 border-dashed border-gray-200 bg-gray-50 flex flex-col items-center justify-center p-8 text-center">
+            <div className="relative h-64 md:h-[340px] w-full rounded-2xl md:rounded-[24px] overflow-hidden shadow-sm border-2 border-dashed border-gray-200 bg-neutral-50 flex flex-col items-center justify-center p-8 text-center">
               <Calendar size={48} className="text-gray-300 mb-4" />
               <h3 className="text-xl font-bold text-gray-900 mb-2">No upcoming sessions</h3>
               <p className="text-sm text-gray-500 mb-6 max-w-md">Add your availability to start getting bookings.</p>
               <button
                 onClick={() => router.push('/coach/availability')}
-                className="bg-[#0077CC] text-white px-6 py-2.5 rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-[#0066AA] transition-colors"
+                className="bg-brand-600 text-white px-6 py-2.5 rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-brand-700 transition-colors"
               >
                 <Plus size={16} />
                 Add Availability
@@ -375,7 +375,7 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
           <h2 className="text-base font-semibold text-gray-900">Weekly Overview</h2>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <Link href="/coach/schedule" className="bg-white border border-gray-100 rounded-[10px] p-4 flex flex-col gap-1 cursor-pointer hover:border-gray-300 hover:scale-[1.01] transition-all duration-150">
-              <Calendar size={16} className="text-[#0077CC] mb-1" />
+              <Calendar size={16} className="text-brand-600 mb-1" />
               <p className="text-xs text-gray-500">Sessions this week</p>
               <p className="text-2xl font-medium text-gray-900">{data.weeklyStats.sessionsThisWeek}</p>
             </Link>
@@ -390,7 +390,7 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
               <p className="text-2xl font-medium text-gray-900">£{data.weeklyStats.revenueThisWeek.toFixed(0)}</p>
             </Link>
             <Link href="/coach/bookings?tab=past" className="bg-white border border-gray-100 rounded-[10px] p-4 flex flex-col gap-1 cursor-pointer hover:border-gray-300 hover:scale-[1.01] transition-all duration-150">
-              <Check size={16} className="text-[#0077CC] mb-1" />
+              <Check size={16} className="text-brand-600 mb-1" />
               <p className="text-xs text-gray-500">Completion rate</p>
               <p className="text-2xl font-medium text-gray-900">{data.weeklyStats.completionRate}%</p>
             </Link>
@@ -401,17 +401,17 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
         <section className="flex flex-col gap-3.5">
           <div className="flex justify-between items-end">
             <h2 className="text-[19px] font-bold text-gray-900">Your programmes</h2>
-            <Link href="/coach/programmes" className="text-[#0077CC] text-sm font-bold hover:underline">View all</Link>
+            <Link href="/coach/programmes" className="text-brand-600 text-sm font-bold hover:underline">View all</Link>
           </div>
           {data.programmes.length === 0 ? (
-            <div className="flex flex-col items-center justify-center border-2 border-dashed border-gray-200 rounded-2xl bg-gray-50 p-10 text-center">
+            <div className="flex flex-col items-center justify-center border-2 border-dashed border-gray-200 rounded-2xl bg-neutral-50 p-10 text-center">
               <Calendar size={40} className="text-gray-300 mb-4" />
               <h3 className="text-base font-bold text-gray-900 mb-1">No programmes yet</h3>
               <p className="text-sm text-gray-500 mb-5">Create a group programme to coach multiple players at once.</p>
               <button
                 data-testid="create-programme-button"
                 onClick={() => router.push('/coach/programmes')}
-                className="bg-[#0077CC] text-white px-5 py-2.5 rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-[#0066AA] transition-colors"
+                className="bg-brand-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-brand-700 transition-colors"
               >
                 <Plus size={16} />
                 Create programme
@@ -481,9 +481,9 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
                 </h2>
                 <div className="flex flex-col gap-3">
                   {[
-                    { icon: <Search size={18} className="text-[#0077CC]" />, label: 'You appear in search results immediately' },
-                    { icon: <Calendar size={18} className="text-[#0077CC]" />, label: 'Bookings will show up on your dashboard' },
-                    { icon: <Banknote size={18} className="text-[#0077CC]" />, label: 'Get paid 48 hours after each session' },
+                    { icon: <Search size={18} className="text-brand-600" />, label: 'You appear in search results immediately' },
+                    { icon: <Calendar size={18} className="text-brand-600" />, label: 'Bookings will show up on your dashboard' },
+                    { icon: <Banknote size={18} className="text-brand-600" />, label: 'Get paid 48 hours after each session' },
                   ].map(({ icon, label }) => (
                     <div key={label} className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center shrink-0">
@@ -501,7 +501,7 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
                 <p className="text-[13px] text-gray-500 mb-3 text-left">
                   Let people know you're on Crikly
                 </p>
-                <div className="p-3 bg-gray-50 rounded-xl border border-gray-100 text-[13px] text-gray-700 font-mono truncate mb-3">
+                <div className="p-3 bg-neutral-50 rounded-xl border border-gray-100 text-[13px] text-gray-700 font-mono truncate mb-3">
                   {profileUrl}
                 </div>
                 <div className="flex gap-2">
@@ -511,7 +511,7 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
                       setCopied(true)
                       setTimeout(() => setCopied(false), 2000)
                     }}
-                    className="flex-1 py-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-xl font-medium text-[13px] transition-colors flex items-center justify-center gap-1.5"
+                    className="flex-1 py-2 bg-white border border-gray-200 hover:bg-neutral-50 text-gray-700 rounded-xl font-medium text-[13px] transition-colors flex items-center justify-center gap-1.5"
                   >
                     <Copy size={14} />
                     {copied ? 'Copied!' : 'Copy link'}
@@ -521,7 +521,7 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
                       setShowCelebration(false)
                       window.dispatchEvent(new CustomEvent('crikly:open-share-modal'))
                     }}
-                    className="flex-1 py-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-xl font-medium text-[13px] transition-colors flex items-center justify-center gap-1.5"
+                    className="flex-1 py-2 bg-white border border-gray-200 hover:bg-neutral-50 text-gray-700 rounded-xl font-medium text-[13px] transition-colors flex items-center justify-center gap-1.5"
                   >
                     <Share size={14} />Share
                   </button>
@@ -531,7 +531,7 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
               {/* CTA */}
               <button
                 onClick={() => setShowCelebration(false)}
-                className="w-full py-3 bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-xl font-bold text-[15px] transition-colors flex items-center justify-center gap-2"
+                className="w-full py-3 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-bold text-[15px] transition-colors flex items-center justify-center gap-2"
               >
                 Go to my dashboard <ArrowRight size={16} />
               </button>
@@ -539,7 +539,7 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
               {/* Premium upsell */}
               <p className="text-[12px] text-gray-400 mt-4">
                 Want more bookings?{' '}
-                <button className="text-[#0077CC] font-medium hover:underline">
+                <button className="text-brand-600 font-medium hover:underline">
                   See Premium →
                 </button>
               </p>
@@ -592,7 +592,7 @@ function ProfileChecklistItem({ title, completed, guidance, isFirstIncomplete, o
           </div>
           {/* CF-D11a CHANGE 3: Guidance copy for incomplete items */}
           {!completed && guidance && (
-            <p className="text-[10px] text-gray-400 mt-0.5 leading-relaxed">{guidance}</p>
+            <p className="text-[11px] text-gray-400 mt-0.5 leading-relaxed">{guidance}</p>
           )}
         </div>
       </div>
@@ -614,7 +614,7 @@ function GroupCard({ title, spots, image, active, isDraft }: { title: string; sp
         )}
       </div>
       <div className="p-4 md:p-5 flex flex-col gap-1.5 flex-1">
-        <h4 className="font-bold text-[17px] text-gray-900 leading-tight group-hover:text-[#0077CC] transition-colors line-clamp-2 flex-none">{title}</h4>
+        <h4 className="font-bold text-[17px] text-gray-900 leading-tight group-hover:text-brand-600 transition-colors line-clamp-2 flex-none">{title}</h4>
         <div className="flex-1" aria-hidden="true" />
         <div className="flex items-center justify-between mt-2">
           <p className="text-[13px] font-medium text-gray-500">{isDraft ? 'Not published yet' : spots}</p>

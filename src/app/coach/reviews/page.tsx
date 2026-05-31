@@ -255,7 +255,7 @@ function SortPill({
       className={
         isActive
           ? 'text-[13px] py-1.5 px-4 rounded-full bg-brand-600 text-white font-medium cursor-pointer'
-          : 'text-[13px] py-1.5 px-4 rounded-full bg-white text-gray-500 border border-gray-200 font-medium hover:bg-gray-50 transition-colors cursor-pointer'
+          : 'text-[13px] py-1.5 px-4 rounded-full bg-white text-gray-500 border border-gray-200 font-medium hover:bg-neutral-50 transition-colors cursor-pointer'
       }
     >
       {label}
@@ -292,8 +292,8 @@ function ReviewCard({
     <article
       className={
         isComposeOpen
-          ? 'p-4 rounded-xl border border-gray-100 bg-gray-50 ring-2 ring-brand-600/15'
-          : 'p-4 rounded-xl border border-gray-100 bg-gray-50'
+          ? 'p-4 rounded-xl border border-gray-100 bg-neutral-50 ring-2 ring-brand-600/15'
+          : 'p-4 rounded-xl border border-gray-100 bg-neutral-50'
       }
       data-testid="review-card"
     >
@@ -336,7 +336,7 @@ function ReviewCard({
               type="button"
               onClick={onOpenReply}
               disabled={isComposeOpen}
-              className="inline-flex items-center gap-1.5 text-brand-600 text-sm font-medium hover:text-[#0066AA] transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              className="inline-flex items-center gap-1.5 text-brand-600 text-sm font-medium hover:text-brand-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             >
               <CornerDownLeft className="w-3.5 h-3.5" />
               {hasReply ? 'Edit reply' : 'Reply'}
@@ -357,7 +357,7 @@ function ReviewCard({
               <p className="text-xs uppercase tracking-wide font-semibold text-brand-600 mb-2">
                 Your reply
               </p>
-              <div className="bg-gray-50 rounded-lg p-3 text-sm text-gray-700 border border-gray-100">
+              <div className="bg-neutral-50 rounded-lg p-3 text-sm text-gray-700 border border-gray-100">
                 {review.coach_reply}
               </div>
             </div>
@@ -375,7 +375,7 @@ function ReviewCard({
                 onChange={(e) => onChangeReply(e.target.value)}
                 disabled={replySubmitting}
                 placeholder={`Write a reply to ${firstName}…`}
-                className="w-full text-sm text-gray-900 placeholder-gray-400 border border-gray-200 rounded-lg p-3 focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/15 resize-none disabled:bg-gray-50"
+                className="w-full text-sm text-gray-900 placeholder-gray-400 border border-gray-200 rounded-lg p-3 focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/15 resize-none disabled:bg-neutral-50"
               />
               <div className="flex items-center justify-between mt-3 gap-2">
                 <span className="text-[11px] text-gray-400">
@@ -386,7 +386,7 @@ function ReviewCard({
                     type="button"
                     onClick={onCancelReply}
                     disabled={replySubmitting}
-                    className="text-sm py-1.5 px-4 rounded-lg border border-gray-200 text-gray-600 font-medium hover:bg-gray-50 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="text-sm py-1.5 px-4 rounded-lg border border-gray-200 text-gray-600 font-medium hover:bg-neutral-50 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Cancel
                   </button>
@@ -394,7 +394,7 @@ function ReviewCard({
                     type="button"
                     onClick={onPostReply}
                     disabled={replySubmitting || !replyDraft.trim()}
-                    className="text-sm py-1.5 px-4 rounded-lg bg-brand-600 text-white font-medium hover:bg-[#0066AA] transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="text-sm py-1.5 px-4 rounded-lg bg-brand-600 text-white font-medium hover:bg-brand-700 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {replySubmitting ? 'Posting…' : 'Post reply'}
                   </button>
@@ -505,7 +505,7 @@ function TrendCallout({
 
 function ReviewsEmptyState() {
   return (
-    <div className="rounded-xl border border-gray-100 bg-gray-50 p-10 text-center">
+    <div className="rounded-xl border border-gray-100 bg-neutral-50 p-10 text-center">
       <div className="inline-flex items-center justify-center mb-3">
         <Star className="w-8 h-8 text-gray-300" />
       </div>

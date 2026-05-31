@@ -533,7 +533,7 @@ export function AvailabilityManagement() {
         </div>
         <div className="flex border-b border-gray-100 mb-8">
           {(['schedule', 'blocked'] as const).map(tab => (
-            <button key={tab} onClick={() => setActiveTab(tab)} className={`pb-3 px-1 mr-8 font-bold text-[16px] transition-colors border-b-2 capitalize ${activeTab === tab ? 'border-[#0077CC] text-[#0077CC]' : 'border-transparent text-[#94A3B8] hover:text-gray-600'}`}>
+            <button key={tab} onClick={() => setActiveTab(tab)} className={`pb-3 px-1 mr-8 font-bold text-[16px] transition-colors border-b-2 capitalize ${activeTab === tab ? 'border-brand-600 text-brand-600' : 'border-transparent text-[#94A3B8] hover:text-gray-600'}`}>
               {tab === 'blocked' ? 'Blocked dates' : 'Schedule'}
             </button>
           ))}
@@ -558,7 +558,7 @@ export function AvailabilityManagement() {
             {/* CD-04: Loading state */}
             {loading ? (
               <div className="flex flex-col items-center justify-center py-20">
-                <div className="w-8 h-8 border-4 border-gray-200 border-t-[#0077CC] rounded-full animate-spin mb-4"></div>
+                <div className="w-8 h-8 border-4 border-gray-200 border-t-brand-600 rounded-full animate-spin mb-4"></div>
                 <p className="text-[14px] text-gray-500">Loading availability...</p>
               </div>
             ) : (
@@ -599,8 +599,8 @@ export function AvailabilityManagement() {
                           >
                             <div className="px-4 py-3 flex items-center gap-3">
                               {/* Day pill */}
-                              <div className="w-[42px] h-[42px] bg-[#E6F1FB] rounded-[10px] flex items-center justify-center shrink-0">
-                                <span className="text-[#0C447C] text-[11px] font-medium">{dayAbbr}</span>
+                              <div className="w-[42px] h-[42px] bg-brand-50 rounded-[10px] flex items-center justify-center shrink-0">
+                                <span className="text-brand-800 text-[11px] font-medium">{dayAbbr}</span>
                               </div>
                               
                               {/* Block content */}
@@ -608,7 +608,7 @@ export function AvailabilityManagement() {
                                 <div className="text-[13px] font-medium text-gray-900 flex items-center flex-wrap gap-1">
                                   {blockForDay.sport} · {blockForDay.time}
                                   {blockForDay.is_recurring === false && (
-                                    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-teal-100 text-teal-700 font-semibold">Ad hoc</span>
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-teal-100 text-teal-700 font-semibold">Ad hoc</span>
                                   )}
                                 </div>
                                 {blockForDay.is_recurring === false ? (
@@ -633,7 +633,7 @@ export function AvailabilityManagement() {
                                         e.stopPropagation()
                                         setDeleteBlockConfirmId(null)
                                       }}
-                                      className="px-2 py-1 text-[11px] text-gray-500 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors"
+                                      className="px-2 py-1 text-[11px] text-gray-500 border border-gray-200 rounded-md hover:bg-neutral-50 transition-colors"
                                     >
                                       Cancel
                                     </button>
@@ -668,7 +668,7 @@ export function AvailabilityManagement() {
                                         e.stopPropagation()
                                         openEditForm(blockForDay)
                                       }}
-                                      className="w-7 h-7 flex items-center justify-center border-[0.5px] border-gray-100 bg-white rounded-md hover:bg-gray-50 transition-colors"
+                                      className="w-7 h-7 flex items-center justify-center border-[0.5px] border-gray-100 bg-white rounded-md hover:bg-neutral-50 transition-colors"
                                     >
                                       <Pencil size={12} className="text-gray-400" />
                                     </button>
@@ -678,7 +678,7 @@ export function AvailabilityManagement() {
                                         setDeleteBlockConfirmId(blockForDay.id)
                                       }}
                                       disabled={!!deleting}
-                                      className="w-7 h-7 flex items-center justify-center border-[0.5px] border-gray-100 bg-white rounded-md hover:bg-gray-50 transition-colors disabled:opacity-50"
+                                      className="w-7 h-7 flex items-center justify-center border-[0.5px] border-gray-100 bg-white rounded-md hover:bg-neutral-50 transition-colors disabled:opacity-50"
                                     >
                                       <X size={12} className="text-gray-400" />
                                     </button>
@@ -719,16 +719,16 @@ export function AvailabilityManagement() {
                       >
                         <div className="px-4 py-3 flex items-center gap-3">
                           {/* Empty day pill */}
-                          <div className="w-[42px] h-[42px] bg-[#F0F7FF] rounded-[10px] flex items-center justify-center shrink-0">
-                            <span className="text-[#B5D4F4] text-[11px] font-medium">{dayAbbr}</span>
+                          <div className="w-[42px] h-[42px] bg-neutral-50 rounded-[10px] flex items-center justify-center shrink-0">
+                            <span className="text-brand-100 text-[11px] font-medium">{dayAbbr}</span>
                           </div>
-                          
+
                           {/* Content */}
                           <div className="flex-1 flex flex-col">
-                            <div className="text-[12px] font-medium text-[#0077CC]">
+                            <div className="text-[12px] font-medium text-brand-600">
                               + Add availability
                             </div>
-                            <div className="text-[11px] text-[#85B7EB]">
+                            <div className="text-[11px] text-brand-100">
                               No slots on {dayFull} yet
                             </div>
                           </div>
@@ -749,7 +749,7 @@ export function AvailabilityManagement() {
                 <div className="mb-4">
                   <label className="block text-[12px] font-bold text-gray-500 mb-1.5 uppercase tracking-wider">Sport</label>
                   <div className="relative">
-                    <select value={formSport} onChange={e => { setFormSport(e.target.value); setFormDays([]) }} className="w-full appearance-none bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-[15px] font-medium text-gray-900 focus:outline-none focus:border-[#0077CC] pr-10">
+                    <select value={formSport} onChange={e => { setFormSport(e.target.value); setFormDays([]) }} className="w-full appearance-none bg-neutral-50 border border-gray-200 rounded-xl px-4 py-3 text-[15px] font-medium text-gray-900 focus:outline-none focus:border-brand-600 pr-10">
                       {availableSports.map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
                     <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
@@ -766,7 +766,7 @@ export function AvailabilityManagement() {
                   <label className="block text-[12px] font-bold text-gray-500 mb-1.5 uppercase tracking-wider">Days</label>
                   <div className="flex flex-wrap gap-2">
                     {DAY_ABBR.map(day => (
-                      <button key={day} type="button" onClick={() => toggleDay(day)} className={`px-3.5 py-2 rounded-lg text-[13px] font-bold transition-colors border ${formDays.includes(day) ? 'bg-[#0077CC] text-white border-[#0077CC]' : 'bg-gray-50 text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-100'}`}>{day}</button>
+                      <button key={day} type="button" onClick={() => toggleDay(day)} className={`px-3.5 py-2 rounded-lg text-[13px] font-bold transition-colors border ${formDays.includes(day) ? 'bg-brand-600 text-white border-brand-600' : 'bg-neutral-50 text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-100'}`}>{day}</button>
                     ))}
                   </div>
                 </div>
@@ -775,7 +775,7 @@ export function AvailabilityManagement() {
                     <div key={label}>
                       <label className="block text-[12px] font-bold text-gray-500 mb-1.5 uppercase tracking-wider">{label}</label>
                       <div className="relative">
-                        <select value={val} onChange={e => set(e.target.value)} className="w-full appearance-none bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-[15px] font-medium text-gray-900 focus:outline-none focus:border-[#0077CC] pr-10">
+                        <select value={val} onChange={e => set(e.target.value)} className="w-full appearance-none bg-neutral-50 border border-gray-200 rounded-xl px-4 py-3 text-[15px] font-medium text-gray-900 focus:outline-none focus:border-brand-600 pr-10">
                           {TIME_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
                         </select>
                         <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
@@ -790,7 +790,7 @@ export function AvailabilityManagement() {
                     <button
                       type="button"
                       onClick={() => setFormRepeat('Weekly')}
-                      className={`px-3.5 py-2 rounded-lg text-[13px] font-bold transition-colors border ${formRepeat === 'Weekly' ? 'bg-[#0077CC] text-white border-[#0077CC]' : 'bg-gray-50 text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-100'}`}
+                      className={`px-3.5 py-2 rounded-lg text-[13px] font-bold transition-colors border ${formRepeat === 'Weekly' ? 'bg-brand-600 text-white border-brand-600' : 'bg-neutral-50 text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-100'}`}
                     >Weekly</button>
                     {['Fortnightly', 'Monthly', 'One-off'].map(opt => (
                       <button
@@ -798,7 +798,7 @@ export function AvailabilityManagement() {
                         type="button"
                         disabled
                         title="Coming soon"
-                        className="px-3.5 py-2 rounded-lg text-[13px] font-bold transition-colors border bg-gray-50 text-gray-600 border-gray-200 opacity-50 cursor-not-allowed"
+                        className="px-3.5 py-2 rounded-lg text-[13px] font-bold transition-colors border bg-neutral-50 text-gray-600 border-gray-200 opacity-50 cursor-not-allowed"
                       >{opt}</button>
                     ))}
                   </div>
@@ -823,7 +823,7 @@ export function AvailabilityManagement() {
                   <label className="block text-[12px] font-bold text-gray-500 mb-1.5 uppercase tracking-wider">Price override <span className="normal-case font-medium text-gray-400">(optional)</span></label>
                   <div className="relative">
                     <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[15px] font-bold text-gray-400 pointer-events-none">£</span>
-                    <input type="text" value={formPrice} onChange={e => setFormPrice(e.target.value)} placeholder="Leave blank to use default rate" className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-8 pr-4 py-3 text-[15px] font-medium text-gray-900 placeholder-gray-400 focus:outline-none focus:border-[#0077CC]" />
+                    <input type="text" value={formPrice} onChange={e => setFormPrice(e.target.value)} placeholder="Leave blank to use default rate" className="w-full bg-neutral-50 border border-gray-200 rounded-xl pl-8 pr-4 py-3 text-[15px] font-medium text-gray-900 placeholder-gray-400 focus:outline-none focus:border-brand-600" />
                   </div>
                 </div>
                 {conflict && (
@@ -844,7 +844,7 @@ export function AvailabilityManagement() {
                     onClick={handleSaveBlock}
                     // AF-H-46: was also disabled on formDays.length === 0, which prevented the inline error from ever firing
                     disabled={!!conflict}
-                    className={`px-6 py-3 rounded-xl text-[14px] font-bold transition-colors flex items-center gap-2 ${conflict ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-[#0077CC] text-white hover:bg-[#0066AA]'}`}
+                    className={`px-6 py-3 rounded-xl text-[14px] font-bold transition-colors flex items-center gap-2 ${conflict ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-brand-600 text-white hover:bg-brand-700'}`}
                   >
                     {editingBlockId ? 'Save changes' : (<><Plus size={16} />Add this block</>)}
                   </button>
@@ -890,7 +890,7 @@ export function AvailabilityManagement() {
                   onClick={handleSaveBlock}
                   // AF-H-46: was also disabled on formDays.length === 0; handler now surfaces the inline error instead
                   disabled={!!conflict}
-                  className={`rounded-full px-7 py-2.5 text-[13px] font-medium transition-colors ${conflict ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-[#0077CC] hover:bg-[#0066AA] text-white'}`}
+                  className={`rounded-full px-7 py-2.5 text-[13px] font-medium transition-colors ${conflict ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-brand-600 hover:bg-brand-700 text-white'}`}
                 >
                   Save changes
                 </button>
@@ -916,7 +916,7 @@ export function AvailabilityManagement() {
             {/* CD-05: Loading state */}
             {blockedLoading ? (
               <div className="flex flex-col items-center justify-center py-20">
-                <div className="w-8 h-8 border-4 border-gray-200 border-t-[#0077CC] rounded-full animate-spin mb-4"></div>
+                <div className="w-8 h-8 border-4 border-gray-200 border-t-brand-600 rounded-full animate-spin mb-4"></div>
                 <p className="text-[14px] text-gray-500">Loading blocked dates...</p>
               </div>
             ) : (
@@ -947,25 +947,25 @@ export function AvailabilityManagement() {
                   const showLeftHalf = (isEnd && hasRange) || (isPreviewEnd && hasPreview)
                   let circle = 'relative z-10 w-8 h-8 flex items-center justify-center rounded-full text-[13px] font-medium transition-colors select-none '
                   if (!isCurrent) circle += 'text-gray-300'
-                  else if (isStart || isEnd) circle += 'bg-[#0077CC] text-white font-bold cursor-pointer'
-                  else if (isPreviewEnd) circle += 'bg-[#0077CC]/80 text-white font-bold cursor-pointer'
-                  else if (isMid || isPreviewMid) circle += 'text-[#0077CC] cursor-pointer'
+                  else if (isStart || isEnd) circle += 'bg-brand-600 text-white font-bold cursor-pointer'
+                  else if (isPreviewEnd) circle += 'bg-brand-600/80 text-white font-bold cursor-pointer'
+                  else if (isMid || isPreviewMid) circle += 'text-brand-600 cursor-pointer'
                   else if (isBlocked) circle += 'bg-red-50 text-red-500 border border-red-100/80 cursor-pointer'
                   else circle += 'text-gray-700 hover:bg-gray-100 cursor-pointer'
                   return (
                     <div key={i} className="relative flex items-center justify-center py-[3px]" onClick={() => isCurrent && handleDayClick(day)} onMouseEnter={() => isCurrent && setHoverDate(day.date)} onMouseLeave={() => setHoverDate(null)}>
-                      {(isMid || isPreviewMid) && <div className="absolute inset-y-0 inset-x-0 bg-[#E6F3FB]" />}
-                      {showRightHalf && <div className="absolute inset-y-0 left-1/2 right-0 bg-[#E6F3FB]" />}
-                      {showLeftHalf && <div className="absolute inset-y-0 left-0 right-1/2 bg-[#E6F3FB]" />}
+                      {(isMid || isPreviewMid) && <div className="absolute inset-y-0 inset-x-0 bg-brand-50" />}
+                      {showRightHalf && <div className="absolute inset-y-0 left-1/2 right-0 bg-brand-50" />}
+                      {showLeftHalf && <div className="absolute inset-y-0 left-0 right-1/2 bg-brand-50" />}
                       <div className={circle}>{day.date.getDate()}</div>
-                      {sameDay(day.date, TODAY) && !isStart && !isEnd && <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-1 h-1 bg-[#0077CC] rounded-full z-20" />}
+                      {sameDay(day.date, TODAY) && !isStart && !isEnd && <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-1 h-1 bg-brand-600 rounded-full z-20" />}
                     </div>
                   )
                 })}
               </div>
               <div className="flex items-center gap-5 mt-4 pt-4 border-t border-gray-100">
-                <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-[#0077CC]" /><span className="text-[12px] text-gray-500 font-medium">Selected</span></div>
-                <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-[#E6F3FB] border border-[#0077CC]/20" /><span className="text-[12px] text-gray-500 font-medium">In range</span></div>
+                <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-brand-600" /><span className="text-[12px] text-gray-500 font-medium">Selected</span></div>
+                <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-brand-50 border border-brand-600/20" /><span className="text-[12px] text-gray-500 font-medium">In range</span></div>
                 <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-red-50 border border-red-200" /><span className="text-[12px] text-gray-500 font-medium">Already blocked</span></div>
               </div>
             </div>
@@ -977,10 +977,10 @@ export function AvailabilityManagement() {
                   {rangeEnd && isSingleDay && <span className="text-[13px] text-gray-500 font-medium">(1 day)</span>}
                   {!rangeEnd && <span className="text-[13px] text-gray-400 font-normal">— tap a second date to set a range</span>}
                 </div>
-                <input type="text" value={blockLabel} onChange={e => setBlockLabel(e.target.value)} placeholder="Add a label — e.g. Easter, Half term  (optional)" className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-[14px] font-medium text-gray-900 placeholder-gray-400 focus:outline-none focus:border-[#0077CC] mb-3" />
+                <input type="text" value={blockLabel} onChange={e => setBlockLabel(e.target.value)} placeholder="Add a label — e.g. Easter, Half term  (optional)" className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-[14px] font-medium text-gray-900 placeholder-gray-400 focus:outline-none focus:border-brand-600 mb-3" />
                 <div className="flex gap-2">
-                  <button onClick={handleBlockDates} className="flex-1 py-2.5 bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-xl text-[14px] font-bold transition-colors">Block these dates</button>
-                  <button onClick={clearSelection} className="px-5 py-2.5 border border-gray-200 text-gray-600 rounded-xl text-[14px] font-bold hover:bg-gray-50 transition-colors">Clear</button>
+                  <button onClick={handleBlockDates} className="flex-1 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-[14px] font-bold transition-colors">Block these dates</button>
+                  <button onClick={clearSelection} className="px-5 py-2.5 border border-gray-200 text-gray-600 rounded-xl text-[14px] font-bold hover:bg-neutral-50 transition-colors">Clear</button>
                 </div>
                 {blockDatesError && (
                   <div className="mt-2 flex items-center justify-between bg-red-50 border border-red-200 rounded-xl px-3 py-2">
@@ -1019,7 +1019,7 @@ export function AvailabilityManagement() {
                         <div className="ml-3 shrink-0 flex items-center gap-1">
                           <button
                             onClick={() => setRemoveBlockedConfirmId(null)}
-                            className="px-2 py-1 text-[11px] text-gray-500 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors"
+                            className="px-2 py-1 text-[11px] text-gray-500 border border-gray-200 rounded-md hover:bg-neutral-50 transition-colors"
                           >
                             Cancel
                           </button>

@@ -225,7 +225,7 @@ export function BookingsManagement() {
                 onClick={() => setActiveTab(tab)}
                 className={`pb-3 text-[15px] transition-colors relative whitespace-nowrap flex items-center gap-1.5 ${
                   activeTab === tab
-                    ? 'text-[#0077CC] font-medium'
+                    ? 'text-brand-600 font-medium'
                     : 'text-gray-500 font-normal hover:text-gray-700'
                 }`}
               >
@@ -236,7 +236,7 @@ export function BookingsManagement() {
                   </span>
                 )}
                 {activeTab === tab && (
-                  <div className="absolute bottom-0 left-0 w-full h-[2px] bg-[#0077CC]" />
+                  <div className="absolute bottom-0 left-0 w-full h-[2px] bg-brand-600" />
                 )}
               </button>
             ))}
@@ -257,7 +257,7 @@ export function BookingsManagement() {
               </div>
               <button
                 onClick={() => setActiveTab('Pending approval')}
-                className="text-[12px] font-medium text-[#0077CC] hover:underline whitespace-nowrap"
+                className="text-[12px] font-medium text-brand-600 hover:underline whitespace-nowrap"
               >
                 Review now →
               </button>
@@ -270,7 +270,7 @@ export function BookingsManagement() {
               <p className="text-[13px] text-red-600">{fetchError}</p>
               <button
                 onClick={retryFetch}
-                className="text-[13px] text-[#0077CC] font-medium mt-1"
+                className="text-[13px] text-brand-600 font-medium mt-1"
               >
                 Try again
               </button>
@@ -367,7 +367,7 @@ export function BookingsManagement() {
                               disabled
                               aria-disabled="true"
                               onClick={(e) => e.stopPropagation()}
-                              className="flex-1 bg-[#0077CC] text-white font-medium rounded-md text-[11px] py-1.5 text-center opacity-40 cursor-not-allowed"
+                              className="flex-1 bg-brand-600 text-white font-medium rounded-md text-[11px] py-1.5 text-center opacity-40 cursor-not-allowed"
                             >
                               Mark complete →
                             </button>
@@ -384,7 +384,7 @@ export function BookingsManagement() {
                             </button>
                             <button
                               onClick={(e) => { e.stopPropagation(); router.push(`/coach/bookings/${booking.id}`) }}
-                              className="flex-1 bg-white border border-gray-200 text-gray-600 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 hover:border-gray-300 hover:text-gray-700 transition-all duration-150"
+                              className="flex-1 bg-white border border-gray-200 text-gray-600 rounded-md text-[11px] py-1.5 text-center hover:bg-neutral-50 hover:border-gray-300 hover:text-gray-700 transition-all duration-150"
                             >
                               View details
                             </button>
@@ -402,7 +402,7 @@ export function BookingsManagement() {
                 <button
                   onClick={loadMore}
                   disabled={loadingMore}
-                  className="w-full rounded-xl border border-gray-200 py-3 text-[14px] font-medium text-gray-600 hover:bg-gray-50 transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
+                  className="w-full rounded-xl border border-gray-200 py-3 text-[14px] font-medium text-gray-600 hover:bg-neutral-50 transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
                 >
                   {loadingMore ? (
                     <Loader2 size={16} className="animate-spin" />

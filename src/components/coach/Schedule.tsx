@@ -81,8 +81,8 @@ function EventBlock({ top, height, type, title, subtitle, sessionId, onCardClick
       break
     case 'available':
       // CHANGE 4: Opportunity treatment for available slots
-      bgClass = 'bg-[#E8F5F0]'
-      textClass = 'text-[#0F6E56]'
+      bgClass = 'bg-teal-50'
+      textClass = 'text-teal-800'
       borderClass = 'border border-dashed border-teal-600 hover:border-solid hover:bg-[#F0FAF6] cursor-pointer'
       break
     case 'adhoc':
@@ -116,11 +116,11 @@ function EventBlock({ top, height, type, title, subtitle, sessionId, onCardClick
       )}
       {/* CHANGE 3: Typography refinement */}
       {type === 'blocked' ? (
-        <div className="text-[9px] text-center mt-1" style={{ color: '#9CA3AF' }}>{title}</div>
+        <div className="text-[11px] text-center mt-1" style={{ color: '#9CA3AF' }}>{title}</div>
       ) : (
         <>
-          <div className="text-[10px] font-medium leading-tight truncate">{type === 'available' ? '+ Add session' : title}</div>
-          {subtitle && type !== 'available' && <div className="text-[9px] leading-tight truncate mt-0.5" style={{ opacity: 0.75 }}>{subtitle}</div>}
+          <div className="text-[11px] font-medium leading-tight truncate">{type === 'available' ? '+ Add session' : title}</div>
+          {subtitle && type !== 'available' && <div className="text-[11px] leading-tight truncate mt-0.5" style={{ opacity: 0.75 }}>{subtitle}</div>}
         </>
       )}
     </div>
@@ -649,15 +649,15 @@ export function Schedule() {
                 <div className="flex bg-white border border-gray-200 rounded-full p-1">
                   {/* CF-D02c FIX 3: Day and Month disabled */}
                   <button title="Coming soon" className="px-3 py-1 rounded-full text-[12px] font-medium text-gray-600 opacity-40 cursor-not-allowed">Day</button>
-                  <button className="px-3 py-1 rounded-full text-[12px] font-medium bg-[#0077CC] text-white">Week</button>
+                  <button className="px-3 py-1 rounded-full text-[12px] font-medium bg-brand-600 text-white">Week</button>
                   <button title="Coming soon" className="px-3 py-1 rounded-full text-[12px] font-medium text-gray-600 opacity-40 cursor-not-allowed">Month</button>
                 </div>
                 {/* CF-D02c FIX 3: Today button resets to current week */}
-                <button onClick={() => setWeekOffset(0)} className="px-3 py-1 border border-gray-200 rounded-md text-[12px] font-medium text-gray-700 hover:bg-gray-50 h-[30px]">Today</button>
+                <button onClick={() => setWeekOffset(0)} className="px-3 py-1 border border-gray-200 rounded-md text-[12px] font-medium text-gray-700 hover:bg-neutral-50 h-[30px]">Today</button>
                 <div className="flex border border-gray-200 rounded-md">
                   {/* CF-D02c FIX 3: Prev/Next week navigation */}
-                  <button onClick={() => setWeekOffset(prev => prev - 1)} className="w-7 h-7 flex items-center justify-center border-r border-gray-200 hover:bg-gray-50 text-gray-600"><ChevronLeft size={16} /></button>
-                  <button onClick={() => setWeekOffset(prev => prev + 1)} className="w-7 h-7 flex items-center justify-center hover:bg-gray-50 text-gray-600"><ChevronRight size={16} /></button>
+                  <button onClick={() => setWeekOffset(prev => prev - 1)} className="w-7 h-7 flex items-center justify-center border-r border-gray-200 hover:bg-neutral-50 text-gray-600"><ChevronLeft size={16} /></button>
+                  <button onClick={() => setWeekOffset(prev => prev + 1)} className="w-7 h-7 flex items-center justify-center hover:bg-neutral-50 text-gray-600"><ChevronRight size={16} /></button>
                 </div>
               </div>
             </div>
@@ -687,7 +687,7 @@ export function Schedule() {
             {loading && (
               <div className="absolute inset-0 bg-white/80 z-50 flex items-center justify-center">
                 <div className="flex flex-col items-center">
-                  <div className="w-8 h-8 border-3 border-gray-200 border-t-[#0077CC] rounded-full animate-spin mb-3" />
+                  <div className="w-8 h-8 border-3 border-gray-200 border-t-brand-600 rounded-full animate-spin mb-3" />
                   <p className="text-[14px] text-gray-500">Loading schedule...</p>
                 </div>
               </div>
@@ -708,7 +708,7 @@ export function Schedule() {
                       setAvailabilityRefreshKey(k => k + 1)
                       setBookingsRefreshKey(k => k + 1)
                     }}
-                    className="bg-[#0077CC] hover:bg-[#0066AA] text-white px-6 py-3 rounded-xl text-[15px] font-bold transition-colors"
+                    className="bg-brand-600 hover:bg-brand-700 text-white px-6 py-3 rounded-xl text-[15px] font-bold transition-colors"
                   >
                     Try Again
                   </button>
@@ -716,14 +716,14 @@ export function Schedule() {
               </div>
             )}
             {/* CHANGE 2: Today column treatment */}
-            <div className="flex border-b border-gray-200 bg-gray-50/50 relative z-20">
+            <div className="flex border-b border-gray-200 bg-neutral-50/50 relative z-20">
               <div className="w-16 shrink-0 border-r border-gray-200" />
               {days.map((day, idx) => (
-                <div key={idx} className={`flex-1 py-3 text-center border-r last:border-r-0 border-gray-200 ${day.isToday ? 'bg-[#EFF7FF]' : ''}`}>
-                  <div className={`text-[11px] font-bold uppercase tracking-wider ${day.isToday ? 'text-[#0077CC]' : 'text-gray-500'}`}>{day.name}</div>
+                <div key={idx} className={`flex-1 py-3 text-center border-r last:border-r-0 border-gray-200 ${day.isToday ? 'bg-neutral-50' : ''}`}>
+                  <div className={`text-[11px] font-bold uppercase tracking-wider ${day.isToday ? 'text-brand-600' : 'text-gray-500'}`}>{day.name}</div>
                   {day.isToday ? (
                     <div className="flex justify-center mt-1">
-                      <div className="w-7 h-7 rounded-full bg-[#0077CC] text-white flex items-center justify-center text-[14px] font-medium">{day.date}</div>
+                      <div className="w-7 h-7 rounded-full bg-brand-600 text-white flex items-center justify-center text-[14px] font-medium">{day.date}</div>
                     </div>
                   ) : (
                     <div className="text-[20px] font-light leading-tight mt-1 text-gray-900">{day.date}</div>
@@ -748,7 +748,7 @@ export function Schedule() {
                         return (
                           <div 
                             key={idx} 
-                            className={`flex-1 border-r last:border-r-0 border-gray-100 cursor-pointer transition-colors hover:bg-[rgba(0,119,204,0.03)] ${day.isToday ? 'bg-[#EFF7FF]' : ''}`}
+                            className={`flex-1 border-r last:border-r-0 border-gray-100 cursor-pointer transition-colors hover:bg-[rgba(0,119,204,0.03)] ${day.isToday ? 'bg-neutral-50' : ''}`}
                             onClick={(e) => handleSlotClick(e, dateStr, timeStr)}
                           />
                         )
@@ -882,8 +882,8 @@ export function Schedule() {
                 {!loading && !error && availability.length === 0 && (
                   <div className="absolute inset-0 flex items-center justify-center z-20">
                     <div className="text-center px-4">
-                      <div className="w-16 h-16 bg-[#F0F7FF] rounded-full flex items-center justify-center mx-auto mb-4">
-                        <Calendar size={32} className="text-[#0077CC]" />
+                      <div className="w-16 h-16 bg-neutral-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <Calendar size={32} className="text-brand-600" />
                       </div>
                       <h3 className="text-[18px] font-bold text-gray-900 mb-2">No availability set</h3>
                       <p className="text-[14px] text-gray-500 mb-6 max-w-sm">
@@ -891,7 +891,7 @@ export function Schedule() {
                       </p>
                       <button 
                         onClick={() => router.push('/coach/availability')}
-                        className="bg-[#0077CC] hover:bg-[#0066AA] text-white px-6 py-3 rounded-xl text-[15px] font-bold transition-colors"
+                        className="bg-brand-600 hover:bg-brand-700 text-white px-6 py-3 rounded-xl text-[15px] font-bold transition-colors"
                       >
                         Set Availability
                       </button>
@@ -907,7 +907,7 @@ export function Schedule() {
           {/* CF-02a: FAB opens add modal */}
           <button
             onClick={() => { setAdHocStep('menu'); setAdHocError(null); setIsAddModalOpen(true) }}
-            className="self-end mt-3 mb-2 bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-full px-[18px] py-2 flex items-center gap-2 transition-colors text-[13px] font-medium"
+            className="self-end mt-3 mb-2 bg-brand-600 hover:bg-brand-700 text-white rounded-full px-[18px] py-2 flex items-center gap-2 transition-colors text-[13px] font-medium"
             style={{ boxShadow: '0 2px 8px rgba(0,119,204,0.20)' }}
           >
             <Plus size={14} />
@@ -960,9 +960,9 @@ export function Schedule() {
                   <div className="space-y-3">
                     <button
                       onClick={() => setAdHocStep('form')}
-                      className="w-full flex items-center text-left p-4 rounded-xl border border-gray-100 hover:border-[#0077CC] hover:bg-[#EFF6FF] transition-colors group"
+                      className="w-full flex items-center text-left p-4 rounded-xl border border-gray-100 hover:border-brand-600 hover:bg-neutral-50 transition-colors group"
                     >
-                      <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center mr-4 shrink-0 text-gray-600 transition-colors group-hover:bg-white group-hover:text-[#0077CC]"><User size={20} /></div>
+                      <div className="w-10 h-10 rounded-full bg-neutral-50 flex items-center justify-center mr-4 shrink-0 text-gray-600 transition-colors group-hover:bg-white group-hover:text-brand-600"><User size={20} /></div>
                       <div>
                         <div className="text-[15px] font-bold text-gray-900">Ad hoc slot</div>
                         <div className="text-[13px] text-gray-500 mt-0.5">One-off availability on a specific date</div>
@@ -970,7 +970,7 @@ export function Schedule() {
                     </button>
 
                     <button disabled className="w-full flex items-center text-left p-4 rounded-xl border border-gray-100 opacity-50 cursor-not-allowed">
-                      <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center mr-4 shrink-0 text-gray-600"><RefreshCw size={20} /></div>
+                      <div className="w-10 h-10 rounded-full bg-neutral-50 flex items-center justify-center mr-4 shrink-0 text-gray-600"><RefreshCw size={20} /></div>
                       <div>
                         <div className="text-[15px] font-bold text-gray-900">Recurring session <span className="text-[11px] font-normal text-gray-400 ml-1">Coming soon</span></div>
                         <div className="text-[13px] text-gray-500 mt-0.5">Repeats weekly or custom schedule</div>
@@ -979,9 +979,9 @@ export function Schedule() {
 
                     <button
                       onClick={() => { setIsAddModalOpen(false); setAdHocStep('menu'); router.push('/coach/programmes/new') }}
-                      className="w-full flex items-center text-left p-4 rounded-xl border border-gray-100 hover:border-[#0077CC] hover:bg-[#EFF6FF] transition-colors group"
+                      className="w-full flex items-center text-left p-4 rounded-xl border border-gray-100 hover:border-brand-600 hover:bg-neutral-50 transition-colors group"
                     >
-                      <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center mr-4 shrink-0 text-gray-600 transition-colors group-hover:bg-white group-hover:text-[#0077CC]"><Users size={20} /></div>
+                      <div className="w-10 h-10 rounded-full bg-neutral-50 flex items-center justify-center mr-4 shrink-0 text-gray-600 transition-colors group-hover:bg-white group-hover:text-brand-600"><Users size={20} /></div>
                       <div>
                         <div className="text-[15px] font-bold text-gray-900">New programme</div>
                         <div className="text-[13px] text-gray-500 mt-0.5">Group sessions with fixed spots</div>
@@ -990,9 +990,9 @@ export function Schedule() {
 
                     <button
                       onClick={() => { setIsAddModalOpen(false); setAdHocStep('menu'); router.push('/coach/availability') }}
-                      className="w-full flex items-center text-left p-4 rounded-xl border border-gray-100 hover:border-gray-300 hover:bg-gray-50 transition-colors group"
+                      className="w-full flex items-center text-left p-4 rounded-xl border border-gray-100 hover:border-gray-300 hover:bg-neutral-50 transition-colors group"
                     >
-                      <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center mr-4 shrink-0 text-gray-600 group-hover:bg-white"><Ban size={20} /></div>
+                      <div className="w-10 h-10 rounded-full bg-neutral-50 flex items-center justify-center mr-4 shrink-0 text-gray-600 group-hover:bg-white"><Ban size={20} /></div>
                       <div>
                         <div className="text-[15px] font-bold text-gray-900">Block time</div>
                         <div className="text-[13px] text-gray-500 mt-0.5">Mark time as unavailable</div>
@@ -1030,7 +1030,7 @@ export function Schedule() {
                         <select
                           value={adHocSportId}
                           onChange={e => setAdHocSportId(e.target.value)}
-                          className="w-full text-[13px] border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#0077CC]"
+                          className="w-full text-[13px] border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand-600"
                         >
                           {sports.map(s => (
                             <option key={s.sport_id} value={s.sport_id}>{s.sport_name}</option>
@@ -1093,7 +1093,7 @@ export function Schedule() {
                         value={adHocNotes}
                         onChange={e => setAdHocNotes(e.target.value)}
                         placeholder="e.g. Available at Oval ground only"
-                        className="w-full text-[13px] border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#0077CC]"
+                        className="w-full text-[13px] border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand-600"
                       />
                     </div>
 
@@ -1108,7 +1108,7 @@ export function Schedule() {
                           placeholder="e.g. 35"
                           value={adHocPrice}
                           onChange={e => setAdHocPrice(e.target.value.replace(/[^0-9.]/g, ''))}
-                          className="w-full text-[13px] border border-gray-200 rounded-lg pl-7 pr-3 py-2 focus:outline-none focus:border-[#0077CC]"
+                          className="w-full text-[13px] border border-gray-200 rounded-lg pl-7 pr-3 py-2 focus:outline-none focus:border-brand-600"
                         />
                       </div>
                       <p className="text-[11px] text-gray-400 mt-1">Leave blank to use your default price for this sport</p>
@@ -1122,14 +1122,14 @@ export function Schedule() {
                   <div className="flex gap-3 mt-6">
                     <button
                       onClick={() => { setAdHocStep('menu'); setAdHocError(null) }}
-                      className="flex-1 py-2.5 border border-gray-200 rounded-xl text-[14px] font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                      className="flex-1 py-2.5 border border-gray-200 rounded-xl text-[14px] font-medium text-gray-700 hover:bg-neutral-50 transition-colors"
                     >
                       Back
                     </button>
                     <button
                       onClick={submitAdHoc}
                       disabled={adHocSubmitting}
-                      className="flex-1 py-2.5 bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-xl text-[14px] font-medium transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
+                      className="flex-1 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-[14px] font-medium transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
                     >
                       {adHocSubmitting ? <RefreshCw size={14} className="animate-spin" /> : null}
                       Add slot
@@ -1249,7 +1249,7 @@ function SessionPopover({
             <div className="flex gap-2 mt-3">
               <button
                 onClick={() => { router.push(`/coach/bookings/${sessionId}`); onClose() }}
-                className="flex-1 bg-[#0077CC] text-white rounded-lg py-2 text-[13px] font-medium hover:bg-[#0066AA]"
+                className="flex-1 bg-brand-600 text-white rounded-lg py-2 text-[13px] font-medium hover:bg-brand-700"
               >
                 View booking →
               </button>
@@ -1299,7 +1299,7 @@ function SessionPopover({
             <div className="flex gap-2 mt-3">
               <button
                 onClick={() => { router.push(`/coach/programmes/${programmeSession.programme_id}/roster`); onClose() }}
-                className="flex-1 bg-[#0077CC] text-white rounded-lg py-2 text-[13px] font-medium hover:bg-[#0066AA]"
+                className="flex-1 bg-brand-600 text-white rounded-lg py-2 text-[13px] font-medium hover:bg-brand-700"
               >
                 View roster →
               </button>
@@ -1507,9 +1507,9 @@ function CreationPopover({ x, y, source, date, time, onClose }: { x: number; y: 
           <button 
             onClick={() => setSessionType('1-on-1')}
             className={`flex-1 py-1.5 px-3 rounded-md text-[12px] font-medium transition-colors ${
-              sessionType === '1-on-1' 
-                ? 'bg-[#0077CC] text-white' 
-                : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'
+              sessionType === '1-on-1'
+                ? 'bg-brand-600 text-white'
+                : 'bg-white border border-gray-200 text-gray-700 hover:bg-neutral-50'
             }`}
           >
             1-on-1
@@ -1517,9 +1517,9 @@ function CreationPopover({ x, y, source, date, time, onClose }: { x: number; y: 
           <button 
             onClick={() => setSessionType('Group')}
             className={`flex-1 py-1.5 px-3 rounded-md text-[12px] font-medium transition-colors ${
-              sessionType === 'Group' 
-                ? 'bg-[#0077CC] text-white' 
-                : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'
+              sessionType === 'Group'
+                ? 'bg-brand-600 text-white'
+                : 'bg-white border border-gray-200 text-gray-700 hover:bg-neutral-50'
             }`}
           >
             Group
@@ -1540,7 +1540,7 @@ function CreationPopover({ x, y, source, date, time, onClose }: { x: number; y: 
         <button
           disabled
           title="Shareable session links — coming soon"
-          className="bg-[#0077CC] text-white rounded-lg px-4 py-1.5 text-[13px] font-medium opacity-50 cursor-not-allowed"
+          className="bg-brand-600 text-white rounded-lg px-4 py-1.5 text-[13px] font-medium opacity-50 cursor-not-allowed"
         >
           Create →
         </button>

@@ -361,7 +361,7 @@ export function ProgrammesManagement() {
         <div className="px-5 pt-8 pb-2 bg-white sticky top-0 z-10">
           <div className="flex items-center justify-between mb-2">
             <h1 className="text-[28px] font-bold text-gray-900 tracking-tight">Programmes</h1>
-            <button onClick={() => router.push('/coach/programmes/create')} className="bg-[#0077CC] hover:bg-[#0066AA] text-white px-3.5 py-2 rounded-full text-[13px] font-bold flex items-center gap-1.5 transition-colors shadow-sm"><Plus size={16} />New Programme</button>
+            <button onClick={() => router.push('/coach/programmes/create')} className="bg-brand-600 hover:bg-brand-700 text-white px-3.5 py-2 rounded-full text-[13px] font-bold flex items-center gap-1.5 transition-colors shadow-sm"><Plus size={16} />New Programme</button>
           </div>
           {/* CF-D05 CHANGE 1: State-aware subtitle */}
           <p className="text-[13px] text-gray-500 mt-1 mb-4">
@@ -403,7 +403,7 @@ export function ProgrammesManagement() {
           {/* CD-08: Loading state */}
           {loading ? (
             <div className="py-16 flex flex-col items-center justify-center">
-              <div className="w-8 h-8 border-3 border-gray-200 border-t-[#0077CC] rounded-full animate-spin mb-3" />
+              <div className="w-8 h-8 border-3 border-gray-200 border-t-brand-600 rounded-full animate-spin mb-3" />
               <p className="text-[14px] text-gray-500">Loading programmes...</p>
             </div>
           ) : error ? (
@@ -416,17 +416,17 @@ export function ProgrammesManagement() {
               <p className="text-[14px] text-gray-500 mb-6">{error}</p>
               <button
                 onClick={() => fetchProgrammes()}
-                className="bg-[#0077CC] hover:bg-[#0066AA] text-white px-6 py-3 rounded-xl text-[15px] font-bold transition-colors"
+                className="bg-brand-600 hover:bg-brand-700 text-white px-6 py-3 rounded-xl text-[15px] font-bold transition-colors"
               >
                 Try Again
               </button>
             </div>
           ) : currentProgrammes.length === 0 ? (
             <div className="py-16 flex flex-col items-center justify-center text-center px-4">
-              <div className="w-16 h-16 bg-[#E6F3FB] text-[#0077CC] rounded-full flex items-center justify-center mb-4"><BookOpen size={28} /></div>
+              <div className="w-16 h-16 bg-brand-50 text-brand-600 rounded-full flex items-center justify-center mb-4"><BookOpen size={28} /></div>
               <h3 className="text-[18px] font-bold text-gray-900 mb-2">No programmes yet</h3>
               <p className="text-[14px] text-gray-500 font-medium mb-6 max-w-[260px] leading-relaxed">Create your first programme to start accepting group bookings</p>
-              <button onClick={() => router.push('/coach/programmes/create')} className="bg-[#0077CC] hover:bg-[#0066AA] text-white px-6 py-3 rounded-xl text-[15px] font-bold flex items-center gap-2 transition-colors shadow-sm w-full max-w-[200px] justify-center"><Plus size={18} />Create Programme</button>
+              <button onClick={() => router.push('/coach/programmes/create')} className="bg-brand-600 hover:bg-brand-700 text-white px-6 py-3 rounded-xl text-[15px] font-bold flex items-center gap-2 transition-colors shadow-sm w-full max-w-[200px] justify-center"><Plus size={18} />Create Programme</button>
             </div>
           ) : (
             // UI-PROG-GRID: 2-column grid (mobile + desktop). Used for both Active and Draft tabs.
@@ -442,7 +442,7 @@ export function ProgrammesManagement() {
                 const PILL = 'flex-1 min-w-0 h-7 rounded-lg text-[11px] font-semibold transition-all disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center justify-center px-1'
                 const pillNeutral = `${PILL} bg-neutral-50 text-neutral-700 hover:bg-white hover:shadow-[inset_0_0_0_1px_#CBD5E1]`
                 const pillBrand = `${PILL} bg-brand-50 text-brand-600 hover:bg-white hover:shadow-[inset_0_0_0_1px_#BFE0F4]`
-                const pillPrimary = `${PILL} bg-brand-600 text-white hover:bg-[#0066AA]`
+                const pillPrimary = `${PILL} bg-brand-600 text-white hover:bg-brand-700`
                 const pillDangerGhost = `${PILL} bg-red-50 text-red-600 hover:bg-red-100`
                 const pillDangerSolid = `${PILL} bg-red-600 text-white hover:bg-red-700`
                 const pillDisabledSolid = `${PILL} bg-brand-600 text-white opacity-50 cursor-not-allowed`
@@ -839,12 +839,12 @@ function ProgrammeDetailModal({
             <h2 className="w-full text-[20px] font-bold tracking-[-0.01em] leading-[1.25] text-[#0F172A]">
               {programme.name}
             </h2>
-            <span className="inline-flex items-center px-[10px] py-1 bg-[#E6F3FB] text-[#0C447C] rounded-[6px] text-[12px] font-medium leading-4">
+            <span className="inline-flex items-center px-[10px] py-1 bg-brand-50 text-brand-800 rounded-[6px] text-[12px] font-medium leading-4">
               {programme.sport_name}
             </span>
             <span className={`inline-flex items-center gap-[5px] px-[10px] py-1 rounded-[6px] text-[12px] font-medium leading-4 ${
               programme.status === 'Active' ? 'bg-[#DCFCE7] text-[#15803D]'
-              : programme.status === 'Full'   ? 'bg-[#0077CC] text-white'
+              : programme.status === 'Full'   ? 'bg-brand-600 text-white'
               : 'bg-[#F1F5F9] text-[#475569]'
             }`}>
               {programme.status === 'Active' && <span className="w-1.5 h-1.5 rounded-full bg-[#15803D] shrink-0" />}
@@ -861,7 +861,7 @@ function ProgrammeDetailModal({
               Schedule
             </div>
             <div className="flex items-center gap-3 px-4 py-[14px] bg-[#F8FAFC] border border-[#E2E8F0] rounded-[12px]">
-              <div className="w-10 h-10 rounded-[10px] bg-[#E6F3FB] flex items-center justify-center shrink-0">
+              <div className="w-10 h-10 rounded-[10px] bg-brand-50 flex items-center justify-center shrink-0">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0077CC" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>
                 </svg>
@@ -886,7 +886,7 @@ function ProgrammeDetailModal({
               Capacity
             </div>
             <div className="h-2 bg-[#E2E8F0] rounded-full overflow-hidden">
-              <div className="h-full bg-[#0077CC] rounded-full" style={{ width: `${fillPercentage}%`, transition: 'width .3s' }} />
+              <div className="h-full bg-brand-600 rounded-full" style={{ width: `${fillPercentage}%`, transition: 'width .3s' }} />
             </div>
             <div className="flex justify-between items-baseline mt-2 text-[13px] text-[#475569]">
               <span><strong className="text-[#0F172A] font-medium">{programme.spotsFilled} of {programme.spotsTotal}</strong> spots filled</span>
@@ -1026,7 +1026,7 @@ function ProgrammeDetailModal({
               {/* Back button */}
               <button
                 onClick={() => setShareOpen(false)}
-                className="inline-flex items-center gap-1.5 text-[#0077CC] text-[14px] font-medium bg-transparent border-none cursor-pointer pt-[14px] mt-1 hover:underline"
+                className="inline-flex items-center gap-1.5 text-brand-600 text-[14px] font-medium bg-transparent border-none cursor-pointer pt-[14px] mt-1 hover:underline"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M19 12H5M12 19l-7-7 7-7"/>
@@ -1058,7 +1058,7 @@ function ProgrammeDetailModal({
             {/* Manage / Preview */}
             <button
               onClick={() => onNavigate(isDraft ? `/coach/programmes/${programme.id}/edit` : `/coach/programmes/${programme.id}/roster`)}
-              className="h-11 px-[18px] rounded-[12px] text-[14px] font-medium bg-[#0077CC] hover:bg-[#0066AA] text-white flex items-center justify-center gap-1.5 transition-colors"
+              className="h-11 px-[18px] rounded-[12px] text-[14px] font-medium bg-brand-600 hover:bg-brand-700 text-white flex items-center justify-center gap-1.5 transition-colors"
             >
               {isDraft ? 'Preview' : 'Manage'}
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">

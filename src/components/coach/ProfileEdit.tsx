@@ -242,7 +242,7 @@ export function ProfileEdit() {
     return [
       { 
         id: 'personal', 
-        icon: <User size={18} className={personalComplete ? "text-[#0077CC]" : "text-[#F59E0B]"} />, 
+        icon: <User size={18} className={personalComplete ? "text-brand-600" : "text-[#F59E0B]"} />,
         title: 'Personal Info', 
         subtitle: personalComplete 
           ? `${profile.full_name}${profile.location_city ? ' · ' + profile.location_city : ''}` 
@@ -251,7 +251,7 @@ export function ProfileEdit() {
       },
       { 
         id: 'sports', 
-        icon: <Tag size={18} className={sportsComplete ? "text-[#0077CC]" : "text-[#F59E0B]"} />, 
+        icon: <Tag size={18} className={sportsComplete ? "text-brand-600" : "text-[#F59E0B]"} />,
         title: 'Sports & Pricing', 
         subtitle: sportsComplete 
           ? `${profile.years_experience} years experience` 
@@ -260,7 +260,7 @@ export function ProfileEdit() {
       },
       { 
         id: 'qualifications', 
-        icon: <Award size={18} className={qualificationsComplete ? "text-[#0077CC]" : "text-[#F59E0B]"} />, 
+        icon: <Award size={18} className={qualificationsComplete ? "text-brand-600" : "text-[#F59E0B]"} />,
         title: 'Qualifications', 
         subtitle: qualificationsComplete 
           ? 'DBS verified' 
@@ -269,7 +269,7 @@ export function ProfileEdit() {
       },
       { 
         id: 'availability', 
-        icon: <Calendar size={18} className={availabilityComplete ? "text-[#0077CC]" : "text-[#F59E0B]"} />, 
+        icon: <Calendar size={18} className={availabilityComplete ? "text-brand-600" : "text-[#F59E0B]"} />,
         title: 'Availability', 
         subtitle: availabilityComplete 
           ? 'Weekly schedule set' 
@@ -278,7 +278,7 @@ export function ProfileEdit() {
       },
       { 
         id: 'policy', 
-        icon: <ShieldCheck size={18} className={policyComplete ? "text-[#0077CC]" : "text-[#F59E0B]"} />, 
+        icon: <ShieldCheck size={18} className={policyComplete ? "text-brand-600" : "text-[#F59E0B]"} />,
         title: 'Booking Policy', 
         subtitle: policyComplete 
           ? `${profile.cancellation_window_hours}hr cancellation window` 
@@ -287,7 +287,7 @@ export function ProfileEdit() {
       },
       {
         id: 'payment',
-        icon: <CreditCard size={18} className={paymentFullyComplete ? "text-[#0077CC]" : paymentPartial ? "text-[#F59E0B]" : "text-gray-400"} />,
+        icon: <CreditCard size={18} className={paymentFullyComplete ? "text-brand-600" : paymentPartial ? "text-[#F59E0B]" : "text-gray-400"} />,
         title: 'Payment Setup',
         subtitle: paymentFullyComplete
           ? 'Stripe connected — ready to receive payouts'
@@ -401,7 +401,7 @@ export function ProfileEdit() {
               <p className="text-[14px] text-gray-500 mb-6">{error}</p>
               <button
                 onClick={() => window.location.reload()}
-                className="bg-brand-600 hover:bg-[#0066AA] text-white px-6 py-3 rounded-xl text-[15px] font-bold transition-colors"
+                className="bg-brand-600 hover:bg-brand-700 text-white px-6 py-3 rounded-xl text-[15px] font-bold transition-colors"
               >
                 Try Again
               </button>
@@ -448,7 +448,7 @@ export function ProfileEdit() {
                   {profile.avatar_url ? (
                     <img src={profile.avatar_url} alt={profile.full_name} className="w-full h-full object-cover" />
                   ) : (
-                    <div className="w-full h-full bg-[#E6F1FB] flex items-center justify-center text-[20px] font-medium text-[#0C447C]">
+                    <div className="w-full h-full bg-brand-50 flex items-center justify-center text-[20px] font-medium text-brand-800">
                       {getInitials(profile.full_name)}
                     </div>
                   )}
@@ -457,7 +457,7 @@ export function ProfileEdit() {
                   {!photoUploading && (
                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/45 transition-colors flex flex-col items-center justify-center gap-0.5 opacity-0 group-hover:opacity-100">
                       <Camera size={14} className="text-white" />
-                      <span className="text-[9px] font-medium text-white leading-none">Change</span>
+                      <span className="text-[11px] font-medium text-white leading-none">Change</span>
                     </div>
                   )}
 
@@ -469,11 +469,11 @@ export function ProfileEdit() {
                   )}
                 </div>
 
-                <p className="text-[9px] text-gray-400 text-center mt-1 leading-snug w-[68px]">
+                <p className="text-[11px] text-gray-400 text-center mt-1 leading-snug w-[68px]">
                   JPG, PNG or WebP · Max 5MB
                 </p>
                 {photoError && (
-                  <p className="text-[9px] text-red-500 text-center mt-0.5 w-[72px] leading-snug">{photoError}</p>
+                  <p className="text-[11px] text-red-500 text-center mt-0.5 w-[72px] leading-snug">{photoError}</p>
                 )}
 
                 <input
@@ -506,7 +506,7 @@ export function ProfileEdit() {
                   )}
                   {/* CD-10b: Real DBS status */}
                   {profile.dbs_status === 'verified' && (
-                    <div className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#E0F6F8] text-[#006677] text-[10px] font-medium rounded-full">
+                    <div className="inline-flex items-center gap-1 px-2 py-0.5 bg-teal-50 text-teal-800 text-[10px] font-medium rounded-full">
                       <ShieldCheck size={11} /> DBS checked
                     </div>
                   )}
@@ -523,7 +523,7 @@ export function ProfileEdit() {
                   onClick={() => profile?.slug && window.open(`/coaches/${profile.slug}`, '_blank')}
                   disabled={!profile || !profile.is_profile_live || !profile.slug}
                   title={!profile?.is_profile_live || !profile?.slug ? 'Go live first to preview your profile' : undefined}
-                  className="px-3 py-1.5 bg-white border border-gray-200 text-gray-600 text-[11px] font-medium rounded-full hover:bg-gray-50 transition-colors flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-3 py-1.5 bg-white border border-gray-200 text-gray-600 text-[11px] font-medium rounded-full hover:bg-neutral-50 transition-colors flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
                   data-testid="preview-profile-btn"
                 >
                   Preview <ExternalLink size={10} />
@@ -533,13 +533,13 @@ export function ProfileEdit() {
                   onClick={() => {
                     window.dispatchEvent(new CustomEvent('crikly:open-share-modal'))
                   }}
-                  className="px-3 py-1.5 bg-white border border-gray-200 text-gray-600 text-[11px] font-medium rounded-full hover:bg-gray-50 transition-colors flex items-center gap-1"
+                  className="px-3 py-1.5 bg-white border border-gray-200 text-gray-600 text-[11px] font-medium rounded-full hover:bg-neutral-50 transition-colors flex items-center gap-1"
                 >
                   <Share2 size={10} /> Share
                 </button>
                 <button
                   onClick={() => setGalleryOpen(true)}
-                  className="px-3 py-1.5 bg-white border border-gray-200 text-gray-600 text-[11px] font-medium rounded-full hover:bg-gray-50 transition-colors flex items-center gap-1"
+                  className="px-3 py-1.5 bg-white border border-gray-200 text-gray-600 text-[11px] font-medium rounded-full hover:bg-neutral-50 transition-colors flex items-center gap-1"
                 >
                   <LayoutGrid size={10} /> Gallery
                 </button>
@@ -580,7 +580,7 @@ export function ProfileEdit() {
                   className={`w-full flex items-center gap-3 text-left transition-colors group ${
                     !section.isComplete 
                       ? 'bg-[#FFFBEB] hover:bg-[#FEF9EE] px-4 py-[15px]' 
-                      : 'bg-white hover:bg-gray-50/50 px-4 py-3.5'
+                      : 'bg-white hover:bg-neutral-50/50 px-4 py-3.5'
                   } ${!isLast ? 'border-b-[0.5px] border-gray-100' : ''}`}
                 >
                   {/* Icon container */}
@@ -645,13 +645,13 @@ export function ProfileEdit() {
           {/* CF-D07b POLISH 5: Increased margin-top to 24px for more separation */}
           <div className="bg-white rounded-xl shadow-sm overflow-hidden mt-6">
             <div className="px-4 pt-3 pb-1.5">
-              <h3 className="text-[9px] font-medium text-gray-400 uppercase tracking-wider">ACCOUNT</h3>
+              <h3 className="text-[11px] font-medium text-gray-400 uppercase tracking-wider">ACCOUNT</h3>
             </div>
             
             {/* C-Settings-01-UI: pause + delete migrated to /coach/settings (AF-M-BATCH-01 stubs removed) */}
             <button
               onClick={() => router.push('/coach/settings')}
-              className="w-full px-4 py-3.5 flex items-center justify-between text-left border-t-[0.5px] border-gray-100 hover:bg-gray-50 transition-colors"
+              className="w-full px-4 py-3.5 flex items-center justify-between text-left border-t-[0.5px] border-gray-100 hover:bg-neutral-50 transition-colors"
             >
               <div>
                 <span className="text-[13px] font-medium text-gray-900">Manage account</span>
@@ -675,7 +675,7 @@ export function ProfileEdit() {
                   type="button"
                   onClick={() => setShowLiveModal(false)}
                   aria-label="Close"
-                  className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-900 bg-gray-50 hover:bg-gray-100 rounded-full transition-colors"
+                  className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-900 bg-neutral-50 hover:bg-gray-100 rounded-full transition-colors"
                 >
                   <X size={16} />
                 </button>
@@ -686,7 +686,7 @@ export function ProfileEdit() {
                 {/* BUG-GO-LIVE-MODAL-SHARE: 5-channel share panel replaces the
                     prior 2-button row (Copy + WhatsApp). ShareLinkPanel renders
                     its own URL strip so the previous standalone strip (was
-                    monospace gray-50) is removed to avoid duplication. */}
+                    monospace neutral-50) is removed to avoid duplication. */}
                 <ShareLinkPanel slug={profile.slug} />
 
                 <button
@@ -880,18 +880,18 @@ function GalleryModal({
                   <img src={photo.photo_url} alt="" className="w-full h-full object-cover" />
                   {deleteConfirmId === photo.id ? (
                     <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center gap-2 p-2">
-                      <p className="text-[10px] text-white font-medium text-center">Remove this photo?</p>
+                      <p className="text-[11px] text-white font-medium text-center">Remove this photo?</p>
                       <div className="flex gap-1">
                         <button
                           onClick={() => setDeleteConfirmId(null)}
-                          className="px-2 py-1 text-[10px] font-medium text-white border border-white/50 rounded-md hover:bg-white/20 transition-colors"
+                          className="px-2 py-1 text-[11px] font-medium text-white border border-white/50 rounded-md hover:bg-white/20 transition-colors"
                         >
                           Cancel
                         </button>
                         <button
                           onClick={() => handleDelete(photo.id)}
                           disabled={deleting === photo.id}
-                          className="px-2 py-1 text-[10px] font-medium text-white bg-red-600 rounded-md hover:bg-red-700 transition-colors disabled:opacity-50"
+                          className="px-2 py-1 text-[11px] font-medium text-white bg-red-600 rounded-md hover:bg-red-700 transition-colors disabled:opacity-50"
                         >
                           {deleting === photo.id ? '…' : 'Remove'}
                         </button>
@@ -912,10 +912,10 @@ function GalleryModal({
                 <button
                   onClick={() => !uploading && galleryFileRef.current?.click()}
                   disabled={uploading}
-                  className="aspect-square rounded-xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center gap-1.5 hover:border-[#0077CC] hover:bg-blue-50/50 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="aspect-square rounded-xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center gap-1.5 hover:border-brand-600 hover:bg-blue-50/50 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   {uploading ? (
-                    <div className="w-6 h-6 border-2 border-gray-300 border-t-[#0077CC] rounded-full animate-spin" />
+                    <div className="w-6 h-6 border-2 border-gray-300 border-t-brand-600 rounded-full animate-spin" />
                   ) : (
                     <>
                       <Plus size={20} className="text-gray-400" />
