@@ -59,9 +59,9 @@ function EventBlock({ top, height, type, title, subtitle, sessionId, onCardClick
   // CHANGE 3: Left border accent by status
   switch (type) {
     case 'confirmed':
-      bgClass = 'bg-blue-100'
-      textClass = 'text-blue-900'
-      leftBorderClass = 'border-l-[3px] border-l-blue-500'
+      bgClass = 'bg-teal-50'
+      textClass = 'text-teal-800'
+      leftBorderClass = 'border-l-[3px] border-l-teal-600'
       break
     case 'programme':
       bgClass = 'bg-purple-100'
@@ -1221,7 +1221,7 @@ function SessionPopover({
             ? 'bg-orange-50 text-orange-700 border border-orange-200' :
           (booking?.status === 'cancelled_coach' || booking?.status === 'cancelled_parent')
             ? 'bg-red-50 text-red-700 border border-red-200' :
-          'bg-green-50 text-green-700 border border-green-200'
+          'bg-teal-50 text-teal-800 border border-teal-200'
         return (
           <>
             <div className="flex items-start justify-between mb-3">

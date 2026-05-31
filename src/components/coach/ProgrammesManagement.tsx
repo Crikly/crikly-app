@@ -97,15 +97,15 @@ function formatStartingDate(yyyymmdd: string | null): string {
 
 // UI-PROG-GRID: status pill — light bg + dark text per design system.
 function getStatusPillClass(status: 'Active' | 'Full' | 'Draft'): string {
-  if (status === 'Active') return 'bg-[#E6F4EC]/95 text-[#1A7A4A]'
-  if (status === 'Full') return 'bg-[#FEF3C7]/95 text-[#B45309]'
-  return 'bg-[#F1F5F9]/95 text-[#475569]'
+  if (status === 'Active') return 'bg-green-100 text-green-800'
+  if (status === 'Full') return 'bg-amber-100 text-amber-800'
+  return 'bg-neutral-100 text-neutral-600'
 }
 
 // UI-PROG-GRID: capacity bar — green at 100%, amber ≥90%, brand below.
 function getFillBarClass(fillPercentage: number): string {
-  if (fillPercentage >= 100) return 'bg-[#1A7A4A]'
-  if (fillPercentage >= 90) return 'bg-[#B45309]'
+  if (fillPercentage >= 100) return 'bg-green-700'
+  if (fillPercentage >= 90) return 'bg-amber-700'
   return 'bg-brand-600'
 }
 
@@ -843,11 +843,11 @@ function ProgrammeDetailModal({
               {programme.sport_name}
             </span>
             <span className={`inline-flex items-center gap-[5px] px-[10px] py-1 rounded-[6px] text-[12px] font-medium leading-4 ${
-              programme.status === 'Active' ? 'bg-[#DCFCE7] text-[#15803D]'
+              programme.status === 'Active' ? 'bg-green-100 text-green-800'
               : programme.status === 'Full'   ? 'bg-brand-600 text-white'
-              : 'bg-[#F1F5F9] text-[#475569]'
+              : 'bg-neutral-100 text-neutral-600'
             }`}>
-              {programme.status === 'Active' && <span className="w-1.5 h-1.5 rounded-full bg-[#15803D] shrink-0" />}
+              {programme.status === 'Active' && <span className="w-1.5 h-1.5 rounded-full bg-green-700 shrink-0" />}
               {programme.status}
             </span>
           </div>

@@ -407,6 +407,7 @@ other screens within the same task.
 | CF-TOKEN-AUDIT | Visual design-token audit — replace hardcoded hex with Tailwind tokens across 11 coach internal screens (Schedule, AvailabilityManagement, BookingsManagement, ProgrammesManagement, CoachHomeClient, ProfileEdit, settings/page, reviews/page, globals.css, layout.tsx, tailwind.config.js). Adds brand-700 token. Suppresses system dark-mode overrides. ~140 line edits. Code review passed (crikly-code-reviewer). | @FrontendDeveloper | 🟢 | develop | ✅ |
 | CF-R04h-wrap | Outer wrapper cleanup — remove redundant bg-white, font-sans, inline fontFamily from 7 coach screens; fix screen padding to pt-8 standard. Follow-up to CF-TOKEN-AUDIT. | @FrontendDeveloper | 🟢 | develop | ✅ |
 | CF-R04c-h1 | H1 page-title normalisation — lock all screen-level h1s to `text-[28px] font-bold tracking-tight text-gray-900` per design-system spec (docs/12_DESIGN_SYSTEM.md:98-110). 3 files: Schedule.tsx (was 20px/medium), AvailabilityManagement.tsx (was 32px), CoachHomeClient.tsx (removed responsive scaling; mobile+desktop identical per spec). | @FrontendDeveloper | 🟢 | develop | ✅ |
+| CF-R04f | Visual status colour normalisation — 14 edits across 3 files: teal confirmed event/badge tokens in Schedule.tsx (EventBlock + SessionPopover), hover:brand-700 on ProfileEdit.tsx Go Live + Done buttons, Tailwind token replacement for all hex colours in ProgrammesManagement.tsx status pills/fill bars/detail modal badges. Code review passed (crikly-code-reviewer). | @FrontendDeveloper | 🟢 | develop | ✅ |
 
 ### 3E — Data Wiring (CD tasks)
 

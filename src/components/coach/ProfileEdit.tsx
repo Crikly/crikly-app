@@ -424,7 +424,7 @@ export function ProfileEdit() {
                 type="button"
                 onClick={handleGoLive}
                 disabled={goingLive}
-                className="h-9 px-4 rounded-full bg-brand-600 hover:bg-brand-800 text-white text-[13px] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                className="h-9 px-4 rounded-full bg-brand-600 hover:bg-brand-700 text-white text-[13px] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
               >
                 {goingLive ? 'Going live…' : 'Go live'}
               </button>
@@ -692,7 +692,7 @@ export function ProfileEdit() {
                 <button
                   type="button"
                   onClick={() => setShowLiveModal(false)}
-                  className="w-full h-10 rounded-xl bg-brand-600 hover:bg-brand-800 text-white text-[13px] font-medium transition-colors mt-5"
+                  className="w-full h-10 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-[13px] font-medium transition-colors mt-5"
                 >
                   Done
                 </button>
