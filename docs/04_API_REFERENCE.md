@@ -422,14 +422,8 @@ Coach marks a session as complete.
 
 ## Payment Routes
 
-### POST /api/payments/webhook (Stripe)
-Stripe webhook handler. Verifies signature, processes events.
-
-**Events handled:**
-- `payment_intent.succeeded` → confirm booking
-- `payment_intent.payment_failed` → cancel booking
-- `transfer.created` → log payout
-- `customer.subscription.updated` → update coach tier
+### Stripe Webhook
+See **`## Webhook Routes → POST /api/webhooks/stripe`** below. (The path `/api/payments/webhook` was a pre-CF planning placeholder; the real endpoint lives at `/api/webhooks/stripe`. The events that planning entry listed — `payment_intent.succeeded`, `payment_intent.payment_failed`, `transfer.created`, `customer.subscription.updated` — are NOT implemented yet; they will land when the booking-payments work begins.)
 
 ---
 
@@ -579,6 +573,44 @@ Send a test email to the authenticated user. Development/staging use only.
 ```
 
 Sends a dummy email via Resend to verify delivery. Uses fixed stub data (coach "Test Coach", sport "Cricket", £55.00 parent total / £50.00 coach earnings).
+
+---
+
+## Webhook Routes
+
+### POST /api/webhooks/stripe
+Receive and process Stripe webhook events. Currently handles `account.updated` only; every other event type is acknowledged with 200 and ignored.
+**Status: Implemented — BUG-STRIPE-ONBOARDING-COMPLETE-WIRING**
+**Auth: Stripe signature (no Crikly auth — `STRIPE_WEBHOOK_SECRET` is the trust root)**
+
+**Headers:**
+```
+stripe-signature   required — verified against STRIPE_WEBHOOK_SECRET
+```
+
+**Body:** raw JSON event payload — must NOT be re-serialised before signature verification. The route reads `await request.text()` and passes the unmodified bytes to `stripe.webhooks.constructEvent`.
+
+**Events handled:**
+
+| `event.type` | Action |
+|---|---|
+| `account.updated` | Computes `isComplete = charges_enabled && payouts_enabled` from `event.data.object` (Stripe.Account) and `UPDATE coach_profiles SET stripe_onboarding_complete = isComplete WHERE stripe_account_id = account.id`. Both directions written, so a Stripe-side capability revocation flips the flag back to `false`. |
+| any other | `console.info` log only, no DB writes, returns 200. |
+
+**Response 200:** `{ "received": true }` — sent for every event Stripe successfully signed, including unhandled types and post-error paths. Stripe retries on any non-2xx, so the route MUST NOT 5xx on DB errors.
+
+**Response 400:**
+- Missing `stripe-signature` header.
+- Signature verification fails (`stripe.webhooks.constructEvent` threw).
+- `request.text()` failed to read the body.
+
+**Response 500:** `STRIPE_WEBHOOK_SECRET` is not set in the runtime environment. Configuration error — Stripe will retry until the env is fixed.
+
+**Setup notes:**
+- The endpoint must be registered in the Stripe Dashboard for both **test** and **live** modes (Developers → Webhooks → Add endpoint). Subscribe to event `account.updated` only — every event is a billable round-trip.
+- Webhook receivers have no Crikly user session — the route uses `createAdminClient()` to write to `coach_profiles`; ownership is implicit in the `stripe_account_id` match.
+- **Card data is never touched.** This route only reads booleans (`charges_enabled`, `payouts_enabled`) from `Stripe.Account`. PCI scope unchanged.
+- Local testing: `stripe listen --forward-to localhost:3000/api/webhooks/stripe` + `stripe trigger account.updated`.
 
 ---
 

@@ -1,0 +1,150 @@
+// BUG-STRIPE-ONBOARDING-COMPLETE-WIRING: Stripe webhook receiver.
+//
+// Single responsibility right now: persist `coach_profiles.stripe_onboarding_complete`
+// when Stripe sends an `account.updated` event. Every other event type is
+// acknowledged with 200 and ignored — Stripe retries on non-2xx, so unknown
+// types MUST return 200 or we self-DoS.
+//
+// Security non-negotiables (docs/06_SECURITY_COMPLIANCE.md §Payment Security):
+//   - Verify the signature BEFORE touching the payload.
+//   - Verify against the raw request body — request.text() not request.json().
+//   - Use STRIPE_WEBHOOK_SECRET, never the API secret.
+//   - Reject with 400 on signature failure (Stripe Dashboard surfaces the rejection).
+//
+// Runtime: Node.js (Stripe SDK isn't edge-safe). `force-dynamic` so Next.js
+// doesn't try to cache or pre-render this route.
+//
+// Follow-ups when more events are wired (e.g. payment_intent.succeeded):
+//   - Add a `stripe_webhook_events` audit table keyed on event.id UNIQUE for
+//     idempotency. The account.updated handler is naturally idempotent (writing
+//     the same boolean twice is a no-op) so no audit table is needed yet.
+//   - Add a handler for `account.application.deauthorized` so a revoked Connect
+//     account also flips stripe_onboarding_complete back to false.
+
+import { NextRequest, NextResponse } from 'next/server'
+import type Stripe from 'stripe'
+import { stripe } from '@/lib/stripe/client'
+import { createAdminClient } from '@/lib/supabase/admin'
+
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
+
+/**
+ * POST /api/webhooks/stripe
+ *
+ * Verifies the Stripe signature, dispatches the event, and ALWAYS returns 200
+ * once the signature has passed (even on DB error — never trigger Stripe
+ * retry loops). Returns 400 on signature failure and 500 only if the webhook
+ * signing secret is unconfigured.
+ */
+export async function POST(request: NextRequest): Promise<NextResponse> {
+  // 1. Pull the signing secret. Crash early at request time if missing rather
+  //    than at module load — the route is rarely exercised, so a misconfigured
+  //    env should surface as a clear 500 on the first webhook, not a build error.
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
+  if (!webhookSecret) {
+    console.error('[Stripe Webhook] STRIPE_WEBHOOK_SECRET is not set')
+    return NextResponse.json({ error: 'Webhook not configured' }, { status: 500 })
+  }
+
+  // 2. Read the raw body. Signature verification MUST run against the bytes
+  //    Stripe sent, not a re-serialised JSON object — request.text() preserves
+  //    them exactly. NEVER replace this with request.json().
+  let rawBody: string
+  try {
+    rawBody = await request.text()
+  } catch (err) {
+    console.error('[Stripe Webhook] Failed to read raw body:', err)
+    return NextResponse.json({ error: 'Bad request' }, { status: 400 })
+  }
+
+  // 3. Pull the signature from the canonical Stripe header.
+  const signature = request.headers.get('stripe-signature')
+  if (!signature) {
+    console.error('[Stripe Webhook] Missing stripe-signature header')
+    return NextResponse.json({ error: 'Missing signature' }, { status: 400 })
+  }
+
+  // 4. Verify. Any failure here means we did NOT get a real Stripe event
+  //    (replay, forgery, secret rotation in flight) — reject and let Stripe
+  //    Dashboard surface it.
+  let event: Stripe.Event
+  try {
+    event = stripe.webhooks.constructEvent(rawBody, signature, webhookSecret)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'unknown'
+    console.error('[Stripe Webhook] Signature verification failed:', message)
+    return NextResponse.json({ error: 'Invalid signature' }, { status: 400 })
+  }
+
+  // 5. Dispatch. Wrapped in a catch-all so DB / handler errors don't propagate
+  //    as 5xx — Stripe retries on any non-2xx and we MUST NOT induce loops.
+  try {
+    switch (event.type) {
+      case 'account.updated':
+        // account.updated always carries a Stripe.Account object per Stripe's API
+        // contract. The cast is safe; future event types must verify their own.
+        await handleAccountUpdated(event.data.object as Stripe.Account)
+        break
+
+      default:
+        // Stripe sends many event types we don't subscribe to here. Acknowledge
+        // and move on — silence is correct. console.info gives ops visibility
+        // into what's arriving so we can subscribe selectively in Stripe Dashboard.
+        console.info(`[Stripe Webhook] Unhandled event type: ${event.type}`)
+    }
+  } catch (err) {
+    // Handler-level catch-all. Per the task brief: NEVER let DB errors cause
+    // retry loops. Log and return 200 so Stripe stops retrying.
+    console.error(`[Stripe Webhook] Handler threw for event ${event.type}:`, err)
+  }
+
+  return NextResponse.json({ received: true }, { status: 200 })
+}
+
+/**
+ * account.updated — coach's Stripe Connect account state changed.
+ *
+ * Writes `coach_profiles.stripe_onboarding_complete = (charges_enabled && payouts_enabled)`.
+ * Handles both directions: true when both flags are true, false when either is false
+ * (Stripe revoking a capability flips the flag back as a safety net).
+ *
+ * Failure modes never throw — DB errors are logged and swallowed so the outer
+ * webhook handler returns 200 to Stripe.
+ */
+async function handleAccountUpdated(account: Stripe.Account): Promise<void> {
+  const isComplete = account.charges_enabled === true && account.payouts_enabled === true
+
+  const adminSupabase = createAdminClient()
+  const { data: rows, error: updateError } = await adminSupabase
+    .from('coach_profiles')
+    .update({ stripe_onboarding_complete: isComplete })
+    .eq('stripe_account_id', account.id)
+    .select('id')
+
+  if (updateError) {
+    // DB error during an otherwise valid event. Log and let the outer handler
+    // return 200 — never retry-loop. Coach UI continues to poll Stripe directly
+    // (see /api/payments/connect/onboard) until the next account.updated event
+    // lands.
+    console.error(
+      `[Stripe Webhook] account.updated DB update failed for ${account.id}:`,
+      updateError,
+    )
+    return
+  }
+
+  if (!rows || rows.length === 0) {
+    // No coach in this DB has that Stripe account. Plausible: different
+    // environment (test event hitting live, vice versa), coach soft-deleted
+    // after onboarding, or a fresh local DB. NOT an error — log info and move on.
+    console.info(
+      `[Stripe Webhook] account.updated: no coach found with stripe_account_id=${account.id}`,
+    )
+    return
+  }
+
+  console.info(
+    `[Stripe Webhook] account.updated: ${rows.length} coach row(s) set stripe_onboarding_complete=${isComplete} for ${account.id}`,
+  )
+}
