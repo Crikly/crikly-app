@@ -217,7 +217,7 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
                 weekday: 'long', day: 'numeric', month: 'long'
               })}
             </p>
-            <h1 className="text-4xl font-bold tracking-tight text-gray-900">{greeting}, {data.coachName.split(' ')[0] || 'Coach'} 👋</h1>
+            <h1 className="text-[28px] font-bold tracking-tight text-gray-900">{greeting}, {data.coachName.split(' ')[0] || 'Coach'} 👋</h1>
             <p className="text-sm text-gray-500 mt-1">{getSessionSubtitle()}</p>
           </div>
         </div>

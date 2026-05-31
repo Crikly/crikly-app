@@ -525,7 +525,7 @@ export function AvailabilityManagement() {
     <div className="min-h-full text-gray-900 flex flex-col items-center pt-8 pb-32">
       <div className="w-full max-w-[640px] px-6">
         <div className="mb-8">
-          <h1 className="text-[32px] font-bold text-gray-900 leading-tight mb-2">Availability</h1>
+          <h1 className="text-[28px] font-bold tracking-tight text-gray-900 mb-2">Availability</h1>
           {/* CD-04: Real data-driven subtitle */}
           <p className="text-[13px] text-gray-500 mt-1">
             {loading ? 'Loading...' : scheduleBlocks.length === 0 ? 'No availability blocks yet' : `${scheduleBlocks.length} recurring ${scheduleBlocks.length === 1 ? 'block' : 'blocks'}`}

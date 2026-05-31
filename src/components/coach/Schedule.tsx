@@ -630,7 +630,7 @@ export function Schedule() {
             {/* ROW 1 */}
             <div className="flex items-start justify-between mb-2 px-5 pt-4">
               <div>
-                <h1 className="text-[20px] font-medium text-gray-900">Schedule</h1>
+                <h1 className="text-[28px] font-bold tracking-tight text-gray-900">Schedule</h1>
                 {/* Fix-26: Dynamic week range */}
                 <p className="text-[14px] text-gray-500 mt-0.5">
                   {(() => {

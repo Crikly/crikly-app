@@ -406,6 +406,7 @@ other screens within the same task.
 | CF-R04h | Coach public profile Phase 8 — slot click populates booking card + section dividers + calendar link | @FrontendDeveloper | 🟢 | develop | ✅ |
 | CF-TOKEN-AUDIT | Visual design-token audit — replace hardcoded hex with Tailwind tokens across 11 coach internal screens (Schedule, AvailabilityManagement, BookingsManagement, ProgrammesManagement, CoachHomeClient, ProfileEdit, settings/page, reviews/page, globals.css, layout.tsx, tailwind.config.js). Adds brand-700 token. Suppresses system dark-mode overrides. ~140 line edits. Code review passed (crikly-code-reviewer). | @FrontendDeveloper | 🟢 | develop | ✅ |
 | CF-R04h-wrap | Outer wrapper cleanup — remove redundant bg-white, font-sans, inline fontFamily from 7 coach screens; fix screen padding to pt-8 standard. Follow-up to CF-TOKEN-AUDIT. | @FrontendDeveloper | 🟢 | develop | ✅ |
+| CF-R04c-h1 | H1 page-title normalisation — lock all screen-level h1s to `text-[28px] font-bold tracking-tight text-gray-900` per design-system spec (docs/12_DESIGN_SYSTEM.md:98-110). 3 files: Schedule.tsx (was 20px/medium), AvailabilityManagement.tsx (was 32px), CoachHomeClient.tsx (removed responsive scaling; mobile+desktop identical per spec). | @FrontendDeveloper | 🟢 | develop | ✅ |
 
 ### 3E — Data Wiring (CD tasks)
 
