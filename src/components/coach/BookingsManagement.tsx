@@ -210,8 +210,8 @@ export function BookingsManagement() {
   const pendingCount = bookings.filter(b => b.status === 'pending_approval').length
 
   return (
-    <div className="min-h-screen bg-white">
-      <div className="w-full max-w-2xl mx-auto bg-white min-h-screen relative flex flex-col">
+    <div className="min-h-screen">
+      <div className="w-full max-w-2xl mx-auto min-h-screen relative flex flex-col">
         <div className="px-5 pt-8 pb-2 bg-white sticky top-0 z-10">
           <h1 className="text-[28px] font-bold text-gray-900 tracking-tight">Bookings</h1>
           <p className="text-[13px] text-gray-500 mt-1 mb-4">

@@ -356,8 +356,8 @@ export function ProgrammesManagement() {
   const spotsRemaining = leastFullProgramme ? leastFullProgramme.spotsTotal - leastFullProgramme.spotsFilled : 0
 
   return (
-    <div className="min-h-screen bg-white font-sans" style={{ fontFamily: "'DM Sans', sans-serif" }}>
-      <div className="w-full max-w-2xl mx-auto bg-white min-h-screen relative flex flex-col pb-12">
+    <div className="min-h-screen">
+      <div className="w-full max-w-2xl mx-auto min-h-screen relative flex flex-col pb-12">
         <div className="px-5 pt-8 pb-2 bg-white sticky top-0 z-10">
           <div className="flex items-center justify-between mb-2">
             <h1 className="text-[28px] font-bold text-gray-900 tracking-tight">Programmes</h1>

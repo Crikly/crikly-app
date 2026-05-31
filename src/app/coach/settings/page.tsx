@@ -396,7 +396,7 @@ export default function CoachSettingsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-white">
+      <div className="min-h-screen flex items-center justify-center">
         <Loader2 size={28} className="text-brand-600 animate-spin" />
       </div>
     )
@@ -404,14 +404,14 @@ export default function CoachSettingsPage() {
 
   if (loadError) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-white px-6">
+      <div className="min-h-screen flex items-center justify-center px-6">
         <p className="text-[14px] text-danger text-center">{loadError}</p>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-white px-5 py-10 lg:px-12 lg:pb-20">
+    <div className="min-h-screen px-5 pt-8 pb-10 lg:px-12 lg:pb-20">
       <div className="max-w-[600px] mx-auto">
 
         {/* Page title — Fix 2: icon badge removed; matches other coach screens */}

@@ -405,6 +405,7 @@ other screens within the same task.
 | CF-R04g | Coach public profile Phase 7 — availability 7-day grid with slot counts | @FrontendDeveloper | 🟢 | develop | ✅ |
 | CF-R04h | Coach public profile Phase 8 — slot click populates booking card + section dividers + calendar link | @FrontendDeveloper | 🟢 | develop | ✅ |
 | CF-TOKEN-AUDIT | Visual design-token audit — replace hardcoded hex with Tailwind tokens across 11 coach internal screens (Schedule, AvailabilityManagement, BookingsManagement, ProgrammesManagement, CoachHomeClient, ProfileEdit, settings/page, reviews/page, globals.css, layout.tsx, tailwind.config.js). Adds brand-700 token. Suppresses system dark-mode overrides. ~140 line edits. Code review passed (crikly-code-reviewer). | @FrontendDeveloper | 🟢 | develop | ✅ |
+| CF-R04h-wrap | Outer wrapper cleanup — remove redundant bg-white, font-sans, inline fontFamily from 7 coach screens; fix screen padding to pt-8 standard. Follow-up to CF-TOKEN-AUDIT. | @FrontendDeveloper | 🟢 | develop | ✅ |
 
 ### 3E — Data Wiring (CD tasks)
 

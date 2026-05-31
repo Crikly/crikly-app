@@ -522,7 +522,7 @@ export function AvailabilityManagement() {
   const isSingleDay = !!(rangeStart && rangeEnd && sameDay(rangeStart, rangeEnd))
 
   return (
-    <div className="min-h-full bg-white font-sans text-gray-900 flex flex-col items-center pt-10 pb-32" style={{ fontFamily: "'DM Sans', sans-serif" }}>
+    <div className="min-h-full text-gray-900 flex flex-col items-center pt-8 pb-32">
       <div className="w-full max-w-[640px] px-6">
         <div className="mb-8">
           <h1 className="text-[32px] font-bold text-gray-900 leading-tight mb-2">Availability</h1>

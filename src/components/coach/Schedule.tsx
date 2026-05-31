@@ -620,7 +620,7 @@ export function Schedule() {
   }
 
   return (
-    <div className="min-h-screen bg-white flex justify-center font-sans p-6" style={{ fontFamily: "'DM Sans', sans-serif" }}>
+    <div className="min-h-screen flex justify-center pt-8 pb-6 px-6">
       <div className="w-full max-w-7xl relative flex flex-col lg:flex-row gap-8" ref={scheduleContainerRef}>
 
         {/* LEFT COLUMN */}

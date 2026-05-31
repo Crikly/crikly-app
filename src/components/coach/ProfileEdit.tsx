@@ -375,8 +375,8 @@ export function ProfileEdit() {
   }
 
   return (
-    <div className="min-h-screen bg-white font-sans">
-      <div className="w-full max-w-2xl mx-auto bg-white min-h-screen relative flex flex-col pb-12">
+    <div className="min-h-screen">
+      <div className="w-full max-w-2xl mx-auto min-h-screen relative flex flex-col pb-12">
         <div className="px-5 pt-8 pb-4 bg-white sticky top-0 z-10">
           <h1 className="text-[28px] font-bold text-gray-900 tracking-tight">Profile</h1>
         </div>

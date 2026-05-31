@@ -144,7 +144,7 @@ export default function CoachReviewsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-white">
+      <div className="min-h-screen flex items-center justify-center">
         <Loader2 size={28} className="text-brand-600 animate-spin" />
       </div>
     )
@@ -152,14 +152,14 @@ export default function CoachReviewsPage() {
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-white px-6">
+      <div className="min-h-screen flex items-center justify-center px-6">
         <p className="text-sm text-danger text-center">{error}</p>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen">
       <div className="max-w-[880px] mx-auto px-8 py-8">
         {/* ── 1. PAGE HEADER ───────────────────────────────────────────── */}
         <header className="mb-8">
