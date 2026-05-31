@@ -511,6 +511,7 @@ Critical tasks required before any coach can go live on the platform.
 |---|---|---|---|---|---|
 | C-23 | Integration tests — all coach API routes | @QAEngineer | 🟢 | feature/coach | ⚪ |
 | C-24 | E2E test — full coach onboarding to profile live | @QAEngineer | 🟢 | feature/coach | ⚪ |
+| C-25 | Jest unit tests for `generateProgrammeSessionDates` (TEST-PROG-SESSIONS-LIB). 20 tests across 5 describe groups covering all 7 code paths: invalid inputs, count mode (Fixed), end_date mode (Rolling), BST timezone safety. File: `src/__tests__/lib/programme-sessions.test.ts`. Commit 5bb7d7c. | @QAEngineer | 🟢 | develop | ✅ |
 
 ### 3H — Refactoring Backlog
 
