@@ -512,6 +512,7 @@ Critical tasks required before any coach can go live on the platform.
 | C-23 | Integration tests — all coach API routes | @QAEngineer | 🟢 | feature/coach | ⚪ |
 | C-24 | E2E test — full coach onboarding to profile live | @QAEngineer | 🟢 | feature/coach | ⚪ |
 | C-25 | Jest unit tests for `generateProgrammeSessionDates` (TEST-PROG-SESSIONS-LIB). 20 tests across 5 describe groups covering all 7 code paths: invalid inputs, count mode (Fixed), end_date mode (Rolling), BST timezone safety. File: `src/__tests__/lib/programme-sessions.test.ts`. Commit 5bb7d7c. | @QAEngineer | 🟢 | develop | ✅ |
+| C-26 | Playwright E2E regression suite — first-pass 15 tests across 6 critical paths (TEST-E2E-01). New: `e2e/fixtures/seed.ts` (idempotent 6-step upsert), `e2e/fixtures/auth.ts`, `e2e/fixtures/db.ts`, 6 spec files (p1-availability through p6-auth-session), `.github/workflows/e2e.yml` CI (PR + push to develop). `playwright.config.ts` updated (.env.local loader, 60s timeout, serial workers). Schema-drift discoveries handled mid-build (active_role default, coach_sports NOT NULL columns). All 15 pass locally 40.3s. Requires 10 GitHub Secrets before CI runs — see workflow file header. Commit f6dd328. | @QAEngineer | 🟡 | develop | ✅ |
 
 ### 3H — Refactoring Backlog
 
