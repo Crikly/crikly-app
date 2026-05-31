@@ -144,6 +144,20 @@ interface BookingBlock {
   venue_name: string | null
 }
 
+// SCHEDULE-PROG-SESSIONS: one row per scheduled group programme session.
+// Mirrors the shape returned by GET /api/coaches/programme-sessions.
+interface ProgrammeSessionBlock {
+  id: string                    // group_programme_sessions.id
+  session_date: string          // 'YYYY-MM-DD'
+  start_time: string            // 'HH:MM:SS' — sliced to 'HH:MM' at render
+  end_time: string
+  programme_id: string
+  programme_title: string
+  current_spots: number
+  max_spots: number
+  venue_name: string | null
+}
+
 // CF-D02c FIX 1: Single popover state
 // CF-D02d BUG FIX 3: Add source field to distinguish slot vs button trigger
 type ActivePopover =
@@ -174,6 +188,13 @@ export function Schedule() {
   // AF-P-02: split refresh keys — approve/decline only triggers bookings refresh.
   const [bookingsRefreshKey, setBookingsRefreshKey] = useState(0)
   const [availabilityRefreshKey, setAvailabilityRefreshKey] = useState(0)
+  // SCHEDULE-PROG-SESSIONS: per-week programme sessions + split refresh key
+  // (AF-P-02 pattern). The refresh-key setter is unused today — reserved for
+  // the future "Cancel this session" CTA so the state shape doesn't need a
+  // refactor when that handler lands.
+  const [programmeSessions, setProgrammeSessions] = useState<ProgrammeSessionBlock[]>([])
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [programmeSessionsRefreshKey, setProgrammeSessionsRefreshKey] = useState(0)
   // AF-P-03b: track first-load completion to suppress skeleton on subsequent refreshes
   const hasLoadedRef = useRef(false)
   // AF-C-01: Sport id → name lookup for booking popovers
@@ -327,6 +348,32 @@ export function Schedule() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [weekOffset, bookingsRefreshKey])
 
+  // SCHEDULE-PROG-SESSIONS: fetch group programme sessions for the visible week.
+  // Mirrors the bookings fetch pattern — silent refetch via hasLoadedRef, swallow
+  // errors so the grid still renders availability + bookings if this fails.
+  useEffect(() => {
+    const fetchProgrammeSessions = async () => {
+      try {
+        if (!hasLoadedRef.current) setLoading(true)
+        const weekStart = fmtDate(days[0].fullDate)
+        const weekEnd = fmtDate(days[6].fullDate)
+        const res = await fetch(`/api/coaches/programme-sessions?from=${weekStart}&to=${weekEnd}`)
+        if (!res.ok) return
+        const data = (await res.json()) as { sessions: ProgrammeSessionBlock[] }
+        setProgrammeSessions(data.sessions ?? [])
+      } catch {
+        // non-critical — grid still shows availability + bookings
+      } finally {
+        if (!hasLoadedRef.current) {
+          setLoading(false)
+          hasLoadedRef.current = true
+        }
+      }
+    }
+    fetchProgrammeSessions()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weekOffset, programmeSessionsRefreshKey])
+
   // Fix-20: Auto-open New Session popover when ?action=new-session
   useEffect(() => {
     const action = searchParams.get('action')
@@ -422,6 +469,23 @@ export function Schedule() {
       y,
     })
   }, [])
+
+  // SCHEDULE-PROG-SESSIONS: open SessionPopover programme branch with real data.
+  // Reuses the existing ActivePopover 'session' variant — sessionType='programme'
+  // is the trigger the popover switches on to read from the programmeSession prop.
+  // Same clamping as handleCardClick so the popover doesn't overlap the right panel.
+  const handleProgrammeSessionClick = (e: React.MouseEvent, sessionId: string) => {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    const x = Math.min(rect.right + 8, window.innerWidth - RIGHT_PANEL_WIDTH - 388)
+    const y = Math.min(rect.top, window.innerHeight - 400)
+    setActivePopover({
+      type: 'session',
+      sessionId,
+      sessionType: 'programme',
+      x,
+      y,
+    })
+  }
 
   // CF-D02c FIX 1: Handle empty/available slot click (single popover)
   // CF-D02d BUG FIX 3: Add source field
@@ -784,6 +848,36 @@ export function Schedule() {
                   })}
                 </div>
 
+                {/* SCHEDULE-PROG-SESSIONS: Group programme session blocks (z-14, under bookings) */}
+                <div className="absolute inset-0 flex pointer-events-none z-[14]">
+                  <div className="w-16 shrink-0" />
+                  {days.map((day, dayIdx) => {
+                    const isoDate = fmtDate(day.fullDate)
+                    const daySessions = programmeSessions.filter((s) => s.session_date === isoDate)
+                    return (
+                      <div key={dayIdx} className="flex-1 relative border-r border-transparent">
+                        {daySessions.map((session) => {
+                          const topPosition = timeToPosition(session.start_time) * 64
+                          const heightPx = calculateDuration(session.start_time, session.end_time) * 64
+                          const subtitle = `${session.start_time.slice(0, 5)} · ${session.current_spots}/${session.max_spots} spots`
+                          return (
+                            <EventBlock
+                              key={session.id}
+                              top={topPosition}
+                              height={heightPx}
+                              type="programme"
+                              title={session.programme_title}
+                              subtitle={subtitle}
+                              sessionId={session.id}
+                              onCardClick={handleProgrammeSessionClick}
+                            />
+                          )
+                        })}
+                      </div>
+                    )
+                  })}
+                </div>
+
                 {/* CD-12: Empty state */}
                 {!loading && !error && availability.length === 0 && (
                   <div className="absolute inset-0 flex items-center justify-center z-20">
@@ -829,6 +923,7 @@ export function Schedule() {
             sessionId={activePopover.sessionId}
             type={activePopover.sessionType}
             booking={bookings.find((b) => b.id === activePopover.sessionId) ?? null}
+            programmeSession={programmeSessions.find((s) => s.id === activePopover.sessionId) ?? null}
             sportsMap={sportsMap}
             onClose={() => setActivePopover(null)}
             onRefresh={() => { setActivePopover(null); setBookingsRefreshKey((k) => k + 1) }}
@@ -1052,14 +1147,17 @@ export function Schedule() {
 }
 
 // CF-D02b CHANGE 1: Session Popover Component (4 types)
+// SCHEDULE-PROG-SESSIONS: programmeSession prop carries real data for the
+// 'programme' branch (was a graceful fallback off the booking prop until now).
 function SessionPopover({
-  x, y, sessionId, type, booking, sportsMap, onClose, onRefresh,
+  x, y, sessionId, type, booking, programmeSession, sportsMap, onClose, onRefresh,
 }: {
   x: number
   y: number
   sessionId: string
   type: string
   booking: BookingBlock | null
+  programmeSession: ProgrammeSessionBlock | null
   sportsMap: Record<string, string>
   onClose: () => void
   onRefresh: () => void
@@ -1167,22 +1265,22 @@ function SessionPopover({
       }
       
       case 'programme': {
-        // AF-C-02: graceful fallback — booking prop has no programme detail.
-        // Title stays generic; spot count managed from /coach/programmes.
-        const dateLabel = booking
-          ? (() => {
-              const d = new Date(booking.session_date + 'T00:00:00')
-              const dayStr = d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
-              return `${dayStr} · ${booking.session_start_time.slice(0, 5)} – ${booking.session_end_time.slice(0, 5)}`
-            })()
-          : '—'
-        const sportName = booking ? (sportsMap[booking.sport_id] ?? null) : null
-        const sportTypeLine = sportName ? `${sportName} · Group` : 'Group'
+        // SCHEDULE-PROG-SESSIONS: real data from programmeSession prop. Defensive
+        // null-check — the click handler only sets type='programme' when the
+        // session is in programmeSessions[], so this should never render null.
+        if (!programmeSession) return null
+        const dateLabel = (() => {
+          const d = new Date(programmeSession.session_date + 'T00:00:00')
+          const dayStr = d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+          return `${dayStr} · ${programmeSession.start_time.slice(0, 5)} – ${programmeSession.end_time.slice(0, 5)}`
+        })()
+        const spotsLabel = `${programmeSession.current_spots} of ${programmeSession.max_spots} spots booked`
+        const venueLabel = programmeSession.venue_name ?? 'Venue not set'
         return (
           <>
             <div className="flex items-start justify-between mb-3">
-              <h3 className="text-[15px] font-medium text-gray-900">Group Programme</h3>
-              <span className="px-2 py-0.5 bg-purple-50 text-purple-700 border border-purple-200 rounded-full text-[11px] font-medium">Active</span>
+              <h3 className="text-[15px] font-medium text-gray-900">{programmeSession.programme_title}</h3>
+              <span className="px-2 py-0.5 bg-purple-50 text-purple-700 border border-purple-200 rounded-full text-[11px] font-medium">Group</span>
             </div>
             <div className="space-y-2 mb-3">
               <div className="flex items-center gap-2 text-[13px] text-gray-600">
@@ -1190,20 +1288,20 @@ function SessionPopover({
                 <span>{dateLabel}</span>
               </div>
               <div className="flex items-center gap-2 text-[13px] text-gray-600">
-                <User size={14} />
-                <span>{sportTypeLine}</span>
-              </div>
-              <div className="flex items-center gap-2 text-[13px] text-gray-500">
                 <Users size={14} />
-                <span>Manage spots from Programmes</span>
+                <span>{spotsLabel}</span>
+              </div>
+              <div className="flex items-center gap-2 text-[13px] text-gray-600">
+                <MapPin size={14} />
+                <span>{venueLabel}</span>
               </div>
             </div>
             <div className="flex gap-2 mt-3">
               <button
-                onClick={() => { router.push('/coach/programmes'); onClose() }}
+                onClick={() => { router.push(`/coach/programmes/${programmeSession.programme_id}/roster`); onClose() }}
                 className="flex-1 bg-[#0077CC] text-white rounded-lg py-2 text-[13px] font-medium hover:bg-[#0066AA]"
               >
-                View prog. →
+                View roster →
               </button>
               <button
                 disabled

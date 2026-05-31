@@ -281,6 +281,48 @@ Remove a blocked date.
 
 ---
 
+### GET /api/coaches/programme-sessions
+Get the authenticated coach's scheduled group programme sessions within a date range. Powers the purple "programme" blocks on `/coach/schedule`.
+**Status: Implemented — SCHEDULE-PROG-SESSIONS**
+**Auth: Coach role required (`requireCoachContext`)**
+
+**Query params:**
+```
+from   date (YYYY-MM-DD, required)
+to     date (YYYY-MM-DD, required)
+```
+
+**Response 200:**
+```json
+{
+  "sessions": [
+    {
+      "id": "uuid",
+      "session_date": "2026-06-07",
+      "start_time": "10:00:00",
+      "end_time": "11:00:00",
+      "programme_id": "uuid",
+      "programme_title": "Saturday morning batting",
+      "current_spots": 3,
+      "max_spots": 8,
+      "venue_name": "Kennington Oval"
+    }
+  ]
+}
+```
+
+**Notes:**
+- Returns one row per scheduled session for any `group_programmes` row where `coach_profile_id` matches the caller, `status = 'active'`, and `deleted_at IS NULL`.
+- Filters to `group_programme_sessions.status = 'scheduled'` — completed and cancelled sessions are excluded.
+- `venue_name` resolution: per-session `coach_venue_id → coach_venues.name` takes precedence; falls back to `group_programmes.venue_name` when the session has no override.
+- Camp-mode `group_programme_sessions.slots` jsonb is intentionally NOT projected — the grid renders one block per session row using the row's `start_time` / `end_time`. Multi-slot camp days will need a separate visual design (follow-up).
+- No nested PostgREST joins — three explicit reads (programmes, sessions, venues) merged in application code, mirroring the Fix-65-1 pattern used by `GET /api/coaches/programmes/[programmeId]`.
+
+**Error 400:** Validation failure — missing/malformed `from` or `to`, or `from > to`. Response body: `{ error: "Validation failed", details: string[] }`.
+**Error 401 / 403 / 404 / 500:** Standard auth + DB-error responses from `requireCoachContext` and the adminSupabase reads.
+
+---
+
 ## Child Profile Routes
 
 ### GET /api/children
