@@ -14,7 +14,7 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import {
   ArrowRight,
   Check,
@@ -164,14 +164,6 @@ function useNavScroll() {
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
-function CriklyMark({ className = '' }: { className?: string }) {
-  return (
-    <span className={`font-semibold tracking-tight text-gray-900 ${className}`}>
-      crikl<span className="text-brand-600">y</span>
-    </span>
-  )
-}
-
 function ActivityMenu({
   open,
   onPick,
@@ -299,7 +291,14 @@ export default function HomePage() {
         } max-md:px-[22px]`}
       >
         <a href="#hero" aria-label="Crikly home" className="no-underline">
-          <CriklyMark className="text-[26px]" />
+          <Image
+            src="/logo.png"
+            alt="Crikly"
+            width={100}
+            height={32}
+            className="h-8 w-auto"
+            priority
+          />
         </a>
         <nav aria-label="Primary" className="absolute left-1/2 hidden -translate-x-1/2 gap-1.5 md:flex">
           <a
@@ -359,14 +358,15 @@ export default function HomePage() {
                     const idx = totalIndexBefore + wi
                     const isAccent = li === 0 && w === 'coach.'
                     return (
-                      <span
-                        key={`${li}-${wi}`}
-                        className={`${s.heroWord} ${isAccent ? 'text-brand-600' : ''}`}
-                        style={{ animationDelay: `${0.18 + idx * 0.045}s` }}
-                      >
-                        {w}
-                        {wi < line.length - 1 ? ' ' : ''}
-                      </span>
+                      <Fragment key={`${li}-${wi}`}>
+                        <span
+                          className={`${s.heroWord} ${isAccent ? 'text-brand-600' : ''}`}
+                          style={{ animationDelay: `${0.18 + idx * 0.045}s` }}
+                        >
+                          {w}
+                        </span>
+                        {wi < line.length - 1 ? ' ' : ''}
+                      </Fragment>
                     )
                   })}
                 </span>
@@ -459,8 +459,8 @@ export default function HomePage() {
           <div className="relative max-md:hidden">
             <div className={`${s.heroPhoto} relative overflow-hidden rounded-3xl bg-brand-50 shadow-[0_4px_12px_rgba(0,0,0,0.10)]`}>
               <Image
-                src="https://images.unsplash.com/photo-1531415074968-036ba1b575da?w=1100&q=80"
-                alt="A cricket ball resting on a freshly cut UK pitch"
+                src="/hero-coaching.png"
+                alt="Cricket coach working with a young player in a practice net"
                 fill
                 priority
                 sizes="(max-width: 880px) 100vw, 560px"
@@ -743,7 +743,14 @@ export default function HomePage() {
       <footer className="border-t border-neutral-100 bg-white">
         <div className="mx-auto grid max-w-[1180px] grid-cols-[1.2fr_2fr] gap-12 px-10 pb-10 pt-16 max-md:grid-cols-1 max-md:gap-9 max-md:px-[22px]">
           <div>
-            <CriklyMark className="text-[22px]" />
+            <Image
+              src="/logo.png"
+              alt="Crikly"
+              width={100}
+              height={32}
+              className="h-8 w-auto"
+              priority
+            />
             <p className="mt-3.5 max-w-[24ch] text-sm text-gray-500">Book a coach. No cash, no admin.</p>
           </div>
           <div className="grid grid-cols-3 gap-8 max-md:gap-4 max-[540px]:grid-cols-1">
