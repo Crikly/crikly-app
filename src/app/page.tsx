@@ -294,7 +294,7 @@ export default function HomePage() {
           <Image
             src="/logo.png"
             alt="Crikly"
-            width={100}
+            width={120}
             height={32}
             className="h-8 w-auto"
             priority
@@ -349,14 +349,14 @@ export default function HomePage() {
             <h1 className={`${s.heroH1} mb-5 font-semibold text-gray-900`}>
               {/* Each word fades in with a stagger — replaces GSAP word stagger. */}
               {[
-                ['Book', 'a', 'coach.'],
-                ['No', 'cash,', 'no', 'admin.'],
+                ['Great', 'coaching,'],
+                ['one', 'tap', 'away.'],
               ].map((line, li) => (
                 <span key={li} className="block">
                   {line.map((w, wi) => {
-                    const totalIndexBefore = li === 0 ? 0 : 3
+                    const totalIndexBefore = li === 0 ? 0 : 2
                     const idx = totalIndexBefore + wi
-                    const isAccent = li === 0 && w === 'coach.'
+                    const isAccent = li === 1 && (w === 'one' || w === 'tap')
                     return (
                       <Fragment key={`${li}-${wi}`}>
                         <span
@@ -747,9 +747,8 @@ export default function HomePage() {
               src="/logo.png"
               alt="Crikly"
               width={100}
-              height={32}
-              className="h-8 w-auto"
-              priority
+              height={28}
+              className="h-7 w-auto"
             />
             <p className="mt-3.5 max-w-[24ch] text-sm text-gray-500">Book a coach. No cash, no admin.</p>
           </div>
