@@ -206,13 +206,14 @@ export function CoachLayoutClient({
           <div className="flex flex-col gap-1.5">
             <div className="px-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1 mt-2">Manage</div>
             <SidebarItem icon={<Clock size={20} />} label="Availability" active={isActive('/coach/availability')} onClick={() => nav('/coach/availability')} />
-            {/* BUG-GO-LIVE-PATH: pulse dot signals action-needed (green = go live) or status (orange = paused) */}
+            {/* BUG-QA-04: dot is a STATUS indicator — green when live, amber when live+paused,
+                no dot when draft. The Profile page already shows a Go Live banner for draft state. */}
             <SidebarItem
               icon={<User size={20} />}
               label="My Profile"
               active={isActive('/coach/profile')}
-              pulseDot={profileLive === false ? 'success' : (profileLive && profilePaused ? 'warning' : undefined)}
-              pulseTitle={profileLive === false ? 'Your profile is not live yet' : (profileLive && profilePaused ? 'Your profile is paused' : undefined)}
+              pulseDot={profileLive === true && profilePaused ? 'warning' : (profileLive === true ? 'success' : undefined)}
+              pulseTitle={profileLive === true && profilePaused ? 'Your profile is paused' : (profileLive === true ? 'Your profile is live' : undefined)}
               onClick={() => nav('/coach/profile/edit')}
             />
           </div>
@@ -276,8 +277,9 @@ function SidebarItem({ icon, label, active, badge, warningDot, pulseDot, pulseTi
   active?: boolean
   badge?: number
   warningDot?: boolean
-  // BUG-GO-LIVE-PATH: animated dot for action-needed (success = go live) / paused (warning = paused).
-  // Distinct from the static `warningDot` (e.g. Get Paid Stripe-pending) by both colour and pulse animation.
+  // BUG-QA-04: animated dot is a STATUS indicator — success = profile is live, warning = profile is paused.
+  // No dot when draft (is_profile_live=false). Distinct from the static `warningDot` (e.g. Get Paid Stripe-pending)
+  // by both colour and pulse animation.
   pulseDot?: 'success' | 'warning'
   pulseTitle?: string
   onClick?: () => void

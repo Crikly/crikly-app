@@ -201,8 +201,9 @@ export function ProfileEdit() {
     let completed = 0
     const total = 6
     
-    // Personal Info (full_name, bio, location_city)
-    if (profile.full_name && profile.bio && profile.location_city) completed++
+    // Personal Info (full_name, bio, location_city, avatar_url)
+    // BUG-QA-03: avatar_url required per PRD REQ-C-028 — must match Dashboard
+    if (profile.full_name && profile.bio && profile.location_city && profile.avatar_url) completed++
     
     // Sports & Pricing (has at least one sport)
     if (hasSports) completed++
@@ -216,8 +217,9 @@ export function ProfileEdit() {
     // Booking Policy (cancellation_window_hours set)
     if (profile.cancellation_window_hours > 0) completed++
 
-    // Fix-45: Payment Setup — fully live means charges + payouts enabled
-    if (stripeChargesEnabled && stripePayoutsEnabled) completed++
+    // BUG-QA-03: Payment Setup — read stripe_onboarding_complete (canonical
+    // field set by account.updated webhook in d74bb96) to match Dashboard.
+    if (profile.stripe_onboarding_complete) completed++
     
     return Math.round((completed / total) * 100)
   }
@@ -228,14 +230,15 @@ export function ProfileEdit() {
   const getSections = (): ProfileSection[] => {
     if (!profile) return []
     
-    const personalComplete = !!(profile.full_name && profile.bio && profile.location_city)
+    const personalComplete = !!(profile.full_name && profile.bio && profile.location_city && profile.avatar_url)
     const sportsComplete = hasSports
     const qualificationsComplete = hasQualifications
     // AF-M-Wave-1: derived from real availability data — was hardcoded `true`
     const availabilityComplete = hasAvailability
     const policyComplete = profile.cancellation_window_hours > 0
-    // Fix-45: fully live = charges + payouts both enabled; partial = connected but not complete
-    const paymentFullyComplete = stripeChargesEnabled && stripePayoutsEnabled
+    // BUG-QA-03: fully live = stripe_onboarding_complete (canonical webhook-set field);
+    // partial = connected but not complete (still uses live Stripe state for the nuance).
+    const paymentFullyComplete = !!profile.stripe_onboarding_complete
     const paymentPartial = stripeConnected && !paymentFullyComplete
     const paymentComplete = paymentFullyComplete
     
