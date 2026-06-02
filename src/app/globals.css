@@ -2,6 +2,8 @@
 
 html {
   color-scheme: light only;
+  scroll-behavior: smooth;
+  scroll-padding-top: 72px;
 }
 
 body {
