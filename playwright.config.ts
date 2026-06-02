@@ -35,15 +35,23 @@ export default defineConfig({
   // TEST-E2E-01: serial workers — parallel runs starve the single-process
   // dev server's compiler and cause timeouts on first hits.
   workers: 1,
+  // TEST-E2E-02 CI fix: html reporter produces the playwright-report/ directory
+  // that the workflow's upload-artifact step looks for on failure. list keeps
+  // the console output that humans already rely on locally.
+  reporter: [['list'], ['html', { open: 'never' }]],
   use: {
     baseURL: 'http://localhost:3000',
     headless: true,
     screenshot: 'only-on-failure',
   },
   webServer: {
-    command: 'npm run dev',
+    // TEST-E2E-02 CI fix: use the precompiled production server so CI cold-boot
+    // doesn't time out compiling pages on first hit. CI runs `npm run build` as
+    // a separate workflow step; locally `reuseExistingServer: true` means devs
+    // running `npm run dev` separately still benefit.
+    command: 'npm run start',
     url: 'http://localhost:3000',
     reuseExistingServer: true,
-    timeout: 60000,
+    timeout: 120_000,
   },
 })

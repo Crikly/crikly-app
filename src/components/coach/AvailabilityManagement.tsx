@@ -638,6 +638,7 @@ export function AvailabilityManagement() {
                                       Cancel
                                     </button>
                                     <button
+                                      data-testid="e2e-availability-confirm-delete"
                                       disabled={deleting === blockForDay.id}
                                       onClick={async (e) => {
                                         e.stopPropagation()
@@ -673,6 +674,7 @@ export function AvailabilityManagement() {
                                       <Pencil size={12} className="text-gray-400" />
                                     </button>
                                     <button
+                                      data-testid={`e2e-availability-delete-${blockForDay.id}`}
                                       onClick={(e) => {
                                         e.stopPropagation()
                                         setDeleteBlockConfirmId(blockForDay.id)
@@ -742,14 +744,14 @@ export function AvailabilityManagement() {
 
             {/* CF-D06 CHANGE 5: Refined add button */}
             {showAddForm ? (
-              <div ref={addFormRef} className="border border-gray-200 rounded-xl p-5 bg-white shadow-sm">
+              <div ref={addFormRef} data-testid="e2e-availability-add-form" className="border border-gray-200 rounded-xl p-5 bg-white shadow-sm">
                 <h3 className="text-[16px] font-bold text-gray-900 mb-5">
                   {editingBlockId ? 'Edit availability block' : 'New availability block'}
                 </h3>
                 <div className="mb-4">
                   <label className="block text-[12px] font-bold text-gray-500 mb-1.5 uppercase tracking-wider">Sport</label>
                   <div className="relative">
-                    <select value={formSport} onChange={e => { setFormSport(e.target.value); setFormDays([]) }} className="w-full appearance-none bg-neutral-50 border border-gray-200 rounded-xl px-4 py-3 text-[15px] font-medium text-gray-900 focus:outline-none focus:border-brand-600 pr-10">
+                    <select data-testid="e2e-availability-sport" value={formSport} onChange={e => { setFormSport(e.target.value); setFormDays([]) }} className="w-full appearance-none bg-neutral-50 border border-gray-200 rounded-xl px-4 py-3 text-[15px] font-medium text-gray-900 focus:outline-none focus:border-brand-600 pr-10">
                       {availableSports.map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
                     <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
@@ -775,7 +777,7 @@ export function AvailabilityManagement() {
                     <div key={label}>
                       <label className="block text-[12px] font-bold text-gray-500 mb-1.5 uppercase tracking-wider">{label}</label>
                       <div className="relative">
-                        <select value={val} onChange={e => set(e.target.value)} className="w-full appearance-none bg-neutral-50 border border-gray-200 rounded-xl px-4 py-3 text-[15px] font-medium text-gray-900 focus:outline-none focus:border-brand-600 pr-10">
+                        <select data-testid={`e2e-availability-${label.toLowerCase().replace(/\s+/g, '-')}`} value={val} onChange={e => set(e.target.value)} className="w-full appearance-none bg-neutral-50 border border-gray-200 rounded-xl px-4 py-3 text-[15px] font-medium text-gray-900 focus:outline-none focus:border-brand-600 pr-10">
                           {TIME_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
                         </select>
                         <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
@@ -841,6 +843,7 @@ export function AvailabilityManagement() {
                 <div className="flex items-center justify-between">
                   <button onClick={resetForm} className="text-[14px] font-bold text-gray-400 hover:text-gray-700 transition-colors">Cancel</button>
                   <button
+                    data-testid="e2e-availability-submit"
                     onClick={handleSaveBlock}
                     // AF-H-46: was also disabled on formDays.length === 0, which prevented the inline error from ever firing
                     disabled={!!conflict}

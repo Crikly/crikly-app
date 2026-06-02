@@ -67,6 +67,13 @@ jobs:
       - name: Install Playwright browsers (chromium only)
         run: npx playwright install --with-deps chromium
 
+      - name: Build app
+        # TEST-E2E-02 CI fix: precompile Next.js so the playwright webServer
+        # can `npm run start` against a built app. Avoids the 60-90s of cold
+        # compilation that `npm run dev` would do on the first page hit and
+        # was the root cause of webServer timeouts on CI.
+        run: npm run build
+
       - name: Seed test coach
         run: npx tsx e2e/fixtures/seed.ts
 
