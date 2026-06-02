@@ -463,7 +463,8 @@ export default function HomePage() {
                 alt="Cricket coach working with a young player in a practice net"
                 fill
                 priority
-                sizes="(max-width: 880px) 100vw, 560px"
+                sizes="(max-width: 880px) 100vw, 50vw"
+                quality={90}
                 className="object-cover"
               />
             </div>

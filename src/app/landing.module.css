@@ -35,7 +35,7 @@
    shipped, but on the Tailwind v4 build the project runs the JIT
    occasionally misses it. Inline for safety. */
 .heroPhoto {
-  aspect-ratio: 5 / 6;
+  aspect-ratio: 4 / 5;
 }
 .coachPhoto {
   aspect-ratio: 4 / 3;
