@@ -60,15 +60,19 @@ export async function GET(request: Request) {
   } else if (tab === 'pending_approval') {
     filtered = base.in('status', ['pending_approval'])
   } else if (tab === 'week') {
-    // DS-RIGHT-PANEL-01: returns Mon-Sun of the current week (server-local
-    // time), all statuses except cancelled. Powers the right-panel week
-    // strip + daily lineup so coaches can scrub back to past sessions of
-    // this week. Server-local time is acceptable for Phase 1 (UK-only).
+    // DS-RIGHT-PANEL-01 + BUG-QA-02: returns Mon-Sun of (today + offset
+    // weeks), all statuses except cancelled. Powers the right-panel week
+    // strip + daily lineup so coaches can scrub back/forward to past or
+    // future sessions and still see correct dot indicators. Server-local
+    // time is acceptable for Phase 1 (UK-only). Offset clamped to ±52
+    // weeks — a year forward/back is plenty for the strip.
+    const rawOffset = parseInt(searchParams.get('offset') ?? '0', 10)
+    const weekOffset = isNaN(rawOffset) ? 0 : Math.max(-52, Math.min(52, rawOffset))
     const today = new Date()
     const dayOfWeek = today.getDay()
     const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
     const monday = new Date(today)
-    monday.setDate(today.getDate() + mondayOffset)
+    monday.setDate(today.getDate() + mondayOffset + weekOffset * 7)
     const sunday = new Date(monday)
     sunday.setDate(monday.getDate() + 6)
     const mondayIso = monday.toISOString().slice(0, 10)

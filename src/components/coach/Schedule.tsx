@@ -646,12 +646,9 @@ export function Schedule() {
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                <div className="flex bg-white border border-gray-200 rounded-full p-1">
-                  {/* CF-D02c FIX 3: Day and Month disabled */}
-                  <button title="Coming soon" className="px-3 py-1 rounded-full text-[12px] font-medium text-gray-600 opacity-40 cursor-not-allowed">Day</button>
-                  <button className="px-3 py-1 rounded-full text-[12px] font-medium bg-brand-600 text-white">Week</button>
-                  <button title="Coming soon" className="px-3 py-1 rounded-full text-[12px] font-medium text-gray-600 opacity-40 cursor-not-allowed">Month</button>
-                </div>
+                {/* BUG-QA-05: Day + Month removed for go-live (week-only view).
+                    Week chip is non-interactive — preserved for visual context. */}
+                <div className="px-3 py-1 rounded-full text-[12px] font-medium bg-brand-600 text-white">Week</div>
                 {/* CF-D02c FIX 3: Today button resets to current week */}
                 <button onClick={() => setWeekOffset(0)} className="px-3 py-1 border border-gray-200 rounded-md text-[12px] font-medium text-gray-700 hover:bg-neutral-50 h-[30px]">Today</button>
                 <div className="flex border border-gray-200 rounded-md">

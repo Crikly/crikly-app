@@ -1,7 +1,7 @@
 'use client'
 import React, { useState, useEffect, useCallback } from 'react'
 import { useRouter, useParams } from 'next/navigation'
-import { ArrowLeft, Mail, CalendarDays, Activity, User, Clock, MapPin, RefreshCw } from 'lucide-react'
+import { ArrowLeft, Mail, CalendarDays, Activity, User, Clock, MapPin, RefreshCw, Check, X } from 'lucide-react'
 // AF-P-Wave-1: sports cache adoption
 import { fetchSportsListCached } from '@/lib/onboarding-cache'
 
@@ -245,18 +245,18 @@ export function BookingDetail() {
   const badge = booking ? statusBadge(booking.status) : null
 
   return (
-    <div className="min-h-screen font-sans" style={{ fontFamily: "'DM Sans', sans-serif" }}>
+    <div className="min-h-screen">
       <div className="w-full max-w-2xl mx-auto min-h-screen relative flex flex-col pb-12">
-        {/* Header */}
+        {/* BUG-QA-01: sticky back-arrow row (mini-title removed — body h1 below
+            replaces it per design system v1.3 §Page titles (h1) canonical). */}
         <div className="px-5 py-4 bg-white sticky top-0 z-10 border-b border-gray-100 flex items-center justify-between">
           <button
             onClick={() => router.back()}
-            className="p-2 -ml-2 text-gray-900 hover:bg-gray-50 rounded-full transition-colors"
+            className="p-2 -ml-2 text-gray-900 hover:bg-neutral-50 rounded-full transition-colors"
             aria-label="Go back"
           >
             <ArrowLeft size={24} />
           </button>
-          <h1 className="text-[17px] font-bold text-gray-900 absolute left-1/2 -translate-x-1/2">Booking Detail</h1>
           {badge && (
             <div
               className="px-2.5 py-1 rounded-full text-[12px] font-bold"
@@ -268,6 +268,41 @@ export function BookingDetail() {
           {!badge && <div className="w-16" />}
         </div>
 
+        {/* BUG-QA-01: canonical body h1 (matches ProfileEdit/Bookings/Programmes). */}
+        <div className="px-5 pt-8 pb-2">
+          <h1 className="text-[28px] font-bold tracking-tight text-gray-900">Booking Detail</h1>
+        </div>
+
+        {/* BUG-QA-01: quick approve/decline at top for pending_approval bookings.
+            Reuses handleStatusAction(); existing bottom buttons stay at L429-452.
+            actionError is shared with the bottom row — surfaced here too so a
+            failure on the top buttons is visible without scrolling. */}
+        {!loading && booking && booking.status === 'pending_approval' && (
+          <>
+            <div className="px-5 pb-4 flex gap-2">
+              <button
+                disabled={actionLoading !== null}
+                onClick={() => handleStatusAction('approve')}
+                className="flex-1 py-2 flex items-center justify-center gap-1.5 bg-brand-600 hover:bg-brand-700 disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-lg text-[13px] font-medium transition-colors"
+              >
+                {actionLoading === 'approve' ? <RefreshCw size={14} className="animate-spin" /> : <Check size={14} />}
+                Approve
+              </button>
+              <button
+                disabled={actionLoading !== null}
+                onClick={() => handleStatusAction('decline')}
+                className="flex-1 py-2 flex items-center justify-center gap-1.5 border border-red-600 text-red-600 hover:bg-red-50 disabled:opacity-60 disabled:cursor-not-allowed bg-white rounded-lg text-[13px] font-medium transition-colors"
+              >
+                {actionLoading === 'decline' ? <RefreshCw size={14} className="animate-spin" /> : <X size={14} />}
+                Decline
+              </button>
+            </div>
+            {actionError && (
+              <p className="px-5 pb-2 text-[13px] text-red-600" role="alert">{actionError}</p>
+            )}
+          </>
+        )}
+
         {/* Loading */}
         {loading && <BookingDetailSkeleton />}
 
@@ -278,7 +313,7 @@ export function BookingDetail() {
             <p className="text-[14px] text-gray-500 mb-6 text-center">This booking doesn&apos;t exist or you don&apos;t have access to it.</p>
             <button
               onClick={() => router.push('/coach/bookings')}
-              className="text-[14px] font-medium text-[#0077CC] hover:underline"
+              className="text-[14px] font-medium text-brand-600 hover:underline"
             >
               Back to Bookings
             </button>
@@ -292,7 +327,7 @@ export function BookingDetail() {
             <p className="text-[14px] text-gray-500 mb-6 text-center">Something went wrong. Please try again.</p>
             <button
               onClick={() => window.location.reload()}
-              className="bg-[#0077CC] hover:bg-[#0066AA] text-white px-6 py-3 rounded-xl text-[15px] font-bold transition-colors"
+              className="bg-brand-600 hover:bg-brand-700 text-white px-6 py-3 rounded-xl text-[15px] font-bold transition-colors"
             >
               Try again
             </button>
@@ -350,7 +385,7 @@ export function BookingDetail() {
             {/* Booker / contact card */}
             <div className="bg-white rounded-[16px] p-0 shadow-sm overflow-hidden">
               <div className="p-5 flex items-center gap-4 border-b border-gray-100">
-                <div className="w-12 h-12 rounded-full bg-[#E6F3FB] text-[#0077CC] flex items-center justify-center text-[16px] font-bold shrink-0">
+                <div className="w-12 h-12 rounded-full bg-brand-50 text-brand-600 flex items-center justify-center text-[16px] font-bold shrink-0">
                   {initials(booking.booker.full_name)}
                 </div>
                 <div>
@@ -364,11 +399,11 @@ export function BookingDetail() {
               </div>
               {booking.booker.email && (
                 <button
-                  className="w-full p-4 px-5 flex items-center gap-3 hover:bg-gray-50 transition-colors text-left"
+                  className="w-full p-4 px-5 flex items-center gap-3 hover:bg-neutral-50 transition-colors text-left"
                   onClick={() => { window.location.href = `mailto:${booking.booker.email}` }}
                   aria-label={`Email ${booking.booker.full_name ?? 'booker'}`}
                 >
-                  <Mail size={18} className="text-[#0077CC] shrink-0" />
+                  <Mail size={18} className="text-brand-600 shrink-0" />
                   <span className="text-[15px] font-medium text-gray-900">{booking.booker.email}</span>
                 </button>
               )}
@@ -377,7 +412,7 @@ export function BookingDetail() {
             {/* Earnings card — coach receives the full coach_price (BR-01: commission added on top, never deducted) */}
             <div className="bg-white rounded-[16px] p-5 shadow-sm flex items-center justify-between">
               <span className="text-[15px] text-gray-600 font-medium">Your earnings</span>
-              <span className="text-[18px] font-bold text-[#0077CC]">{formatPence(booking.coach_price_pence)}</span>
+              <span className="text-[18px] font-bold text-brand-600">{formatPence(booking.coach_price_pence)}</span>
             </div>
 
             {/* Session notes card (shown only if note exists) */}
@@ -407,7 +442,7 @@ export function BookingDetail() {
 
             {/* AF-H-48: cancellation context — reason, who, when */}
             {(booking.status === 'cancelled_parent' || booking.status === 'cancelled_coach') && (
-              <div className="bg-gray-50 rounded-[16px] p-5 space-y-2">
+              <div className="bg-neutral-50 rounded-[16px] p-5 space-y-2">
                 <p className="text-[12px] font-medium text-gray-500 uppercase tracking-wide">
                   Cancellation
                 </p>
@@ -434,7 +469,7 @@ export function BookingDetail() {
                 )}
                 <button
                   disabled={actionLoading !== null}
-                  className="w-full py-3.5 flex items-center justify-center gap-2 bg-[#0077CC] hover:bg-[#0066AA] disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-xl text-[15px] font-bold transition-colors"
+                  className="w-full py-3.5 flex items-center justify-center gap-2 bg-brand-600 hover:bg-brand-700 disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-xl text-[15px] font-bold transition-colors"
                   onClick={() => handleStatusAction('approve')}
                 >
                   {actionLoading === 'approve' ? <RefreshCw size={16} className="animate-spin" /> : null}

@@ -184,12 +184,38 @@ function statusBadgeClass(status: string): string {
 export function CoachRightPanel() {
   const [selectedDayIso, setSelectedDayIso] = useState<string>(todayIsoLocal())
   const [selectedSession, setSelectedSession] = useState<BookingListItem | null>(null)
-  // DS-RIGHT-PANEL-01-FIXES: week navigation. Note that BookingsContext only
-  // fetches the current week — offset !== 0 will render empty dots and an
-  // empty lineup. Filed PERF-RIGHT-PANEL-WEEK-NAV-DATA for fetch-on-demand.
+  // BUG-QA-02: weekOffset drives both the visible Mon-Sun strip AND the on-demand
+  // bookings fetch below. offset=0 uses the existing BookingsContext.thisWeek to
+  // dedupe with other consumers; offset !== 0 fetches its own week-scoped slice.
   const [weekOffset, setWeekOffset] = useState(0)
 
   const { thisWeek, pendingApproval, loading } = useBookings()
+
+  // BUG-QA-02: off-week bookings — fetched on demand for week-strip dot accuracy.
+  // When weekOffset === 0 we read from `thisWeek` (BookingsContext) so this stays
+  // empty in that case to avoid double-fetch.
+  const [weekStripBookings, setWeekStripBookings] = useState<BookingListItem[]>([])
+
+  useEffect(() => {
+    if (weekOffset === 0) {
+      setWeekStripBookings([])
+      return
+    }
+    const controller = new AbortController()
+    // BUG-QA-02 should-fix: clear stale data BEFORE the new fetch so dots blank
+    // during navigation rather than briefly showing the previous week's state.
+    setWeekStripBookings([])
+    fetch(`/api/coaches/bookings?tab=week&offset=${weekOffset}`, { signal: controller.signal })
+      .then((res) => res.ok ? res.json() : null)
+      .then((json: { bookings?: BookingListItem[] } | null) => {
+        if (json?.bookings) setWeekStripBookings(json.bookings)
+      })
+      .catch((err) => {
+        // AbortController fires AbortError on stale-response cancel — silent.
+        if (err?.name !== 'AbortError') console.error('[right-panel] week strip fetch failed:', err)
+      })
+    return () => controller.abort()
+  }, [weekOffset])
 
   // Coach profile — cached fetch dedups with the sidebar's fetch.
   const [profile, setProfile] = useState<ProfileData | null>(null)
@@ -301,14 +327,18 @@ export function CoachRightPanel() {
   }
 
   // Day → sessions map for dot indicators + lineup filtering.
+  // BUG-QA-02: source switches based on weekOffset — current week reads from
+  // BookingsContext (deduped with other consumers); off-weeks use the on-demand
+  // fetch above so dots and the lineup stay accurate when navigating.
   const sessionsByDay = useMemo(() => {
+    const source = weekOffset === 0 ? thisWeek : weekStripBookings
     const map: Record<string, BookingListItem[]> = {}
-    thisWeek.forEach((b) => {
+    source.forEach((b) => {
       if (!map[b.session_date]) map[b.session_date] = []
       map[b.session_date].push(b)
     })
     return map
-  }, [thisWeek])
+  }, [thisWeek, weekStripBookings, weekOffset])
 
   const selectedDaySessions = useMemo(() => {
     const list = sessionsByDay[selectedDayIso] ?? []
@@ -415,7 +445,14 @@ export function CoachRightPanel() {
         <p className="text-[11px] text-gray-400 mb-2">tap a day to update lineup</p>
         <div className="flex justify-between items-center">
           {weekDays.map((day) => {
-            const hasSession = (sessionsByDay[day.iso] ?? []).length > 0
+            const daySessions = sessionsByDay[day.iso] ?? []
+            const hasSession = daySessions.length > 0
+            // BUG-QA-02: per-day dominant status drives dot colour.
+            // Pending wins over confirmed (amber = action-needed); confirmed/
+            // completed → teal (trust signal); no sessions → invisible.
+            const hasPending = daySessions.some((s) => s.status === 'pending_approval')
+            const hasConfirmed = daySessions.some((s) => s.status === 'confirmed' || s.status === 'completed')
+            const dotColour = hasPending ? 'bg-amber-500' : (hasConfirmed ? 'bg-teal-600' : 'bg-brand-600')
             const isSelected = day.iso === selectedDayIso
             const circleClass = day.isToday
               ? 'w-9 h-9 rounded-full flex items-center justify-center text-[14px] font-bold bg-brand-600 text-white shadow-sm'
@@ -433,7 +470,7 @@ export function CoachRightPanel() {
                   {day.label}
                 </span>
                 <div className={circleClass}>{day.date}</div>
-                <div className={`w-1.5 h-1.5 rounded-full bg-brand-600 ${hasSession ? '' : 'opacity-0'}`} />
+                <div className={`w-1.5 h-1.5 rounded-full ${dotColour} ${hasSession ? '' : 'opacity-0'}`} />
               </button>
             )
           })}
