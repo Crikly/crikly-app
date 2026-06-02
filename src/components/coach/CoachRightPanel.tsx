@@ -37,6 +37,19 @@ import { Star, Clock, MessageSquare, User, MapPin, Trophy, ArrowRight, Check, X,
 import { useBookings, type BookingListItem } from '@/contexts/BookingsContext'
 import { fetchCoachProfileCached, fetchSportsListCached } from '@/lib/onboarding-cache'
 import { readStripeStatusCache, writeStripeStatusCache, type StripeConnectStatus } from '@/lib/stripe-status-cache'
+import {
+  readProfileCompletenessCache,
+  writeProfileCompletenessCache,
+  type ProfileCompleteness,
+} from '@/lib/profile-completeness-cache'
+
+// BUG-QA-02/06: superset of BookingListItem with optional programme_id.
+// Programme sessions are normalised into this shape so they merge into
+// sessionsByDay and selectedDaySessions without changing BookingsContext.
+// A real booking has programme_id === undefined; a synthetic programme
+// session row has it set. Acts as a discriminator in the dot-colour
+// ternary and the SessionDetailPopup CTA.
+type LineupItem = BookingListItem & { programme_id?: string }
 
 interface ProfileData {
   rating_avg: number | null
@@ -47,48 +60,6 @@ interface ProfileData {
   location_city: string | null
   full_name: string | null
   cancellation_window_hours: number
-}
-
-interface ProfileCompleteness {
-  sports: boolean
-  qualifications: boolean
-  availability: boolean
-  unanswered_reviews: number
-}
-
-// API-CMD-CENTRE: 60s TTL session cache for /api/coaches/profile-completeness.
-// Mirrors the stripe-status-cache pattern (TTL gate + corrupt-entry guard +
-// write-fail no-op). Short TTL lets us skip explicit invalidation — when the
-// coach adds a sport/availability slot and navigates back, at most 60s of
-// staleness shows before the next mount refetches.
-const COMPLETENESS_CACHE_KEY = 'crikly:profile-completeness'
-const COMPLETENESS_TTL_MS = 60 * 1000
-
-interface CompletenessCacheEntry {
-  value: ProfileCompleteness
-  storedAt: number
-}
-
-function readCompletenessCache(): ProfileCompleteness | null {
-  try {
-    const raw = sessionStorage.getItem(COMPLETENESS_CACHE_KEY)
-    if (!raw) return null
-    const parsed = JSON.parse(raw) as CompletenessCacheEntry
-    if (!Number.isFinite(parsed.storedAt)) return null
-    if (Date.now() - parsed.storedAt > COMPLETENESS_TTL_MS) return null
-    return parsed.value
-  } catch {
-    return null
-  }
-}
-
-function writeCompletenessCache(value: ProfileCompleteness): void {
-  try {
-    const entry: CompletenessCacheEntry = { value, storedAt: Date.now() }
-    sessionStorage.setItem(COMPLETENESS_CACHE_KEY, JSON.stringify(entry))
-  } catch {
-    // sessionStorage write failed — non-critical
-  }
 }
 
 interface Sport { id: string; name: string }
@@ -183,7 +154,7 @@ function statusBadgeClass(status: string): string {
 
 export function CoachRightPanel() {
   const [selectedDayIso, setSelectedDayIso] = useState<string>(todayIsoLocal())
-  const [selectedSession, setSelectedSession] = useState<BookingListItem | null>(null)
+  const [selectedSession, setSelectedSession] = useState<LineupItem | null>(null)
   // BUG-QA-02: weekOffset drives both the visible Mon-Sun strip AND the on-demand
   // bookings fetch below. offset=0 uses the existing BookingsContext.thisWeek to
   // dedupe with other consumers; offset !== 0 fetches its own week-scoped slice.
@@ -213,6 +184,65 @@ export function CoachRightPanel() {
       .catch((err) => {
         // AbortController fires AbortError on stale-response cancel — silent.
         if (err?.name !== 'AbortError') console.error('[right-panel] week strip fetch failed:', err)
+      })
+    return () => controller.abort()
+  }, [weekOffset])
+
+  // BUG-QA-02/06: programme sessions for the visible Mon-Sun strip. Runs in
+  // parallel with weekStripBookings and is always active (programme rows live
+  // outside the bookings table, so BookingsContext.thisWeek never carries
+  // them — even when weekOffset === 0). Synthetic LineupItem shape lets the
+  // result merge straight into sessionsByDay.
+  const [weekStripProgrammeSessions, setWeekStripProgrammeSessions] = useState<LineupItem[]>([])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    // Clear stale rows BEFORE the new fetch so dots blank during navigation
+    // (same pattern as weekStripBookings).
+    setWeekStripProgrammeSessions([])
+
+    const weekDaysForOffset = getWeekDays(weekOffset)
+    const fromIso = weekDaysForOffset[0].iso
+    const toIso = weekDaysForOffset[6].iso
+
+    fetch(`/api/coaches/programme-sessions?from=${fromIso}&to=${toIso}`, { signal: controller.signal })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json: {
+        sessions?: Array<{
+          id: string
+          session_date: string
+          start_time: string
+          end_time: string
+          programme_id: string
+          programme_title: string
+          sport_id: string
+          venue_name: string | null
+        }>
+      } | null) => {
+        if (!json?.sessions) return
+        const synthetic: LineupItem[] = json.sessions.map((s) => ({
+          id: s.id,
+          booking_reference: `PROG-${s.id.slice(0, 8)}`,
+          session_date: s.session_date,
+          session_start_time: s.start_time,
+          session_end_time: s.end_time,
+          session_type: 'group',
+          status: 'confirmed', // programmes are always status='active' + session='scheduled'
+          sport_id: s.sport_id,
+          coach_price_pence: 0, // not meaningful for the lineup view
+          booked_by_name: s.programme_title, // repurposed — lineup falls back to this when child_name is null
+          child_name: null,
+          messaging_unlocked: false,
+          created_at: '',
+          venue_name: s.venue_name,
+          programme_id: s.programme_id,
+        }))
+        setWeekStripProgrammeSessions(synthetic)
+      })
+      .catch((err) => {
+        if (err?.name !== 'AbortError') {
+          console.error('[right-panel] programme sessions fetch failed:', err)
+        }
       })
     return () => controller.abort()
   }, [weekOffset])
@@ -273,7 +303,7 @@ export function CoachRightPanel() {
   // effect above (cache hit → instant; cache miss → fetch + writeCache).
   useEffect(() => {
     let cancelled = false
-    const cached = readCompletenessCache()
+    const cached = readProfileCompletenessCache()
     if (cached) {
       setCompleteness(cached)
       return
@@ -284,7 +314,7 @@ export function CoachRightPanel() {
         const data = await res.json() as ProfileCompleteness
         if (cancelled) return
         setCompleteness(data)
-        writeCompletenessCache(data)
+        writeProfileCompletenessCache(data)
       })
       .catch(() => {})
     return () => { cancelled = true }
@@ -327,18 +357,20 @@ export function CoachRightPanel() {
   }
 
   // Day → sessions map for dot indicators + lineup filtering.
-  // BUG-QA-02: source switches based on weekOffset — current week reads from
-  // BookingsContext (deduped with other consumers); off-weeks use the on-demand
-  // fetch above so dots and the lineup stay accurate when navigating.
+  // BUG-QA-02/06: bookings source switches based on weekOffset — current week
+  // reads from BookingsContext (deduped with other consumers); off-weeks use the
+  // on-demand fetch above. Programme sessions live outside the bookings table
+  // so they always come from weekStripProgrammeSessions and are merged in.
   const sessionsByDay = useMemo(() => {
-    const source = weekOffset === 0 ? thisWeek : weekStripBookings
-    const map: Record<string, BookingListItem[]> = {}
-    source.forEach((b) => {
-      if (!map[b.session_date]) map[b.session_date] = []
-      map[b.session_date].push(b)
+    const bookingSource: LineupItem[] = weekOffset === 0 ? thisWeek : weekStripBookings
+    const merged: LineupItem[] = [...bookingSource, ...weekStripProgrammeSessions]
+    const map: Record<string, LineupItem[]> = {}
+    merged.forEach((item) => {
+      if (!map[item.session_date]) map[item.session_date] = []
+      map[item.session_date].push(item)
     })
     return map
-  }, [thisWeek, weekStripBookings, weekOffset])
+  }, [thisWeek, weekStripBookings, weekStripProgrammeSessions, weekOffset])
 
   const selectedDaySessions = useMemo(() => {
     const list = sessionsByDay[selectedDayIso] ?? []
@@ -450,9 +482,21 @@ export function CoachRightPanel() {
             // BUG-QA-02: per-day dominant status drives dot colour.
             // Pending wins over confirmed (amber = action-needed); confirmed/
             // completed → teal (trust signal); no sessions → invisible.
+            // BUG-QA-02/06: priority pending > confirmed booking > programme session.
+            // Programme rows match status='confirmed' too, so the booking check
+            // explicitly excludes them via the programme_id discriminator.
             const hasPending = daySessions.some((s) => s.status === 'pending_approval')
-            const hasConfirmed = daySessions.some((s) => s.status === 'confirmed' || s.status === 'completed')
-            const dotColour = hasPending ? 'bg-amber-500' : (hasConfirmed ? 'bg-teal-600' : 'bg-brand-600')
+            const hasConfirmedBooking = daySessions.some(
+              (s) => (s.status === 'confirmed' || s.status === 'completed') && !s.programme_id,
+            )
+            const hasProgramme = daySessions.some((s) => !!s.programme_id)
+            const dotColour = hasPending
+              ? 'bg-amber-500'
+              : hasConfirmedBooking
+                ? 'bg-teal-600'
+                : hasProgramme
+                  ? 'bg-purple-500'
+                  : 'bg-brand-600' // defensive — should be unreachable when hasSession=true
             const isSelected = day.iso === selectedDayIso
             const circleClass = day.isToday
               ? 'w-9 h-9 rounded-full flex items-center justify-center text-[14px] font-bold bg-brand-600 text-white shadow-sm'
@@ -751,7 +795,7 @@ function SessionDetailPopup({
   sportName,
   onClose,
 }: {
-  session: BookingListItem
+  session: LineupItem
   sportName: string
   onClose: () => void
 }) {
@@ -761,6 +805,16 @@ function SessionDetailPopup({
   const startTime = formatTime12h(session.session_start_time)
   const durationMinutes = getDurationMinutes(session.session_start_time, session.session_end_time)
   const location = session.venue_name ?? 'Venue TBC'
+  // BUG-QA-02/06: programme sessions route to /coach/programmes/{id}/roster
+  // instead of the bookings list (which would be semantically wrong — a
+  // programme session isn't a booking).
+  const isProgramme = !!session.programme_id
+  const ctaLabel = isProgramme ? 'View programme' : 'View booking details'
+  // Narrow session.programme_id to string in the truthy branch — TS doesn't
+  // narrow through the isProgramme const, so guard inline.
+  const ctaHref = session.programme_id
+    ? `/coach/programmes/${session.programme_id}/roster`
+    : '/coach/bookings'
 
   return (
     <div
@@ -808,10 +862,10 @@ function SessionDetailPopup({
           </div>
           <button
             type="button"
-            onClick={() => router.push('/coach/bookings')}
-            className="mt-4 w-full bg-brand-600 hover:bg-[#0066AA] transition-colors text-white rounded-lg py-2 text-[13px] font-medium flex items-center justify-center gap-1 cursor-pointer"
+            onClick={() => router.push(ctaHref)}
+            className="mt-4 w-full bg-brand-600 hover:bg-brand-700 transition-colors text-white rounded-lg py-2 text-[13px] font-medium flex items-center justify-center gap-1 cursor-pointer"
           >
-            View booking details
+            {ctaLabel}
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>

@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { AlertTriangle, AlertCircle, Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { fetchCoachProfileCached, clearCoachProfileCache } from '@/lib/onboarding-cache'
+import { clearAllCoachCaches } from '@/lib/auth-cleanup'
 
 // C-Settings-01-UI: 3 notification rows backed by 3 DB columns.
 // Drops design's "New booking" row (no email_booking_received column —
@@ -302,6 +303,10 @@ export default function CoachSettingsPage() {
       // Even if signOut throws, still redirect — the user asked to leave.
       console.error('[settings] sign out error:', err)
     } finally {
+      // BUG-QA-04: wipe coach-scoped sessionStorage so the next user on this
+      // tab doesn't inherit our cached profile / completeness / etc. Runs in
+      // finally so it executes even when signOut itself throws.
+      clearAllCoachCaches()
       // Reset state before navigation — if router.push is intercepted
       // (middleware redirect loop, etc.) the button stays usable instead
       // of being stuck disabled.
@@ -385,6 +390,8 @@ export default function CoachSettingsPage() {
       if (!res.ok) throw new Error(data.error ?? 'Failed to delete account')
       // Sign out then redirect (Ambiguity 8 → sequential).
       await supabase.auth.signOut()
+      // BUG-QA-04: same cache wipe as handleSignOut — keeps the next tab user clean.
+      clearAllCoachCaches()
       router.push('/')
     } catch (err) {
       console.error('[settings] delete error:', err)

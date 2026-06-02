@@ -16,6 +16,7 @@ const config = {
     'bg-teal-50', 'bg-teal-600', 'bg-teal-800',
     'text-teal-800',
     'bg-amber-100', 'bg-amber-500', 'bg-amber-700', 'bg-amber-800',
+    'bg-purple-100', 'bg-purple-500', 'border-purple-200', 'text-purple-700',
     'bg-success', 'bg-warning', 'bg-danger', 'bg-info',
     'text-success', 'text-warning', 'text-danger', 'text-info',
     'border-success', 'border-warning', 'border-danger', 'border-info',

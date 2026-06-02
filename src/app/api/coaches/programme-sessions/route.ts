@@ -29,6 +29,8 @@ interface ProgrammeSessionResponse {
   end_time: string             // 'HH:MM:SS'
   programme_id: string
   programme_title: string
+  sport_id: string             // BUG-QA-02/06: lets the right-panel lineup
+                               // resolve a sport name for programme rows.
   current_spots: number
   max_spots: number
   venue_name: string | null
@@ -86,7 +88,7 @@ export async function GET(
     //    from programmes the coach doesn't own or that are inactive.
     const { data: programmes, error: programmesError } = await adminSupabase
       .from('group_programmes')
-      .select('id, title, current_spots, max_spots, venue_name')
+      .select('id, title, sport_id, current_spots, max_spots, venue_name')
       .eq('coach_profile_id', coachProfile.id)
       .eq('status', 'active')
       .is('deleted_at', null)
@@ -105,6 +107,7 @@ export async function GET(
         p.id as string,
         {
           title: p.title as string,
+          sport_id: p.sport_id as string,
           current_spots: (p.current_spots as number) ?? 0,
           max_spots: (p.max_spots as number) ?? 0,
           venue_name: (p.venue_name as string | null) ?? null,
@@ -170,6 +173,7 @@ export async function GET(
         end_time: r.end_time as string,
         programme_id: programmeId,
         programme_title: prog?.title ?? '',
+        sport_id: prog?.sport_id ?? '',
         current_spots: prog?.current_spots ?? 0,
         max_spots: prog?.max_spots ?? 0,
         venue_name: sessionVenueName ?? prog?.venue_name ?? null,
