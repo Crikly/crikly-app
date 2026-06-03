@@ -14,6 +14,7 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import {
   ArrowRight,
@@ -58,6 +59,49 @@ const COACHES: Coach[] = [
   { name: "James O'Connor", loc: 'Old Trafford · Manchester', price: '£52', rating: '4.9', reviews: 61, avail: 'Sun, 11am', initials: 'JO', tag: 'Instant book' },
   { name: 'Aisha Bello', loc: 'Kennington · London', price: '£58', rating: '4.9', reviews: 40, avail: 'Thu, 4pm', initials: 'AB', tag: 'Top rated' },
 ]
+
+// PUB-01: shape returned by GET /api/public/coaches. Kept in sync with
+// src/app/api/public/coaches/route.ts PublicCoachListItem.
+interface PublicCoachListItem {
+  coach_profile_id: string
+  slug: string
+  display_name: string
+  location_city: string | null
+  avatar_url: string | null
+  sport_id: string
+  sport_slug: string
+  sport_name: string
+  price_individual_pence: number | null
+  currency: string
+  rating_avg: number | null
+  rating_count: number
+}
+
+// PUB-01: normalise the API row into the existing CoachCard view model so
+// the component doesn't need to grow a second prop shape.
+// Price note: card displays whole pounds (Math.round). Sub-pound granularity
+// (e.g. 5550 pence = £55.50) is truncated to £56 in the card. If we
+// introduce sub-pound pricing, this display logic needs updating.
+function normaliseCoach(c: PublicCoachListItem): Coach {
+  const parts = c.display_name.trim().split(/\s+/)
+  const initials =
+    parts.length >= 2
+      ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+      : c.display_name.slice(0, 2).toUpperCase()
+  return {
+    name: c.display_name,
+    loc: c.location_city ?? 'UK',
+    price:
+      c.price_individual_pence != null
+        ? `£${Math.round(c.price_individual_pence / 100)}`
+        : '—',
+    rating: c.rating_avg != null ? c.rating_avg.toFixed(1) : '—',
+    reviews: c.rating_count,
+    avail: 'Book now',
+    initials,
+    tag: c.rating_avg != null && c.rating_avg >= 4.8 ? 'Top rated' : 'DBS checked',
+  }
+}
 
 interface Activity {
   name: string
@@ -227,6 +271,7 @@ function ActivityMenu({
 // ─── The page ────────────────────────────────────────────────────────────────
 
 export default function HomePage() {
+  const router = useRouter()
   const navScrolled = useNavScroll()
   const { message: toastMessage, show: showToast } = useToast()
   useReveal()
@@ -236,6 +281,8 @@ export default function HomePage() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [location, setLocation] = useState('')
   const [cookieState, setCookieState] = useState<'hidden' | 'visible' | 'dismissed'>('hidden')
+  const [liveCoaches, setLiveCoaches] = useState<PublicCoachListItem[]>([])
+  const [coachesLoading, setCoachesLoading] = useState(true)
   const activityFieldRef = useRef<HTMLDivElement>(null)
 
   // CTA shorthand — every non-Log in CTA fires this and falls through to /login.
@@ -265,6 +312,30 @@ export default function HomePage() {
     return () => clearTimeout(t)
   }, [])
 
+  // PUB-01: fetch the coach rail data on mount. Fallback to the hardcoded
+  // COACHES mock on error or empty result, so the page never looks broken.
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch('/api/public/coaches?sport=cricket&limit=8')
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        const json = (await res.json()) as { coaches?: PublicCoachListItem[] }
+        if (cancelled) return
+        setLiveCoaches(json.coaches ?? [])
+      } catch (err) {
+        // Swallow — fallback render covers it. Surface to dev console for triage.
+        console.warn('[landing] coach rail fetch failed; falling back to mock:', err)
+        if (!cancelled) setLiveCoaches([])
+      } finally {
+        if (!cancelled) setCoachesLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const handleCookie = useCallback((choice: 'accept' | 'decline') => {
     try {
       localStorage.setItem(COOKIE_KEY, choice)
@@ -275,9 +346,23 @@ export default function HomePage() {
     setTimeout(() => setCookieState('dismissed'), 420)
   }, [])
 
+  // PUB-04: route the hero search. Cricket → /coaches; other sports → toast.
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
-    showToast(CTA_TOAST_MSG)
+    if (activity !== 'Cricket') {
+      showToast('Cricket is live — parent booking opens soon.')
+      return
+    }
+    const trimmedLocation = location.trim()
+    const url = trimmedLocation
+      ? `/coaches?sport=cricket&location=${encodeURIComponent(trimmedLocation)}`
+      : '/coaches?sport=cricket'
+    // PUB-02 follow-up: /coaches doesn't exist yet — 404s until then.
+    // Dev-only diagnostic so production consoles stay quiet.
+    if (process.env.NODE_ENV === 'development') {
+      console.warn(`[landing] /coaches (PUB-02) not yet built — navigating to ${url} anyway`)
+    }
+    router.push(url)
   }
 
   return (
@@ -669,9 +754,49 @@ export default function HomePage() {
           </button>
         </div>
         <div className={`${s.railScroll} -mx-10 grid auto-cols-[minmax(280px,1fr)] grid-flow-col gap-[22px] overflow-x-auto px-10 pt-1 pb-[18px] max-md:-mx-[22px] max-md:px-[22px]`}>
-          {COACHES.map((coach, i) => (
-            <CoachCard key={coach.name} coach={coach} photo={CRICKET_PHOTOS[i % CRICKET_PHOTOS.length]} onClick={handleCta} />
-          ))}
+          {coachesLoading ? (
+            // PUB-01: 5 inline skeletons sized to match CoachCard.
+            Array.from({ length: 5 }).map((_, i) => (
+              <div
+                key={`skeleton-${i}`}
+                className="overflow-hidden rounded-2xl border border-neutral-100 bg-white"
+              >
+                <div className={`${s.coachPhoto} animate-pulse bg-neutral-100`} />
+                <div className="px-[17px] pb-[17px] pt-[15px]">
+                  <div className="h-4 w-2/3 animate-pulse rounded bg-neutral-100" />
+                  <div className="mt-2 h-3 w-1/2 animate-pulse rounded bg-neutral-100" />
+                  <div className="mt-4 h-4 w-1/3 animate-pulse rounded bg-neutral-100" />
+                </div>
+              </div>
+            ))
+          ) : liveCoaches.length > 0 ? (
+            // Live coaches — avatar fallback to CRICKET_PHOTOS; navigate to /coaches/{slug}.
+            liveCoaches.map((live, i) => {
+              const normalised = normaliseCoach(live)
+              const photo = live.avatar_url ?? CRICKET_PHOTOS[i % CRICKET_PHOTOS.length]
+              const href = `/coaches/${live.slug}`
+              return (
+                <CoachCard
+                  key={`${live.coach_profile_id}-${live.sport_slug}`}
+                  coach={normalised}
+                  photo={photo}
+                  onClick={() => {
+                    // PUB-02 follow-up: /coaches/{slug} doesn't exist yet — 404 until then.
+                    // Dev-only diagnostic so production consoles stay quiet.
+                    if (process.env.NODE_ENV === 'development') {
+                      console.warn(`[landing] /coaches/{slug} (PUB-02) not yet built — navigating to ${href} anyway`)
+                    }
+                    router.push(href)
+                  }}
+                />
+              )
+            })
+          ) : (
+            // Fallback — mock data with toast click handler.
+            COACHES.map((coach, i) => (
+              <CoachCard key={coach.name} coach={coach} photo={CRICKET_PHOTOS[i % CRICKET_PHOTOS.length]} onClick={handleCta} />
+            ))
+          )}
         </div>
       </section>
 
