@@ -586,6 +586,12 @@ before going live with real coaches. Ordered by priority.
 | CG-05 | Push notifications via OneSignal | Production deployment |
 | C-12 | DBS submission route | Product decision on Phase 1 scope |
 
+### 3J — Public API (anonymous-accessible endpoints)
+
+| ID | Task | Agent | Risk | Branch | Status |
+|---|---|---|---|---|---|
+| PUB-API-01 | GET /api/public/coaches — anon coach discovery endpoint. Anon-only Supabase client (src/lib/supabase/public.ts). RLS policy on user_profiles gated on is_profile_live=true + SECURITY DEFINER helper to break 42P17 recursion (migrations 20260603120000 + 20260603130000). JS-sort fallback for PostgREST referencedTable ordering. NULL-last rating semantics. Sport slug→id resolver. Filters: is_active, is_profile_live, is_suspended=false, is_paused=false, deleted_at IS NULL. Default limit 8, max 20, over-fetch cap 200. CORS open, Cache-Control public s-maxage=60 stale-while-revalidate=300. Powers landing rail. Applied to hosted dev; smoke tested. | @BackendDeveloper | 🔴 | develop | ✅ |
+
 ---
 
 ## Step 4 — Parent & Player Module
