@@ -854,7 +854,7 @@ export default function HomePage() {
           <div className="mb-1.5 text-[15px] font-semibold text-gray-900">We value your privacy</div>
           <p className="m-0 text-[13px] leading-[1.5] text-neutral-600">
             We use cookies to run Crikly and to understand how it&apos;s used. You choose — accept all, or stick to essentials only. Read our{' '}
-            <a href="#" className="font-medium text-brand-600 underline">
+            <a href="/cookies" className="font-medium text-brand-600 underline">
               Cookie Policy
             </a>
             .

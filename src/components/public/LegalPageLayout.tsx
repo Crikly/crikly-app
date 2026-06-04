@@ -43,8 +43,9 @@ export function LegalPageLayout({ children }: { children: ReactNode }) {
       </main>
 
       <footer className="border-t border-neutral-100 bg-white">
-        <div className="mx-auto max-w-[1180px] px-10 py-[22px] text-xs text-gray-500 max-md:px-[22px]">
+        <div className="mx-auto flex max-w-[740px] items-center justify-between gap-4 border-t border-neutral-100 px-10 py-[22px] text-xs text-gray-500 max-md:px-[22px]">
           <span>© 2026 Tekly Solutions Ltd. Crikly is a product of Tekly Solutions.</span>
+          <span>Made in the UK</span>
         </div>
       </footer>
     </div>
