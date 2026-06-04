@@ -818,8 +818,8 @@ export default function HomePage() {
               <a href="#how">Getting paid</a>
               <span className="flex items-center gap-2 py-1.5 text-sm text-neutral-600">
                 Schools &amp; clubs
-                <span className="rounded-full bg-neutral-50 px-1.5 py-[3px] text-[10px] font-semibold uppercase tracking-[0.04em] text-neutral-400">
-                  Coming soon
+                <span className="text-[11px] text-neutral-400">
+                  · soon
                 </span>
               </span>
             </FooterCol>
