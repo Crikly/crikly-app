@@ -691,13 +691,13 @@ export default function HomePage() {
             </div>
             <h2 className={`${s.sectionTitle} max-w-[18ch] font-semibold text-gray-900`}>Real coaches. Real pitches.</h2>
           </div>
-          <button
-            onClick={handleCta}
-            className="inline-flex cursor-pointer items-center gap-[7px] whitespace-nowrap rounded-none border-0 bg-transparent px-1 py-2 text-[15px] font-medium text-brand-600 transition-all hover:gap-[11px]"
+          <Link
+            href="/coaches"
+            className="inline-flex items-center gap-[7px] whitespace-nowrap rounded-none border-0 bg-transparent px-1 py-2 text-[15px] font-medium text-brand-600 no-underline transition-all hover:gap-[11px]"
           >
             See all coaches
             <ArrowRight size={16} strokeWidth={2.2} />
-          </button>
+          </Link>
         </div>
         <div className={`${s.railScroll} -mx-10 grid auto-cols-[minmax(280px,1fr)] grid-flow-col gap-[22px] overflow-x-auto px-10 pt-1 pb-[18px] max-md:-mx-[22px] max-md:px-[22px]`}>
           {coachesLoading ? (
