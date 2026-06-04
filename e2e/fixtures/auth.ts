@@ -22,10 +22,12 @@ export async function loginAsTestCoach(page: Page): Promise<void> {
   await page.getByLabel('Password', { exact: true }).fill(password)
   await page.getByRole('button', { name: 'Log in', exact: true }).click()
 
-  // Login redirects to /dashboard (the role-switcher) even when active_role='coach' —
-  // the post-login destination is hardcoded. Wait for that to settle, then navigate
-  // explicitly to the coach surface so subsequent specs can run against /coach/*.
-  await page.waitForURL(/\/dashboard|\/coach\//, { timeout: 15000 })
+  // Seed test coach has no primary_role so the server's role-aware redirect
+  // sends them to /onboarding/role instead of /dashboard. Both are valid
+  // post-login destinations. Follow-up: update the test coach's
+  // user_metadata.primary_role to 'coach' so this widens back to strict
+  // /dashboard only.
+  await page.waitForURL(/\/(dashboard|coach|onboarding\/role)/, { timeout: 15000 })
   await page.goto('/coach/dashboard')
   await page.waitForURL(/\/coach\//, { timeout: 10000 })
 }

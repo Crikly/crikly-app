@@ -3,18 +3,19 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowRight, ClipboardCheck, Mail, User, Users } from 'lucide-react'
+import { ArrowRight, ClipboardCheck, User, Users } from 'lucide-react'
 
-// PUB-03: pre-auth role chooser — client UI for the three role cards.
-// Parent + player aren't yet bookable — clicking expands the card with a
-// "Coming soon" line and an email collector that fires a toast on submit.
-// Coach goes straight to /login. Parent server-component reads ?role=
-// and seeds initialExpanded so the matching card opens without a flash.
+// PUB-03: pre-auth role chooser — 3-column grid. Coach card navigates to
+// /login. Parent + player cards fire a "booking opens soon" toast on
+// click and briefly highlight the clicked card (1s) before resetting.
 
-// ─── Toast hook ──────────────────────────────────────────────────────────────
+// ─── Constants ───────────────────────────────────────────────────────────────
 
 const TOAST_MS = 2600
-const SHARED_TOAST = "Thanks — we'll let you know when booking opens!"
+const HIGHLIGHT_MS = 1000
+const TOAST_MSG = "Booking opens soon — we'll let you know!"
+
+// ─── Toast hook ──────────────────────────────────────────────────────────────
 
 function useToast() {
   const [message, setMessage] = useState<string | null>(null)
@@ -35,22 +36,30 @@ function useToast() {
 
 // ─── Page body ───────────────────────────────────────────────────────────────
 
-type Expanded = 'parent' | 'player' | null
+type Highlighted = 'parent' | 'player' | null
 
-export function JoinPageClient({ initialExpanded }: { initialExpanded: Expanded }) {
-  const [expanded, setExpanded] = useState<Expanded>(initialExpanded)
-  const [parentEmail, setParentEmail] = useState('')
-  const [playerEmail, setPlayerEmail] = useState('')
+export function JoinPageClient() {
+  const [highlighted, setHighlighted] = useState<Highlighted>(null)
+  const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { message: toastMessage, show: showToast } = useToast()
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    showToast(SHARED_TOAST)
+  const handleNonCoachClick = (role: 'parent' | 'player') => {
+    setHighlighted(role)
+    if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current)
+    highlightTimerRef.current = setTimeout(() => setHighlighted(null), HIGHLIGHT_MS)
+    showToast(TOAST_MSG)
   }
 
+  useEffect(
+    () => () => {
+      if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current)
+    },
+    [],
+  )
+
   return (
-    <main className="min-h-screen bg-neutral-50">
-      <div className="mx-auto flex min-h-screen max-w-[480px] flex-col justify-center px-6 py-10">
+    <main className="min-h-screen bg-white">
+      <div className="mx-auto flex min-h-screen max-w-[960px] flex-col justify-center px-6 py-10">
         {/* Logo — centered, links to / */}
         <Link
           href="/"
@@ -68,42 +77,36 @@ export function JoinPageClient({ initialExpanded }: { initialExpanded: Expanded 
         </Link>
 
         {/* Header copy */}
-        <h1 className="mb-2 text-center text-[clamp(24px,3vw,28px)] font-semibold tracking-tight text-gray-900">
+        <h1 className="mb-2 text-center text-[clamp(28px,3vw,32px)] font-semibold tracking-tight text-gray-900">
           Which best describes you?
         </h1>
-        <p className="mb-8 text-center text-base text-neutral-600">
+        <p className="mb-10 text-center text-base text-neutral-600 max-md:mb-8">
           Great coaching, one tap away.
         </p>
 
-        {/* Card stack */}
-        <div className="flex flex-col gap-3">
-          <ExpandableRoleCard
+        {/* 3-col grid */}
+        <div className="grid grid-cols-3 gap-5 max-md:grid-cols-1 max-md:gap-3">
+          <CoachCard />
+          <ToastingRoleCard
             role="parent"
-            title="I'm a parent"
+            title="Parent"
             description="Book sessions for my child"
-            icon={<Users size={22} strokeWidth={1.8} />}
-            expanded={expanded === 'parent'}
-            email={parentEmail}
-            onEmailChange={setParentEmail}
-            onClick={() => setExpanded((cur) => (cur === 'parent' ? null : 'parent'))}
-            onSubmit={handleSubmit}
+            icon={<Users size={32} strokeWidth={1.6} />}
+            highlighted={highlighted === 'parent'}
+            onClick={() => handleNonCoachClick('parent')}
           />
-          <ExpandableRoleCard
+          <ToastingRoleCard
             role="player"
-            title="I'm a player"
+            title="Player"
             description="Book coaching for myself (16+)"
-            icon={<User size={22} strokeWidth={1.8} />}
-            expanded={expanded === 'player'}
-            email={playerEmail}
-            onEmailChange={setPlayerEmail}
-            onClick={() => setExpanded((cur) => (cur === 'player' ? null : 'player'))}
-            onSubmit={handleSubmit}
+            icon={<User size={32} strokeWidth={1.6} />}
+            highlighted={highlighted === 'player'}
+            onClick={() => handleNonCoachClick('player')}
           />
-          <CoachLinkCard />
         </div>
 
         {/* Footer link */}
-        <p className="mt-8 text-center text-sm text-neutral-600">
+        <p className="mt-10 text-center text-sm text-neutral-600 max-md:mt-8">
           Already have an account?{' '}
           <Link href="/login" className="font-medium text-brand-600 no-underline">
             Log in
@@ -127,123 +130,73 @@ export function JoinPageClient({ initialExpanded }: { initialExpanded: Expanded 
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
-interface ExpandableRoleCardProps {
-  role: 'parent' | 'player'
-  title: string
-  description: string
-  icon: React.ReactNode
-  expanded: boolean
-  email: string
-  onEmailChange: (v: string) => void
-  onClick: () => void
-  onSubmit: (e: React.FormEvent) => void
-}
-
-function ExpandableRoleCard({
-  role,
-  title,
-  description,
-  icon,
-  expanded,
-  email,
-  onEmailChange,
-  onClick,
-  onSubmit,
-}: ExpandableRoleCardProps) {
-  return (
-    <div
-      data-testid={`join-card-${role}`}
-      className={`overflow-hidden rounded-2xl border transition-all ${
-        expanded
-          ? 'border-brand-600 bg-brand-50/30'
-          : 'border-neutral-100 bg-white hover:-translate-y-[1px] hover:border-neutral-200'
-      }`}
-    >
-      <button
-        type="button"
-        onClick={onClick}
-        aria-expanded={expanded}
-        aria-controls={`join-card-${role}-panel`}
-        className="flex w-full items-center gap-3.5 p-4 text-left"
-      >
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] bg-brand-50 text-brand-600">
-          {icon}
-        </div>
-        <div className="flex-1">
-          <p className="text-[15px] font-semibold leading-tight text-gray-900">{title}</p>
-          <p className="mt-0.5 text-[13px] text-neutral-600">{description}</p>
-        </div>
-        <ArrowRight
-          size={16}
-          strokeWidth={2.2}
-          className={`shrink-0 text-neutral-400 transition-transform ${
-            expanded ? 'rotate-90 text-brand-600' : ''
-          }`}
-        />
-      </button>
-
-      {/* Panel always rendered so aria-controls always resolves to a DOM
-          node. `hidden` collapses both layout and accessibility tree when
-          the card isn't selected. */}
-      <form
-        id={`join-card-${role}-panel`}
-        onSubmit={onSubmit}
-        hidden={!expanded}
-        className="border-t border-brand-100 px-4 py-4"
-      >
-        <p className="mb-3 text-[13px] leading-relaxed text-neutral-600">
-          Booking opens soon — leave your email and we&apos;ll be in touch the moment it
-          goes live.
-        </p>
-        <div className="flex items-stretch gap-2 max-[420px]:flex-col">
-          <label htmlFor={`join-email-${role}`} className="sr-only">
-            Email address
-          </label>
-          <div className="flex flex-1 items-center gap-2 rounded-[10px] border border-neutral-100 bg-white px-3">
-            <Mail size={16} className="shrink-0 text-neutral-400" />
-            <input
-              id={`join-email-${role}`}
-              type="email"
-              required
-              value={email}
-              onChange={(e) => onEmailChange(e.target.value)}
-              placeholder="you@example.com"
-              autoComplete="email"
-              className="h-11 w-full min-w-0 border-0 bg-transparent p-0 text-[14px] text-gray-900 outline-none placeholder:font-normal placeholder:text-neutral-400"
-            />
-          </div>
-          <button
-            type="submit"
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-[10px] border-0 bg-brand-600 px-5 text-[14px] font-medium text-white transition-all hover:bg-brand-700 active:scale-[0.98]"
-          >
-            Notify me
-          </button>
-        </div>
-      </form>
-    </div>
-  )
-}
-
-function CoachLinkCard() {
+function CoachCard() {
   return (
     <Link
       href="/login"
       data-testid="join-card-coach"
-      className="flex items-center gap-3.5 rounded-2xl border border-neutral-100 bg-white p-4 no-underline transition-all hover:-translate-y-[1px] hover:border-neutral-200"
+      className="group flex flex-col items-center justify-between rounded-2xl border border-neutral-100 bg-white p-8 text-center no-underline transition-all hover:-translate-y-[2px] hover:border-neutral-200"
     >
-      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] bg-brand-50 text-brand-600">
-        <ClipboardCheck size={22} strokeWidth={1.8} />
-      </div>
-      <div className="flex-1">
-        <p className="text-[15px] font-semibold leading-tight text-gray-900">I&apos;m a coach</p>
-        <p className="mt-0.5 text-[13px] text-neutral-600">
+      <div>
+        <div className="mx-auto mb-5 flex h-[72px] w-[72px] items-center justify-center rounded-full bg-brand-50 text-brand-600">
+          <ClipboardCheck size={32} strokeWidth={1.6} />
+        </div>
+        <h2 className="mb-2 text-xl font-semibold text-gray-900">Coach</h2>
+        <p className="mx-auto mb-6 max-w-[20ch] text-sm text-neutral-600">
           Offer sessions and get paid reliably
         </p>
       </div>
-      <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-[13px] font-medium text-brand-600">
-        Log in
-        <ArrowRight size={16} strokeWidth={2.2} />
+      <span className="flex h-10 w-10 items-center justify-center rounded-full border border-neutral-200 text-neutral-400 transition-all group-hover:border-brand-600 group-hover:text-brand-600">
+        <ArrowRight size={18} strokeWidth={2} />
       </span>
     </Link>
+  )
+}
+
+interface ToastingRoleCardProps {
+  role: 'parent' | 'player'
+  title: string
+  description: string
+  icon: React.ReactNode
+  highlighted: boolean
+  onClick: () => void
+}
+
+function ToastingRoleCard({
+  role,
+  title,
+  description,
+  icon,
+  highlighted,
+  onClick,
+}: ToastingRoleCardProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      data-testid={`join-card-${role}`}
+      className={`group flex flex-col items-center justify-between rounded-2xl border bg-white p-8 text-center transition-all hover:-translate-y-[2px] ${
+        highlighted ? 'border-brand-600' : 'border-neutral-100 hover:border-neutral-200'
+      }`}
+    >
+      <div>
+        <div className="mx-auto mb-5 flex h-[72px] w-[72px] items-center justify-center rounded-full bg-brand-50 text-brand-600">
+          {icon}
+        </div>
+        <h2 className="mb-2 text-xl font-semibold text-gray-900">{title}</h2>
+        <p className="mx-auto mb-6 max-w-[20ch] text-sm text-neutral-600">
+          {description}
+        </p>
+      </div>
+      <span
+        className={`flex h-10 w-10 items-center justify-center rounded-full border transition-all ${
+          highlighted
+            ? 'border-brand-600 text-brand-600'
+            : 'border-neutral-200 text-neutral-400 group-hover:border-brand-600 group-hover:text-brand-600'
+        }`}
+      >
+        <ArrowRight size={18} strokeWidth={2} />
+      </span>
+    </button>
   )
 }
