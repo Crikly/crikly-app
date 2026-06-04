@@ -1,4 +1,4 @@
-import { AuthLogo } from '@/components/auth/AuthLogo'
+import { AuthSplitShell } from '@/components/auth/AuthSplitShell'
 import { AuthDivider } from '@/components/auth/AuthDivider'
 import { SocialAuthButtons } from '@/components/auth/SocialAuthButtons'
 import { RegisterForm } from '@/components/auth/RegisterForm'
@@ -11,27 +11,11 @@ export const metadata = {
 
 export default function RegisterPage() {
   return (
-    <>
-      <AuthLogo />
-      <h1
-        style={{
-          fontSize: '24px',
-          fontWeight: 600,
-          color: '#0F172A',
-          letterSpacing: '-0.3px',
-          margin: '0 0 8px',
-        }}
-      >
+    <AuthSplitShell>
+      <h1 className="mb-2 text-2xl font-semibold tracking-tight text-gray-900">
         Create your account
       </h1>
-      <p
-        style={{
-          fontSize: '14px',
-          color: '#475569',
-          margin: '0 0 28px',
-          lineHeight: 1.5,
-        }}
-      >
+      <p className="mb-7 text-sm leading-relaxed text-neutral-600">
         Join coaches and players across the UK
       </p>
 
@@ -40,22 +24,12 @@ export default function RegisterPage() {
       <AuthDivider />
       <SocialAuthButtons mode="register" />
 
-      <p
-        style={{
-          textAlign: 'center',
-          fontSize: '13px',
-          color: '#64748B',
-          margin: '24px 0 0',
-        }}
-      >
+      <p className="mt-6 text-center text-[13px] text-gray-500">
         Already have an account?{' '}
-        <Link
-          href="/login"
-          style={{ color: '#0077CC', fontWeight: 500, textDecoration: 'none' }}
-        >
+        <Link href="/login" className="font-medium text-brand-600 no-underline">
           Log in
         </Link>
       </p>
-    </>
+    </AuthSplitShell>
   )
 }
