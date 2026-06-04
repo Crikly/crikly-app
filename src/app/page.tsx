@@ -20,15 +20,20 @@ import {
   ArrowRight,
   Check,
   ChevronDown,
-  Circle,
   Clock,
   FileCheck,
-  Heart,
   MapPin,
   Search,
   Users,
   User,
 } from 'lucide-react'
+import {
+  CoachCard,
+  CoachCardSkeleton,
+  normaliseCoach,
+  type Coach,
+  type PublicCoachListItem,
+} from '@/components/public/CoachCard'
 import s from './landing.module.css'
 
 // ─── Data ────────────────────────────────────────────────────────────────────
@@ -41,17 +46,6 @@ const CRICKET_PHOTOS = [
   'https://images.unsplash.com/photo-1607734834519-d8576ae60ea6?w=700&q=80',
 ]
 
-interface Coach {
-  name: string
-  loc: string
-  price: string
-  rating: string
-  reviews: number
-  avail: string
-  initials: string
-  tag: string
-}
-
 const COACHES: Coach[] = [
   { name: 'Ravi Kumar', loc: 'The Oval · London', price: '£55', rating: '4.9', reviews: 48, avail: 'Tomorrow, 10am', initials: 'RK', tag: 'Top rated' },
   { name: 'Priya Sharma', loc: 'Edgbaston · Birmingham', price: '£48', rating: '4.8', reviews: 33, avail: 'Today, 5pm', initials: 'PS', tag: 'Instant book' },
@@ -59,49 +53,6 @@ const COACHES: Coach[] = [
   { name: "James O'Connor", loc: 'Old Trafford · Manchester', price: '£52', rating: '4.9', reviews: 61, avail: 'Sun, 11am', initials: 'JO', tag: 'Instant book' },
   { name: 'Aisha Bello', loc: 'Kennington · London', price: '£58', rating: '4.9', reviews: 40, avail: 'Thu, 4pm', initials: 'AB', tag: 'Top rated' },
 ]
-
-// PUB-01: shape returned by GET /api/public/coaches. Kept in sync with
-// src/app/api/public/coaches/route.ts PublicCoachListItem.
-interface PublicCoachListItem {
-  coach_profile_id: string
-  slug: string
-  display_name: string
-  location_city: string | null
-  avatar_url: string | null
-  sport_id: string
-  sport_slug: string
-  sport_name: string
-  price_individual_pence: number | null
-  currency: string
-  rating_avg: number | null
-  rating_count: number
-}
-
-// PUB-01: normalise the API row into the existing CoachCard view model so
-// the component doesn't need to grow a second prop shape.
-// Price note: card displays whole pounds (Math.round). Sub-pound granularity
-// (e.g. 5550 pence = £55.50) is truncated to £56 in the card. If we
-// introduce sub-pound pricing, this display logic needs updating.
-function normaliseCoach(c: PublicCoachListItem): Coach {
-  const parts = c.display_name.trim().split(/\s+/)
-  const initials =
-    parts.length >= 2
-      ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
-      : c.display_name.slice(0, 2).toUpperCase()
-  return {
-    name: c.display_name,
-    loc: c.location_city ?? 'UK',
-    price:
-      c.price_individual_pence != null
-        ? `£${Math.round(c.price_individual_pence / 100)}`
-        : '—',
-    rating: c.rating_avg != null ? c.rating_avg.toFixed(1) : '—',
-    reviews: c.rating_count,
-    avail: 'Book now',
-    initials,
-    tag: c.rating_avg != null && c.rating_avg >= 4.8 ? 'Top rated' : 'DBS checked',
-  }
-}
 
 interface Activity {
   name: string
@@ -324,8 +275,8 @@ export default function HomePage() {
         if (cancelled) return
         setLiveCoaches(json.coaches ?? [])
       } catch (err) {
-        // Swallow — fallback render covers it. Surface to dev console for triage.
-        console.warn('[landing] coach rail fetch failed; falling back to mock:', err)
+        // Swallow — fallback render covers it. Surface to console for triage.
+        console.error('[landing] coach rail fetch failed; falling back to mock:', err)
         if (!cancelled) setLiveCoaches([])
       } finally {
         if (!cancelled) setCoachesLoading(false)
@@ -357,11 +308,6 @@ export default function HomePage() {
     const url = trimmedLocation
       ? `/coaches?sport=cricket&location=${encodeURIComponent(trimmedLocation)}`
       : '/coaches?sport=cricket'
-    // PUB-02 follow-up: /coaches doesn't exist yet — 404s until then.
-    // Dev-only diagnostic so production consoles stay quiet.
-    if (process.env.NODE_ENV === 'development') {
-      console.warn(`[landing] /coaches (PUB-02) not yet built — navigating to ${url} anyway`)
-    }
     router.push(url)
   }
 
@@ -755,46 +701,35 @@ export default function HomePage() {
         </div>
         <div className={`${s.railScroll} -mx-10 grid auto-cols-[minmax(280px,1fr)] grid-flow-col gap-[22px] overflow-x-auto px-10 pt-1 pb-[18px] max-md:-mx-[22px] max-md:px-[22px]`}>
           {coachesLoading ? (
-            // PUB-01: 5 inline skeletons sized to match CoachCard.
+            // PUB-01: 5 skeletons sized to match CoachCard.
             Array.from({ length: 5 }).map((_, i) => (
-              <div
-                key={`skeleton-${i}`}
-                className="overflow-hidden rounded-2xl border border-neutral-100 bg-white"
-              >
-                <div className={`${s.coachPhoto} animate-pulse bg-neutral-100`} />
-                <div className="px-[17px] pb-[17px] pt-[15px]">
-                  <div className="h-4 w-2/3 animate-pulse rounded bg-neutral-100" />
-                  <div className="mt-2 h-3 w-1/2 animate-pulse rounded bg-neutral-100" />
-                  <div className="mt-4 h-4 w-1/3 animate-pulse rounded bg-neutral-100" />
-                </div>
-              </div>
+              <CoachCardSkeleton key={`skeleton-${i}`} />
             ))
           ) : liveCoaches.length > 0 ? (
-            // Live coaches — avatar fallback to CRICKET_PHOTOS; navigate to /coaches/{slug}.
+            // Live coaches — avatar fallback to CRICKET_PHOTOS; Link to /coaches/{slug}.
             liveCoaches.map((live, i) => {
               const normalised = normaliseCoach(live)
               const photo = live.avatar_url ?? CRICKET_PHOTOS[i % CRICKET_PHOTOS.length]
-              const href = `/coaches/${live.slug}`
               return (
                 <CoachCard
                   key={`${live.coach_profile_id}-${live.sport_slug}`}
                   coach={normalised}
                   photo={photo}
-                  onClick={() => {
-                    // PUB-02 follow-up: /coaches/{slug} doesn't exist yet — 404 until then.
-                    // Dev-only diagnostic so production consoles stay quiet.
-                    if (process.env.NODE_ENV === 'development') {
-                      console.warn(`[landing] /coaches/{slug} (PUB-02) not yet built — navigating to ${href} anyway`)
-                    }
-                    router.push(href)
-                  }}
+                  sportName={live.sport_name}
+                  href={`/coaches/${live.slug}`}
                 />
               )
             })
           ) : (
             // Fallback — mock data with toast click handler.
             COACHES.map((coach, i) => (
-              <CoachCard key={coach.name} coach={coach} photo={CRICKET_PHOTOS[i % CRICKET_PHOTOS.length]} onClick={handleCta} />
+              <CoachCard
+                key={coach.name}
+                coach={coach}
+                photo={CRICKET_PHOTOS[i % CRICKET_PHOTOS.length]}
+                sportName="cricket"
+                onClick={handleCta}
+              />
             ))
           )}
         </div>
@@ -995,64 +930,6 @@ function FooterCol({ heading, children }: { heading: string; children: React.Rea
         {children}
       </div>
     </div>
-  )
-}
-
-function CoachCard({ coach, photo, onClick }: { coach: Coach; photo: string; onClick: () => void }) {
-  const [faved, setFaved] = useState(false)
-  return (
-    <article
-      data-reveal
-      onClick={onClick}
-      className={`${s.reveal} group cursor-pointer overflow-hidden rounded-2xl border border-neutral-100 bg-white transition-all hover:-translate-y-[3px] hover:border-neutral-200`}
-    >
-      <div className={`${s.coachPhoto} relative overflow-hidden bg-brand-50`}>
-        <Image
-          src={photo}
-          alt={`${coach.name}, cricket coach`}
-          fill
-          sizes="280px"
-          className="object-cover transition-transform duration-700 ease-out group-hover:scale-[1.05]"
-        />
-        <button
-          aria-label="Save"
-          onClick={(e) => {
-            e.stopPropagation()
-            setFaved((v) => !v)
-          }}
-          className={`absolute right-3 top-3 flex h-[34px] w-[34px] cursor-pointer items-center justify-center rounded-full border-0 bg-white/[0.92] backdrop-blur-[4px] transition-colors ${
-            faved ? 'text-rose-600' : 'text-neutral-600'
-          }`}
-        >
-          <Heart size={17} strokeWidth={2} fill={faved ? 'currentColor' : 'none'} />
-        </button>
-        <span className="absolute bottom-3 left-3 inline-flex h-[26px] items-center gap-1.5 rounded-full bg-white/[0.92] px-3 text-xs font-semibold text-teal-800 backdrop-blur-[4px]">
-          <Check size={12} strokeWidth={2.4} />
-          {coach.tag}
-        </span>
-      </div>
-      <div className="px-[17px] pb-[17px] pt-[15px]">
-        <div className="flex items-baseline justify-between gap-2">
-          <span className="text-base font-semibold text-gray-900">{coach.name}</span>
-          <span className="inline-flex items-center gap-1 whitespace-nowrap text-sm font-medium text-gray-900">
-            <span className="text-amber-700">★</span>
-            {coach.rating}{' '}
-            <span className="font-normal text-gray-500">({coach.reviews})</span>
-          </span>
-        </div>
-        <div className="mt-0.5 text-[13px] text-gray-500">{coach.loc}</div>
-        <div className="mt-3.5 flex items-baseline justify-between border-t border-neutral-100 pt-3">
-          <span className="text-[15px] font-semibold text-gray-900">
-            {coach.price}
-            <small className="text-xs font-normal text-gray-500"> / hr</small>
-          </span>
-          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-teal-600">
-            <Circle size={12} strokeWidth={2.2} />
-            {coach.avail}
-          </span>
-        </div>
-      </div>
-    </article>
   )
 }
 

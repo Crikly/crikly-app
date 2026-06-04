@@ -204,7 +204,7 @@ export default async function CoachProfilePage({
         <div className="flex items-center gap-3">
           <ShareButton coachName={coach.full_name} />
           <Link
-            href="/search"
+            href="/coaches"
             className="text-sm font-medium text-gray-600 hover:text-gray-900 flex items-center gap-1"
           >
             <ChevronRight className="w-4 h-4 rotate-180" />
