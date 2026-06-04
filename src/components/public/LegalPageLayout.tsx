@@ -4,11 +4,19 @@ import type { ReactNode } from 'react'
 
 // ─── Layout shell ────────────────────────────────────────────────────────────
 
-// Shared shell for the static legal pages (/privacy, /terms, /cookies).
-// Server component — no hooks, no 'use client'. Nav + footer match the
-// /coaches public surface; the main column is narrower (max-w-[740px])
-// for readable long-form content.
-export function LegalPageLayout({ children }: { children: ReactNode }) {
+// Shared shell for the static legal pages (/privacy, /terms, /cookies)
+// and /contact. Server component — no hooks, no 'use client'. Nav +
+// footer match the /coaches public surface; the main column is narrower
+// (max-w-[740px]) for readable long-form content, or widened to
+// max-w-[960px] via `wide` for layouts that need more horizontal room
+// (e.g. the /contact form's 2-column grid).
+export function LegalPageLayout({
+  children,
+  wide = false,
+}: {
+  children: ReactNode
+  wide?: boolean
+}) {
   return (
     <div className="min-h-screen bg-white">
       <header className="sticky top-0 z-50 flex items-center justify-between border-b border-neutral-100 bg-white/80 px-10 py-4 backdrop-blur-[16px] backdrop-saturate-150 max-md:px-[22px]">
@@ -38,12 +46,16 @@ export function LegalPageLayout({ children }: { children: ReactNode }) {
         </div>
       </header>
 
-      <main className="mx-auto max-w-[740px] px-10 py-16 max-md:px-[22px] max-md:py-10">
+      <main
+        className={`mx-auto px-10 py-16 max-md:px-[22px] max-md:py-10 ${
+          wide ? 'max-w-[960px]' : 'max-w-[740px]'
+        }`}
+      >
         {children}
       </main>
 
       <footer className="border-t border-neutral-100 bg-white">
-        <div className="mx-auto flex max-w-[740px] items-center justify-between gap-4 border-t border-neutral-100 px-10 py-[22px] text-xs text-gray-500 max-md:px-[22px]">
+        <div className="mx-auto flex max-w-[740px] items-center justify-between gap-4 px-10 py-[22px] text-xs text-gray-500 max-md:px-[22px]">
           <span>© 2026 Tekly Solutions Ltd. Crikly is a product of Tekly Solutions.</span>
           <span>Made in the UK</span>
         </div>

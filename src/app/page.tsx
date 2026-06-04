@@ -827,7 +827,7 @@ export default function HomePage() {
               <a href="/privacy">Privacy Policy</a>
               <a href="/cookies">Cookie Policy</a>
               <a href="/terms">Terms &amp; Conditions</a>
-              <a href="#">Contact</a>
+              <a href="/contact">Contact</a>
             </FooterCol>
           </div>
         </div>
