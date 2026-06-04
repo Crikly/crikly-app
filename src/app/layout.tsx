@@ -54,7 +54,7 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" className={dmSans.variable}>
+    <html lang="en" className={`${dmSans.variable} scroll-smooth scroll-pt-[72px]`}>
       <head>
         <meta name="color-scheme" content="light" />
         <meta name="theme-color" content="#FFFFFF" />

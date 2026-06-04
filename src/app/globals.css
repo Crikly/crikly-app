@@ -2,9 +2,11 @@
 
 html {
   color-scheme: light only;
-  scroll-behavior: smooth;
-  scroll-padding-top: 72px;
 }
+/* scroll-behavior + scroll-padding-top live on <html> via Tailwind utility
+   classes in layout.tsx (`scroll-smooth scroll-pt-[72px]`). Defining them
+   here as bare declarations made lightningcss (Tailwind v4's optimiser)
+   silently strip them as redundant against the `.scroll-smooth` utility. */
 
 body {
   background-color: #ffffff;
