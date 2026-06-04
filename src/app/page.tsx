@@ -830,9 +830,9 @@ export default function HomePage() {
               </span>
             </FooterCol>
             <FooterCol heading="Legal">
-              <a href="#">Privacy Policy</a>
-              <a href="#">Cookie Policy</a>
-              <a href="#">Terms &amp; Conditions</a>
+              <a href="/privacy">Privacy Policy</a>
+              <a href="/cookies">Cookie Policy</a>
+              <a href="/terms">Terms &amp; Conditions</a>
               <a href="#">Contact</a>
             </FooterCol>
           </div>
