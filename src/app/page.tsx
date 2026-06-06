@@ -630,7 +630,7 @@ export default function HomePage() {
             </p>
             <CoachList items={['List free — keep the lion’s share of every booking', 'One link does the chasing for you', 'Payouts straight to your bank via Stripe']} />
             <Link
-              href="/login"
+              href="/join?role=coach"
               className="relative mt-auto inline-flex h-12 items-center justify-center gap-2 rounded-[12px] border-0 bg-white text-[15px] font-medium text-brand-800 no-underline transition-all hover:bg-white/90 active:scale-[0.98]"
             >
               Start coaching on Crikly
