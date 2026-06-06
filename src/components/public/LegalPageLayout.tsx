@@ -1,6 +1,7 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import type { ReactNode } from 'react'
+import { PublicFooter } from './PublicFooter'
 
 // ─── Layout shell ────────────────────────────────────────────────────────────
 
@@ -9,13 +10,17 @@ import type { ReactNode } from 'react'
 // footer match the /coaches public surface; the main column is narrower
 // (max-w-[740px]) for readable long-form content, or widened to
 // max-w-[960px] via `wide` for layouts that need more horizontal room
-// (e.g. the /contact form's 2-column grid).
+// (e.g. the /contact form's 2-column grid). `fullFooter` swaps the
+// minimal copyright-row footer for the 3-col Explore / Coaches / Legal
+// footer that mirrors landing.
 export function LegalPageLayout({
   children,
   wide = false,
+  fullFooter = false,
 }: {
   children: ReactNode
   wide?: boolean
+  fullFooter?: boolean
 }) {
   return (
     <div className="min-h-screen bg-white">
@@ -54,12 +59,7 @@ export function LegalPageLayout({
         {children}
       </main>
 
-      <footer className="border-t border-neutral-100 bg-white">
-        <div className="mx-auto flex max-w-[740px] items-center justify-between gap-4 px-10 py-[22px] text-xs text-gray-500 max-md:px-[22px]">
-          <span>© 2026 Tekly Solutions Ltd. Crikly is a product of Tekly Solutions.</span>
-          <span>Made in the UK</span>
-        </div>
-      </footer>
+      <PublicFooter variant={fullFooter ? 'full' : 'minimal'} />
     </div>
   )
 }

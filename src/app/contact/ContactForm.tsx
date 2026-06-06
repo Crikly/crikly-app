@@ -1,7 +1,14 @@
 'use client'
 
-import { useState } from 'react'
-import { ArrowRight, Check, ChevronDown, Loader2, Lock } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import {
+  ArrowRight,
+  Check,
+  ChevronDown,
+  Loader2,
+  Lock,
+  MessageSquare,
+} from 'lucide-react'
 
 // CONTACT-02 (S-10 visual redesign). Form state + validation + honeypot
 // + field IDs + data-testid + aria-* preserved exactly from CONTACT-01.
@@ -175,31 +182,11 @@ export function ContactForm() {
               htmlFor="subject"
               error={errors.subject}
             >
-              <div className="relative">
-                <select
-                  id="subject"
-                  required
-                  value={fields.subject}
-                  onChange={(e) => update('subject', e.target.value)}
-                  aria-describedby={errors.subject ? 'subject-error' : undefined}
-                  aria-invalid={errors.subject ? true : undefined}
-                  className={`${inputClass(!!errors.subject)} appearance-none bg-neutral-50 pr-12 focus:bg-white`}
-                >
-                  <option value="" disabled>
-                    Choose a topic
-                  </option>
-                  {SUBJECTS.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown
-                  size={18}
-                  strokeWidth={2}
-                  className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-neutral-500"
-                />
-              </div>
+              <SubjectDropdown
+                value={fields.subject}
+                onChange={(v) => update('subject', v)}
+                hasError={!!errors.subject}
+              />
             </Field>
 
             <Field label="Your message" htmlFor="message" error={errors.message}>
@@ -306,6 +293,159 @@ function inputClass(hasError: boolean): string {
     'focus:bg-white focus:shadow-focus',
     hasError ? 'border-danger bg-white' : 'border-neutral-100 focus:border-brand-600',
   ].join(' ')
+}
+
+// ─── Custom subject dropdown ─────────────────────────────────────────────────
+
+// Replaces the native <select> with a styled listbox matching the S-10
+// design. value + onChange + hasError are the same contract as the old
+// select. Keyboard: Arrow Up/Down move focus, Enter selects, Escape
+// closes. Click-outside closes via document mousedown listener.
+function SubjectDropdown({
+  value,
+  onChange,
+  hasError,
+}: {
+  value: string
+  onChange: (v: string) => void
+  hasError: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const [focusedIdx, setFocusedIdx] = useState(-1)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+
+  // Close on click outside.
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: MouseEvent) => {
+      const target = e.target as Node
+      if (
+        triggerRef.current?.contains(target) ||
+        panelRef.current?.contains(target)
+      ) {
+        return
+      }
+      setOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [open])
+
+  // Keyboard handlers (active only while open).
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setOpen(false)
+        triggerRef.current?.focus()
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setFocusedIdx((i) => Math.min(SUBJECTS.length - 1, i + 1))
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setFocusedIdx((i) => Math.max(0, i - 1))
+      } else if (e.key === 'Enter' && focusedIdx >= 0) {
+        e.preventDefault()
+        onChange(SUBJECTS[focusedIdx])
+        setOpen(false)
+        triggerRef.current?.focus()
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [open, focusedIdx, onChange])
+
+  const handleToggle = () => {
+    if (open) {
+      setOpen(false)
+      return
+    }
+    setOpen(true)
+    // On open, focus the selected option (or the first if none selected).
+    const idx = value ? SUBJECTS.indexOf(value as (typeof SUBJECTS)[number]) : 0
+    setFocusedIdx(idx >= 0 ? idx : 0)
+  }
+
+  const activeId =
+    open && focusedIdx >= 0 ? `subject-opt-${focusedIdx}` : undefined
+
+  return (
+    <div className="relative">
+      <button
+        ref={triggerRef}
+        type="button"
+        role="combobox"
+        id="subject"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls="subject-listbox"
+        aria-describedby={hasError ? 'subject-error' : undefined}
+        aria-invalid={hasError ? true : undefined}
+        aria-activedescendant={activeId}
+        onClick={handleToggle}
+        className={`flex h-input-desktop w-full items-center justify-between gap-2 rounded-[10px] border bg-white px-3.5 text-left text-[15px] outline-none transition-all focus:shadow-focus ${
+          hasError ? 'border-danger' : 'border-neutral-100 focus:border-brand-600'
+        }`}
+      >
+        <span className={value ? 'text-gray-900' : 'text-neutral-400'}>
+          {value || 'Choose a topic…'}
+        </span>
+        <ChevronDown
+          size={18}
+          strokeWidth={2}
+          className={`shrink-0 text-neutral-500 transition-transform ${
+            open ? 'rotate-180' : ''
+          }`}
+        />
+      </button>
+
+      {open && (
+        <div
+          ref={panelRef}
+          id="subject-listbox"
+          role="listbox"
+          aria-label="Subject options"
+          className="absolute left-0 right-0 z-20 mt-1.5 overflow-hidden rounded-2xl border border-neutral-100 bg-white py-1 shadow-[0_8px_24px_rgba(0,0,0,0.12)]"
+        >
+          {SUBJECTS.map((s, i) => {
+            const isSelected = s === value
+            const isFocused = i === focusedIdx
+            return (
+              <button
+                key={s}
+                id={`subject-opt-${i}`}
+                type="button"
+                role="option"
+                aria-selected={isSelected}
+                onMouseEnter={() => setFocusedIdx(i)}
+                onClick={() => {
+                  onChange(s)
+                  setOpen(false)
+                  triggerRef.current?.focus()
+                }}
+                className={`flex w-full cursor-pointer items-center gap-3 px-4 py-3 text-left text-[15px] transition-colors ${
+                  isSelected
+                    ? 'bg-brand-50 font-medium text-brand-600'
+                    : isFocused
+                      ? 'bg-neutral-50 text-gray-900'
+                      : 'text-gray-900 hover:bg-neutral-50'
+                }`}
+              >
+                <MessageSquare
+                  size={16}
+                  strokeWidth={2}
+                  className="shrink-0 text-brand-600"
+                />
+                {s}
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
 }
 
 function SuccessCard({ email }: { email: string }) {

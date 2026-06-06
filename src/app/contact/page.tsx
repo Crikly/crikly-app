@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Image from 'next/image'
 import Link from 'next/link'
 import { Calendar, Clock, Mail, Shield } from 'lucide-react'
+import { PublicFooter } from '@/components/public/PublicFooter'
 import { ContactForm } from './ContactForm'
 
 // CONTACT-02 (S-10 Contact Page redesign): warm-premium contact surface.
@@ -23,7 +24,7 @@ export default function ContactPage() {
       <PublicNav />
       <ContactHeader />
       <ContactBody />
-      <PublicFooter />
+      <PublicFooter variant="full" />
     </div>
   )
 }
@@ -208,15 +209,3 @@ function DetailItem({
   )
 }
 
-// ─── Footer (minimal copyright row, matches LegalPageLayout) ─────────────────
-
-function PublicFooter() {
-  return (
-    <footer className="border-t border-neutral-100 bg-white">
-      <div className="mx-auto flex max-w-[1180px] items-center justify-between gap-4 px-10 py-[22px] text-xs text-gray-500 max-md:px-[22px] max-[540px]:flex-col max-[540px]:items-start max-[540px]:gap-2">
-        <span>© 2026 Tekly Solutions Ltd. Crikly is a product of Tekly Solutions.</span>
-        <span>Made in the UK</span>
-      </div>
-    </footer>
-  )
-}
