@@ -13,6 +13,11 @@ const pacStyles = `
     margin-top: 4px !important;
     font-family: 'DM Sans', sans-serif !important;
     overflow: hidden;
+    /* HERO-SEARCH-01: bump above any stacking context on the page. The
+       hero search form now has z-50 (to lift its sport dropdown above
+       the trust strip), so the pac-container — appended to <body> by
+       Google — needs to win against any future page-level z-index. */
+    z-index: 9999 !important;
   }
   .pac-item {
     padding: 10px 16px !important;

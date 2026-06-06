@@ -34,6 +34,7 @@ import {
   type Coach,
   type PublicCoachListItem,
 } from '@/components/public/CoachCard'
+import { HeroLocationInput } from '@/components/public/HeroLocationInput'
 import s from './landing.module.css'
 
 // ─── Data ────────────────────────────────────────────────────────────────────
@@ -414,7 +415,7 @@ export default function HomePage() {
             <form
               onSubmit={handleSearch}
               noValidate
-              className={`${s.heroFadeUp} flex max-w-[560px] items-stretch rounded-full border border-neutral-100 bg-white p-[7px] shadow-[0_4px_12px_rgba(0,0,0,0.10)] transition-all focus-within:border-brand-600 focus-within:shadow-[0_8px_28px_rgba(0,119,204,0.16)] max-[540px]:flex-wrap max-[540px]:rounded-3xl max-[540px]:p-2.5`}
+              className={`${s.heroFadeUp} relative z-50 flex max-w-[560px] items-stretch rounded-full border border-neutral-100 bg-white p-[7px] shadow-[0_4px_12px_rgba(0,0,0,0.10)] transition-all focus-within:border-brand-600 focus-within:shadow-[0_8px_28px_rgba(0,119,204,0.16)] max-[540px]:flex-wrap max-[540px]:rounded-3xl max-[540px]:p-2.5`}
               style={{ animationDelay: '0.7s' }}
             >
               <div ref={activityFieldRef} className="relative flex flex-col justify-center px-4 py-1.5 max-[540px]:basis-full">
@@ -451,13 +452,12 @@ export default function HomePage() {
                 </label>
                 <div className="flex items-center gap-2 text-[15px] font-medium text-gray-900">
                   <MapPin size={16} className="shrink-0 text-gray-500" />
-                  <input
+                  <HeroLocationInput
                     id="locInput"
-                    type="text"
                     value={location}
-                    onChange={(e) => setLocation(e.target.value)}
+                    onChange={setLocation}
+                    onSelect={setLocation}
                     placeholder="Town or postcode"
-                    autoComplete="off"
                     className="w-full min-w-0 border-0 bg-transparent p-0 text-[15px] text-gray-900 outline-none placeholder:font-normal placeholder:text-neutral-400"
                   />
                 </div>
