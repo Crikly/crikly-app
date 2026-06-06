@@ -1,11 +1,12 @@
 'use client'
 
 import { useState } from 'react'
-import { CheckCircle2, Loader2 } from 'lucide-react'
+import { ArrowRight, Check, ChevronDown, Loader2, Lock } from 'lucide-react'
 
-// CONTACT-01: interactive form. Server-side render mounts this client
-// component inside src/app/contact/page.tsx (server component owns
-// metadata + chrome). All form state lives here.
+// CONTACT-02 (S-10 visual redesign). Form state + validation + honeypot
+// + field IDs + data-testid + aria-* preserved exactly from CONTACT-01.
+// Visual chrome (form card shell, input styling, success card) restyled
+// per S-10. The API contract at /api/contact is unchanged.
 
 type FormState = 'idle' | 'submitting' | 'success' | 'error'
 
@@ -96,120 +97,170 @@ export function ContactForm() {
     }
   }
 
-  if (state === 'success') {
-    return <SuccessCard email={submittedEmail} />
-  }
-
   return (
-    <form
-      onSubmit={handleSubmit}
-      noValidate
-      data-testid="contact-form"
-      className="flex flex-col gap-5"
-    >
-      {/* Honeypot — off-screen so it stays hidden from humans + screen
-          readers but bots auto-fill it. Tab order skipped. */}
-      <div aria-hidden="true" style={{ position: 'absolute', left: '-9999px' }}>
-        <label>
-          Company
-          <input
-            type="text"
-            tabIndex={-1}
-            autoComplete="off"
-            value={fields.company}
-            onChange={(e) => update('company', e.target.value)}
-          />
-        </label>
-      </div>
+    <div className="rounded-3xl border border-neutral-100 bg-white p-10 shadow-[0_24px_60px_rgba(15,23,42,0.10)] max-md:rounded-xl max-md:p-7">
+      {state === 'success' ? (
+        <SuccessCard email={submittedEmail} />
+      ) : (
+        <>
+          <div className="mb-6">
+            <h2 className="text-[24px] font-semibold tracking-[-0.02em] text-gray-900">
+              Send us a message
+            </h2>
+            <p className="mt-2 max-w-[46ch] text-[15px] leading-[1.55] text-neutral-600">
+              Tell us what&apos;s on your mind and we&apos;ll point you to the right
+              person.
+            </p>
+          </div>
 
-      <Field label="Full name" htmlFor="name" error={errors.name}>
-        <input
-          id="name"
-          type="text"
-          required
-          value={fields.name}
-          onChange={(e) => update('name', e.target.value)}
-          autoComplete="name"
-          aria-describedby={errors.name ? 'name-error' : undefined}
-          aria-invalid={errors.name ? true : undefined}
-          className={inputClass(!!errors.name)}
-        />
-      </Field>
-
-      <Field label="Email address" htmlFor="email" error={errors.email}>
-        <input
-          id="email"
-          type="email"
-          required
-          value={fields.email}
-          onChange={(e) => update('email', e.target.value)}
-          autoComplete="email"
-          aria-describedby={errors.email ? 'email-error' : undefined}
-          aria-invalid={errors.email ? true : undefined}
-          className={inputClass(!!errors.email)}
-        />
-      </Field>
-
-      <Field label="Subject" htmlFor="subject" error={errors.subject}>
-        <select
-          id="subject"
-          required
-          value={fields.subject}
-          onChange={(e) => update('subject', e.target.value)}
-          aria-describedby={errors.subject ? 'subject-error' : undefined}
-          aria-invalid={errors.subject ? true : undefined}
-          className={`${inputClass(!!errors.subject)} appearance-none bg-white`}
-        >
-          <option value="" disabled>
-            Choose a subject…
-          </option>
-          {SUBJECTS.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
-      </Field>
-
-      <Field label="Message" htmlFor="message" error={errors.message}>
-        <textarea
-          id="message"
-          required
-          rows={6}
-          value={fields.message}
-          onChange={(e) => update('message', e.target.value)}
-          aria-describedby={errors.message ? 'message-error' : undefined}
-          aria-invalid={errors.message ? true : undefined}
-          className={`${inputClass(!!errors.message)} min-h-[140px] resize-y py-3`}
-        />
-      </Field>
-
-      <button
-        type="submit"
-        disabled={state === 'submitting'}
-        aria-busy={state === 'submitting'}
-        data-testid="contact-submit"
-        className="inline-flex h-12 items-center justify-center gap-2 rounded-[12px] border-0 bg-brand-600 px-6 text-[15px] font-medium text-white transition-all hover:bg-brand-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70"
-      >
-        {state === 'submitting' && (
-          <Loader2 size={16} strokeWidth={2.4} className="animate-spin" />
-        )}
-        {state === 'submitting' ? 'Sending…' : 'Send message'}
-      </button>
-
-      {state === 'error' && (
-        <p role="alert" className="text-sm leading-relaxed text-danger">
-          Something went wrong. Please email us directly at{' '}
-          <a
-            href="mailto:crikly@teklysolutions.com"
-            className="font-medium text-brand-600 underline"
+          <form
+            onSubmit={handleSubmit}
+            noValidate
+            data-testid="contact-form"
+            className="flex flex-col gap-5"
           >
-            crikly@teklysolutions.com
-          </a>
-          .
-        </p>
+            {/* Honeypot — off-screen so it stays hidden from humans + screen
+                readers but bots auto-fill it. Tab order skipped. */}
+            <div
+              aria-hidden="true"
+              style={{ position: 'absolute', left: '-9999px' }}
+            >
+              <label>
+                Company
+                <input
+                  type="text"
+                  tabIndex={-1}
+                  autoComplete="off"
+                  value={fields.company}
+                  onChange={(e) => update('company', e.target.value)}
+                />
+              </label>
+            </div>
+
+            {/* Name + Email — 2-col on ≥sm, stacked below */}
+            <div className="grid gap-5 sm:grid-cols-2">
+              <Field label="Your name" htmlFor="name" error={errors.name}>
+                <input
+                  id="name"
+                  type="text"
+                  required
+                  value={fields.name}
+                  onChange={(e) => update('name', e.target.value)}
+                  placeholder="e.g. Alex Morgan"
+                  autoComplete="name"
+                  aria-describedby={errors.name ? 'name-error' : undefined}
+                  aria-invalid={errors.name ? true : undefined}
+                  className={inputClass(!!errors.name)}
+                />
+              </Field>
+
+              <Field label="Email address" htmlFor="email" error={errors.email}>
+                <input
+                  id="email"
+                  type="email"
+                  required
+                  value={fields.email}
+                  onChange={(e) => update('email', e.target.value)}
+                  placeholder="you@example.com"
+                  autoComplete="email"
+                  aria-describedby={errors.email ? 'email-error' : undefined}
+                  aria-invalid={errors.email ? true : undefined}
+                  className={inputClass(!!errors.email)}
+                />
+              </Field>
+            </div>
+
+            <Field
+              label="What's this about?"
+              htmlFor="subject"
+              error={errors.subject}
+            >
+              <div className="relative">
+                <select
+                  id="subject"
+                  required
+                  value={fields.subject}
+                  onChange={(e) => update('subject', e.target.value)}
+                  aria-describedby={errors.subject ? 'subject-error' : undefined}
+                  aria-invalid={errors.subject ? true : undefined}
+                  className={`${inputClass(!!errors.subject)} appearance-none bg-neutral-50 pr-12 focus:bg-white`}
+                >
+                  <option value="" disabled>
+                    Choose a topic
+                  </option>
+                  {SUBJECTS.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown
+                  size={18}
+                  strokeWidth={2}
+                  className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-neutral-500"
+                />
+              </div>
+            </Field>
+
+            <Field label="Your message" htmlFor="message" error={errors.message}>
+              <textarea
+                id="message"
+                required
+                rows={6}
+                value={fields.message}
+                onChange={(e) => update('message', e.target.value)}
+                placeholder="Tell us a bit more — the more detail, the better we can help."
+                aria-describedby={errors.message ? 'message-error' : undefined}
+                aria-invalid={errors.message ? true : undefined}
+                className={`${inputClass(!!errors.message)} min-h-[140px] resize-y py-3.5 leading-[1.55]`}
+              />
+            </Field>
+
+            <button
+              type="submit"
+              disabled={state === 'submitting'}
+              aria-busy={state === 'submitting'}
+              data-testid="contact-submit"
+              className="mt-1 inline-flex h-14 items-center justify-center gap-2.5 self-start rounded-full border-0 bg-brand-600 px-7 text-[16px] font-medium text-white transition-all hover:bg-brand-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70 max-sm:self-stretch"
+            >
+              {state === 'submitting' ? (
+                <>
+                  <Loader2 size={18} strokeWidth={2.4} className="animate-spin" />
+                  Sending…
+                </>
+              ) : (
+                <>
+                  Send message
+                  <ArrowRight size={18} strokeWidth={2.2} />
+                </>
+              )}
+            </button>
+
+            <div className="mt-0.5 flex items-center gap-2 text-[13px] text-neutral-500">
+              <Lock
+                size={15}
+                strokeWidth={2}
+                className="shrink-0 text-teal-600"
+              />
+              We&apos;ll only use your email to reply. No newsletters, promise.
+            </div>
+
+            {state === 'error' && (
+              <p role="alert" className="text-sm leading-relaxed text-danger">
+                Something went wrong. Please email us directly at{' '}
+                <a
+                  href="mailto:crikly@teklysolutions.com"
+                  className="font-medium text-brand-600 underline"
+                >
+                  crikly@teklysolutions.com
+                </a>
+                .
+              </p>
+            )}
+          </form>
+        </>
       )}
-    </form>
+    </div>
   )
 }
 
@@ -230,13 +281,16 @@ function Field({
     <div>
       <label
         htmlFor={htmlFor}
-        className="mb-1.5 block text-sm font-medium text-gray-900"
+        className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.05em] text-neutral-500"
       >
         {label}
       </label>
       {children}
       {error && (
-        <p id={`${htmlFor}-error`} className="mt-1.5 text-xs text-danger">
+        <p
+          id={`${htmlFor}-error`}
+          className="mt-1.5 text-[12.5px] text-danger"
+        >
           {error}
         </p>
       )}
@@ -246,26 +300,27 @@ function Field({
 
 function inputClass(hasError: boolean): string {
   return [
-    'block w-full rounded-[10px] border bg-white px-3.5 text-[15px] text-gray-900',
-    'h-input-desktop max-md:h-input-mobile',
-    'outline-none transition-shadow placeholder:text-neutral-400',
-    'focus:shadow-focus',
-    hasError ? 'border-danger' : 'border-neutral-100 focus:border-brand-600',
+    'block w-full rounded-[12px] border-[1.5px] bg-neutral-50 px-4 text-[15px] text-gray-900',
+    'h-[52px]',
+    'outline-none transition-all placeholder:text-neutral-400',
+    'focus:bg-white focus:shadow-focus',
+    hasError ? 'border-danger bg-white' : 'border-neutral-100 focus:border-brand-600',
   ].join(' ')
 }
 
 function SuccessCard({ email }: { email: string }) {
   return (
-    <div
-      role="status"
-      className="flex flex-col items-start gap-3 rounded-2xl border border-brand-100 bg-brand-50/40 p-6"
-    >
-      <CheckCircle2 size={28} strokeWidth={2} className="text-brand-600" />
-      <h2 className="text-lg font-semibold text-gray-900">Message sent!</h2>
-      <p className="text-sm leading-relaxed text-neutral-700">
-        We&apos;ll get back to you at{' '}
-        <span className="font-medium text-gray-900">{email}</span> within 1–2 business
-        days.
+    <div role="status" className="px-4 py-7 text-center max-md:px-2">
+      <div className="mx-auto mb-5 flex h-[72px] w-[72px] items-center justify-center rounded-full bg-teal-50 text-teal-600">
+        <Check size={34} strokeWidth={2.4} />
+      </div>
+      <h3 className="text-[24px] font-semibold tracking-[-0.02em] text-gray-900">
+        Message sent — thank you.
+      </h3>
+      <p className="mx-auto mt-3 max-w-[42ch] text-[15.5px] leading-[1.6] text-neutral-600">
+        We&apos;ve got your message and a real person will reply within 1–2 business
+        days at{' '}
+        <span className="font-semibold text-gray-900">{email}</span>.
       </p>
     </div>
   )
