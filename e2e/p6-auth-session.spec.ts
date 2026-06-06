@@ -8,7 +8,7 @@
 import { test, expect } from '@playwright/test'
 
 test.describe('P6 — Auth + session persistence', () => {
-  test('T6.1: email/password login redirects to /dashboard (role-switcher landing)', async ({ page }) => {
+  test('T6.1: email/password login redirects to /coach/dashboard (role-aware)', async ({ page }) => {
     const email = process.env.TEST_COACH_EMAIL
     const password = process.env.TEST_COACH_PASSWORD
     test.skip(!email || !password, 'TEST_COACH_EMAIL / TEST_COACH_PASSWORD must be set')
@@ -18,13 +18,11 @@ test.describe('P6 — Auth + session persistence', () => {
     await page.getByLabel('Password', { exact: true }).fill(password as string)
     await page.getByRole('button', { name: 'Log in', exact: true }).click()
 
-    // Seed test coach has no primary_role so the server's role-aware redirect
-    // sends them to /onboarding/role instead of /dashboard. Both are valid
-    // post-login destinations. Follow-up: update the test coach's
-    // user_metadata.primary_role to 'coach' so this can tighten back to
-    // strict /\/dashboard$/.
-    await page.waitForURL(/\/(dashboard|onboarding\/role)$/, { timeout: 15000 })
-    await expect(page).toHaveURL(/\/(dashboard|onboarding\/role)$/)
+    // AUTH-FIX-01 (FIX D): login route now routes by user_profiles.active_role
+    // + terms_accepted_at. The seed coach has active_role='coach' and accepted
+    // terms (per e2e/fixtures/seed.ts), so login lands on /coach/dashboard.
+    await page.waitForURL(/\/coach\/dashboard$/, { timeout: 15000 })
+    await expect(page).toHaveURL(/\/coach\/dashboard$/)
   })
 
   test('T6.2: session persists across a hard reload (no redirect to /login)', async ({ page }) => {
@@ -37,10 +35,9 @@ test.describe('P6 — Auth + session persistence', () => {
     await page.getByLabel('Email address').fill(email as string)
     await page.getByLabel('Password', { exact: true }).fill(password as string)
     await page.getByRole('button', { name: 'Log in', exact: true }).click()
-    // Seed test coach has no primary_role so the server redirects to
-    // /onboarding/role instead of /dashboard. Both are valid post-login
-    // landings — the actual session-persistence check below uses /coach/*.
-    await page.waitForURL(/\/(dashboard|onboarding\/role)$/, { timeout: 15000 })
+    // AUTH-FIX-01 (FIX D): login route routes by user_profiles.active_role +
+    // terms_accepted_at. The seed coach lands on /coach/dashboard directly.
+    await page.waitForURL(/\/coach\/dashboard$/, { timeout: 15000 })
 
     // Navigate to a coach surface so the reload exercises the authed /coach/* path.
     await page.goto('/coach/dashboard')

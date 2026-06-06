@@ -138,6 +138,9 @@ async function main(): Promise<void> {
   //    Schema (migration 001) has NO email column — email lives on auth.users only.
   //    active_role='coach' is critical so post-login redirects land on /coach/* —
   //    the default 'parent' would send the test user to the role-switcher /dashboard.
+  //    AUTH-FIX-01: terms_accepted_at must also be set — coach/layout.tsx
+  //    now redirects to /onboarding/terms when this column is NULL.
+  const now = new Date().toISOString()
   const { data: upRow, error: upErr } = await supabase
     .from('user_profiles')
     .upsert(
@@ -145,7 +148,8 @@ async function main(): Promise<void> {
         auth_user_id: authUserId,
         full_name: 'Test Coach',
         active_role: 'coach',
-        updated_at: new Date().toISOString(),
+        terms_accepted_at: now,
+        updated_at: now,
       },
       { onConflict: 'auth_user_id' },
     )
