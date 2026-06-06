@@ -312,7 +312,7 @@ export default function HomePage() {
   }
 
   return (
-    <main className="min-h-screen bg-white font-sans text-neutral-900 antialiased">
+    <main className="min-h-screen bg-transparent font-sans text-neutral-900 antialiased">
       {/* ═══ NAV ═════════════════════════════════════════════════════════ */}
       <header
         className={`sticky top-0 z-[60] flex items-center justify-between border-b px-10 py-4 transition-all duration-200 ease-out ${

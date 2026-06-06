@@ -248,7 +248,7 @@ function CoachesSearchPage() {
 
 function CoachesPageShell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-transparent">
       {/* ── Nav ─────────────────────────────────────────────────── */}
       <header className="sticky top-0 z-50 flex items-center justify-between border-b border-neutral-100 bg-white/80 px-10 py-4 backdrop-blur-[16px] backdrop-saturate-150 max-md:px-[22px]">
         <Link href="/" aria-label="Crikly home" className="no-underline">

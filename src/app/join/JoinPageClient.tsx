@@ -58,7 +58,7 @@ export function JoinPageClient() {
   )
 
   return (
-    <main className="min-h-screen bg-white">
+    <main className="min-h-screen bg-transparent">
       <div className="mx-auto flex min-h-screen max-w-[960px] flex-col justify-center px-6 py-10">
         {/* Logo — centered, links to / */}
         <Link

@@ -116,7 +116,7 @@ function ContactHeader() {
 function ContactBody() {
   return (
     <section className="relative z-20">
-      <div className="mx-auto -mt-24 grid max-w-[1180px] grid-cols-1 items-start gap-6 px-10 pb-[104px] max-md:px-[22px] max-lg:-mt-[72px] lg:grid-cols-[1.5fr_1fr]">
+      <div className="mx-auto -mt-24 grid max-w-[1180px] grid-cols-1 gap-6 px-10 pb-[104px] max-md:px-[22px] max-lg:-mt-[72px] lg:grid-cols-[1.5fr_1fr]">
         <ContactForm />
         <ContactDetailsCard />
       </div>
@@ -128,7 +128,7 @@ function ContactBody() {
 
 function ContactDetailsCard() {
   return (
-    <aside className="relative overflow-hidden rounded-3xl bg-[linear-gradient(165deg,#0c447c_0%,#0f172a_100%)] px-9 pb-8 pt-9 text-white shadow-[0_24px_60px_rgba(15,23,42,0.10)] max-md:rounded-xl max-md:px-7 max-md:pb-7 max-md:pt-7 max-lg:order-2">
+    <aside className="relative h-full overflow-hidden rounded-3xl bg-[linear-gradient(165deg,#0c447c_0%,#0f172a_100%)] px-9 pb-8 pt-9 text-white shadow-[0_24px_60px_rgba(15,23,42,0.10)] max-md:rounded-xl max-md:px-7 max-md:pb-7 max-md:pt-7 max-lg:order-2">
       {/* Brand-400 radial glow, top-right, bleeds off-canvas. */}
       <div
         aria-hidden="true"
