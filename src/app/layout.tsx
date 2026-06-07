@@ -54,6 +54,9 @@ export const metadata: Metadata = {
   openGraph: {
     images: ['/icon.jpeg'],
   },
+  verification: {
+    google: 'f8c789f9b1ce12da',
+  },
 }
 
 export default function RootLayout({
