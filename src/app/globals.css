@@ -20,7 +20,10 @@ html, body {
   background-color: #ffffff !important;
   color-scheme: light !important;
   font-family: 'DM Sans', sans-serif !important;
-  overflow-x: hidden;
+  /* clip (not hidden): prevents horizontal scroll without making html/body a
+     scroll container, which would break `position: sticky` on the header
+     (PROD-FIX-08). */
+  overflow-x: clip;
 }
 
 .dark * {
