@@ -48,24 +48,24 @@ function PublicNav() {
         aria-label="Primary"
         className="absolute left-1/2 hidden -translate-x-1/2 gap-1.5 md:flex"
       >
-        <a
+        <Link
           href="/#how"
           className="whitespace-nowrap rounded-[10px] px-3.5 py-2 text-[15px] font-medium text-neutral-600 no-underline transition-colors hover:bg-neutral-50 hover:text-gray-900"
         >
           How it works
-        </a>
-        <a
+        </Link>
+        <Link
           href="/#activities"
           className="whitespace-nowrap rounded-[10px] px-3.5 py-2 text-[15px] font-medium text-neutral-600 no-underline transition-colors hover:bg-neutral-50 hover:text-gray-900"
         >
           Activities
-        </a>
-        <a
+        </Link>
+        <Link
           href="/#personas"
           className="whitespace-nowrap rounded-[10px] px-3.5 py-2 text-[15px] font-medium text-neutral-600 no-underline transition-colors hover:bg-neutral-50 hover:text-gray-900"
         >
           For coaches
-        </a>
+        </Link>
       </nav>
       <div className="flex items-center gap-1.5">
         <Link
