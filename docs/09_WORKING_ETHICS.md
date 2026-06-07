@@ -1126,6 +1126,26 @@ If a task is done in Claude Code but not marked in Notion — **it doesn't exist
 
 ---
 
+## Notion Page Placement — Enforced Rule
+
+NEVER create a Notion page at the Crikly HQ root level.
+NEVER create a Notion page outside of Crikly HQ.
+Every page must be created under the correct section parent.
+
+Section parent IDs (use these as parent_id when creating pages):
+- Test cases / QA:       333163fe25cf818ca6c8e469ba661bc5
+- Design specs:          33c163fe25cf8149a596d4ec5bdbc55d
+- Session handoffs:      33c163fe25cf814a9197d71d59c5ac2e
+- Engineering / tech:    378163fe25cf816fbf59c6df21c0fe42
+- Operations / releases: 378163fe25cf81d08ab6e946063187b4
+- Build Plan database:   7cfc25c3-01b8-414d-81f7-15670dac53cd
+- Product / backlog:     32f163fe25cf81709728e05f85f669e7
+- Crikly HQ root:        32f163fe25cf81e39558d8868da3fc66 (never use as parent)
+
+Full structure map: Notion page 33c163fe25cf81b4800fe9c46298cadb
+
+---
+
 ## Document Maintenance
 
 When completing any task, update relevant docs in same commit:

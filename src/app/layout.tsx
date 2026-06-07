@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { DM_Sans } from 'next/font/google'
+import { GoogleAnalytics } from '@next/third-parties/google'
 import './globals.css'
 
 // Injected into <head> so styles apply after Google Maps async style injection.
@@ -77,6 +78,9 @@ export default function RootLayout({
         suppressHydrationWarning
       >
         {children}
+        {process.env.NEXT_PUBLIC_GA_ID && (
+          <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_ID} />
+        )}
       </body>
     </html>
   )
