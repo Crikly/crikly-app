@@ -12,71 +12,33 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.4"
   }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
-      interest_registrations: {
-        Row: {
-          id: string
-          name: string
-          email: string
-          role: string
-          sports: string[]
-          location: string | null
-          consent_given: boolean
-          consent_at: string | null
-          created_at: string
-        }
-        Insert: {
-          id?: string
-          name: string
-          email: string
-          role: string
-          sports?: string[]
-          location?: string | null
-          consent_given?: boolean
-          consent_at?: string | null
-          created_at?: string
-        }
-        Update: {
-          id?: string
-          name?: string
-          email?: string
-          role?: string
-          sports?: string[]
-          location?: string | null
-          consent_given?: boolean
-          consent_at?: string | null
-          created_at?: string
-        }
-        Relationships: []
-      }
-      waitlist_emails: {
-        Row: {
-          id: string
-          email: string
-          role: string | null
-          consent_given: boolean
-          consent_at: string | null
-          created_at: string
-        }
-        Insert: {
-          id?: string
-          email: string
-          role?: string | null
-          consent_given?: boolean
-          consent_at?: string | null
-          created_at?: string
-        }
-        Update: {
-          id?: string
-          email?: string
-          role?: string | null
-          consent_given?: boolean
-          consent_at?: string | null
-          created_at?: string
-        }
-        Relationships: []
-      }
       admin_roles: {
         Row: {
           created_at: string
@@ -179,14 +141,15 @@ export type Database = {
           id: string
           is_active: boolean
           is_recurring: boolean
+          notes: string | null
           price_override_pence: number | null
           session_type_id: string | null
           specific_date: string | null
           sport_id: string | null
           start_time: string
           updated_at: string
-          venue_name: string | null
           venue_address: string | null
+          venue_name: string | null
         }
         Insert: {
           coach_profile_id: string
@@ -197,14 +160,15 @@ export type Database = {
           id?: string
           is_active?: boolean
           is_recurring?: boolean
+          notes?: string | null
           price_override_pence?: number | null
           session_type_id?: string | null
           specific_date?: string | null
           sport_id?: string | null
           start_time: string
           updated_at?: string
-          venue_name?: string | null
           venue_address?: string | null
+          venue_name?: string | null
         }
         Update: {
           coach_profile_id?: string
@@ -215,14 +179,15 @@ export type Database = {
           id?: string
           is_active?: boolean
           is_recurring?: boolean
+          notes?: string | null
           price_override_pence?: number | null
           session_type_id?: string | null
           specific_date?: string | null
           sport_id?: string | null
           start_time?: string
           updated_at?: string
-          venue_name?: string | null
           venue_address?: string | null
+          venue_name?: string | null
         }
         Relationships: [
           {
@@ -298,6 +263,7 @@ export type Database = {
       }
       bookings: {
         Row: {
+          availability_template_id: string | null
           booked_by_user_id: string
           booking_reference: string
           cancellation_reason: string | null
@@ -330,8 +296,12 @@ export type Database = {
           sport_id: string
           status: string
           updated_at: string
+          venue_address: string | null
+          venue_id: string | null
+          venue_name: string | null
         }
         Insert: {
+          availability_template_id?: string | null
           booked_by_user_id: string
           booking_reference: string
           cancellation_reason?: string | null
@@ -364,8 +334,12 @@ export type Database = {
           sport_id: string
           status?: string
           updated_at?: string
+          venue_address?: string | null
+          venue_id?: string | null
+          venue_name?: string | null
         }
         Update: {
+          availability_template_id?: string | null
           booked_by_user_id?: string
           booking_reference?: string
           cancellation_reason?: string | null
@@ -398,8 +372,18 @@ export type Database = {
           sport_id?: string
           status?: string
           updated_at?: string
+          venue_address?: string | null
+          venue_id?: string | null
+          venue_name?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "bookings_availability_template_id_fkey"
+            columns: ["availability_template_id"]
+            isOneToOne: false
+            referencedRelation: "availability_templates"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "bookings_booked_by_user_id_fkey"
             columns: ["booked_by_user_id"]
@@ -440,6 +424,13 @@ export type Database = {
             columns: ["sport_id"]
             isOneToOne: false
             referencedRelation: "sports"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bookings_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "coach_venues"
             referencedColumns: ["id"]
           },
         ]
@@ -567,6 +558,7 @@ export type Database = {
           id: string
           is_featured: boolean
           is_flagged: boolean
+          is_paused: boolean
           is_profile_live: boolean
           is_suspended: boolean
           languages: string[] | null
@@ -600,6 +592,7 @@ export type Database = {
           id?: string
           is_featured?: boolean
           is_flagged?: boolean
+          is_paused?: boolean
           is_profile_live?: boolean
           is_suspended?: boolean
           languages?: string[] | null
@@ -633,6 +626,7 @@ export type Database = {
           id?: string
           is_featured?: boolean
           is_flagged?: boolean
+          is_paused?: boolean
           is_profile_live?: boolean
           is_suspended?: boolean
           languages?: string[] | null
@@ -704,6 +698,48 @@ export type Database = {
             columns: ["coach_profile_id"]
             isOneToOne: false
             referencedRelation: "coach_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      coach_replies: {
+        Row: {
+          coach_profile_id: string
+          created_at: string
+          id: string
+          reply_text: string
+          review_id: string
+          updated_at: string
+        }
+        Insert: {
+          coach_profile_id: string
+          created_at?: string
+          id?: string
+          reply_text: string
+          review_id: string
+          updated_at?: string
+        }
+        Update: {
+          coach_profile_id?: string
+          created_at?: string
+          id?: string
+          reply_text?: string
+          review_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coach_replies_coach_profile_id_fkey"
+            columns: ["coach_profile_id"]
+            isOneToOne: false
+            referencedRelation: "coach_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coach_replies_review_id_fkey"
+            columns: ["review_id"]
+            isOneToOne: true
+            referencedRelation: "reviews"
             referencedColumns: ["id"]
           },
         ]
@@ -1383,6 +1419,7 @@ export type Database = {
           group_programme_id: string
           id: string
           session_date: string
+          slots: Json | null
           start_time: string
           status: string
           updated_at: string
@@ -1397,6 +1434,7 @@ export type Database = {
           group_programme_id: string
           id?: string
           session_date: string
+          slots?: Json | null
           start_time: string
           status?: string
           updated_at?: string
@@ -1411,6 +1449,7 @@ export type Database = {
           group_programme_id?: string
           id?: string
           session_date?: string
+          slots?: Json | null
           start_time?: string
           status?: string
           updated_at?: string
@@ -1437,6 +1476,7 @@ export type Database = {
           age_groups: string[]
           block_price_pence: number | null
           block_session_count: number | null
+          camp_mode: boolean
           cancellation_window_hours: number
           coach_profile_id: string
           coach_venue_id: string | null
@@ -1450,6 +1490,7 @@ export type Database = {
           duration_minutes: number
           ends_at: string | null
           id: string
+          image_url: string | null
           late_joining_allowed: boolean
           max_spots: number
           min_participants: number | null
@@ -1472,6 +1513,7 @@ export type Database = {
           age_groups?: string[]
           block_price_pence?: number | null
           block_session_count?: number | null
+          camp_mode?: boolean
           cancellation_window_hours?: number
           coach_profile_id: string
           coach_venue_id?: string | null
@@ -1485,6 +1527,7 @@ export type Database = {
           duration_minutes: number
           ends_at?: string | null
           id?: string
+          image_url?: string | null
           late_joining_allowed?: boolean
           max_spots: number
           min_participants?: number | null
@@ -1507,6 +1550,7 @@ export type Database = {
           age_groups?: string[]
           block_price_pence?: number | null
           block_session_count?: number | null
+          camp_mode?: boolean
           cancellation_window_hours?: number
           coach_profile_id?: string
           coach_venue_id?: string | null
@@ -1520,6 +1564,7 @@ export type Database = {
           duration_minutes?: number
           ends_at?: string | null
           id?: string
+          image_url?: string | null
           late_joining_allowed?: boolean
           max_spots?: number
           min_participants?: number | null
@@ -1561,6 +1606,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      interest_registrations: {
+        Row: {
+          consent_at: string | null
+          consent_given: boolean
+          created_at: string | null
+          email: string
+          id: string
+          location: string | null
+          name: string
+          role: string
+          sports: string[] | null
+        }
+        Insert: {
+          consent_at?: string | null
+          consent_given?: boolean
+          created_at?: string | null
+          email: string
+          id?: string
+          location?: string | null
+          name: string
+          role: string
+          sports?: string[] | null
+        }
+        Update: {
+          consent_at?: string | null
+          consent_given?: boolean
+          created_at?: string | null
+          email?: string
+          id?: string
+          location?: string | null
+          name?: string
+          role?: string
+          sports?: string[] | null
+        }
+        Relationships: []
       }
       notification_preferences: {
         Row: {
@@ -2226,34 +2307,40 @@ export type Database = {
       }
       reviews: {
         Row: {
-          booking_id: string
+          booking_id: string | null
           coach_profile_id: string
           comment: string | null
           created_at: string
           id: string
           is_visible: boolean
           rating: number
-          reviewer_user_id: string
+          reviewer_name: string
+          reviewer_user_id: string | null
+          sport_name: string
         }
         Insert: {
-          booking_id: string
+          booking_id?: string | null
           coach_profile_id: string
           comment?: string | null
           created_at?: string
           id?: string
           is_visible?: boolean
           rating: number
-          reviewer_user_id: string
+          reviewer_name?: string
+          reviewer_user_id?: string | null
+          sport_name?: string
         }
         Update: {
-          booking_id?: string
+          booking_id?: string | null
           coach_profile_id?: string
           comment?: string | null
           created_at?: string
           id?: string
           is_visible?: boolean
           rating?: number
-          reviewer_user_id?: string
+          reviewer_name?: string
+          reviewer_user_id?: string | null
+          sport_name?: string
         }
         Relationships: [
           {
@@ -2582,6 +2669,33 @@ export type Database = {
           },
         ]
       }
+      waitlist_emails: {
+        Row: {
+          consent_at: string | null
+          consent_given: boolean
+          created_at: string | null
+          email: string
+          id: string
+          role: string | null
+        }
+        Insert: {
+          consent_at?: string | null
+          consent_given?: boolean
+          created_at?: string | null
+          email: string
+          id?: string
+          role?: string | null
+        }
+        Update: {
+          consent_at?: string | null
+          consent_given?: boolean
+          created_at?: string | null
+          email?: string
+          id?: string
+          role?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -2716,6 +2830,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {},
   },

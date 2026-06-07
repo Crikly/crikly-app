@@ -2,23 +2,14 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { ChevronRight, Loader2 } from 'lucide-react'
+// AF-P-Wave-1: sports cache adoption
+import { fetchSportsListCached } from '@/lib/onboarding-cache'
+// PERF-02-BOOKINGS-CACHE: shared booking lists for Upcoming + Pending approval.
+// Past stays on local fetch (lazy + paginated). Type moved into the context
+// to dedupe the old per-file definitions.
+import { useBookings, type BookingListItem } from '@/contexts/BookingsContext'
 
 type Tab = 'Upcoming' | 'Pending approval' | 'Past'
-
-interface BookingListItem {
-  id: string
-  booking_reference: string
-  session_date: string
-  session_start_time: string
-  session_end_time: string
-  session_type: string
-  status: string
-  sport_id: string
-  coach_price_pence: number
-  booked_by_name: string | null
-  child_name: string | null
-  messaging_unlocked: boolean
-}
 
 interface Sport {
   id: string
@@ -93,21 +84,38 @@ function BookingCardSkeleton() {
 export function BookingsManagement() {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<Tab>('Upcoming')
+  // PERF-02-BOOKINGS-CACHE: Upcoming + Pending approval come from context;
+  // Past keeps its own paginated fetch. `loading` and `bookings` reflect the
+  // active-tab path: context for the first two tabs, local state for Past.
   const [loading, setLoading] = useState(true)
   const [bookings, setBookings] = useState<BookingListItem[]>([])
-  const [upcomingCount, setUpcomingCount] = useState(0)
   const [sportsMap, setSportsMap] = useState<Record<string, string>>({})
   const [pastPage, setPastPage] = useState(1)
   const [hasMore, setHasMore] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
+  // AF-H-29/30: surface fetch errors instead of silent empty list
+  const [fetchError, setFetchError] = useState<string | null>(null)
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null)
 
-  // Fetch sports once on mount
+  // PERF-02-BOOKINGS-CACHE: shared bookings lists from the provider in
+  // CoachLayoutClient. upcoming.length drives the header count; the two
+  // cached tabs read directly from this without firing their own fetch.
+  const {
+    upcoming,
+    pendingApproval,
+    loading: bookingsContextLoading,
+    error: bookingsContextError,
+    refresh: refreshBookingsContext,
+  } = useBookings()
+
+  const upcomingCount = upcoming.length
+
+  // AF-P-Wave-1: use sports cache — fetchSportsListCached() returns the array directly
   useEffect(() => {
-    fetch('/api/sports')
-      .then((r) => r.json())
-      .then((data: { sports?: Sport[] }) => {
+    fetchSportsListCached()
+      .then((sports: Sport[]) => {
         const map: Record<string, string> = {}
-        data.sports?.forEach((s) => { map[s.id] = s.name })
+        sports.forEach((s) => { map[s.id] = s.name })
         setSportsMap(map)
       })
       .catch(() => {/* non-critical — sport names fall back to empty */})
@@ -115,56 +123,95 @@ export function BookingsManagement() {
 
   const PAGE_SIZE = 10
 
-  const fetchBookings = useCallback(async (tab: Tab) => {
+  // PERF-02-BOOKINGS-CACHE: only handles the Past tab now — Upcoming and
+  // Pending approval are served from context.
+  const fetchPast = useCallback(async () => {
     setLoading(true)
     setPastPage(1)
     setHasMore(false)
-
-    let apiTab: string
-    if (tab === 'Upcoming') apiTab = 'upcoming'
-    else if (tab === 'Past') apiTab = 'past'
-    else apiTab = 'pending_approval'
+    // AF-H-29/30: clear stale errors on each tab switch
+    setFetchError(null)
+    setLoadMoreError(null)
 
     try {
-      const res = await fetch(`/api/coaches/bookings?tab=${apiTab}&page=1`)
-      if (!res.ok) { setBookings([]); return }
+      const res = await fetch('/api/coaches/bookings?tab=past&page=1')
+      if (!res.ok) {
+        setFetchError('Failed to load bookings. Please try again.')
+        setBookings([])
+        return
+      }
       const data = await res.json() as { bookings: BookingListItem[] }
       const rows = data.bookings ?? []
       setBookings(rows)
-      if (tab === 'Upcoming') setUpcomingCount(rows.length)
-      if (tab === 'Past') setHasMore(rows.length === PAGE_SIZE)
+      setHasMore(rows.length === PAGE_SIZE)
     } catch {
+      setFetchError('Failed to load bookings. Please try again.')
       setBookings([])
     } finally {
       setLoading(false)
     }
   }, [])
 
+  // PERF-02-BOOKINGS-CACHE: retry routes to the appropriate source for the
+  // active tab — context refresh for cached tabs, local fetch for Past.
+  // Declared after fetchPast so the closure captures it without TDZ.
+  const retryFetch = useCallback(() => {
+    if (activeTab === 'Past') {
+      fetchPast()
+    } else {
+      refreshBookingsContext()
+    }
+  }, [activeTab, fetchPast, refreshBookingsContext])
+
   const loadMore = useCallback(async () => {
     setLoadingMore(true)
+    setLoadMoreError(null)
     const nextPage = pastPage + 1
     try {
       const res = await fetch(`/api/coaches/bookings?tab=past&page=${nextPage}`)
-      if (!res.ok) return
+      if (!res.ok) {
+        setLoadMoreError('Failed to load more bookings. Please try again.')
+        return
+      }
       const data = await res.json() as { bookings: BookingListItem[] }
       const rows = data.bookings ?? []
       setBookings((prev) => [...prev, ...rows])
       setPastPage(nextPage)
       setHasMore(rows.length === PAGE_SIZE)
-    } catch { /* silent — existing list stays intact */ } finally {
+    } catch {
+      setLoadMoreError('Failed to load more bookings. Please try again.')
+    } finally {
       setLoadingMore(false)
     }
   }, [pastPage])
 
+  // PERF-02-BOOKINGS-CACHE: tab-switching reads from context for the two
+  // cached tabs and falls through to the local Past fetch otherwise. The
+  // displayed bookings + loading + error all derive from whichever source
+  // owns the active tab.
   useEffect(() => {
-    fetchBookings(activeTab)
-  }, [activeTab, fetchBookings])
+    if (activeTab === 'Upcoming') {
+      setBookings(upcoming)
+      setLoading(bookingsContextLoading)
+      setFetchError(bookingsContextError)
+      setHasMore(false)
+    } else if (activeTab === 'Pending approval') {
+      setBookings(pendingApproval)
+      setLoading(bookingsContextLoading)
+      setFetchError(bookingsContextError)
+      setHasMore(false)
+    } else {
+      // Past — lazy fetch with its own pagination
+      fetchPast()
+    }
+  }, [activeTab, upcoming, pendingApproval, bookingsContextLoading, bookingsContextError, fetchPast])
 
-  const pendingCount: number = 0 // BR-06: auto-confirmed
+  // AF-H-Wave-3: derive from data — manual-approval coaches now have real pending bookings (BR-06 v2)
+  const pendingCount = bookings.filter(b => b.status === 'pending_approval').length
 
   return (
-    <div className="min-h-screen bg-white" style={{ fontFamily: "'DM Sans', sans-serif" }}>
-      <div className="w-full max-w-2xl mx-auto bg-white min-h-screen relative flex flex-col">
+    <div className="min-h-screen">
+      <div className="w-full max-w-2xl mx-auto min-h-screen relative flex flex-col">
         <div className="px-5 pt-8 pb-2 bg-white sticky top-0 z-10">
           <h1 className="text-[28px] font-bold text-gray-900 tracking-tight">Bookings</h1>
           <p className="text-[13px] text-gray-500 mt-1 mb-4">
@@ -178,7 +225,7 @@ export function BookingsManagement() {
                 onClick={() => setActiveTab(tab)}
                 className={`pb-3 text-[15px] transition-colors relative whitespace-nowrap flex items-center gap-1.5 ${
                   activeTab === tab
-                    ? 'text-[#0077CC] font-medium'
+                    ? 'text-brand-600 font-medium'
                     : 'text-gray-500 font-normal hover:text-gray-700'
                 }`}
               >
@@ -189,7 +236,7 @@ export function BookingsManagement() {
                   </span>
                 )}
                 {activeTab === tab && (
-                  <div className="absolute bottom-0 left-0 w-full h-[2px] bg-[#0077CC]" />
+                  <div className="absolute bottom-0 left-0 w-full h-[2px] bg-brand-600" />
                 )}
               </button>
             ))}
@@ -210,9 +257,22 @@ export function BookingsManagement() {
               </div>
               <button
                 onClick={() => setActiveTab('Pending approval')}
-                className="text-[12px] font-medium text-[#0077CC] hover:underline whitespace-nowrap"
+                className="text-[12px] font-medium text-brand-600 hover:underline whitespace-nowrap"
               >
                 Review now →
+              </button>
+            </div>
+          )}
+
+          {/* AF-H-29: surface fetch failures instead of silent empty list */}
+          {fetchError && !loading && (
+            <div className="mb-3 p-3 bg-red-50 rounded-xl">
+              <p className="text-[13px] text-red-600">{fetchError}</p>
+              <button
+                onClick={retryFetch}
+                className="text-[13px] text-brand-600 font-medium mt-1"
+              >
+                Try again
               </button>
             </div>
           )}
@@ -296,14 +356,18 @@ export function BookingsManagement() {
                         {isSoon ? (
                           <>
                             <button
-                              onClick={(e) => { e.stopPropagation() /* TODO: wire Message action in Step 5 */ }}
-                              className="flex-1 bg-white border border-gray-200 text-gray-600 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 hover:border-gray-300 hover:text-gray-700 transition-all duration-150"
+                              disabled
+                              aria-disabled="true"
+                              onClick={(e) => e.stopPropagation()}
+                              className="flex-1 bg-white border border-gray-200 text-gray-400 rounded-md text-[11px] py-1.5 text-center opacity-40 cursor-not-allowed"
                             >
                               Message
                             </button>
                             <button
-                              onClick={(e) => { e.stopPropagation() /* TODO: wire Mark complete action in Step 5 */ }}
-                              className="flex-1 bg-[#0077CC] text-white font-medium rounded-md text-[11px] py-1.5 text-center hover:bg-[#0066AA] transition-all duration-150"
+                              disabled
+                              aria-disabled="true"
+                              onClick={(e) => e.stopPropagation()}
+                              className="flex-1 bg-brand-600 text-white font-medium rounded-md text-[11px] py-1.5 text-center opacity-40 cursor-not-allowed"
                             >
                               Mark complete →
                             </button>
@@ -311,14 +375,16 @@ export function BookingsManagement() {
                         ) : (
                           <>
                             <button
-                              onClick={(e) => { e.stopPropagation() /* TODO: wire Message action in Step 5 */ }}
-                              className="flex-1 bg-white border border-gray-200 text-gray-600 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 hover:border-gray-300 hover:text-gray-700 transition-all duration-150"
+                              disabled
+                              aria-disabled="true"
+                              onClick={(e) => e.stopPropagation()}
+                              className="flex-1 bg-white border border-gray-200 text-gray-400 rounded-md text-[11px] py-1.5 text-center opacity-40 cursor-not-allowed"
                             >
                               {isGroup ? 'Message group' : 'Message'}
                             </button>
                             <button
                               onClick={(e) => { e.stopPropagation(); router.push(`/coach/bookings/${booking.id}`) }}
-                              className="flex-1 bg-white border border-gray-200 text-gray-600 rounded-md text-[11px] py-1.5 text-center hover:bg-gray-50 hover:border-gray-300 hover:text-gray-700 transition-all duration-150"
+                              className="flex-1 bg-white border border-gray-200 text-gray-600 rounded-md text-[11px] py-1.5 text-center hover:bg-neutral-50 hover:border-gray-300 hover:text-gray-700 transition-all duration-150"
                             >
                               View details
                             </button>
@@ -332,17 +398,23 @@ export function BookingsManagement() {
             )}
 
             {activeTab === 'Past' && hasMore && !loading && (
-              <button
-                onClick={loadMore}
-                disabled={loadingMore}
-                className="w-full rounded-xl border border-gray-200 py-3 text-[14px] font-medium text-gray-600 hover:bg-gray-50 transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
-              >
-                {loadingMore ? (
-                  <Loader2 size={16} className="animate-spin" />
-                ) : (
-                  'Load more past bookings'
+              <>
+                <button
+                  onClick={loadMore}
+                  disabled={loadingMore}
+                  className="w-full rounded-xl border border-gray-200 py-3 text-[14px] font-medium text-gray-600 hover:bg-neutral-50 transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
+                >
+                  {loadingMore ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : (
+                    'Load more past bookings'
+                  )}
+                </button>
+                {/* AF-H-30: surface loadMore failure */}
+                {loadMoreError && (
+                  <p className="text-[12px] text-red-600 text-center mt-2">{loadMoreError}</p>
                 )}
-              </button>
+              </>
             )}
           </div>
         </div>

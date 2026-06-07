@@ -3,6 +3,10 @@
 html {
   color-scheme: light only;
 }
+/* scroll-behavior + scroll-padding-top live on <html> via Tailwind utility
+   classes in layout.tsx (`scroll-smooth scroll-pt-[72px]`). Defining them
+   here as bare declarations made lightningcss (Tailwind v4's optimiser)
+   silently strip them as redundant against the `.scroll-smooth` utility. */
 
 body {
   background-color: #ffffff;
@@ -16,6 +20,7 @@ html, body {
   background-color: #ffffff !important;
   color-scheme: light !important;
   font-family: 'DM Sans', sans-serif !important;
+  overflow-x: hidden;
 }
 
 .dark * {
@@ -32,6 +37,46 @@ html, body {
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+
+  /* FIX-THEME-BRAND-TOKENS: register colour tokens as v4 CSS variables.
+     Project runs Tailwind v4 (@import "tailwindcss" + @tailwindcss/postcss)
+     but tailwind.config.js is in v3 JS-config format. v4's compat layer
+     doesn't always honour theme.extend.colors, so bg-brand-600 et al
+     were resolving to transparent. Values mirror tailwind.config.js — keep
+     the two in sync until non-colour tokens are also migrated (follow-up:
+     FIX-THEME-NON-COLOR-TOKENS). */
+
+  /* Brand (Sky Blue) */
+  --color-brand-50:  #E6F3FB;
+  --color-brand-100: #B5D4F4;
+  --color-brand-400: #378ADD;
+  --color-brand-600: #0077CC;
+  --color-brand-700: #0066AA;
+  --color-brand-800: #0C447C;
+  --color-brand-900: #042C53;
+
+  /* Teal */
+  --color-teal-50:  #E0F6F8;
+  --color-teal-600: #0099AA;
+  --color-teal-800: #006677;
+
+  /* Neutral */
+  --color-neutral-0:   #FFFFFF;
+  --color-neutral-50:  #F0F7FF;
+  --color-neutral-100: #E2E8F0;
+  --color-neutral-400: #94A3B8;
+  --color-neutral-600: #475569;
+  --color-neutral-900: #0F172A;
+
+  /* Surface (dark-mode overrides — app forces light, kept for completeness) */
+  --color-surface-light: #F0F7FF;
+  --color-surface-dark:  #1A1A2E;
+
+  /* Semantic */
+  --color-success: #1A7A4A;
+  --color-warning: #B45309;
+  --color-danger:  #B91C1C;
+  --color-info:    #0077CC;
 }
 
 [data-theme="light"] {
@@ -42,6 +87,16 @@ body {
   background-color: #ffffff !important;
   color: #0f172a;
   font-family: 'DM Sans', sans-serif;
+  /* CONTACT-02 followup: subtle brand-blue ambient halo at top of page.
+     Painted on body so it shows through any page wrapper that doesn't set
+     its own bg-*. Pages with opaque bg-white wrappers (coach dashboard,
+     landing main, auth shells) cover this naturally — no override needed. */
+  background-image: radial-gradient(
+    ellipse 80% 40% at 50% -10%,
+    rgba(0, 119, 204, 0.07) 0%,
+    transparent 100%
+  );
+  background-repeat: no-repeat;
 }
 
 @keyframes qualCardIn {
@@ -75,12 +130,14 @@ body {
 /* Google Places (.pac-container) overrides live in layout.tsx <head>
    so they apply after Google's async style injection. */
 
-@keyframes shimmer {
-  0%   { transform: translateX(-100%); }
-  100% { transform: translateX(100%); }
+/* UX-PROGRAMMES-SCROLL: hide the native scrollbar on horizontal snap rows.
+   Used by the dashboard programmes carousel — the [&::-webkit-scrollbar]
+   arbitrary-value variant broke Turbopack JSX parsing, so we inline the
+   utility here instead. */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
-
-@keyframes spin {
-  0%   { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
 }

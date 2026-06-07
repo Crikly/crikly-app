@@ -1,13 +1,20 @@
 # Crikly — Working Ethics & Collaboration Standards
 
-**Version:** 1.6
-**Last Updated:** 26 April 2026
-**Changed:** SYNC-13 — agent MD file always required in prompts
+**Version:** 1.10
+**Last Updated:** 12 May 2026
+**Changed:** L-07-RM-NEXT-BAN — `rm -rf .next` permanently banned
+  from all Claude Code workflows. Two tasks on 11 May 2026
+  destroyed Turbopack's RocksDB cache (Next.js 16.2.1) and
+  required a full `npm install` (3–5 min downtime) to recover.
+  New "Banned Commands" section added; L-07 added to Process
+  Lessons.
 **Maintainer:** Lasith Jayarathne
 **Review:** After each phase completion
 
-This file lives in the project root and is referenced at the
-start of every Claude Code session. Read it before every prompt.
+This document complements **CLAUDE.md** (Claude Code's session
+briefing). Both must be read at the start of every session.
+CLAUDE.md governs how Claude Code starts; this file governs how
+Claude Code behaves throughout. Read this file before every prompt.
 
 ---
 
@@ -43,6 +50,115 @@ Never ask Claude to write production code files.
 
 ---
 
+## Local Development Environment
+
+These tools are required for local development. Some workflows
+(UI polish, docs) don't need them; database and migration work
+always does.
+
+| Tool | Purpose | When required |
+|---|---|---|
+| Node 20 LTS | Run Next.js, run npm scripts | Always |
+| Docker Desktop | Hosts local Supabase containers | Migrations, seed, API testing against local DB |
+| Supabase CLI | Manages local Supabase stack | Same as Docker |
+| psql (optional) | Direct DB queries from terminal | Optional — `docker exec` works as fallback |
+
+### Verifying each tool works
+
+```
+node --version       # Expect: v20.x.x
+docker ps            # Expect: empty list (no containers) or list (containers running)
+supabase --version   # Expect: any 2.x version
+```
+
+### When Docker is needed
+
+- Applying migrations locally: `supabase migration up` requires Docker
+- Running tests against local DB: required
+- API smoke testing against local DB: required
+- UI-only polish work (no DB writes): NOT required
+- Documentation-only commits: NOT required
+
+### Stopping Docker when done
+
+Always run `supabase stop` after a session that started Supabase.
+Containers continue consuming RAM until explicitly stopped.
+
+---
+
+## Local-First Migration Discipline
+
+Every migration runs locally first. This is non-negotiable.
+
+### The flow
+
+```
+Step 1 → Write migration SQL in supabase/migrations/
+Step 2 → Start Docker Desktop
+Step 3 → Run: supabase start (or supabase db reset to wipe + reapply)
+Step 4 → Run: supabase migration up
+Step 5 → Verify the schema change with docker exec or Supabase Studio
+Step 6 → Run any related app code locally — confirm no errors
+Step 7 → ONLY THEN: supabase db push (to hosted dev) or commit + push to develop
+Step 8 → Stop containers: supabase stop
+Step 9 → Verify hosted dev got it: supabase migration list — confirm
+         local and remote columns match for every migration. If they
+         don't match, STOP and reconcile before continuing.
+```
+
+### Why this matters
+
+- Hosted dev is shared. A broken migration breaks every preview deployment.
+- Local Postgres is disposable. You can wipe and rebuild it without consequences.
+- The fastest path to "shipped" is the path that catches problems early.
+
+### Anti-patterns
+
+- Pushing migration SQL straight to hosted dev with `supabase db push` as a primary flow.
+- Skipping `supabase migration up` because "it'll be fine."
+- Running migrations against production directly. Never.
+
+### Studio is for inspection, not creation
+
+Never create tables, columns, or RLS policies in hosted Supabase
+via the Studio web UI (Table Editor or SQL Editor).
+
+Why: Studio writes to the database directly without going through
+a migration file. The schema_migrations bookkeeping table doesn't
+reflect the change. Result: drift between what migrations say is
+applied and what's actually in the DB. This drift is invisible
+until someone runs `supabase migration list` weeks later (see
+3 May 2026 session — 11 migrations had to be repaired via
+`supabase migration repair --status applied <timestamp>`).
+
+Acceptable Studio uses (read-only):
+
+- Inspecting table schemas
+- Running SELECT queries to debug
+- Browsing data
+- Reading RLS policies
+
+Forbidden Studio uses:
+
+- CREATE TABLE / ALTER TABLE / DROP TABLE
+- CREATE / DROP INDEX
+- CREATE / DROP POLICY
+- INSERT / UPDATE / DELETE on production data (use migrations or
+  explicit one-off SQL with audit trail)
+
+Recovery if Studio was used (urgency exception):
+
+1. Immediately write the corresponding migration file in
+   `supabase/migrations/` with the SQL that was executed
+2. Apply locally via `supabase migration up` to verify it matches
+3. Run `supabase migration repair --status applied <timestamp>`
+   against hosted to align bookkeeping
+4. Confirm via `supabase migration list` that local + remote agree
+5. Commit the migration file with a Fix-NN entry in Notion noting
+   the Studio-then-repair flow
+
+---
+
 ## Session Flow
 
 ### Starting Every Claude Code Session
@@ -72,19 +188,36 @@ Step 9 → Move to next task
 
 ### Standard Claude Code Prompt Template
 
+Every prompt to Claude Code follows this structure. The Step 0
+plan-approval gate is mandatory. Do not skip it.
+
 ```
 @[AgentName]
-
-Task ID: [e.g. M-01, A-03, C-14] ← from docs/10_BUILD_PLAN.md
+Task ID: [from docs/10_BUILD_PLAN.md]
 
 Context files:
 - CLAUDE.md
 - docs/09_WORKING_ETHICS.md
-- docs/[relevant doc only]
-- docs/[relevant doc only]
+- docs/agents/[matching-agent-file].md
+- docs/[task-specific docs]
 
 Task:
-[One clear paragraph describing exactly what to build]
+[One paragraph describing what to build/fix/change]
+
+━━━ STEP 0 — PLAN APPROVAL GATE ━━━
+
+Before any file changes, output a plan covering:
+- Files you will create or modify
+- Files you will read for context only
+- Order of operations
+- Any deviations from this prompt's spec, with reasons
+- Anything ambiguous that needs Lasith's clarification
+
+Then STOP. Do NOT proceed until Lasith replies "approved" or
+equivalent. If Lasith requests changes, revise the plan and
+re-submit.
+
+━━━ STEP 1 onward — execution ━━━
 
 File(s) to create or modify:
 - src/[exact/file/path.ts]
@@ -105,9 +238,23 @@ On completion:
 3. Add a note in Notion: what was done, any decisions made
 4. Commit docs/10_BUILD_PLAN.md in the same commit as the code
 
-Commit to: feature/[name] branch
+Branch: [target branch]
 Risk: 🟢 Low | 🟡 Medium | 🔴 High
+
+PAUSE before push.
 ```
+
+### Rule on approval gates
+
+Claude Code approval popups will sometimes offer:
+
+1. Yes
+2. Yes, and don't ask again for X
+3. No
+
+ALWAYS pick option 1. Never pick option 2 ("don't ask again").
+Each operation gets reviewed individually. Speed gains from
+blanket-allows are not worth the discipline loss.
 
 ---
 
@@ -224,7 +371,39 @@ src/components/ui/               → Built components — use these, never rebui
 → Read docs/11_UX_PRINCIPLES.md before designing any screen
 → Use components from src/components/ui/ — never create duplicates
 → New component needed? Add spec to docs/12_DESIGN_SYSTEM.md first
-→ No hardcoded hex colours — use Tailwind tokens only (brand-600, teal-50 etc.)
+→ No hardcoded hex colours — use Tailwind tokens.
+  All tokens are defined and safelisted in tailwind.config.js.
+  MANDATORY mapping — never use hex, always use the token:
+
+  COLOUR TOKENS:
+  #0077CC → bg-brand-600 / text-brand-600 / border-brand-600
+  #0099AA → bg-teal-600  / text-teal-600
+  #1A7A4A → bg-success   / text-success
+  #B45309 → bg-warning   / text-warning
+  #B91C1C → bg-danger    / text-danger
+  #475569 → text-neutral-600
+  #94A3B8 → text-neutral-400
+  #E2E8F0 → border-neutral-100
+  #F0F7FF → bg-neutral-50
+  #E6F3FB → bg-brand-50
+  #0F172A → text-neutral-900
+
+  KNOWN TOKEN GAPS — keep inline as `bg-[#hex]` until added:
+  #0066AA — brand-700 hover shade (used 50+ times, no token yet)
+  #166534 — green-800 (status-success-darker)
+  #1D9E75 / #0F6E56 / #085041 — insight-card greens (3 shades)
+
+  FONT SIZE TOKENS — no arbitrary px values:
+  text-[11px] → text-xs   (11px)
+  text-[13px] → text-sm   (13px)
+  text-[15px] → text-base (15px)
+  text-[9px] / text-[10px] / text-[12px] →
+    use text-xs for ≤11px, text-sm for 12–13px
+
+  UI AUDIT RULE:
+  If you see any bg-[#...] or text-[#...] pattern
+  in a file you are already editing, replace it
+  with the correct token in the same commit.
 → No hardcoded sizes — use tokens (radius-md, space-4, h-btn-mobile etc.)
 → Font: DM Sans only — already loaded in layout.tsx, do not re-import
 → Primary colour: brand-600 (#0077CC)
@@ -344,6 +523,28 @@ Stop Claude Code immediately and bring to Claude if:
 
 When in doubt — bring to Claude. It costs nothing.
 Fixing a bad architectural decision costs weeks.
+
+---
+
+## Banned Commands — Never Run
+
+Commands listed here have caused operational damage in prior
+sessions. They must never appear in Claude Code prompts, agent
+files, or be executed at the terminal. Any prompt containing
+a banned command must be rejected before execution.
+
+```
+BANNED: rm -rf .next
+  Reason: Destroys Turbopack's RocksDB persistent cache on
+          Next.js 16. Recovery requires a full `npm install`
+          (3–5 min downtime). Affected: FIX-GO-LIVE-CACHE and
+          FIX-THEME-BRAND-TOKENS, 11 May 2026.
+  Use instead: `npx tsc --noEmit` only — TypeScript checks do
+               not require the `.next` directory to be removed.
+               Next.js auto-invalidates stale cache entries on
+               source change.
+  See: L-07 in Process Lessons below.
+```
 
 ---
 
@@ -695,6 +896,18 @@ refactor(auth): simplify multi-role context switcher
 
 ---
 
+## Git Operations Policy (PROD-FIX-01, June 2026)
+
+Claude Code MAY run `git add`, `git commit`, and `git push` on
+`feature/*`, `fix/*`, and `develop` branches after plan approval.
+Claude Code MUST use `gh pr create` + `gh pr merge` for merges into
+`main`. Claude Code must NEVER push directly to `main`.
+
+(TypeScript type checks remain `npx tsc --noEmit` only — see the
+Banned Commands and Quality Gate sections.)
+
+---
+
 ## Branch Lifecycle Rule
 
 Every feature branch must be merged into `develop` before
@@ -982,6 +1195,92 @@ before producing any plan or summary.
 
 ---
 
-*Crikly Working Ethics v1.0 — March 2026*
+### L-07 — `rm -rf .next` destroys Turbopack RocksDB cache
+
+**What happened:** Two Claude Code tasks on 11 May 2026
+(FIX-GO-LIVE-CACHE and FIX-THEME-BRAND-TOKENS) ran
+`rm -rf .next` as part of their TypeScript-check workflow.
+This destroyed Turbopack's RocksDB persistent cache on
+Next.js 16.2.1. Recovery required a full `npm install`
+(3–5 minutes of downtime).
+
+**Root cause:** The prompts did not explicitly ban
+`rm -rf .next`. Claude approved both prompts without
+flagging the command. The agent files and working-ethics
+doc did not list it as a banned command — the `.next`
+directory was implicitly treated as disposable build
+output, which is wrong under Next.js 16 with Turbopack
+caching.
+
+**Rule added:** `rm -rf .next` is permanently banned from
+all Claude Code prompts and agent files. TypeScript checks
+must use `npx tsc --noEmit` only. Any prompt containing
+`rm -rf .next` must be rejected before execution. Added to
+the new "Banned Commands" section above.
+
+---
+
+## Common Pitfalls — Lessons from real sessions
+
+### macOS Finder duplicates
+
+macOS sometimes creates duplicate files with " 2.tsx" / " 3.sql"
+/ " 4.png" naming when files are moved or copied. These are junk
+but they break tools that glob directories.
+
+Symptom: `supabase start` fails with "duplicate key value violates
+unique constraint schema_migrations_pkey".
+
+Fix: Find them with `find . -type f \( -name "* 2.*" -o -name "* 3.*"
+-o -name "* 4.*" \)` and delete after verifying byte-identity to
+the canonical file.
+
+Reference: SYNC-15 (3 May 2026) cleaned up 47 dupes across the repo.
+
+### Backup branch before risky operations
+
+Before any cleanup task that deletes 10+ files, create a safety
+branch:
+
+```
+git branch backup/pre-[task-id]
+```
+
+Costs nothing. Provides a one-command rollback (`git reset --hard
+backup/pre-[task-id]`) if something goes wrong.
+
+### Never blanket-allow Claude Code approvals
+
+See "Rule on approval gates" in Standard Claude Code Prompt Template above.
+
+### Fix ID assignment
+
+Before assigning a Fix-NN number to any new bug fix, ALWAYS check
+Notion's Bug & Fix Log for the highest existing Fix-NN. The next
+number is highest + 1.
+
+Why: Memory-based assignment causes ID collisions. Tonight's
+Fix-91 and Fix-92 (venue lineage and seed alignment) were
+committed to git as "Fix-86" and "Fix-87" because earlier sessions
+assumed those numbers were available — but MS-23 marketing fixes
+on 28 April had already claimed them. Result: git commit messages
+reference one Fix ID, Notion canonical ID is different. Audit
+trail confused.
+
+How to check (30 seconds):
+
+- Open https://www.notion.so/2fe61720904e4640a01378039e6b088a
+- Sort by Fix ID descending
+- First row = highest existing
+- Your new Fix = highest + 1
+
+If there's an ID collision in git commits already (like Fix-91/92
+in develop history), document it explicitly in the Notion Notes
+field: "Git commit XXX says 'Fix-NN' due to collision with [other
+Fix]. Canonical Fix ID is Fix-MM in this log."
+
+---
+
+*Crikly Working Ethics v1.10 — 12 May 2026 — L-07-RM-NEXT-BAN*
 *Review after each phase completion.*
 *Any process change must be agreed with Lasith first.*

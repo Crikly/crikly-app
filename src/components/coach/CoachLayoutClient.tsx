@@ -2,13 +2,22 @@
 
 import React, { useState, useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
+import Link from 'next/link'
 import {
   Home, Calendar, Inbox, Users, Clock, User,
-  TrendingUp, CreditCard, Settings, Share2,
-  MoreHorizontal, X, Copy, QrCode, Mail
+  TrendingUp, Star, CreditCard, Settings, Share2,
+  X
 } from 'lucide-react'
 import { CoachRightPanel } from '@/components/coach/CoachRightPanel'
+// DS-RIGHT-PANEL-01: BookingsProvider is now mounted on EVERY coach route
+// because the universal right-panel command-centre reads sessions from it.
+// Previously gated to /coach/bookings only. The cost is 4 parallel fetches
+// per coach page load (~200ms) — acceptable for the consistency win.
+// Follow-up: PERF-RIGHT-PANEL-DASHBOARD-DEDUPE.
+import { BookingsProvider } from '@/contexts/BookingsContext'
 import { createClient } from '@/lib/supabase/client'
+import { fetchCoachProfileCached } from '@/lib/onboarding-cache'
+import { ShareLinkPanel } from '@/components/coach/shared/ShareLinkPanel'
 
 interface CoachLayoutClientProps {
   children: React.ReactNode
@@ -25,14 +34,23 @@ export function CoachLayoutClient({
   const pathname = usePathname()
   const [isShareModalOpen, setIsShareModalOpen] = useState(false)
   const [notificationCount, setNotificationCount] = useState(0)
+  // AF-H-39: real coach slug from DB (was: name-derived single-replace)
+  const [coachSlug, setCoachSlug] = useState('')
+  // BUG-GO-LIVE-PATH: profile status drives the My Profile sidebar pulse dot.
+  // null = unknown (don't render dot until fetch resolves to avoid flash).
+  const [profileLive, setProfileLive] = useState<boolean | null>(null)
+  const [profilePaused, setProfilePaused] = useState(false)
 
   const isActive = (path: string) => pathname === path ||
     (path !== '/coach/dashboard' && pathname.startsWith(path))
 
   const nav = (path: string) => router.push(path)
 
-  // Hide right panel on onboarding AND dashboard (dashboard renders its own with data)
-  const showRightPanel = !pathname.includes('/onboarding') && pathname !== '/coach/dashboard'
+  // DS-RIGHT-PANEL-01: panel renders on every coach route EXCEPT onboarding.
+  // The dashboard inclusion was added by this task — dashboard previously
+  // mounted CoachRightPanel from inside CoachHomeClient to pass dashboardData
+  // as a prop, but the universal panel reads from contexts directly now.
+  const showRightPanel = !pathname.includes('/onboarding')
 
   // Extract initials from coach name (same logic as OnboardingPreviewPanel)
   const initials = initialCoachName
@@ -81,56 +99,100 @@ export function CoachLayoutClient({
     return () => window.removeEventListener('crikly:open-share-modal', handleOpenShare)
   }, [])
 
+  // AF-H-39: fetch coach slug for share URLs (cached helper — warm after onboarding).
+  // BUG-GO-LIVE-PATH: also captures is_profile_live + is_paused for the sidebar pulse dot.
+  useEffect(() => {
+    fetchCoachProfileCached()
+      .then((p: { slug?: string; is_profile_live?: boolean; is_paused?: boolean } | null) => {
+        if (p?.slug) setCoachSlug(p.slug)
+        if (p) {
+          setProfileLive(!!p.is_profile_live)
+          setProfilePaused(!!p.is_paused)
+        }
+      })
+      .catch(() => {})
+  }, [])
+
+  // BUG-SIDEBAR-PULSE-STALE: listen for in-session profile cache invalidation
+  // from ProfileEdit (Go Live, mount-freshen, photo upload) and re-read so the
+  // pulse dot reflects the current is_profile_live + is_paused. Without this,
+  // the [] deps fetch above runs once at layout mount and never recomputes,
+  // leaving the sidebar dot frozen until full page reload. Matches the
+  // crikly:open-share-modal listener pattern at L86–90. Handler body is a
+  // verbatim duplicate of the mount-fetch above — if that shape changes,
+  // this handler must change too (drift risk noted in commit body).
+  useEffect(() => {
+    const handleProfileUpdated = () => {
+      fetchCoachProfileCached()
+        .then((p: { slug?: string; is_profile_live?: boolean; is_paused?: boolean } | null) => {
+          if (p?.slug) setCoachSlug(p.slug)
+          if (p) {
+            setProfileLive(!!p.is_profile_live)
+            setProfilePaused(!!p.is_paused)
+          }
+        })
+        .catch(() => {})
+    }
+    window.addEventListener('crikly:profile-updated', handleProfileUpdated)
+    return () => window.removeEventListener('crikly:profile-updated', handleProfileUpdated)
+  }, [])
+
+  // BUG-GO-LIVE-MODAL-SHARE: share URLs derived inside ShareLinkPanel from slug.
+  // (Previously profileUrl/whatsappUrl/facebookUrl/emailUrl were derived here.)
+
   // Format notification badge
   const notificationBadge = notificationCount > 9 ? '9+' : notificationCount.toString()
 
   return (
-    <div
-      className="h-screen overflow-hidden bg-white text-gray-900 flex w-full max-w-[1600px] mx-auto"
-      style={{ fontFamily: "'DM Sans', sans-serif" }}
-    >
+    <div className="h-screen overflow-hidden overflow-x-hidden bg-white text-gray-900 flex w-full max-w-[1600px] mx-auto">
       {/* Desktop Sidebar */}
       <aside className="hidden lg:flex w-72 shrink-0 flex-col bg-white border-r border-gray-100 p-6 sticky top-0 h-screen z-10">
-        <div className="mb-6 flex justify-center">
+        <Link href="/coach/dashboard" className="mb-6 flex justify-center">
           <img
             src="/logo.png"
             alt="Crikly"
             className="w-36 h-auto object-contain"
           />
-        </div>
+        </Link>
 
         <div className="flex flex-col gap-4 mb-8">
-          <div className="flex items-center gap-3 p-2 -mx-2 rounded-xl hover:bg-gray-50 cursor-pointer transition-colors border border-transparent hover:border-gray-100">
-            <div className="relative">
-              {initialAvatarUrl && initialAvatarUrl.trim() !== '' ? (
-                <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 shadow-sm">
-                  <img src={initialAvatarUrl} alt={initialCoachName} className="w-full h-full object-cover" />
-                </div>
-              ) : (
-                <div className="w-10 h-10 bg-[#E6F1FB] rounded-full flex items-center justify-center shrink-0">
-                  <span className="text-[#0C447C] text-[14px] font-bold">{initials}</span>
-                </div>
-              )}
-              {notificationCount > 0 && (
-                <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 bg-red-500 rounded-full border-2 border-white flex items-center justify-center text-[10px] font-bold text-white shadow-sm">
-                  {notificationBadge}
-                </span>
-              )}
-            </div>
-            <div className="flex items-center justify-between flex-1 pr-1">
-              <p className="text-base font-bold text-gray-900 leading-tight">{initialCoachName}</p>
-              <button
-                onClick={(e) => { e.stopPropagation(); setIsShareModalOpen(true) }}
-                className="text-gray-400 hover:text-[#0077CC] transition-colors p-1.5 rounded-md hover:bg-white border border-transparent hover:border-gray-200 hover:shadow-sm group"
-              >
-                <Share2 size={14} className="group-hover:scale-110 transition-transform" />
-              </button>
-            </div>
+          <div className="flex items-center gap-3 p-2 -mx-2 rounded-xl hover:bg-gray-50 transition-colors border border-transparent hover:border-gray-100">
+            <Link href="/coach/dashboard" className="flex items-center gap-3 flex-1 min-w-0">
+              <div className="relative">
+                {initialAvatarUrl && initialAvatarUrl.trim() !== '' ? (
+                  <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 shadow-sm">
+                    <img src={initialAvatarUrl} alt={initialCoachName} className="w-full h-full object-cover" />
+                  </div>
+                ) : (
+                  <div className="w-10 h-10 bg-[#E6F1FB] rounded-full flex items-center justify-center shrink-0">
+                    <span className="text-[#0C447C] text-[14px] font-bold">{initials}</span>
+                  </div>
+                )}
+                {notificationCount > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 bg-red-500 rounded-full border-2 border-white flex items-center justify-center text-[10px] font-bold text-white shadow-sm">
+                    {notificationBadge}
+                  </span>
+                )}
+              </div>
+              <p className="text-base font-bold text-gray-900 leading-tight truncate">{initialCoachName}</p>
+            </Link>
+            <button
+              onClick={() => setIsShareModalOpen(true)}
+              className="text-gray-400 hover:text-[#0077CC] transition-colors p-1.5 rounded-md hover:bg-white border border-transparent hover:border-gray-200 hover:shadow-sm group shrink-0"
+            >
+              <Share2 size={14} className="group-hover:scale-110 transition-transform" />
+            </button>
           </div>
 
           <div className="bg-gray-100 p-1 rounded-lg flex items-center w-full">
             <button className="flex-1 bg-white shadow-sm rounded-md py-1.5 text-xs font-bold text-gray-900 transition-all">Coach</button>
-            <button onClick={() => nav('/parent/dashboard')} className="flex-1 rounded-md py-1.5 text-xs font-bold text-gray-500 hover:text-gray-900 transition-all">Parent</button>
+            <button
+              disabled
+              title="Parent module coming soon"
+              className="flex-1 rounded-md py-1.5 text-xs font-bold text-gray-500 opacity-40 cursor-not-allowed transition-all"
+            >
+              Parent
+            </button>
           </div>
         </div>
 
@@ -144,27 +206,38 @@ export function CoachLayoutClient({
           <div className="flex flex-col gap-1.5">
             <div className="px-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1 mt-2">Manage</div>
             <SidebarItem icon={<Clock size={20} />} label="Availability" active={isActive('/coach/availability')} onClick={() => nav('/coach/availability')} />
-            <SidebarItem icon={<User size={20} />} label="My Profile" active={isActive('/coach/profile')} onClick={() => nav('/coach/profile/edit')} />
+            {/* BUG-QA-04: dot is a STATUS indicator — green when live, amber when live+paused,
+                no dot when draft. The Profile page already shows a Go Live banner for draft state. */}
+            <SidebarItem
+              icon={<User size={20} />}
+              label="My Profile"
+              active={isActive('/coach/profile')}
+              pulseDot={profileLive === true && profilePaused ? 'warning' : (profileLive === true ? 'success' : undefined)}
+              pulseTitle={profileLive === true && profilePaused ? 'Your profile is paused' : (profileLive === true ? 'Your profile is live' : undefined)}
+              onClick={() => nav('/coach/profile/edit')}
+            />
           </div>
           <div className="flex flex-col gap-1.5">
             <div className="px-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1 mt-2">Account</div>
             <SidebarItem icon={<TrendingUp size={20} />} label="Earnings" active={isActive('/coach/earnings')} onClick={() => nav('/coach/earnings')} />
+            <SidebarItem icon={<Star size={20} />} label="Reviews" active={isActive('/coach/reviews')} onClick={() => nav('/coach/reviews')} />
             <SidebarItem icon={<CreditCard size={20} />} label="Get Paid" warningDot active={isActive('/coach/get-paid')} onClick={() => nav('/coach/get-paid')} />
+            {/* C-Settings-01-UI: Settings entry — placed at end of Account cluster (Ambiguity 3) */}
+            <SidebarItem icon={<Settings size={20} />} label="Settings" active={isActive('/coach/settings')} onClick={() => nav('/coach/settings')} />
           </div>
         </nav>
 
-        <div className="mt-auto pt-6 border-t border-gray-100">
-          <SidebarItem icon={<Settings size={20} />} label="Settings" active={isActive('/coach/settings')} onClick={() => nav('/coach/settings')} />
-        </div>
       </aside>
 
-      {/* Main content */}
-      <main className="flex-1 overflow-y-auto relative bg-white">
-        {children}
-      </main>
-
-      {/* Right Panel */}
-      {showRightPanel && <CoachRightPanel />}
+      {/* DS-RIGHT-PANEL-01: BookingsProvider wraps every coach route so the
+          universal right-panel command-centre can read sessions everywhere.
+          Both <main> and the right panel are inside the same provider. */}
+      <BookingsProvider>
+        <main className="flex-1 min-w-0 overflow-y-auto relative bg-white">
+          {children}
+        </main>
+        {showRightPanel && <CoachRightPanel />}
+      </BookingsProvider>
 
       {/* Mobile Bottom Nav */}
       <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 pb-6 pt-3 px-6 flex justify-between items-center z-50 shadow-[0_-10px_40px_rgba(0,0,0,0.04)]">
@@ -172,7 +245,13 @@ export function CoachLayoutClient({
         <MobileNavItem icon={<Calendar size={24} />} label="Schedule" active={isActive('/coach/schedule')} onClick={() => nav('/coach/schedule')} />
         <MobileNavItem icon={<Inbox size={24} />} label="Bookings" active={isActive('/coach/bookings')} onClick={() => nav('/coach/bookings')} />
         <MobileNavItem icon={<Users size={24} />} label="Programmes" active={isActive('/coach/programmes')} onClick={() => nav('/coach/programmes')} />
-        <MobileNavItem icon={<MoreHorizontal size={24} />} label="More" active={false} onClick={() => {}} />
+        {/* C-Settings-01-UI: replaces the AF-H-Wave-4 "More" stub now that Settings exists */}
+        <MobileNavItem
+          icon={<Settings size={24} />}
+          label="Settings"
+          active={isActive('/coach/settings')}
+          onClick={() => nav('/coach/settings')}
+        />
       </div>
 
       {isShareModalOpen && (
@@ -182,64 +261,9 @@ export function CoachLayoutClient({
               <X size={18} />
             </button>
             <h2 className="text-[22px] font-bold text-gray-900 mb-6 pr-8 leading-tight">Share your profile</h2>
-            <div className="flex flex-col gap-2.5 mb-8">
-              <div className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-[14px] p-2 pl-4">
-                <span className="text-[15px] text-gray-600 font-medium truncate mr-3">crikly.app/{initialCoachName.toLowerCase().replace(' ', '-')}</span>
-                <button className="bg-white border border-gray-200 text-gray-900 px-4 py-2 rounded-[10px] font-bold text-[13px] shadow-sm hover:bg-gray-50 flex items-center gap-1.5 shrink-0">
-                  <Copy size={14} />Copy
-                </button>
-              </div>
-            </div>
-            <div className="flex justify-between items-start">
-              <div key="WhatsApp" className="flex flex-col items-center gap-2.5 cursor-pointer group w-[64px]">
-                <div className="w-[52px] h-[52px] rounded-2xl bg-green-50 hover:bg-green-100 flex items-center justify-center transition-colors shadow-sm">
-                  <div className="group-hover:scale-110 transition-transform duration-300">
-                    <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" className="text-green-600">
-                      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
-                    </svg>
-                  </div>
-                </div>
-                <span className="text-[11px] font-bold text-gray-600 text-center leading-tight">WhatsApp</span>
-              </div>
-              <div key="Instagram" className="flex flex-col items-center gap-2.5 cursor-pointer group w-[64px]">
-                <div className="w-[52px] h-[52px] rounded-2xl bg-pink-50 hover:bg-pink-100 flex items-center justify-center transition-colors shadow-sm">
-                  <div className="group-hover:scale-110 transition-transform duration-300">
-                    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-pink-600">
-                      <rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect>
-                      <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
-                      <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line>
-                    </svg>
-                  </div>
-                </div>
-                <span className="text-[11px] font-bold text-gray-600 text-center leading-tight">Instagram</span>
-              </div>
-              <div key="Facebook" className="flex flex-col items-center gap-2.5 cursor-pointer group w-[64px]">
-                <div className="w-[52px] h-[52px] rounded-2xl bg-blue-50 hover:bg-blue-100 flex items-center justify-center transition-colors shadow-sm">
-                  <div className="group-hover:scale-110 transition-transform duration-300">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6 text-blue-600">
-                      <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
-                    </svg>
-                  </div>
-                </div>
-                <span className="text-[11px] font-bold text-gray-600 text-center leading-tight">Facebook</span>
-              </div>
-              <div key="Email" className="flex flex-col items-center gap-2.5 cursor-pointer group w-[64px]">
-                <div className="w-[52px] h-[52px] rounded-2xl bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors shadow-sm">
-                  <div className="group-hover:scale-110 transition-transform duration-300">
-                    <Mail size={24} className="text-gray-700" />
-                  </div>
-                </div>
-                <span className="text-[11px] font-bold text-gray-600 text-center leading-tight">Email</span>
-              </div>
-              <div key="QRCode" className="flex flex-col items-center gap-2.5 cursor-pointer group w-[64px]">
-                <div className="w-[52px] h-[52px] rounded-2xl bg-purple-50 hover:bg-purple-100 flex items-center justify-center transition-colors shadow-sm">
-                  <div className="group-hover:scale-110 transition-transform duration-300">
-                    <QrCode size={24} className="text-purple-600" />
-                  </div>
-                </div>
-                <span className="text-[11px] font-bold text-gray-600 text-center leading-tight">QR Code</span>
-              </div>
-            </div>
+            {/* BUG-GO-LIVE-MODAL-SHARE: URL strip + Copy + 5 social icons extracted to
+                ShareLinkPanel so the Go Live modal can render the same UI. */}
+            <ShareLinkPanel slug={coachSlug} />
           </div>
         </div>
       )}
@@ -247,11 +271,21 @@ export function CoachLayoutClient({
   )
 }
 
-function SidebarItem({ icon, label, active, badge, warningDot, onClick }: {
-  icon: React.ReactNode; label: string; active?: boolean; badge?: number; warningDot?: boolean; onClick?: () => void
+function SidebarItem({ icon, label, active, badge, warningDot, pulseDot, pulseTitle, onClick }: {
+  icon: React.ReactNode
+  label: string
+  active?: boolean
+  badge?: number
+  warningDot?: boolean
+  // BUG-QA-04: animated dot is a STATUS indicator — success = profile is live, warning = profile is paused.
+  // No dot when draft (is_profile_live=false). Distinct from the static `warningDot` (e.g. Get Paid Stripe-pending)
+  // by both colour and pulse animation.
+  pulseDot?: 'success' | 'warning'
+  pulseTitle?: string
+  onClick?: () => void
 }) {
   return (
-    <div onClick={onClick} className={`flex items-center justify-between px-4 py-3 rounded-xl cursor-pointer transition-all ${active ? 'bg-[#0077CC]/10 text-[#0077CC] font-bold' : 'text-gray-600 font-medium hover:bg-gray-50 hover:text-gray-900'}`}>
+    <div onClick={onClick} className={`relative flex items-center justify-between px-4 py-3 rounded-xl cursor-pointer transition-all ${active ? 'bg-[#0077CC]/10 text-[#0077CC] font-bold' : 'text-gray-600 font-medium hover:bg-gray-50 hover:text-gray-900'}`}>
       <div className="flex items-center gap-3.5">
         <div className="relative">
           {icon}
@@ -260,15 +294,36 @@ function SidebarItem({ icon, label, active, badge, warningDot, onClick }: {
         <span className="text-[15px]">{label}</span>
       </div>
       {badge && <div className="w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center text-[11px] font-bold shadow-sm">{badge}</div>}
+      {/* FIX-PULSE-DOT-POSITION: pulse dot moved out of icon wrapper to row level,
+          flush right + vertically centred. The 10px wrapper / 8px dot / animate-ping
+          ring structure from BUG-PULSE-DOT-VISIBILITY is preserved verbatim. */}
+      {pulseDot && (
+        <span
+          title={pulseTitle}
+          className="absolute right-3 top-1/2 -translate-y-1/2 h-2.5 w-2.5"
+        >
+          <span
+            className={`absolute inset-0 rounded-full opacity-75 animate-ping ${pulseDot === 'success' ? 'bg-green-600' : 'bg-amber-600'}`}
+          />
+          <span
+            className={`absolute inset-px rounded-full ${pulseDot === 'success' ? 'bg-green-600' : 'bg-amber-600'}`}
+          />
+        </span>
+      )}
     </div>
   )
 }
 
-function MobileNavItem({ icon, label, active, badge, onClick }: {
+function MobileNavItem({ icon, label, active, badge, onClick, disabled, title }: {
   icon: React.ReactNode; label: string; active: boolean; badge?: number; onClick: () => void
+  disabled?: boolean; title?: string
 }) {
   return (
-    <div onClick={onClick} className="flex flex-col items-center gap-1.5 p-2 relative cursor-pointer min-w-[60px]">
+    <div
+      onClick={disabled ? undefined : onClick}
+      title={title}
+      className={`flex flex-col items-center gap-1.5 p-2 relative min-w-[60px] ${disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
+    >
       <div className={`transition-colors ${active ? 'text-[#0077CC]' : 'text-gray-400'}`}>{icon}</div>
       <span className={`text-[11px] font-bold transition-colors ${active ? 'text-[#0077CC]' : 'text-gray-400'}`}>{label}</span>
       {badge && <div className="absolute top-1 right-2 w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center text-[10px] font-bold border-[1.5px] border-white shadow-sm">{badge}</div>}

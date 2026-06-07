@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { requireCoachContext } from '@/lib/auth/require-coach'
 
 /**
  * Coach photo response
@@ -21,45 +22,9 @@ export async function GET(): Promise<NextResponse<{ photos: PhotoResponse[] } | 
   try {
     const supabase = await createClient()
     
-    // 1. Auth check
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
-    }
-
-    // 2. Get user profile and check coach role
-    const { data: userProfile, error: profileError } = await supabase
-      .from('user_profiles')
-      .select('id')
-      .eq('auth_user_id', user.id)
-      .single()
-
-    if (profileError || !userProfile) {
-      return NextResponse.json({ error: 'User profile not found' }, { status: 404 })
-    }
-
-    const { data: roleCheck, error: roleError } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_profile_id', userProfile.id)
-      .eq('role', 'coach')
-      .single()
-
-    if (roleError || !roleCheck) {
-      return NextResponse.json({ error: 'Forbidden — coach role required' }, { status: 403 })
-    }
-
-    // 3. Get coach profile
-    const { data: coachProfile, error: coachError } = await supabase
-      .from('coach_profiles')
-      .select('id')
-      .eq('user_profile_id', userProfile.id)
-      .single()
-
-    if (coachError || !coachProfile) {
-      return NextResponse.json({ error: 'Coach profile not found' }, { status: 404 })
-    }
+    const { context, error } = await requireCoachContext(supabase)
+    if (error) return error
+    const { coachProfile } = context
 
     // 4. Fetch photos ordered by sort_order
     const { data: photos, error: photosError } = await supabase
@@ -100,45 +65,9 @@ export async function POST(
   try {
     const supabase = await createClient()
     
-    // 1. Auth check
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
-    }
-
-    // 2. Get user profile and check coach role
-    const { data: userProfile, error: profileError } = await supabase
-      .from('user_profiles')
-      .select('id')
-      .eq('auth_user_id', user.id)
-      .single()
-
-    if (profileError || !userProfile) {
-      return NextResponse.json({ error: 'User profile not found' }, { status: 404 })
-    }
-
-    const { data: roleCheck, error: roleError } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_profile_id', userProfile.id)
-      .eq('role', 'coach')
-      .single()
-
-    if (roleError || !roleCheck) {
-      return NextResponse.json({ error: 'Forbidden — coach role required' }, { status: 403 })
-    }
-
-    // 3. Get coach profile
-    const { data: coachProfile, error: coachError } = await supabase
-      .from('coach_profiles')
-      .select('id')
-      .eq('user_profile_id', userProfile.id)
-      .single()
-
-    if (coachError || !coachProfile) {
-      return NextResponse.json({ error: 'Coach profile not found' }, { status: 404 })
-    }
+    const { context, error } = await requireCoachContext(supabase)
+    if (error) return error
+    const { coachProfile } = context
 
     // 4. Parse and validate body
     const body = await request.json()
@@ -262,41 +191,9 @@ export async function DELETE(
   try {
     const supabase = await createClient()
 
-    // 1. Auth check
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
-    }
-
-    // 2. User profile + coach role
-    const { data: userProfile, error: profileError } = await supabase
-      .from('user_profiles')
-      .select('id')
-      .eq('auth_user_id', user.id)
-      .single()
-    if (profileError || !userProfile) {
-      return NextResponse.json({ error: 'User profile not found' }, { status: 404 })
-    }
-
-    const { data: roleCheck, error: roleError } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_profile_id', userProfile.id)
-      .eq('role', 'coach')
-      .single()
-    if (roleError || !roleCheck) {
-      return NextResponse.json({ error: 'Forbidden — coach role required' }, { status: 403 })
-    }
-
-    // 3. Coach profile
-    const { data: coachProfile, error: coachError } = await supabase
-      .from('coach_profiles')
-      .select('id')
-      .eq('user_profile_id', userProfile.id)
-      .single()
-    if (coachError || !coachProfile) {
-      return NextResponse.json({ error: 'Coach profile not found' }, { status: 404 })
-    }
+    const { context, error } = await requireCoachContext(supabase)
+    if (error) return error
+    const { coachProfile } = context
 
     // 4. Parse body
     const body = await request.json()
@@ -315,7 +212,30 @@ export async function DELETE(
       return NextResponse.json({ error: 'Photo not found or access denied' }, { status: 404 })
     }
 
-    // 6. Delete from DB
+    // AF-H-54: storage first so DB delete only happens after the file has been handled.
+    // URL extraction via new URL() — was fragile string split (broke on signed URLs / query strings).
+    let storagePath: string | null = null
+    try {
+      const url = new URL(photo.photo_url)
+      const marker = '/coach-photos/'
+      const idx = url.pathname.indexOf(marker)
+      storagePath = idx >= 0 ? url.pathname.slice(idx + marker.length) : null
+    } catch {
+      // Malformed URL — skip storage cleanup, proceed to DB delete
+    }
+
+    // 6. Delete from Storage first (non-fatal — preserves prior user-visible behaviour for storage-down case)
+    if (storagePath) {
+      const { error: storageError } = await supabase.storage
+        .from('coach-photos')
+        .remove([storagePath])
+      if (storageError) {
+        console.error('[DELETE /api/coaches/photos] storage delete error:', storageError)
+        // Non-fatal — continue to DB delete
+      }
+    }
+
+    // 7. Delete DB row
     const { error: deleteError } = await supabase
       .from('coach_photos')
       .delete()
@@ -323,18 +243,6 @@ export async function DELETE(
     if (deleteError) {
       console.error('[DELETE /api/coaches/photos] db delete error:', deleteError)
       return NextResponse.json({ error: 'Failed to delete photo' }, { status: 500 })
-    }
-
-    // 7. Delete from Storage — extract path after '/coach-photos/'
-    const storagePath = photo.photo_url.split('/coach-photos/')[1]
-    if (storagePath) {
-      const { error: storageError } = await supabase.storage
-        .from('coach-photos')
-        .remove([storagePath])
-      if (storageError) {
-        // Non-fatal — DB row is gone; log and continue
-        console.error('[DELETE /api/coaches/photos] storage delete error:', storageError)
-      }
     }
 
     return NextResponse.json({ success: true }, { status: 200 })

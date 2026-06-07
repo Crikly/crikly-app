@@ -1,0 +1,89 @@
+# TEST-E2E-01: Playwright E2E tests for the coach app.
+#
+# Runs on every PR targeting develop or main, and on every push to develop.
+# Does NOT run on push to main — release work goes through PRs.
+#
+# Required GitHub Secrets (10):
+#   NEXT_PUBLIC_SUPABASE_URL
+#   NEXT_PUBLIC_SUPABASE_ANON_KEY
+#   SUPABASE_SERVICE_ROLE_KEY
+#   TEST_COACH_EMAIL
+#   TEST_COACH_PASSWORD
+#   STRIPE_SECRET_KEY              (test mode sk_test_… — dev server module-load needs it)
+#   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY (test mode pk_test_…)
+#   STRIPE_WEBHOOK_SECRET          (test mode whsec_…)
+#   RESEND_API_KEY                 (test or dummy — module-load only)
+#   ONESIGNAL_REST_API_KEY         (optional — only if any dev-load reads it)
+#
+# These tests touch the hosted dev Supabase project. Never run this workflow
+# pointed at production. The seed script aborts on production project refs
+# (currently a no-op safeguard).
+
+name: E2E
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop]
+
+# Single in-flight run per ref — newer pushes cancel an earlier run.
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    name: Playwright (chromium)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      TEST_COACH_EMAIL: ${{ secrets.TEST_COACH_EMAIL }}
+      TEST_COACH_PASSWORD: ${{ secrets.TEST_COACH_PASSWORD }}
+      STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+      NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY }}
+      STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      ONESIGNAL_REST_API_KEY: ${{ secrets.ONESIGNAL_REST_API_KEY }}
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers (chromium only)
+        run: npx playwright install --with-deps chromium
+
+      - name: Build app
+        # TEST-E2E-02 CI fix: precompile Next.js so the playwright webServer
+        # can `npm run start` against a built app. Avoids the 60-90s of cold
+        # compilation that `npm run dev` would do on the first page hit and
+        # was the root cause of webServer timeouts on CI.
+        run: npm run build
+
+      - name: Seed test coach
+        run: npx tsx e2e/fixtures/seed.ts
+
+      - name: Run E2E tests
+        run: npm run test:e2e
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7

@@ -1,8 +1,15 @@
 'use client'
 import React, { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { ChevronRight, User, Tag, Award, Calendar, ShieldCheck, CreditCard, CheckCircle2, Star, Share2, ExternalLink, Circle, Camera, LayoutGrid, X, Plus } from 'lucide-react'
+import { ChevronRight, User, Tag, Award, Calendar, ShieldCheck, CreditCard, CheckCircle2, Star, Share2, ExternalLink, Circle, Camera, LayoutGrid, X, Plus, AlertCircle, AlertTriangle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+// AF-P-Wave-1: profile cache adoption
+import { fetchCoachProfileCached, clearCoachProfileCache } from '@/lib/onboarding-cache'
+// PERF-06b: 60s TTL cache for Stripe Connect status. Cache written by
+// GetPaid (PERF-03) and invalidated on Stripe redirect-back; ProfileEdit
+// is a pure reader/writer here.
+import { readStripeStatusCache, writeStripeStatusCache } from '@/lib/stripe-status-cache'
+import { ShareLinkPanel } from '@/components/coach/shared/ShareLinkPanel'
 
 // CD-10b: API response type
 interface CoachProfileResponse {
@@ -33,7 +40,6 @@ interface ProfileSection { id: string; icon: React.ReactNode; title: string; sub
 
 export function ProfileEdit() {
   const router = useRouter()
-  const [isPaused, setIsPaused] = useState(false)
   
   // CD-10b: State for profile data
   const [profile, setProfile] = useState<CoachProfileResponse | null>(null)
@@ -41,6 +47,8 @@ export function ProfileEdit() {
   const [error, setError] = useState<string | null>(null)
   const [hasSports, setHasSports] = useState(false)
   const [hasQualifications, setHasQualifications] = useState(false)
+  // AF-M-Wave-1: real availability flag, was hardcoded `true` in calculateCompleteness + getSections
+  const [hasAvailability, setHasAvailability] = useState(false)
   // Fix-45: Real Stripe Connect status from CG-03 endpoint
   const [stripeChargesEnabled, setStripeChargesEnabled] = useState(false)
   const [stripePayoutsEnabled, setStripePayoutsEnabled] = useState(false)
@@ -54,6 +62,41 @@ export function ProfileEdit() {
   // Fix-42b: Gallery modal state
   const [galleryOpen, setGalleryOpen] = useState(false)
 
+  // BUG-GO-LIVE-PATH: Go Live action state.
+  // BUG-GO-LIVE-MODAL-SHARE: copiedLiveModal state + 1.5s timer useEffect
+  // moved into ShareLinkPanel so the copy feedback works in both share
+  // surfaces (Go Live modal + sidebar share modal).
+  const [goingLive, setGoingLive] = useState(false)
+  const [goLiveError, setGoLiveError] = useState<string | null>(null)
+  const [showLiveModal, setShowLiveModal] = useState(false)
+
+  async function handleGoLive() {
+    if (goingLive) return
+    setGoingLive(true)
+    setGoLiveError(null)
+    try {
+      const res = await fetch('/api/coaches/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_profile_live: true }),
+      })
+      if (!res.ok) throw new Error('Failed')
+      // BUG-GO-LIVE-PATH: reflect new state locally + clear cache.
+      // BUG-SIDEBAR-PULSE-STALE: dispatch crikly:profile-updated so the
+      // sidebar pulse dot recomputes in-session (was previously frozen
+      // by [] deps on CoachLayoutClient mount fetch).
+      setProfile(prev => prev ? { ...prev, is_profile_live: true } : prev)
+      clearCoachProfileCache()
+      window.dispatchEvent(new CustomEvent('crikly:profile-updated'))
+      setShowLiveModal(true)
+    } catch (err) {
+      console.error('[ProfileEdit] Go Live error:', err)
+      setGoLiveError('Could not go live. Please try again.')
+    } finally {
+      setGoingLive(false)
+    }
+  }
+
   // CD-10b: Fetch profile data on mount
   useEffect(() => {
     const fetchProfile = async () => {
@@ -61,31 +104,69 @@ export function ProfileEdit() {
         setLoading(true)
         setError(null)
 
-        const response = await fetch('/api/coaches/profile')
-        if (!response.ok) {
-          throw new Error('Failed to fetch profile')
-        }
+        // FIX-GO-LIVE-CACHE: bust the cache on every Profile mount so
+        // is_profile_live can never be stale here. Other pages keep the
+        // cached read for performance — this is the one page where the
+        // value drives the headline UI (banner + Go Live CTA + completion
+        // copy), so accuracy beats the cache hit.
+        clearCoachProfileCache()
 
-        const data: CoachProfileResponse = await response.json()
-        setProfile(data)
+        // PERF-06: all 5 fetches were sequential — none depend on each
+        // other (the profile data and the 4 count checks each populate
+        // independent state slots). Folding into a single Promise.all
+        // collapses 5 sequential HTTP round-trips into 1 wall-clock max.
+        // Predicted ~950ms warm (1500-3000ms cold) saved per Profile
+        // mount. Same mechanical pattern as PERF-02 on dashboard/page.tsx,
+        // applied at the client.
 
-        // Fix-17m: Fetch sports count
-        const sportsRes = await fetch('/api/coaches/sports')
+        // PERF-06b: read the PERF-03 Stripe cache before firing requests.
+        // Cache hit → swap the network fetch for Promise.resolve(null) so
+        // the Promise.all stays the same shape, but the Stripe ~800ms
+        // round-trip is skipped. Cache miss → fetch normally and write
+        // the result post-parse. Cache invalidation is owned by
+        // GetPaid.tsx (return-from-onboarding); ProfileEdit is a pure
+        // reader/writer here.
+        const cachedStripe = readStripeStatusCache()
+
+        const [
+          profileData,
+          sportsRes,
+          qualsRes,
+          stripeRes,
+          availRes,
+        ] = await Promise.all([
+          fetchCoachProfileCached(),
+          fetch('/api/coaches/sports'),
+          fetch('/api/coaches/qualifications'),
+          cachedStripe ? Promise.resolve(null) : fetch('/api/payments/connect/onboard'),
+          fetch('/api/coaches/availability'),
+        ])
+
+        setProfile(profileData as CoachProfileResponse)
+        // BUG-SIDEBAR-PULSE-STALE: notify the sidebar after the freshen
+        // so its pulse dot picks up any server-side flip that happened
+        // since the layout first mounted.
+        window.dispatchEvent(new CustomEvent('crikly:profile-updated'))
+
+        // Fix-17m: sports count
         if (sportsRes.ok) {
           const sportsData = await sportsRes.json()
           setHasSports(sportsData.sports && sportsData.sports.length > 0)
         }
 
-        // Fix-17m: Fetch qualifications count
-        const qualsRes = await fetch('/api/coaches/qualifications')
+        // Fix-17m: qualifications count
         if (qualsRes.ok) {
           const qualsData = await qualsRes.json()
           setHasQualifications(qualsData.qualifications && qualsData.qualifications.length > 0)
         }
 
-        // Fix-45: Fetch real Stripe Connect status
-        const stripeRes = await fetch('/api/payments/connect/onboard')
-        if (stripeRes.ok) {
+        // Fix-45: real Stripe Connect status
+        // PERF-06b: apply from cache on hit, or fetch+parse+writeCache on miss.
+        if (cachedStripe) {
+          setStripeConnected(cachedStripe.connected)
+          setStripeChargesEnabled(cachedStripe.charges_enabled ?? false)
+          setStripePayoutsEnabled(cachedStripe.payouts_enabled ?? false)
+        } else if (stripeRes && stripeRes.ok) {
           const stripeData = await stripeRes.json() as {
             connected: boolean
             charges_enabled?: boolean
@@ -94,6 +175,13 @@ export function ProfileEdit() {
           setStripeConnected(stripeData.connected)
           setStripeChargesEnabled(stripeData.charges_enabled ?? false)
           setStripePayoutsEnabled(stripeData.payouts_enabled ?? false)
+          writeStripeStatusCache(stripeData)
+        }
+
+        // AF-M-Wave-1: availability count for completeness scoring (non-fatal, matches sports/qualifications pattern)
+        if (availRes.ok) {
+          const availData = await availRes.json() as { availability?: unknown[] }
+          setHasAvailability((availData.availability ?? []).length > 0)
         }
       } catch (err) {
         console.error('Failed to fetch profile:', err)
@@ -113,8 +201,9 @@ export function ProfileEdit() {
     let completed = 0
     const total = 6
     
-    // Personal Info (full_name, bio, location_city)
-    if (profile.full_name && profile.bio && profile.location_city) completed++
+    // Personal Info (full_name, bio, location_city, avatar_url)
+    // BUG-QA-03: avatar_url required per PRD REQ-C-028 — must match Dashboard
+    if (profile.full_name && profile.bio && profile.location_city && profile.avatar_url) completed++
     
     // Sports & Pricing (has at least one sport)
     if (hasSports) completed++
@@ -122,14 +211,15 @@ export function ProfileEdit() {
     // Qualifications (has at least one qualification)
     if (hasQualifications) completed++
     
-    // Availability (assume complete - would need availability API check)
-    completed++ // TODO: Check actual availability data
+    // AF-M-Wave-1: gate on real availability data — was unconditional `completed++`
+    if (hasAvailability) completed++
     
     // Booking Policy (cancellation_window_hours set)
     if (profile.cancellation_window_hours > 0) completed++
 
-    // Fix-45: Payment Setup — fully live means charges + payouts enabled
-    if (stripeChargesEnabled && stripePayoutsEnabled) completed++
+    // BUG-QA-03: Payment Setup — read stripe_onboarding_complete (canonical
+    // field set by account.updated webhook in d74bb96) to match Dashboard.
+    if (profile.stripe_onboarding_complete) completed++
     
     return Math.round((completed / total) * 100)
   }
@@ -140,20 +230,22 @@ export function ProfileEdit() {
   const getSections = (): ProfileSection[] => {
     if (!profile) return []
     
-    const personalComplete = !!(profile.full_name && profile.bio && profile.location_city)
+    const personalComplete = !!(profile.full_name && profile.bio && profile.location_city && profile.avatar_url)
     const sportsComplete = hasSports
     const qualificationsComplete = hasQualifications
-    const availabilityComplete = true // TODO: Check actual availability
+    // AF-M-Wave-1: derived from real availability data — was hardcoded `true`
+    const availabilityComplete = hasAvailability
     const policyComplete = profile.cancellation_window_hours > 0
-    // Fix-45: fully live = charges + payouts both enabled; partial = connected but not complete
-    const paymentFullyComplete = stripeChargesEnabled && stripePayoutsEnabled
+    // BUG-QA-03: fully live = stripe_onboarding_complete (canonical webhook-set field);
+    // partial = connected but not complete (still uses live Stripe state for the nuance).
+    const paymentFullyComplete = !!profile.stripe_onboarding_complete
     const paymentPartial = stripeConnected && !paymentFullyComplete
     const paymentComplete = paymentFullyComplete
     
     return [
       { 
         id: 'personal', 
-        icon: <User size={18} className={personalComplete ? "text-[#0077CC]" : "text-[#F59E0B]"} />, 
+        icon: <User size={18} className={personalComplete ? "text-brand-600" : "text-[#F59E0B]"} />,
         title: 'Personal Info', 
         subtitle: personalComplete 
           ? `${profile.full_name}${profile.location_city ? ' · ' + profile.location_city : ''}` 
@@ -162,7 +254,7 @@ export function ProfileEdit() {
       },
       { 
         id: 'sports', 
-        icon: <Tag size={18} className={sportsComplete ? "text-[#0077CC]" : "text-[#F59E0B]"} />, 
+        icon: <Tag size={18} className={sportsComplete ? "text-brand-600" : "text-[#F59E0B]"} />,
         title: 'Sports & Pricing', 
         subtitle: sportsComplete 
           ? `${profile.years_experience} years experience` 
@@ -171,7 +263,7 @@ export function ProfileEdit() {
       },
       { 
         id: 'qualifications', 
-        icon: <Award size={18} className={qualificationsComplete ? "text-[#0077CC]" : "text-[#F59E0B]"} />, 
+        icon: <Award size={18} className={qualificationsComplete ? "text-brand-600" : "text-[#F59E0B]"} />,
         title: 'Qualifications', 
         subtitle: qualificationsComplete 
           ? 'DBS verified' 
@@ -180,7 +272,7 @@ export function ProfileEdit() {
       },
       { 
         id: 'availability', 
-        icon: <Calendar size={18} className={availabilityComplete ? "text-[#0077CC]" : "text-[#F59E0B]"} />, 
+        icon: <Calendar size={18} className={availabilityComplete ? "text-brand-600" : "text-[#F59E0B]"} />,
         title: 'Availability', 
         subtitle: availabilityComplete 
           ? 'Weekly schedule set' 
@@ -189,7 +281,7 @@ export function ProfileEdit() {
       },
       { 
         id: 'policy', 
-        icon: <ShieldCheck size={18} className={policyComplete ? "text-[#0077CC]" : "text-[#F59E0B]"} />, 
+        icon: <ShieldCheck size={18} className={policyComplete ? "text-brand-600" : "text-[#F59E0B]"} />,
         title: 'Booking Policy', 
         subtitle: policyComplete 
           ? `${profile.cancellation_window_hours}hr cancellation window` 
@@ -198,7 +290,7 @@ export function ProfileEdit() {
       },
       {
         id: 'payment',
-        icon: <CreditCard size={18} className={paymentFullyComplete ? "text-[#0077CC]" : paymentPartial ? "text-[#F59E0B]" : "text-gray-400"} />,
+        icon: <CreditCard size={18} className={paymentFullyComplete ? "text-brand-600" : paymentPartial ? "text-[#F59E0B]" : "text-gray-400"} />,
         title: 'Payment Setup',
         subtitle: paymentFullyComplete
           ? 'Stripe connected — ready to receive payouts'
@@ -269,6 +361,13 @@ export function ProfileEdit() {
 
       if (!res.ok) throw new Error('Failed to update profile')
 
+      // AF-P-Wave-1: clear stale profile cache so next read sees the new avatar.
+      // BUG-SIDEBAR-PULSE-STALE: notify the sidebar of the cache invalidation
+      // (current sidebar uses is_profile_live + is_paused, not avatar_url, so
+      // this is harmless extra refresh — kept for "every cache invalidation
+      // dispatches" consistency).
+      clearCoachProfileCache()
+      window.dispatchEvent(new CustomEvent('crikly:profile-updated'))
       setProfile(prev => prev ? { ...prev, avatar_url: publicUrl } : prev)
     } catch (err) {
       console.error('[Fix-42] Photo upload error:', err)
@@ -279,8 +378,8 @@ export function ProfileEdit() {
   }
 
   return (
-    <div className="min-h-screen bg-white font-sans" style={{ fontFamily: "'DM Sans', sans-serif" }}>
-      <div className="w-full max-w-2xl mx-auto bg-white min-h-screen relative flex flex-col pb-12">
+    <div className="min-h-screen">
+      <div className="w-full max-w-2xl mx-auto min-h-screen relative flex flex-col pb-12">
         <div className="px-5 pt-8 pb-4 bg-white sticky top-0 z-10">
           <h1 className="text-[28px] font-bold text-gray-900 tracking-tight">Profile</h1>
         </div>
@@ -288,7 +387,8 @@ export function ProfileEdit() {
           {/* CD-10b: Loading state */}
           {loading && (
             <div className="py-16 flex flex-col items-center justify-center">
-              <div className="w-8 h-8 border-3 border-gray-200 border-t-[#0077CC] rounded-full animate-spin mb-3" />
+              {/* BUG-GO-LIVE-PATH: spinner border-t hex → brand-600 token */}
+              <div className="w-8 h-8 border-3 border-gray-200 border-t-brand-600 rounded-full animate-spin mb-3" />
               <p className="text-[14px] text-gray-500">Loading profile...</p>
             </div>
           )}
@@ -296,14 +396,15 @@ export function ProfileEdit() {
           {/* CD-10b: Error state */}
           {error && !loading && (
             <div className="py-16 flex flex-col items-center justify-center text-center px-4">
+              {/* BUG-GO-LIVE-PATH: replaced ⚠ emoji with Lucide AlertTriangle (no-emoji rule) + brand-600 token */}
               <div className="w-16 h-16 bg-red-50 text-red-600 rounded-full flex items-center justify-center mb-4">
-                <span className="text-2xl">⚠</span>
+                <AlertTriangle size={28} />
               </div>
               <h3 className="text-[18px] font-bold text-gray-900 mb-2">Failed to load profile</h3>
               <p className="text-[14px] text-gray-500 mb-6">{error}</p>
-              <button 
+              <button
                 onClick={() => window.location.reload()}
-                className="bg-[#0077CC] hover:bg-[#0066AA] text-white px-6 py-3 rounded-xl text-[15px] font-bold transition-colors"
+                className="bg-brand-600 hover:bg-brand-700 text-white px-6 py-3 rounded-xl text-[15px] font-bold transition-colors"
               >
                 Try Again
               </button>
@@ -313,6 +414,28 @@ export function ProfileEdit() {
           {/* CD-10b: Profile content */}
           {!loading && !error && profile && (
           <>
+          {/* FIX-GO-LIVE-BANNER-DESIGN: brand-50 surface, brand-800 heading, brand-600 sub + button.
+              Replaces flat white-on-white where Go Live button visually disappeared. */}
+          {!profile.is_profile_live && (
+            <div className="bg-brand-50 border border-brand-100 rounded-xl p-4 flex items-center gap-3 mb-4">
+              <AlertCircle size={18} className="text-brand-600 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-[14px] font-medium text-brand-800">Your profile is not live</p>
+                <p className="text-[13px] text-brand-600 mt-0.5">Parents cannot find or book you.</p>
+              </div>
+              <button
+                type="button"
+                onClick={handleGoLive}
+                disabled={goingLive}
+                className="h-9 px-4 rounded-full bg-brand-600 hover:bg-brand-700 text-white text-[13px] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+              >
+                {goingLive ? 'Going live…' : 'Go live'}
+              </button>
+            </div>
+          )}
+          {goLiveError && (
+            <p className="text-[12px] text-danger mb-4">{goLiveError}</p>
+          )}
           {/* CF-D07 CHANGE 1: Identity hero with stronger presence */}
           {/* CF-D07b POLISH 1: Increased padding to 24px */}
           <div className="bg-white rounded-[14px] p-6 shadow-sm">
@@ -328,7 +451,7 @@ export function ProfileEdit() {
                   {profile.avatar_url ? (
                     <img src={profile.avatar_url} alt={profile.full_name} className="w-full h-full object-cover" />
                   ) : (
-                    <div className="w-full h-full bg-[#E6F1FB] flex items-center justify-center text-[20px] font-medium text-[#0C447C]">
+                    <div className="w-full h-full bg-brand-50 flex items-center justify-center text-[20px] font-medium text-brand-800">
                       {getInitials(profile.full_name)}
                     </div>
                   )}
@@ -337,7 +460,7 @@ export function ProfileEdit() {
                   {!photoUploading && (
                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/45 transition-colors flex flex-col items-center justify-center gap-0.5 opacity-0 group-hover:opacity-100">
                       <Camera size={14} className="text-white" />
-                      <span className="text-[9px] font-medium text-white leading-none">Change</span>
+                      <span className="text-[11px] font-medium text-white leading-none">Change</span>
                     </div>
                   )}
 
@@ -349,11 +472,11 @@ export function ProfileEdit() {
                   )}
                 </div>
 
-                <p className="text-[9px] text-gray-400 text-center mt-1 leading-snug w-[68px]">
+                <p className="text-[11px] text-gray-400 text-center mt-1 leading-snug w-[68px]">
                   JPG, PNG or WebP · Max 5MB
                 </p>
                 {photoError && (
-                  <p className="text-[9px] text-red-500 text-center mt-0.5 w-[72px] leading-snug">{photoError}</p>
+                  <p className="text-[11px] text-red-500 text-center mt-0.5 w-[72px] leading-snug">{photoError}</p>
                 )}
 
                 <input
@@ -386,8 +509,8 @@ export function ProfileEdit() {
                   )}
                   {/* CD-10b: Real DBS status */}
                   {profile.dbs_status === 'verified' && (
-                    <div className="px-2 py-0.5 bg-[#E0F6F8] text-[#006677] text-[10px] font-medium rounded-full">
-                      ✓ DBS checked
+                    <div className="inline-flex items-center gap-1 px-2 py-0.5 bg-teal-50 text-teal-800 text-[10px] font-medium rounded-full">
+                      <ShieldCheck size={11} /> DBS checked
                     </div>
                   )}
                 </div>
@@ -396,25 +519,30 @@ export function ProfileEdit() {
               {/* Action buttons */}
               {/* CF-D07b POLISH 1: Added margin-left auto to push buttons to far right */}
               <div className="flex gap-2 shrink-0 ml-auto">
+                {/* BUG-GO-LIVE-PATH: gate Preview on is_profile_live + slug.
+                    Was falling back to profile.id which 404s for non-live coaches
+                    (the public route only resolves rows where is_profile_live=true). */}
                 <button
-                  onClick={() => profile && window.open(`/coaches/${profile.slug || profile.id}`, '_blank')}
-                  disabled={!profile}
-                  className="px-3 py-1.5 bg-white border border-gray-200 text-gray-600 text-[11px] font-medium rounded-full hover:bg-gray-50 transition-colors flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={() => profile?.slug && window.open(`/coaches/${profile.slug}`, '_blank')}
+                  disabled={!profile || !profile.is_profile_live || !profile.slug}
+                  title={!profile?.is_profile_live || !profile?.slug ? 'Go live first to preview your profile' : undefined}
+                  className="px-3 py-1.5 bg-white border border-gray-200 text-gray-600 text-[11px] font-medium rounded-full hover:bg-neutral-50 transition-colors flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
                   data-testid="preview-profile-btn"
                 >
                   Preview <ExternalLink size={10} />
                 </button>
                 <button
+                  // AF-H-43: dispatch the global share-modal event (listener in CoachLayoutClient.tsx:84)
                   onClick={() => {
-                    // TODO CF-D07: wire to share profile
+                    window.dispatchEvent(new CustomEvent('crikly:open-share-modal'))
                   }}
-                  className="px-3 py-1.5 bg-white border border-gray-200 text-gray-600 text-[11px] font-medium rounded-full hover:bg-gray-50 transition-colors flex items-center gap-1"
+                  className="px-3 py-1.5 bg-white border border-gray-200 text-gray-600 text-[11px] font-medium rounded-full hover:bg-neutral-50 transition-colors flex items-center gap-1"
                 >
                   <Share2 size={10} /> Share
                 </button>
                 <button
                   onClick={() => setGalleryOpen(true)}
-                  className="px-3 py-1.5 bg-white border border-gray-200 text-gray-600 text-[11px] font-medium rounded-full hover:bg-gray-50 transition-colors flex items-center gap-1"
+                  className="px-3 py-1.5 bg-white border border-gray-200 text-gray-600 text-[11px] font-medium rounded-full hover:bg-neutral-50 transition-colors flex items-center gap-1"
                 >
                   <LayoutGrid size={10} /> Gallery
                 </button>
@@ -424,18 +552,22 @@ export function ProfileEdit() {
             {/* Progress section */}
             {/* CF-D07b POLISH 1: Increased padding-top to 16px */}
             <div className="pt-4 border-t-[0.5px] border-gray-100">
+              {/* BUG-GO-LIVE-PATH: hex tokens replaced with brand-600/brand-50 + motivational copy
+                  now keys off is_profile_live too — was misleading 100%-complete-but-not-live coaches
+                  with "Your profile is live" while the new banner above said the opposite. */}
               <div className="flex items-center justify-between mb-1.5">
                 <span className="text-[12px] font-medium text-gray-900">Profile completeness</span>
-                <span className="text-[12px] font-medium text-[#0077CC]">{profileCompleteness}%</span>
+                <span className="text-[12px] font-medium text-brand-600">{profileCompleteness}%</span>
               </div>
-              <div className="h-1.5 bg-[#E6F1FB] rounded-full overflow-hidden">
-                <div className="h-full bg-[#0077CC] rounded-full transition-all" style={{ width: `${profileCompleteness}%` }} />
+              <div className="h-1.5 bg-brand-50 rounded-full overflow-hidden">
+                <div className="h-full bg-brand-600 rounded-full transition-all" style={{ width: `${profileCompleteness}%` }} />
               </div>
-              {/* CF-D07b POLISH 2: More outcome-oriented motivational copy */}
-              <p className="text-[11px] font-medium text-[#0077CC] mt-1">
-                {profileCompleteness < 100 
-                  ? 'Almost there — add your qualifications to build trust with parents'
-                  : 'Your profile is live — parents can find and book you'
+              <p className="text-[11px] font-medium text-brand-600 mt-1">
+                {profile.is_profile_live
+                  ? 'Your profile is live — parents can find and book you'
+                  : profileCompleteness < 100
+                    ? 'Almost there — add your qualifications to build trust with parents'
+                    : 'Profile complete — go live to start receiving bookings'
                 }
               </p>
             </div>
@@ -451,7 +583,7 @@ export function ProfileEdit() {
                   className={`w-full flex items-center gap-3 text-left transition-colors group ${
                     !section.isComplete 
                       ? 'bg-[#FFFBEB] hover:bg-[#FEF9EE] px-4 py-[15px]' 
-                      : 'bg-white hover:bg-gray-50/50 px-4 py-3.5'
+                      : 'bg-white hover:bg-neutral-50/50 px-4 py-3.5'
                   } ${!isLast ? 'border-b-[0.5px] border-gray-100' : ''}`}
                 >
                   {/* Icon container */}
@@ -516,30 +648,60 @@ export function ProfileEdit() {
           {/* CF-D07b POLISH 5: Increased margin-top to 24px for more separation */}
           <div className="bg-white rounded-xl shadow-sm overflow-hidden mt-6">
             <div className="px-4 pt-3 pb-1.5">
-              <h3 className="text-[9px] font-medium text-gray-400 uppercase tracking-wider">ACCOUNT</h3>
+              <h3 className="text-[11px] font-medium text-gray-400 uppercase tracking-wider">ACCOUNT</h3>
             </div>
             
-            {/* Pause profile row */}
-            <div className="px-4 py-3.5 flex items-center justify-between border-t-[0.5px] border-gray-100">
-              <div className="flex-1">
-                <div className="text-[13px] font-medium text-gray-900">Pause profile</div>
-                <div className="text-[11px] text-gray-400 mt-0.5">Temporarily hide from search</div>
+            {/* C-Settings-01-UI: pause + delete migrated to /coach/settings (AF-M-BATCH-01 stubs removed) */}
+            <button
+              onClick={() => router.push('/coach/settings')}
+              className="w-full px-4 py-3.5 flex items-center justify-between text-left border-t-[0.5px] border-gray-100 hover:bg-neutral-50 transition-colors"
+            >
+              <div>
+                <span className="text-[13px] font-medium text-gray-900">Manage account</span>
+                <div className="text-[11px] text-gray-400 mt-0.5">Pause profile, notifications, delete account</div>
               </div>
-              <button 
-                onClick={() => setIsPaused(!isPaused)} 
-                className={`w-11 h-6 rounded-full relative transition-colors ${isPaused ? 'bg-[#0077CC]' : 'bg-gray-200'}`}
-              >
-                <div className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform shadow-sm ${isPaused ? 'translate-x-5' : 'translate-x-0'}`} />
-              </button>
-            </div>
-            
-            {/* Delete account row */}
-            {/* CF-D07b POLISH 5: Ghost/text-only feel - text darkens on hover, no bg change */}
-            <button className="w-full px-4 py-3.5 flex items-center justify-between text-left transition-colors border-t-[0.5px] border-gray-100 hover:text-red-800">
-              <span className="text-[13px] font-medium text-[#B91C1C]">Delete account</span>
-              <ChevronRight size={18} className="text-red-300" />
+              <ChevronRight size={18} className="text-gray-400" />
             </button>
           </div>
+
+          {/* BUG-GO-LIVE-PATH: focused sharing moment after Go Live (NOT the onboarding celebration). */}
+          {showLiveModal && profile?.slug && (
+            <div
+              className="fixed inset-0 bg-neutral-900/40 z-[100] flex items-center justify-center p-4"
+              onClick={() => setShowLiveModal(false)}
+            >
+              <div
+                className="bg-white rounded-[20px] shadow-lg w-full max-w-[400px] p-6 relative"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  onClick={() => setShowLiveModal(false)}
+                  aria-label="Close"
+                  className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-900 bg-neutral-50 hover:bg-gray-100 rounded-full transition-colors"
+                >
+                  <X size={16} />
+                </button>
+
+                <h2 className="text-[20px] font-semibold text-gray-900 mb-2">You&apos;re live! 🎉</h2>
+                <p className="text-[14px] text-gray-600 mb-5">Parents can now find and book you on Crikly.</p>
+
+                {/* BUG-GO-LIVE-MODAL-SHARE: 5-channel share panel replaces the
+                    prior 2-button row (Copy + WhatsApp). ShareLinkPanel renders
+                    its own URL strip so the previous standalone strip (was
+                    monospace neutral-50) is removed to avoid duplication. */}
+                <ShareLinkPanel slug={profile.slug} />
+
+                <button
+                  type="button"
+                  onClick={() => setShowLiveModal(false)}
+                  className="w-full h-10 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-[13px] font-medium transition-colors mt-5"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          )}
           </>
           )}
         </div>
@@ -709,7 +871,8 @@ function GalleryModal({
         <div className="flex-1 overflow-y-auto px-5 py-4">
           {loadingPhotos ? (
             <div className="flex items-center justify-center py-12">
-              <div className="w-7 h-7 border-2 border-gray-200 border-t-[#0077CC] rounded-full animate-spin" />
+              {/* BUG-GO-LIVE-PATH: spinner border-t hex → brand-600 token */}
+              <div className="w-7 h-7 border-2 border-gray-200 border-t-brand-600 rounded-full animate-spin" />
             </div>
           ) : loadError ? (
             <p className="text-[13px] text-red-500 text-center py-8">{loadError}</p>
@@ -720,18 +883,18 @@ function GalleryModal({
                   <img src={photo.photo_url} alt="" className="w-full h-full object-cover" />
                   {deleteConfirmId === photo.id ? (
                     <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center gap-2 p-2">
-                      <p className="text-[10px] text-white font-medium text-center">Remove this photo?</p>
+                      <p className="text-[11px] text-white font-medium text-center">Remove this photo?</p>
                       <div className="flex gap-1">
                         <button
                           onClick={() => setDeleteConfirmId(null)}
-                          className="px-2 py-1 text-[10px] font-medium text-white border border-white/50 rounded-md hover:bg-white/20 transition-colors"
+                          className="px-2 py-1 text-[11px] font-medium text-white border border-white/50 rounded-md hover:bg-white/20 transition-colors"
                         >
                           Cancel
                         </button>
                         <button
                           onClick={() => handleDelete(photo.id)}
                           disabled={deleting === photo.id}
-                          className="px-2 py-1 text-[10px] font-medium text-white bg-red-600 rounded-md hover:bg-red-700 transition-colors disabled:opacity-50"
+                          className="px-2 py-1 text-[11px] font-medium text-white bg-red-600 rounded-md hover:bg-red-700 transition-colors disabled:opacity-50"
                         >
                           {deleting === photo.id ? '…' : 'Remove'}
                         </button>
@@ -752,10 +915,10 @@ function GalleryModal({
                 <button
                   onClick={() => !uploading && galleryFileRef.current?.click()}
                   disabled={uploading}
-                  className="aspect-square rounded-xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center gap-1.5 hover:border-[#0077CC] hover:bg-blue-50/50 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="aspect-square rounded-xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center gap-1.5 hover:border-brand-600 hover:bg-blue-50/50 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   {uploading ? (
-                    <div className="w-6 h-6 border-2 border-gray-300 border-t-[#0077CC] rounded-full animate-spin" />
+                    <div className="w-6 h-6 border-2 border-gray-300 border-t-brand-600 rounded-full animate-spin" />
                   ) : (
                     <>
                       <Plus size={20} className="text-gray-400" />

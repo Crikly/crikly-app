@@ -1,15 +1,16 @@
 'use client'
 
-import React, { useState, useEffect, useCallback } from 'react'
-import { Building2, FileText, Info, ExternalLink, ChevronRight, AlertCircle, CheckCircle2 } from 'lucide-react'
-
-// CG-03: Stripe Connect status from GET /api/payments/connect/onboard
-interface StripeConnectStatus {
-  connected: boolean
-  charges_enabled?: boolean
-  payouts_enabled?: boolean
-  details_submitted?: boolean
-}
+import React, { useState, useEffect, useCallback, useRef } from 'react'
+import { Building2, FileText, Info, ExternalLink, ChevronRight, AlertCircle, CheckCircle2, Check } from 'lucide-react'
+// PERF-03 + PERF-04: 60s TTL cache + in-flight guard for Stripe status.
+// Type moved alongside the cache helpers so the cache and its serialised
+// shape live in one place.
+import {
+  readStripeStatusCache,
+  writeStripeStatusCache,
+  clearStripeStatusCache,
+  type StripeConnectStatus,
+} from '@/lib/stripe-status-cache'
 
 export function GetPaid() {
   const [loading, setLoading] = useState(true)
@@ -19,26 +20,51 @@ export function GetPaid() {
   // CG-03: Banner shown after returning from Stripe onboarding
   const [returnBanner, setReturnBanner] = useState<'success' | 'refresh' | null>(null)
 
-  // CG-03: Fetch real Stripe Connect status
+  // PERF-04: in-flight guard prevents React strict-mode double-invoke
+  // (and any future double-call) from firing two parallel Stripe API
+  // round-trips. The ref is stable across renders so useCallback deps
+  // stay [].
+  const fetchingRef = useRef(false)
+
+  // CG-03: Fetch real Stripe Connect status.
+  // PERF-03: 60s sessionStorage cache. Cache hits avoid the ~800ms
+  // Stripe accounts.retrieve() round-trip. Cache is busted explicitly
+  // after Stripe return-from-onboarding (see useEffect below).
   const fetchStripeStatus = useCallback(async () => {
+    if (fetchingRef.current) return
+    fetchingRef.current = true
     try {
-      setLoading(true)
       setError(null)
+      const cached = readStripeStatusCache()
+      if (cached) {
+        setStripeStatus(cached)
+        return
+      }
+      // PERF-03: set loading ONLY after cache miss confirmed — cache hits
+      // should feel instant (no spinner flicker for the 60s window), but
+      // the retry-button path needs the spinner to show during the network
+      // round-trip otherwise the error UI sits static for ~800ms.
+      setLoading(true)
       const response = await fetch('/api/payments/connect/onboard')
       if (!response.ok) throw new Error('Failed to fetch Stripe status')
       const data: StripeConnectStatus = await response.json()
       setStripeStatus(data)
+      writeStripeStatusCache(data)
     } catch (err) {
       console.error('[GetPaid] Failed to fetch Stripe status:', err)
       setError('Failed to load payment information. Please try again.')
     } finally {
       setLoading(false)
+      fetchingRef.current = false
     }
   }, [])
 
   // CG-03: On mount — detect return from Stripe and fetch status
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
+    const justReturnedFromStripe =
+      params.get('success') === 'true' || params.get('refresh') === 'true'
+
     if (params.get('success') === 'true') {
       setReturnBanner('success')
       window.history.replaceState({}, '', '/coach/get-paid')
@@ -46,6 +72,15 @@ export function GetPaid() {
       setReturnBanner('refresh')
       window.history.replaceState({}, '', '/coach/get-paid')
     }
+
+    // PERF-03: bust cache when returning from Stripe — onboarding state
+    // may have changed during the redirect, so the cached snapshot is
+    // stale. Without this the cache could serve the pre-onboarding
+    // value for up to 60s after the coach completed onboarding.
+    if (justReturnedFromStripe) {
+      clearStripeStatusCache()
+    }
+
     fetchStripeStatus()
   }, [fetchStripeStatus])
 
@@ -72,7 +107,7 @@ export function GetPaid() {
 
   const partiallyConnected = stripeStatus.connected && !fullyConnected
   return (
-    <div className="min-h-screen flex justify-center font-sans p-6 lg:p-10" style={{ fontFamily: "'DM Sans', sans-serif" }}>
+    <div className="min-h-screen flex justify-center font-sans p-6 lg:p-10">
       <div className="w-full max-w-3xl flex flex-col gap-8 pb-20">
 
         <div>
@@ -227,8 +262,8 @@ export function GetPaid() {
           <div className="flex items-center w-full mb-3">
             {/* Step 1: Done */}
             <div className="flex flex-col items-center">
-              <div className="w-[26px] h-[26px] rounded-full bg-[#DCFCE7] text-[#166534] flex items-center justify-center text-[14px] font-medium">
-                ✓
+              <div className="w-[26px] h-[26px] rounded-full bg-[#DCFCE7] text-[#166534] flex items-center justify-center font-medium">
+                <Check size={14} />
               </div>
               <div className="text-[9px] text-gray-500 text-center mt-1.5 leading-tight" style={{ maxWidth: '70px' }}>
                 Session completed
@@ -327,7 +362,12 @@ export function GetPaid() {
         <div className="flex flex-col gap-4 mt-6">
           <h2 className="text-[18px] font-bold text-gray-900">Tax</h2>
           <div className="bg-white rounded-xl shadow-sm flex flex-col overflow-hidden">
-            <button className="w-full px-4 py-3 flex items-center gap-3 border-b-[0.5px] border-gray-100 hover:bg-gray-50 transition-colors text-left group">
+            {/* AF-M-BATCH-01: tax section disabled until endpoints exist */}
+            <button
+              disabled
+              aria-disabled="true"
+              className="w-full px-4 py-3 flex items-center gap-3 border-b-[0.5px] border-gray-100 text-left opacity-50 cursor-not-allowed"
+            >
               <div className="w-8 h-8 bg-gray-50 rounded-lg flex items-center justify-center shrink-0">
                 <FileText size={16} className="text-gray-600" />
               </div>
@@ -335,9 +375,13 @@ export function GetPaid() {
                 <div className="text-[13px] font-medium text-gray-900">Annual earnings summary</div>
                 <div className="text-[11px] text-gray-400 mt-0.5">Download your tax summary for 2025–26</div>
               </div>
-              <ChevronRight size={18} className="text-gray-300 group-hover:text-gray-400 shrink-0" />
+              <ChevronRight size={18} className="text-gray-300 shrink-0" />
             </button>
-            <button className="w-full px-4 py-3 flex items-center gap-3 hover:bg-gray-50 transition-colors text-left group">
+            <button
+              disabled
+              aria-disabled="true"
+              className="w-full px-4 py-3 flex items-center gap-3 text-left opacity-50 cursor-not-allowed"
+            >
               <div className="w-8 h-8 bg-gray-50 rounded-lg flex items-center justify-center shrink-0">
                 <Info size={16} className="text-gray-600" />
               </div>
@@ -345,7 +389,7 @@ export function GetPaid() {
                 <div className="text-[13px] font-medium text-gray-900">Self-assessment guidance</div>
                 <div className="text-[11px] text-gray-400 mt-0.5">HMRC resources for self-employed coaches</div>
               </div>
-              <ChevronRight size={18} className="text-gray-300 group-hover:text-gray-400 shrink-0" />
+              <ChevronRight size={18} className="text-gray-300 shrink-0" />
             </button>
           </div>
         </div>

@@ -2,11 +2,12 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database'
+import { requireCoachContext } from '@/lib/auth/require-coach'
 
 type BookingRow = Database['public']['Tables']['bookings']['Row']
-type Tab = 'today' | 'upcoming' | 'past' | 'cancelled' | 'pending_approval'
+type Tab = 'today' | 'upcoming' | 'past' | 'cancelled' | 'pending_approval' | 'week'
 
-const VALID_TABS: Tab[] = ['today', 'upcoming', 'past', 'cancelled', 'pending_approval']
+const VALID_TABS: Tab[] = ['today', 'upcoming', 'past', 'cancelled', 'pending_approval', 'week']
 const PAGE_SIZE = 10
 
 // Service-role client for user_profiles lookups.
@@ -22,49 +23,16 @@ const supabaseAdmin = createSupabaseClient(
 export async function GET(request: Request) {
   const supabase = await createClient()
 
-  // 1. Auth
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-  if (authError || !user) {
-    return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
-  }
-
-  // 2. user_profiles
-  const { data: userProfile, error: upError } = await supabase
-    .from('user_profiles')
-    .select('id')
-    .eq('auth_user_id', user.id)
-    .single()
-  if (upError || !userProfile) {
-    return NextResponse.json({ error: 'User profile not found' }, { status: 404 })
-  }
-
-  // 3. Coach role check
-  const { data: roleRow, error: roleError } = await supabase
-    .from('user_roles')
-    .select('role')
-    .eq('user_profile_id', userProfile.id)
-    .eq('role', 'coach')
-    .single()
-  if (roleError || !roleRow) {
-    return NextResponse.json({ error: 'Forbidden: coach role required' }, { status: 403 })
-  }
-
-  // 4. coach_profiles
-  const { data: coachProfile, error: cpError } = await supabase
-    .from('coach_profiles')
-    .select('id')
-    .eq('user_profile_id', userProfile.id)
-    .single()
-  if (cpError || !coachProfile) {
-    return NextResponse.json({ error: 'Coach profile not found' }, { status: 404 })
-  }
+  const { context, error } = await requireCoachContext(supabase)
+  if (error) return error
+  const { coachProfile } = context
 
   // 5. Parse query params
   const { searchParams } = new URL(request.url)
   const rawTab = searchParams.get('tab') ?? 'upcoming'
   if (!VALID_TABS.includes(rawTab as Tab)) {
     return NextResponse.json(
-      { error: 'Validation failed', details: ['tab must be one of: today, upcoming, past, cancelled, pending_approval'] },
+      { error: 'Validation failed', details: ['tab must be one of: today, upcoming, past, cancelled, pending_approval, week'] },
       { status: 400 },
     )
   }
@@ -78,7 +46,7 @@ export async function GET(request: Request) {
   const todayIso = new Date().toISOString().slice(0, 10)
   const base = supabase
     .from('bookings')
-    .select('id, booking_reference, session_date, session_start_time, session_end_time, session_type, status, sport_id, coach_price_pence, parent_total_pence, currency, booked_by_user_id, child_profile_id, messaging_unlocked, created_at')
+    .select('id, booking_reference, session_date, session_start_time, session_end_time, session_type, status, sport_id, coach_price_pence, parent_total_pence, currency, booked_by_user_id, child_profile_id, messaging_unlocked, created_at, venue_name')
     .eq('coach_profile_id', coachProfile.id)
     .is('deleted_at', null)
 
@@ -91,11 +59,33 @@ export async function GET(request: Request) {
     filtered = base.in('status', ['completed', 'no_show'])
   } else if (tab === 'pending_approval') {
     filtered = base.in('status', ['pending_approval'])
+  } else if (tab === 'week') {
+    // DS-RIGHT-PANEL-01 + BUG-QA-02: returns Mon-Sun of (today + offset
+    // weeks), all statuses except cancelled. Powers the right-panel week
+    // strip + daily lineup so coaches can scrub back/forward to past or
+    // future sessions and still see correct dot indicators. Server-local
+    // time is acceptable for Phase 1 (UK-only). Offset clamped to ±52
+    // weeks — a year forward/back is plenty for the strip.
+    const rawOffset = parseInt(searchParams.get('offset') ?? '0', 10)
+    const weekOffset = isNaN(rawOffset) ? 0 : Math.max(-52, Math.min(52, rawOffset))
+    const today = new Date()
+    const dayOfWeek = today.getDay()
+    const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
+    const monday = new Date(today)
+    monday.setDate(today.getDate() + mondayOffset + weekOffset * 7)
+    const sunday = new Date(monday)
+    sunday.setDate(monday.getDate() + 6)
+    const mondayIso = monday.toISOString().slice(0, 10)
+    const sundayIso = sunday.toISOString().slice(0, 10)
+    filtered = base
+      .gte('session_date', mondayIso)
+      .lte('session_date', sundayIso)
+      .not('status', 'in', '(cancelled_parent,cancelled_coach)')
   } else {
     filtered = base.in('status', ['cancelled_parent', 'cancelled_coach'])
   }
 
-  const ascending = tab === 'today' || tab === 'upcoming' || tab === 'pending_approval'
+  const ascending = tab === 'today' || tab === 'upcoming' || tab === 'pending_approval' || tab === 'week'
   const { data: bookings, error: bookingsError } = await filtered
     .order('session_date', { ascending })
     .order('session_start_time', { ascending: true })
@@ -146,6 +136,7 @@ export async function GET(request: Request) {
     child_profile_id: b.child_profile_id,
     child_name: b.child_profile_id ? (childNameMap[b.child_profile_id] ?? null) : null,
     messaging_unlocked: b.messaging_unlocked,
+    venue_name: b.venue_name ?? null,
     created_at: b.created_at,
   }))
 

@@ -10,7 +10,7 @@ test.describe('Register page', () => {
     await expect(page.getByText('Join coaches and players across the UK')).toBeVisible()
     await expect(page.getByLabel('Full name')).toBeVisible()
     await expect(page.getByLabel('Email address')).toBeVisible()
-    await expect(page.getByLabel('Password')).toBeVisible()
+    await expect(page.getByLabel('Password', { exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Create account' })).toBeVisible()
     await expect(page.getByRole('button', { name: /Google/i })).toBeVisible()
     await expect(page.getByRole('button', { name: /Apple/i })).toBeVisible()
@@ -27,7 +27,7 @@ test.describe('Register page', () => {
   test('shows email validation error for invalid email', async ({ page }) => {
     await page.getByLabel('Full name').fill('Test User')
     await page.getByLabel('Email address').fill('notanemail')
-    await page.getByLabel('Password').fill('password123')
+    await page.getByLabel('Password', { exact: true }).fill('password123')
     await page.getByRole('button', { name: 'Create account' }).click()
     await expect(page.getByText('Please enter a valid email address')).toBeVisible()
   })
@@ -35,7 +35,7 @@ test.describe('Register page', () => {
   test('shows password length error for short password', async ({ page }) => {
     await page.getByLabel('Full name').fill('Test User')
     await page.getByLabel('Email address').fill('test@example.com')
-    await page.getByLabel('Password').fill('short')
+    await page.getByLabel('Password', { exact: true }).fill('short')
     await page.getByRole('button', { name: 'Create account' }).click()
     await expect(page.getByText('Password must be at least 8 characters')).toBeVisible()
   })
@@ -46,7 +46,9 @@ test.describe('Register page', () => {
   })
 
   test('crikly logo links to homepage', async ({ page }) => {
-    await page.getByRole('link', { name: /crikly/i }).click()
+    // PUB-03: AuthSplitShell renders both a "Crikly home" logo link and a
+    // "Back to crikly.app" chrome link — narrow to the logo by its aria-label.
+    await page.getByRole('link', { name: 'Crikly home' }).click()
     await expect(page).toHaveURL('/')
   })
 })

@@ -41,16 +41,14 @@ export function LoginForm({ onSuccess }: LoginFormProps = {}) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
       })
-      const data = await res.json()
+      const data = (await res.json()) as { redirectTo?: string; error?: AuthError }
       if (!res.ok) {
         setApiError(data.error ?? { code: 'UNKNOWN_ERROR', message: 'Something went wrong. Please try again.' })
         return
       }
-      if (onSuccess) {
-        onSuccess()
-      } else {
-        router.push('/dashboard')
-      }
+      // Server returns a role-aware redirect — /onboarding/role when the
+      // user hasn't picked a primary_role yet, /dashboard otherwise.
+      router.push(data.redirectTo ?? '/dashboard')
     } catch {
       setApiError({ code: 'NETWORK_ERROR', message: 'Connection error. Please check your internet and try again.' })
     } finally {

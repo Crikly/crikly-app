@@ -55,11 +55,35 @@ export async function POST(request: Request) {
     })
 
     if (error) {
+      // BUG-AUTH-REGISTER-500: log every Supabase auth.signUp error so the
+      // non-duplicate fall-through path (which silently returned 500 before)
+      // surfaces the real cause in Vercel logs.
+      console.error('[register] supabase.auth.signUp error:', {
+        message: error.message,
+        status: error.status,
+        code: error.code,
+        name: error.name,
+      })
       if (error.message.toLowerCase().includes('already registered') ||
           error.message.toLowerCase().includes('already exists')) {
         return NextResponse.json(
           { success: false, error: { code: 'EMAIL_TAKEN', message: 'An account with this email already exists.' } },
           { status: 409 }
+        )
+      }
+      // BUG-AUTH-REGISTER-500: Supabase Auth returns 429 with code
+      // 'over_email_send_rate_limit' when too many register attempts
+      // hit the same email/IP in a short window. Code check is the
+      // canonical match; the 'rate limit' substring is a defensive
+      // fallback for variants (e.g. older SDK versions emitting only
+      // the message text). Covers both the burst-protection limit
+      // and the per-email "For security purposes..." cooldown which
+      // share the same error code in modern Supabase SDKs.
+      if (error.code === 'over_email_send_rate_limit' ||
+          error.message.toLowerCase().includes('rate limit')) {
+        return NextResponse.json(
+          { success: false, error: { code: 'RATE_LIMITED', message: 'Too many attempts. Please wait a few minutes and try again.' } },
+          { status: 429 }
         )
       }
       return NextResponse.json(
@@ -69,6 +93,9 @@ export async function POST(request: Request) {
     }
 
     if (!data.user) {
+      // BUG-AUTH-REGISTER-500: signUp succeeded but didn't return a user —
+      // surface this edge case so we can tell it apart from genuine errors.
+      console.error('[register] signUp returned no user but no error', { hasSession: !!data.session })
       return NextResponse.json(
         { success: false, error: { code: 'UNKNOWN_ERROR', message: 'Could not create account. Please try again.' } },
         { status: 500 }
@@ -76,7 +103,11 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({ success: true, redirectTo: `/verify?email=${encodeURIComponent(email)}` })
-  } catch {
+  } catch (error) {
+    // BUG-AUTH-REGISTER-500: bare catch was silently swallowing exceptions.
+    // Includes any throw before signUp is even called (body parse, cookies(),
+    // createServerClient crash, etc.).
+    console.error('[register] Unexpected exception:', error)
     return NextResponse.json(
       { success: false, error: { code: 'UNKNOWN_ERROR', message: 'Unexpected error. Please try again.' } },
       { status: 500 }

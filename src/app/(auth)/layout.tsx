@@ -1,30 +1,9 @@
 import type { ReactNode } from 'react'
 
+// PUB-03: each auth page declares its own shell (AuthSplitShell for login +
+// register, AuthCenteredShell for forgot-password). This layout owns only
+// page-level chrome — min-height and base background. DM Sans inherits
+// from globals.css.
 export default function AuthLayout({ children }: { children: ReactNode }) {
-  return (
-    <main
-      style={{
-        minHeight: '100vh',
-        background: '#F0F7FF',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '24px 16px',
-        fontFamily: 'DM Sans, sans-serif',
-      }}
-    >
-      <div
-        style={{
-          width: '100%',
-          maxWidth: '420px',
-          background: '#fff',
-          borderRadius: '16px',
-          padding: '40px 32px',
-          border: '0.5px solid #E2E8F0',
-        }}
-      >
-        {children}
-      </div>
-    </main>
-  )
+  return <main className="min-h-screen bg-white">{children}</main>
 }

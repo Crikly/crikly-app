@@ -111,15 +111,14 @@ Maximum advance: parents cannot book sessions more than max_advance_days in the 
 
 ---
 
-## BR-06 — Auto-Confirmed Bookings
+## BR-06 — Booking Confirmation
 
-Bookings are confirmed instantly on successful payment. No coach approval step.
+Default booking confirmation is instant (auto-confirmed on payment). Coaches may opt into manual approval mode via their booking policy settings. When manual approval is enabled, bookings enter `pending_approval` status and the coach must approve before the booking is confirmed.
 
 ```
-Payment succeeds → booking.status = 'confirmed' → coach notified
+Instant mode (default): Payment succeeds → booking.status = 'confirmed' → coach notified
+Manual mode (opt-in):   Payment succeeds → booking.status = 'pending_approval' → coach approves → 'confirmed'
 ```
-
-No manual approval queue. Like booking a hotel — instant on payment.
 
 ---
 

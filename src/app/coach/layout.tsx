@@ -1,41 +1,65 @@
 import React from 'react'
+import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { CoachLayoutClient } from '@/components/coach/CoachLayoutClient'
+
+// AUTH-FIX-01 (FIX A): server-side role + state guard for /coach/*. The
+// previous layout silently caught errors and rendered the coach chrome
+// regardless of role — a parent could navigate to /coach/dashboard and
+// see an empty coach UI shell. Now every disallowed state redirects to
+// the right next step. Mirrors the gates `requireCoachContext` enforces
+// at the API layer (src/lib/auth/require-coach.ts:72) but uses
+// redirect() for page-level routing instead of NextResponse.
 
 export default async function CoachLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
-  // Fetch coach profile data server-side
-  let coachName = ''
-  let avatarUrl: string | null = null
+  const supabase = await createClient()
 
-  try {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+  // 1. Authenticated?
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
 
-    if (user) {
-      // Fetch user profile directly from Supabase
-      const { data: userProfile } = await supabase
-        .from('user_profiles')
-        .select('full_name, avatar_url')
-        .eq('auth_user_id', user.id)
-        .single()
+  // 2. user_profile exists? Fold chrome lookup (full_name + avatar_url)
+  // and the terms gate read into this query so the layout makes three
+  // DB round-trips at most.
+  const { data: userProfile } = await supabase
+    .from('user_profiles')
+    .select('id, full_name, avatar_url, terms_accepted_at')
+    .eq('auth_user_id', user.id)
+    .single()
+  if (!userProfile) redirect('/login')
 
-      if (userProfile) {
-        coachName = userProfile.full_name || ''
-        avatarUrl = userProfile.avatar_url || null
-      }
-    }
-  } catch (error) {
-    // Fail silently - use empty defaults
-  }
+  // 3. Has coach role? Parents/players bounce to /dashboard.
+  const { data: roleRow } = await supabase
+    .from('user_roles')
+    .select('role')
+    .eq('user_profile_id', userProfile.id)
+    .eq('role', 'coach')
+    .single()
+  if (!roleRow) redirect('/dashboard')
 
+  // 4. Has coach_profile? Coach role but no profile row means coach
+  // onboarding hasn't started — send them to step 1.
+  const { data: coachProfile } = await supabase
+    .from('coach_profiles')
+    .select('id')
+    .eq('user_profile_id', userProfile.id)
+    .single()
+  if (!coachProfile) redirect('/coach/onboarding/sport')
+
+  // 5. Accepted terms? Must be done before any protected surface.
+  if (!userProfile.terms_accepted_at) redirect('/onboarding/terms')
+
+  // All guards passed — render the coach chrome.
   return (
     <CoachLayoutClient
-      initialCoachName={coachName}
-      initialAvatarUrl={avatarUrl}
+      initialCoachName={userProfile.full_name || ''}
+      initialAvatarUrl={userProfile.avatar_url || null}
     >
       {children}
     </CoachLayoutClient>

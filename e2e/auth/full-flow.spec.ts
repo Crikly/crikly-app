@@ -1,11 +1,10 @@
 import { test, expect } from '@playwright/test'
 
 test.describe('Auth navigation flow', () => {
-  test('homepage Get started button navigates to register', async ({ page }) => {
+  test('homepage Get started button navigates to /join', async ({ page }) => {
     await page.goto('/')
-    await expect(page.getByText('Find and book verified cricket coaches near you')).toBeVisible()
     await page.getByRole('link', { name: 'Get started' }).click()
-    await expect(page).toHaveURL('/register')
+    await expect(page).toHaveURL('/join')
   })
 
   test('homepage Log in link navigates to login', async ({ page }) => {
@@ -21,7 +20,9 @@ test.describe('Auth navigation flow', () => {
 
   test('login page shows crikly branding', async ({ page }) => {
     await page.goto('/login')
-    await expect(page.getByRole('link', { name: /crikly/i })).toBeVisible()
+    // PUB-03: AuthSplitShell renders both a "Crikly home" logo link and a
+    // "Back to crikly.app" chrome link — narrow to the logo by its aria-label.
+    await expect(page.getByRole('link', { name: 'Crikly home' })).toBeVisible()
   })
 
   test('forgot password page renders correctly', async ({ page }) => {

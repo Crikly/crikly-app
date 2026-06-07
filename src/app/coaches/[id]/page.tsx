@@ -1,4 +1,5 @@
 import { Suspense } from 'react'
+import type { Metadata } from 'next'
 import { Fraunces } from 'next/font/google'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
@@ -176,6 +177,29 @@ async function fetchAvailability(id: string): Promise<AvailabilityData | null> {
   return res.json() as Promise<AvailabilityData>
 }
 
+// ─── Metadata ─────────────────────────────────────────────────────────────────
+
+// Overrides the inherited "Find a cricket coach — Crikly" title from
+// src/app/coaches/layout.tsx so each coach's tab shows their name. The
+// description falls back to a generic CTA when the coach hasn't written
+// a bio yet, capped at 155 chars to fit the typical search-snippet length.
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>
+}): Promise<Metadata> {
+  const { id } = await params
+  const coach = await fetchCoachProfile(id)
+  if (!coach) {
+    return { title: 'Coach not found — Crikly' }
+  }
+  return {
+    title: `${coach.full_name} · Cricket Coach — Crikly`,
+    description:
+      coach.bio?.slice(0, 155) ?? `Book a session with ${coach.full_name} on Crikly.`,
+  }
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default async function CoachProfilePage({
@@ -204,7 +228,7 @@ export default async function CoachProfilePage({
         <div className="flex items-center gap-3">
           <ShareButton coachName={coach.full_name} />
           <Link
-            href="/search"
+            href="/coaches"
             className="text-sm font-medium text-gray-600 hover:text-gray-900 flex items-center gap-1"
           >
             <ChevronRight className="w-4 h-4 rotate-180" />

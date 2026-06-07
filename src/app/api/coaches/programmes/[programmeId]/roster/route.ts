@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { requireCoachContext } from '@/lib/auth/require-coach'
 
 interface EnrolmentItem {
   id: string
@@ -34,41 +35,9 @@ export async function GET(
     const { programmeId } = await params
     const supabase = await createClient()
 
-    // 1. Auth check
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
-    }
-
-    // 2. User profile + coach role
-    const { data: userProfile, error: profileError } = await supabase
-      .from('user_profiles')
-      .select('id')
-      .eq('auth_user_id', user.id)
-      .single()
-    if (profileError || !userProfile) {
-      return NextResponse.json({ error: 'User profile not found' }, { status: 404 })
-    }
-
-    const { data: roleCheck, error: roleError } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_profile_id', userProfile.id)
-      .eq('role', 'coach')
-      .single()
-    if (roleError || !roleCheck) {
-      return NextResponse.json({ error: 'Forbidden — coach role required' }, { status: 403 })
-    }
-
-    // 3. Coach profile
-    const { data: coachProfile, error: coachError } = await supabase
-      .from('coach_profiles')
-      .select('id')
-      .eq('user_profile_id', userProfile.id)
-      .single()
-    if (coachError || !coachProfile) {
-      return NextResponse.json({ error: 'Coach profile not found' }, { status: 404 })
-    }
+    const { context, error } = await requireCoachContext(supabase)
+    if (error) return error
+    const { coachProfile } = context
 
     // 4. Verify programme ownership
     const adminSupabase = createAdminClient()
@@ -179,41 +148,9 @@ export async function POST(
     const { programmeId } = await params
     const supabase = await createClient()
 
-    // 1. Auth check
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
-    }
-
-    // 2. User profile + coach role
-    const { data: userProfile, error: profileError } = await supabase
-      .from('user_profiles')
-      .select('id')
-      .eq('auth_user_id', user.id)
-      .single()
-    if (profileError || !userProfile) {
-      return NextResponse.json({ error: 'User profile not found' }, { status: 404 })
-    }
-
-    const { data: roleCheck, error: roleError } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_profile_id', userProfile.id)
-      .eq('role', 'coach')
-      .single()
-    if (roleError || !roleCheck) {
-      return NextResponse.json({ error: 'Forbidden — coach role required' }, { status: 403 })
-    }
-
-    // 3. Coach profile
-    const { data: coachProfile, error: coachError } = await supabase
-      .from('coach_profiles')
-      .select('id')
-      .eq('user_profile_id', userProfile.id)
-      .single()
-    if (coachError || !coachProfile) {
-      return NextResponse.json({ error: 'Coach profile not found' }, { status: 404 })
-    }
+    const { context, error } = await requireCoachContext(supabase)
+    if (error) return error
+    const { userProfile, coachProfile } = context
 
     // 4. Verify programme ownership + check it can accept participants
     const adminSupabase = createAdminClient()
@@ -271,14 +208,34 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to add participant' }, { status: 500 })
     }
 
-    // 7. Increment current_spots
-    const { error: updateError } = await adminSupabase
+    // 7. AF-H-57: atomic capacity check + increment via optimistic locking.
+    // Was: read-then-write race (two concurrent enrolments could both read N and both
+    // write N+1, over-enrolling the programme). The .eq('current_spots', N) clause
+    // ensures only one of two concurrent requests succeeds.
+    const { data: updated, error: updateError } = await adminSupabase
       .from('group_programmes')
       .update({ current_spots: programme.current_spots + 1 })
       .eq('id', programmeId)
-    if (updateError) {
-      // Non-fatal — enrolment already created; log and continue
-      console.error('[POST /roster] current_spots increment error:', updateError)
+      .eq('current_spots', programme.current_spots)         // optimistic lock — match prior value
+      .lt('current_spots', programme.max_spots)              // capacity guard at row level
+      .select('id')
+      .maybeSingle()
+
+    if (updateError || !updated) {
+      // Race lost (or DB error) — roll back the enrolment we inserted at step 6.
+      // Best-effort: if rollback fails too, log; the orphan row will need manual cleanup.
+      console.error('[POST /roster] optimistic increment failed — rolling back enrolment:', updateError)
+      const { error: rollbackError } = await adminSupabase
+        .from('group_programme_enrolments')
+        .delete()
+        .eq('id', newEnrolment.id)
+      if (rollbackError) {
+        console.error('[POST /roster] rollback delete failed (orphan enrolment):', rollbackError)
+      }
+      return NextResponse.json(
+        { error: 'Programme is now full. Please try again.' },
+        { status: 409 }
+      )
     }
 
     const enrolmentItem: EnrolmentItem = {

@@ -3,21 +3,20 @@ import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, Check, CheckCircle } from 'lucide-react'
 import { OnboardingPreviewPanel } from '../OnboardingPreviewPanel'
+// AF-P-Wave-1: profile cache adoption + clear after go-live mutation
+import { fetchCoachProfileCached, clearCoachProfileCache } from '@/lib/onboarding-cache'
 
 export function GetPaidStep() {
   const router = useRouter()
   const [coachName, setCoachName] = useState<string>('Your name')
   const [isGoingLive, setIsGoingLive] = useState(false)
   
-  // Fix-16e: Fetch coach profile for name
+  // AF-P-Wave-1: use cache (was Fix-16e raw fetch)
   useEffect(() => {
     const fetchProfile = async () => {
       try {
-        const response = await fetch('/api/coaches/profile')
-        if (response.ok) {
-          const data = await response.json()
-          setCoachName(data.full_name || 'Your name')
-        }
+        const data = await fetchCoachProfileCached()
+        setCoachName(data?.full_name || 'Your name')
       } catch (error) {
         console.error('[GetPaidStep] Failed to fetch profile:', error)
       }
@@ -39,6 +38,8 @@ export function GetPaidStep() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ is_profile_live: true })
       })
+      // AF-P-Wave-1: clear stale profile cache so dashboard reads see is_profile_live: true
+      clearCoachProfileCache()
       router.push('/coach/dashboard?celebrated=true')
     } catch (error) {
       console.error('Failed to go live:', error)
@@ -52,19 +53,8 @@ export function GetPaidStep() {
       <div className="flex-1 flex flex-col items-center pt-10 pb-32 min-h-screen bg-white">
         <div className="w-full max-w-[640px] px-6 page-content-enter">
           <div className="mb-8">
-            {/* Step indicator - Step 6 of 6 */}
-            <div className="mb-4">
-              <div className="flex items-center gap-1.5 mb-2">
-                <div className="w-2 h-2 rounded-full bg-[#E2E8F0]"></div>
-                <div className="w-2 h-2 rounded-full bg-[#E2E8F0]"></div>
-                <div className="w-2 h-2 rounded-full bg-[#E2E8F0]"></div>
-                <div className="w-2 h-2 rounded-full bg-[#E2E8F0]"></div>
-                <div className="w-2 h-2 rounded-full bg-[#E2E8F0]"></div>
-                <div className="w-6 h-2 rounded-full bg-[#0077CC]"></div>
-              </div>
-              <p className="text-[11px] text-[#94A3B8]">Step 6 of 6</p>
-            </div>
-            
+            {/* AF-H-22: step indicator removed — Get Paid is the post-numbered "go live" page,
+                not a numbered step in the X-of-5 onboarding flow */}
             <h1 className="text-[32px] font-bold text-gray-900 leading-tight mb-2">Get paid</h1>
             <p className="text-[16px] text-gray-500 font-medium mb-6">Set up payments to start accepting bookings</p>
             <div className="p-3 bg-blue-50 rounded-lg border-l-4 border-[#0077CC]">

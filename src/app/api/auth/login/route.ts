@@ -68,8 +68,40 @@ export async function POST(request: Request) {
       )
     }
 
-    const hasRole = data.user.user_metadata?.primary_role
-    const redirectTo = hasRole ? '/dashboard' : '/onboarding/role'
+    // AUTH-FIX-01 (FIX D): route by canonical user_profiles state, not by
+    // user_metadata.primary_role (which can drift from the DB). Order:
+    //   1. terms not accepted    → /onboarding/terms (gate everything else)
+    //   2. active_role = coach   → /coach/dashboard
+    //   3. active_role exists    → /dashboard
+    //   4. no active_role        → /onboarding/role
+    const { data: userProfile } = await supabase
+      .from('user_profiles')
+      .select('active_role, terms_accepted_at')
+      .eq('auth_user_id', data.user.id)
+      .single()
+
+    // Auth succeeded but the user_profiles row is missing — auth callback
+    // failed to create it. Return an explicit error rather than routing
+    // them to /onboarding/terms (where accept-terms would also fail
+    // because there's no row to update — phantom-success loop).
+    if (!userProfile) {
+      return NextResponse.json(
+        { success: false, error: { code: 'UNKNOWN_ERROR', message: 'Could not load your profile. Please try again.' } },
+        { status: 500 }
+      )
+    }
+
+    let redirectTo: string
+    if (!userProfile.terms_accepted_at) {
+      redirectTo = '/onboarding/terms'
+    } else if (userProfile.active_role === 'coach') {
+      redirectTo = '/coach/dashboard'
+    } else if (userProfile.active_role) {
+      redirectTo = '/dashboard'
+    } else {
+      redirectTo = '/onboarding/role'
+    }
+
     return NextResponse.json({ success: true, redirectTo })
   } catch {
     return NextResponse.json(

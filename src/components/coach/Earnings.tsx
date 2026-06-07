@@ -1,6 +1,7 @@
 'use client'
 import React, { useState, useEffect, useRef } from 'react'
 import { Chart, registerables } from 'chart.js'
+import { Check } from 'lucide-react'
 
 Chart.register(...registerables)
 
@@ -332,7 +333,7 @@ export function Earnings() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen font-sans" style={{ fontFamily: "'DM Sans', sans-serif" }}>
+    <div className="min-h-screen font-sans">
       <div className="w-full max-w-2xl mx-auto min-h-screen relative flex flex-col pb-12">
         <div className="px-5 pt-8 pb-4 sticky top-0 z-10">
           <h1 className="text-[28px] font-bold text-gray-900 tracking-tight">Earnings</h1>
@@ -404,7 +405,14 @@ export function Earnings() {
             {/* Chart */}
             <div className="bg-white rounded-xl shadow-sm p-4">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-[13px] font-medium text-gray-900">Earnings this month</h3>
+                <h3 className="text-[13px] font-medium text-gray-900">
+                  {/* AF-H-42: was hardcoded "Earnings this month" — stale when "This week" or "All time" was selected */}
+                  {period === 'This week'
+                    ? 'Earnings this week'
+                    : period === 'All time'
+                    ? 'All earnings'
+                    : 'Earnings this month'}
+                </h3>
                 {bestDay && (
                   <span className="text-[11px] font-medium text-[#0077CC]">Best day: {bestDay}</span>
                 )}
@@ -427,8 +435,8 @@ export function Earnings() {
                   {/* 3-step timeline */}
                   <div className="flex items-center w-full">
                     <div className="flex flex-col items-center">
-                      <div className="w-[26px] h-[26px] rounded-full bg-[#DCFCE7] text-[#166534] flex items-center justify-center text-[14px] font-medium">
-                        ✓
+                      <div className="w-[26px] h-[26px] rounded-full bg-[#DCFCE7] text-[#166534] flex items-center justify-center font-medium">
+                        <Check size={14} />
                       </div>
                       <div className="text-[9px] text-gray-500 text-center mt-1.5 leading-tight" style={{ maxWidth: '70px' }}>
                         Session completed

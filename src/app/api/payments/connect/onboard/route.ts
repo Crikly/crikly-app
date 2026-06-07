@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { createClient } from '@/lib/supabase/server'
-import { stripe } from '@/lib/stripe/client'
+import { getStripe } from '@/lib/stripe/client'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
 
@@ -61,6 +61,7 @@ export async function GET(_request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ connected: false })
     }
 
+    const stripe = getStripe()
     const account = await stripe.accounts.retrieve(stripe_account_id)
 
     return NextResponse.json({
@@ -120,6 +121,7 @@ export async function POST(_request: NextRequest): Promise<NextResponse> {
     const coachRow = coach as CoachProfileRow
     const profileRow = userProfile as unknown as UserProfileRow & { id: string }
 
+    const stripe = getStripe()
     let stripeAccountId = coachRow.stripe_account_id
 
     // Create a new Stripe Express account if the coach doesn't have one yet

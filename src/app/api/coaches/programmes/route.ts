@@ -1,7 +1,70 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { requireCoachContext } from '@/lib/auth/require-coach'
+import { PROGRAMME_AGE_GROUPS } from '@/components/coach/programmeConstants'
+import { generateProgrammeSessionDates } from '@/lib/programme-sessions'
+import type { Json } from '@/types/database'
 
+// MIRROR OF programmeConstants.SessionEntry — kept inline so this API route
+// does not import from a client-side component module. Update both if the
+// shape ever changes (CF-PROG-SESSIONS-DB).
+interface SessionEntrySlot {
+  startTime: string  // 'HH:MM'
+  endTime: string    // 'HH:MM'
+}
+interface SessionEntry {
+  date: string       // 'YYYY-MM-DD'
+  startTime: string  // 'HH:MM'
+  endTime: string    // 'HH:MM'
+  slots?: SessionEntrySlot[]
+}
+
+/**
+ * CF-PROG-SESSIONS-DB: per-entry validator for body.session_dates. Returns
+ * an array of error strings ([] = OK).
+ */
+function isHHMM(value: unknown): boolean {
+  if (typeof value !== 'string' || !/^\d{2}:\d{2}$/.test(value)) return false
+  const [h, m] = value.split(':').map(Number)
+  return h >= 0 && h <= 23 && m >= 0 && m <= 59
+}
+
+function validateSessionEntries(arr: unknown[]): string[] {
+  const errors: string[] = []
+  arr.forEach((item, idx) => {
+    if (typeof item !== 'object' || item === null) {
+      errors.push(`session_dates[${idx}] must be an object`)
+      return
+    }
+    const s = item as Record<string, unknown>
+    if (typeof s.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(s.date)) {
+      errors.push(`session_dates[${idx}].date must be a YYYY-MM-DD string`)
+    }
+    if (!isHHMM(s.startTime)) {
+      errors.push(`session_dates[${idx}].startTime must be HH:MM`)
+    }
+    if (!isHHMM(s.endTime)) {
+      errors.push(`session_dates[${idx}].endTime must be HH:MM`)
+    }
+    if (s.slots !== undefined && s.slots !== null) {
+      if (!Array.isArray(s.slots)) {
+        errors.push(`session_dates[${idx}].slots must be an array if present`)
+      } else {
+        s.slots.forEach((sl, si) => {
+          if (typeof sl !== 'object' || sl === null) {
+            errors.push(`session_dates[${idx}].slots[${si}] must be an object`)
+            return
+          }
+          const slot = sl as Record<string, unknown>
+          if (!isHHMM(slot.startTime)) errors.push(`session_dates[${idx}].slots[${si}].startTime must be HH:MM`)
+          if (!isHHMM(slot.endTime)) errors.push(`session_dates[${idx}].slots[${si}].endTime must be HH:MM`)
+        })
+      }
+    }
+  })
+  return errors
+}
 
 /**
  * Programme response
@@ -32,6 +95,14 @@ interface ProgrammeResponse {
   venue_address: string | null
   min_participants: number | null
   cancellation_window_hours: number
+  /** CF-PROGRAMMES-IMAGE-PICKER: cover photo URL. Null → UI falls back to sport-based placeholder. */
+  image_url: string | null
+  /** CF-PROG-AGE-GROUP: target age groups (min 1, "All ages" XOR specific). */
+  age_groups: string[]
+  /** CF-PROG-START-DATE: first session (fixed) / enrolment open (rolling).
+   *  ISO timestamp string or null. ends_at is NOT exposed on the list endpoint
+   *  by design — it is internal-only here, returned only on the single-programme GET. */
+  starts_at: string | null
 }
 
 /**
@@ -67,52 +138,16 @@ export async function GET(
     const { searchParams } = new URL(request.url)
     const statusFilter = searchParams.get('status')
     
-    // 1. Auth check
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
-    }
-
-    // 2. Get user profile and check coach role
-    const { data: userProfile, error: profileError } = await supabase
-      .from('user_profiles')
-      .select('id')
-      .eq('auth_user_id', user.id)
-      .single()
-
-    if (profileError || !userProfile) {
-      return NextResponse.json({ error: 'User profile not found' }, { status: 404 })
-    }
-
-    const { data: roleCheck, error: roleError } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_profile_id', userProfile.id)
-      .eq('role', 'coach')
-      .single()
-
-    if (roleError || !roleCheck) {
-      return NextResponse.json({ error: 'Forbidden — coach role required' }, { status: 403 })
-    }
-
-    // 3. Get coach profile
-    const { data: coachProfile, error: coachError } = await supabase
-      .from('coach_profiles')
-      .select('id')
-      .eq('user_profile_id', userProfile.id)
-      .single()
-
-    if (coachError || !coachProfile) {
-      return NextResponse.json({ error: 'Coach profile not found' }, { status: 404 })
-    }
+    const { context, error } = await requireCoachContext(supabase)
+    if (error) return error
+    const { coachProfile } = context
 
     // 4. Fetch programmes — Fix-65-2: admin client bypasses SELECT RLS (only allows
     // active status); ownership enforced via explicit coach_profile_id filter.
     const adminSupabase = createAdminClient()
     let query = adminSupabase
       .from('group_programmes')
-      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address, min_participants, cancellation_window_hours')
+      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address, min_participants, cancellation_window_hours, image_url, age_groups, starts_at')
       .eq('coach_profile_id', coachProfile.id)
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
@@ -163,6 +198,11 @@ export async function GET(
       venue_address: prog.venue_address,
       min_participants: prog.min_participants,
       cancellation_window_hours: prog.cancellation_window_hours,
+      image_url: prog.image_url ?? null,
+      age_groups: Array.isArray(prog.age_groups) ? prog.age_groups : [],
+      // CF-PROG-START-DATE: list endpoint exposes starts_at only. ends_at is
+      // internal — returned only on the single-programme GET.
+      starts_at: prog.starts_at ?? null,
     }))
 
     return NextResponse.json({ programmes: response }, { status: 200 })
@@ -184,45 +224,9 @@ export async function POST(
   try {
     const supabase = await createClient()
     
-    // 1. Auth check
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
-    }
-
-    // 2. Get user profile and check coach role
-    const { data: userProfile, error: profileError } = await supabase
-      .from('user_profiles')
-      .select('id')
-      .eq('auth_user_id', user.id)
-      .single()
-
-    if (profileError || !userProfile) {
-      return NextResponse.json({ error: 'User profile not found' }, { status: 404 })
-    }
-
-    const { data: roleCheck, error: roleError } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_profile_id', userProfile.id)
-      .eq('role', 'coach')
-      .single()
-
-    if (roleError || !roleCheck) {
-      return NextResponse.json({ error: 'Forbidden — coach role required' }, { status: 403 })
-    }
-
-    // 3. Get coach profile
-    const { data: coachProfile, error: coachError } = await supabase
-      .from('coach_profiles')
-      .select('id')
-      .eq('user_profile_id', userProfile.id)
-      .single()
-
-    if (coachError || !coachProfile) {
-      return NextResponse.json({ error: 'Coach profile not found' }, { status: 404 })
-    }
+    const { context, error } = await requireCoachContext(supabase)
+    if (error) return error
+    const { coachProfile } = context
 
     // 4. Parse and validate body
     const body = await request.json()
@@ -307,6 +311,77 @@ export async function POST(
       }
     }
 
+    // AF-C-22: validate venue_name + venue_address (matches pattern in availability/route.ts)
+    if (body.venue_name !== undefined && body.venue_name !== null) {
+      if (typeof body.venue_name !== 'string') {
+        validationErrors.push('venue_name must be a string or null')
+      } else if (body.venue_name.length > 200) {
+        validationErrors.push('venue_name must be 200 characters or less')
+      }
+    }
+
+    if (body.venue_address !== undefined && body.venue_address !== null) {
+      if (typeof body.venue_address !== 'string') {
+        validationErrors.push('venue_address must be a string or null')
+      } else if (body.venue_address.length > 500) {
+        validationErrors.push('venue_address must be 500 characters or less')
+      }
+    }
+
+    // CF-PROGRAMMES-IMAGE-PICKER: cap image_url at 2000 chars (browser URL
+    // limit). Unsplash URLs are ~100 chars, Storage URLs ~150 chars — 2000
+    // is generous headroom for any legitimate source.
+    if (body.image_url !== undefined && body.image_url !== null) {
+      if (typeof body.image_url !== 'string') {
+        validationErrors.push('image_url must be a string or null')
+      } else if (body.image_url.length > 2000) {
+        validationErrors.push('image_url must be 2000 characters or less')
+      }
+    }
+
+    // CF-PROG-AGE-GROUP: non-empty array within allowlist. Optional in POST —
+    // the DB column has DEFAULT '{}', but the UI always sends a value.
+    if (body.age_groups !== undefined) {
+      if (
+        !Array.isArray(body.age_groups) ||
+        body.age_groups.length < 1 ||
+        body.age_groups.length > PROGRAMME_AGE_GROUPS.length
+      ) {
+        validationErrors.push('age_groups must be a non-empty array')
+      } else if (
+        !body.age_groups.every(
+          (g: unknown) =>
+            typeof g === 'string' && (PROGRAMME_AGE_GROUPS as readonly string[]).includes(g),
+        )
+      ) {
+        validationErrors.push('age_groups contains invalid values')
+      }
+    }
+
+    // CF-PROG-START-DATE: three optional date inputs, all 'YYYY-MM-DD'.
+    // starts_at is required by the UI for fixed programmes (UI canContinue),
+    // not by the server — server treats all three as nullable.
+    for (const field of ['starts_at', 'programme_end_date', 'rolling_end_date'] as const) {
+      const v = body[field]
+      if (v !== undefined && v !== null && v !== '') {
+        if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v) || Number.isNaN(new Date(v + 'T00:00:00').getTime())) {
+          validationErrors.push(`${field} must be a YYYY-MM-DD date string`)
+        }
+      }
+    }
+
+    // CF-PROG-SESSIONS-DB: per-entry validation (was shape-only under CF-PROG-SESSION-LIST).
+    if (body.session_dates !== undefined) {
+      if (!Array.isArray(body.session_dates)) {
+        validationErrors.push('session_dates must be an array')
+      } else {
+        validationErrors.push(...validateSessionEntries(body.session_dates))
+      }
+    }
+    if (body.campMode !== undefined && typeof body.campMode !== 'boolean') {
+      validationErrors.push('campMode must be a boolean')
+    }
+
     if (validationErrors.length > 0) {
       return NextResponse.json(
         { error: 'Validation failed', details: validationErrors },
@@ -357,6 +432,11 @@ export async function POST(
       block_session_count?: number | null
       late_joining_allowed: boolean
       min_participants?: number | null
+      image_url?: string | null
+      age_groups?: string[]
+      // CF-PROG-START-DATE: ISO timestamp strings, both nullable in DB.
+      starts_at?: string | null
+      ends_at?: string | null
       cancellation_window_hours: number
       model: string
       skill_level: string
@@ -364,6 +444,8 @@ export async function POST(
       currency: string
       venue_name?: string | null
       venue_address?: string | null
+      // CF-PROG-SESSIONS-DB: per-programme camp-mode flag (migration 031).
+      camp_mode?: boolean
     } = {
       coach_profile_id: coachProfile.id,
       sport_id: body.sport_id,
@@ -381,6 +463,8 @@ export async function POST(
       skill_level: skillLevel,
       status: requestedStatus,
       currency: 'GBP',
+      // CF-PROG-SESSIONS-DB: camp_mode is now persisted (was a STUB no-op).
+      camp_mode: body.campMode === true,
     }
 
     if (body.min_participants !== undefined) {
@@ -407,13 +491,98 @@ export async function POST(
 
     if (body.venue_name !== undefined) insertData.venue_name = body.venue_name || null
     if (body.venue_address !== undefined) insertData.venue_address = body.venue_address || null
-
-    // Fix-58-DB-api: populate days_of_week — prefer explicit array, fall back to [day_of_week]
-    if (Array.isArray(body.days_of_week) && body.days_of_week.length > 0) {
-      insertData.days_of_week = body.days_of_week
-    } else if (typeof body.day_of_week === 'number') {
-      insertData.days_of_week = [body.day_of_week]
+    // CF-PROGRAMMES-IMAGE-PICKER: nullable cover photo URL (Unsplash or upload).
+    if (body.image_url !== undefined) {
+      insertData.image_url = typeof body.image_url === 'string' && body.image_url ? body.image_url : null
     }
+
+    // CF-PROG-AGE-GROUP: only write if a valid non-empty array was provided.
+    // Otherwise the DB DEFAULT '{}' applies.
+    if (Array.isArray(body.age_groups) && body.age_groups.length > 0) {
+      insertData.age_groups = body.age_groups
+    }
+
+    // CF-PROG-SESSION-LIST: when session_dates is non-empty, it is the canonical
+    // source. Derive starts_at, ends_at, session_count, days_of_week from it.
+    // Otherwise fall back to the CF-PROG-START-DATE derivation matrix below.
+    const sessionDatesBody: Array<{ date?: unknown }> | null =
+      Array.isArray(body.session_dates) && body.session_dates.length > 0
+        ? body.session_dates
+        : null
+
+    if (sessionDatesBody) {
+      const sortedDates = sessionDatesBody
+        .map((s) => (typeof s?.date === 'string' ? s.date : ''))
+        .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
+        .sort()
+      if (sortedDates.length > 0) {
+        insertData.starts_at = new Date(sortedDates[0] + 'T00:00:00').toISOString()
+        insertData.ends_at = new Date(sortedDates[sortedDates.length - 1] + 'T00:00:00').toISOString()
+        insertData.session_count = sortedDates.length
+        // Derive days_of_week from the actual scheduled dates (calendar truth)
+        // rather than from the form's pill row, per CF-PROG-SESSION-LIST flag 2.
+        const derivedDays = Array.from(new Set(
+          sortedDates.map((d) => new Date(d + 'T00:00:00').getDay()),
+        )).sort((a, b) => a - b)
+        insertData.days_of_week = derivedDays
+        insertData.day_of_week = derivedDays[0]
+      }
+    } else {
+      // CF-PROG-START-DATE fallback:
+      //   schedule_type === 'fixed':
+      //     - programme_end_date → ends_at = programme_end_date
+      //     - else starts_at + session_count + days_of_week → compute last date
+      //   schedule_type === 'rolling':
+      //     - rolling_end_date → ends_at = rolling_end_date
+      const startsAtStr: string | null =
+        typeof body.starts_at === 'string' && body.starts_at ? body.starts_at : null
+      if (startsAtStr) {
+        insertData.starts_at = new Date(startsAtStr + 'T00:00:00').toISOString()
+      }
+
+      let endsAtStr: string | null = null
+      if (body.schedule_type === 'fixed') {
+        if (typeof body.programme_end_date === 'string' && body.programme_end_date) {
+          endsAtStr = body.programme_end_date
+        } else if (
+          startsAtStr &&
+          typeof body.session_count === 'number' &&
+          body.session_count > 0 &&
+          Array.isArray(insertData.days_of_week) &&
+          insertData.days_of_week.length > 0
+        ) {
+          const computed = generateProgrammeSessionDates({
+            startDate: startsAtStr,
+            days: insertData.days_of_week,
+            mode: 'count',
+            count: body.session_count,
+            endDate: '',
+          })
+          endsAtStr = computed.length > 0 ? computed[computed.length - 1] : null
+        }
+      } else if (body.schedule_type === 'rolling') {
+        if (typeof body.rolling_end_date === 'string' && body.rolling_end_date) {
+          endsAtStr = body.rolling_end_date
+        }
+      }
+      if (endsAtStr) {
+        insertData.ends_at = new Date(endsAtStr + 'T00:00:00').toISOString()
+      }
+    }
+
+    // Fix-58-DB-api: populate days_of_week — prefer explicit array, fall back
+    // to [day_of_week]. Session-dates derivation above already populated
+    // days_of_week when applicable; this is the legacy fallback path.
+    if (!Array.isArray(insertData.days_of_week)) {
+      if (Array.isArray(body.days_of_week) && body.days_of_week.length > 0) {
+        insertData.days_of_week = body.days_of_week
+      } else if (typeof body.day_of_week === 'number') {
+        insertData.days_of_week = [body.day_of_week]
+      }
+    }
+
+    // CF-PROG-SESSIONS-DB: camp_mode is now persisted on insertData above
+    // (migration 031). Session rows are inserted in a second statement below.
 
     // Fix-62: Use admin client for INSERT only — user is already authenticated and
     // coach ownership verified above. Bypasses RLS to avoid auth_user_id mapping
@@ -422,12 +591,52 @@ export async function POST(
     const { data: newProgramme, error: insertError } = await adminSupabase
       .from('group_programmes')
       .insert(insertData)
-      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address, min_participants, cancellation_window_hours')
+      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address, min_participants, cancellation_window_hours, image_url, age_groups, starts_at')
       .single()
 
     if (insertError) {
       console.error('[POST /api/coaches/programmes] insert error:', insertError)
       return NextResponse.json({ error: 'Failed to create programme' }, { status: 500 })
+    }
+
+    // CF-PROG-SESSIONS-DB: persist session rows. If this fails we delete the
+    // orphan programme to give the coach atomic semantics — either the
+    // programme exists with its full session list, or nothing was created.
+    if (sessionDatesBody && sessionDatesBody.length > 0) {
+      const sessionRows = (sessionDatesBody as SessionEntry[]).map((entry) => ({
+        group_programme_id: newProgramme.id as string,
+        session_date: entry.date,
+        start_time: entry.startTime,
+        end_time: entry.endTime,
+        // Slots are only persisted when camp mode is on AND the entry actually
+        // carries a non-empty slots array. Otherwise the row's single
+        // start_time/end_time is authoritative and slots stays NULL.
+        slots:
+          insertData.camp_mode && Array.isArray(entry.slots) && entry.slots.length > 0
+            ? // SessionEntrySlot[] is structurally JSON-compatible but TS won't
+              // unify it with the Json index-signature without a cast.
+              (entry.slots as unknown as Json)
+            : null,
+      }))
+
+      const { error: sessionsError } = await adminSupabase
+        .from('group_programme_sessions')
+        .insert(sessionRows)
+
+      if (sessionsError) {
+        console.error('[POST /api/coaches/programmes] session insert failed — rolling back programme:', sessionsError)
+        // Soft-delete the orphan programme (CLAUDE.md: "Soft deletes only —
+        // never hard DELETE"). The coach never saw this programme; the row
+        // remains queryable for ops/audit until a separate cleanup job runs.
+        await adminSupabase
+          .from('group_programmes')
+          .update({ deleted_at: new Date().toISOString() })
+          .eq('id', newProgramme.id)
+        return NextResponse.json(
+          { error: 'Failed to save programme sessions. Please try again.' },
+          { status: 500 },
+        )
+      }
     }
 
     // 7. Fetch sport name separately (Fix-65-1 pattern — no nested join)
@@ -463,6 +672,11 @@ export async function POST(
       venue_address: newProgramme.venue_address,
       min_participants: newProgramme.min_participants,
       cancellation_window_hours: newProgramme.cancellation_window_hours,
+      image_url: newProgramme.image_url ?? null,
+      age_groups: Array.isArray(newProgramme.age_groups) ? newProgramme.age_groups : [],
+      // CF-PROG-START-DATE: ends_at intentionally NOT exposed on the list/POST
+      // surface — internal-only. Returned by the single-programme GET below.
+      starts_at: newProgramme.starts_at ?? null,
     }
 
     return NextResponse.json(response, { status: 201 })

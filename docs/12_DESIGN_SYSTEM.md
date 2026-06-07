@@ -1,8 +1,8 @@
 # Crikly — Design System
 
-**Version:** 1.1
-**Last Updated:** April 2026
-**Changed:** Card rules, layout backgrounds, interaction patterns, onboarding patterns, no-emoji rule
+**Version:** 1.3
+**Last Updated:** 31 May 2026
+**Changed:** v1.3 (CF-DESIGN-SYS-RECONCILE) — locked 4 decisions: h1 canonical is `text-[28px] font-bold tracking-tight text-gray-900` (was text-2xl/24px/600); card border radius is 14px (was 12px in the Cards block — reconciled with the Border Radius table); primary button hover is brand-700 #0066AA (was brand-800 #0C447C); added Programme badge row (purple). v1.2 (BUG-GO-LIVE-PATH) — added 🎉 celebration emoji exception for one-off success modals (Go Live, first booking, milestones; H1 only, never in nav/labels/buttons/chrome). v1.1 (April 2026) — Card rules, layout backgrounds, interaction patterns, onboarding patterns, no-emoji rule.
 **Applies to:** Web PWA (Tailwind/Next.js) + Flutter Mobile (Phase 2)
 
 Single source of truth for all visual decisions. Every colour, font,
@@ -85,7 +85,7 @@ Read this file before building any UI component.
 | text-base | 15px | 400 | 1.6 | Primary body text |
 | text-lg | 17px | 500 | 1.4 | Card titles |
 | text-xl | 20px | 500 | 1.3 | Section headings |
-| text-2xl | 24px | 600 | 1.2 | Page titles, prices |
+| text-2xl | 24px | 600 | 1.2 | Prices, hero stats |
 | text-3xl | 30px | 600 | 1.1 | Hero headings |
 
 ### Rules
@@ -94,6 +94,20 @@ Read this file before building any UI component.
 - No font size below 11px
 - Letter spacing: -0.3px on headings (2xl+), 0 on body
 - Paragraph max-width: 65ch
+
+### Page titles (h1) — locked canonical
+
+All screen-level page titles use exactly:
+
+```
+text-[28px] font-bold tracking-tight text-gray-900
+```
+
+- Mobile and desktop identical — no responsive scaling
+- Overrides the `text-2xl` token specifically for `<h1>` elements
+- Weight 700 (bold), NOT weight 600 (semibold)
+- Size 28px (arbitrary value), NOT the 24px `text-2xl` token
+- Applies to every coach, parent, player, and admin screen
 
 ---
 
@@ -145,7 +159,7 @@ Read this file before building any UI component.
 - Height: 52px mobile / 44px desktop
 - Border radius: radius-md
 - Padding: 0 24px
-- States: hover #0C447C, active scale(0.98), disabled opacity 0.4
+- States: hover #0066AA (brand-700), active scale(0.98), disabled opacity 0.4
 
 **Secondary**
 - Background: transparent
@@ -178,7 +192,7 @@ Read this file before building any UI component.
 **Standard card (all screens):**
 - Background: white (#FFFFFF) — always explicit white
 - Border: NONE — no outer border on any card
-- Border radius: 12px
+- Border radius: 14px (matches `radius-lg` token — use `rounded-lg`)
 - Padding: 12px–16px depending on screen density
 - Shadow resting: 0 1px 3px rgba(0,0,0,0.06)
 - Shadow hover: 0 2px 8px rgba(0,0,0,0.08)
@@ -224,8 +238,13 @@ This includes: 🏅 🛡 ❤️ 👶 📍 📅 ★ and all others.
   neutral-50 bg, radius 8px, text character or SVG)
 - Text labels only
 
-**The only exception:** the 👋 wave emoji on the Dashboard
-greeting — approved and already implemented.
+**Approved exceptions (only):**
+- **👋** — wave emoji on the Dashboard greeting (already implemented).
+- **🎉** — celebration emoji in one-off success modals only
+  (Go Live, first booking, milestones). Sanctioned per
+  BUG-GO-LIVE-PATH. Permitted in modal/page H1 headings ONLY,
+  never in nav, labels, buttons, banners, or recurring UI chrome.
+  One per modal max. Drop the emoji rather than using two.
 
 ---
 
@@ -294,12 +313,13 @@ No "← Dashboard" link at top of any onboarding screen.
 
 ### Badges
 
-| Type | Background | Text | Usage |
-|---|---|---|---|
-| DBS verified | #E0F6F8 | #006677 | Coach verification |
-| Premium | #E6F3FB | #0C447C | Premium tier |
-| 1-on-1 | #E0F6F8 | #0099AA | Confirmed 1-on-1 bookings |
-| Cancelled | #FEE2E2 | #B91C1C | Cancelled bookings |
+| Type | Background | Text | Border | Usage |
+|---|---|---|---|---|
+| DBS verified | #E0F6F8 | #006677 | — | Coach verification |
+| Premium | #E6F3FB | #0C447C | — | Premium tier |
+| 1-on-1 | #E0F6F8 | #0099AA | — | Confirmed 1-on-1 bookings |
+| Cancelled | #FEE2E2 | #B91C1C | — | Cancelled bookings |
+| Programme | `bg-purple-50` | `text-purple-700` | `border-purple-200` | Programme events on Schedule grid (Tailwind purple-* palette — #FAF5FF / #7E22CE / #E9D5FF) |
 
 All badges: 11px, weight 500, radius-sm, padding 3px 8px.
 

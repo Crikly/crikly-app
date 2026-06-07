@@ -3,8 +3,17 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { ChevronLeft, ChevronRight, Plus, Check, User, RefreshCw, Users, Ban, X, Calendar, MapPin, PoundSterling, AlertCircle, Info } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus, Check, User, RefreshCw, Users, Ban, X, Calendar, MapPin, PoundSterling, AlertCircle, AlertTriangle, Info } from 'lucide-react'
 import { VenueAutocomplete, type VenueSelection } from '@/components/coach/shared/LocationAutocomplete'
+import { DatePicker, TimePicker, todayYYYYMMDD } from '@/components/ui'
+// AF-P-Wave-1: sports cache adoption
+import { fetchSportsListCached } from '@/lib/onboarding-cache'
+
+// AF-P-03a: Local-time YYYY-MM-DD formatter — avoids toISOString() UTC drift.
+// Used for week-bounds filter and per-day grid filtering.
+const pad = (n: number) => String(n).padStart(2, '0')
+const fmtDate = (d: Date) =>
+  `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 
 // CD-12: API response types
 interface AvailabilityResponse {
@@ -50,9 +59,9 @@ function EventBlock({ top, height, type, title, subtitle, sessionId, onCardClick
   // CHANGE 3: Left border accent by status
   switch (type) {
     case 'confirmed':
-      bgClass = 'bg-blue-100'
-      textClass = 'text-blue-900'
-      leftBorderClass = 'border-l-[3px] border-l-blue-500'
+      bgClass = 'bg-teal-50'
+      textClass = 'text-teal-800'
+      leftBorderClass = 'border-l-[3px] border-l-teal-600'
       break
     case 'programme':
       bgClass = 'bg-purple-100'
@@ -72,9 +81,9 @@ function EventBlock({ top, height, type, title, subtitle, sessionId, onCardClick
       break
     case 'available':
       // CHANGE 4: Opportunity treatment for available slots
-      bgClass = 'bg-[#E8F5F0]'
-      textClass = 'text-[#0F6E56]'
-      borderClass = 'border border-dashed border-[#1D9E75] hover:border-solid hover:bg-[#F0FAF6] cursor-pointer'
+      bgClass = 'bg-teal-50'
+      textClass = 'text-teal-800'
+      borderClass = 'border border-dashed border-teal-600 hover:border-solid hover:bg-[#F0FAF6] cursor-pointer'
       break
     case 'adhoc':
       bgClass = 'bg-teal-100'
@@ -107,11 +116,11 @@ function EventBlock({ top, height, type, title, subtitle, sessionId, onCardClick
       )}
       {/* CHANGE 3: Typography refinement */}
       {type === 'blocked' ? (
-        <div className="text-[9px] text-center mt-1" style={{ color: '#9CA3AF' }}>{title}</div>
+        <div className="text-[11px] text-center mt-1" style={{ color: '#9CA3AF' }}>{title}</div>
       ) : (
         <>
-          <div className="text-[10px] font-medium leading-tight truncate">{type === 'available' ? '+ Add session' : title}</div>
-          {subtitle && type !== 'available' && <div className="text-[9px] leading-tight truncate mt-0.5" style={{ opacity: 0.75 }}>{subtitle}</div>}
+          <div className="text-[11px] font-medium leading-tight truncate">{type === 'available' ? '+ Add session' : title}</div>
+          {subtitle && type !== 'available' && <div className="text-[11px] leading-tight truncate mt-0.5" style={{ opacity: 0.75 }}>{subtitle}</div>}
         </>
       )}
     </div>
@@ -119,6 +128,7 @@ function EventBlock({ top, height, type, title, subtitle, sessionId, onCardClick
 }
 
 // CD-12b: Booking block type
+// AF-C-01: extended with sport_id + venue_name for SessionPopover real data
 interface BookingBlock {
   id: string
   booking_reference: string
@@ -127,9 +137,25 @@ interface BookingBlock {
   session_end_time: string
   session_type: string
   status: string
+  sport_id: string
   coach_price_pence: number
   child_name: string | null
   booked_by_name: string | null
+  venue_name: string | null
+}
+
+// SCHEDULE-PROG-SESSIONS: one row per scheduled group programme session.
+// Mirrors the shape returned by GET /api/coaches/programme-sessions.
+interface ProgrammeSessionBlock {
+  id: string                    // group_programme_sessions.id
+  session_date: string          // 'YYYY-MM-DD'
+  start_time: string            // 'HH:MM:SS' — sliced to 'HH:MM' at render
+  end_time: string
+  programme_id: string
+  programme_title: string
+  current_spots: number
+  max_spots: number
+  venue_name: string | null
 }
 
 // CF-D02c FIX 1: Single popover state
@@ -159,8 +185,20 @@ export function Schedule() {
 
   // CD-12b: State for booking blocks
   const [bookings, setBookings] = useState<BookingBlock[]>([])
-  // CI-01: Increment to force bookings re-fetch after approve/decline
-  const [refreshKey, setRefreshKey] = useState(0)
+  // AF-P-02: split refresh keys — approve/decline only triggers bookings refresh.
+  const [bookingsRefreshKey, setBookingsRefreshKey] = useState(0)
+  const [availabilityRefreshKey, setAvailabilityRefreshKey] = useState(0)
+  // SCHEDULE-PROG-SESSIONS: per-week programme sessions + split refresh key
+  // (AF-P-02 pattern). The refresh-key setter is unused today — reserved for
+  // the future "Cancel this session" CTA so the state shape doesn't need a
+  // refactor when that handler lands.
+  const [programmeSessions, setProgrammeSessions] = useState<ProgrammeSessionBlock[]>([])
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [programmeSessionsRefreshKey, setProgrammeSessionsRefreshKey] = useState(0)
+  // AF-P-03b: track first-load completion to suppress skeleton on subsequent refreshes
+  const hasLoadedRef = useRef(false)
+  // AF-C-01: Sport id → name lookup for booking popovers
+  const [sportsMap, setSportsMap] = useState<Record<string, string>>({})
 
   // Fix-76: Ad hoc slot detail popover
   const [adHocPopover, setAdHocPopover] = useState<{
@@ -189,11 +227,12 @@ export function Schedule() {
   const [venueKey, setVenueKey] = useState(0)
   const [adHocPrice, setAdHocPrice] = useState('')
 
-  // CD-12: Fetch availability data on mount and after ad hoc submit
+  // CD-12: Fetch availability data on mount + ad-hoc create/delete only.
+  // AF-P-02: split key. AF-P-03b: silent refresh after first load.
   useEffect(() => {
     const fetchAvailability = async () => {
       try {
-        setLoading(true)
+        if (!hasLoadedRef.current) setLoading(true)
         setError(null)
 
         const response = await fetch('/api/coaches/availability')
@@ -207,12 +246,26 @@ export function Schedule() {
         console.error('Failed to fetch availability:', err)
         setError('Failed to load schedule. Please try again.')
       } finally {
-        setLoading(false)
+        if (!hasLoadedRef.current) {
+          setLoading(false)
+          hasLoadedRef.current = true
+        }
       }
     }
 
     fetchAvailability()
-  }, [refreshKey])
+  }, [availabilityRefreshKey])
+
+  // AF-P-Wave-1: use sports cache (was AF-C-01 raw fetch)
+  useEffect(() => {
+    fetchSportsListCached()
+      .then((sports: { id: string; name: string }[]) => {
+        const map: Record<string, string> = {}
+        sports.forEach((s) => { map[s.id] = s.name })
+        setSportsMap(map)
+      })
+      .catch(() => { /* non-critical — popover falls back gracefully */ })
+  }, [])
 
   // CF-02a: Fetch coach sports when add modal opens
   useEffect(() => {
@@ -238,11 +291,13 @@ export function Schedule() {
     }
   }, [])
 
-  // CD-12b / Fix-54: Fetch bookings for the visible week (today + upcoming + past + pending_approval)
+  // CD-12b / Fix-54: Fetch bookings for the visible week.
+  // AF-P-02: split key. AF-P-03a: local-date weekStart/weekEnd (was toISOString —
+  // dropped UK boundary days under BST). AF-P-03b: silent refresh after first load.
   useEffect(() => {
     const fetchBookings = async () => {
       try {
-        setLoading(true)
+        if (!hasLoadedRef.current) setLoading(true)
         const [todayRes, upcomingRes, pastRes, pendingRes] = await Promise.all([
           fetch('/api/coaches/bookings?tab=today'),
           fetch('/api/coaches/bookings?tab=upcoming'),
@@ -269,8 +324,8 @@ export function Schedule() {
           return true
         })
 
-        const weekStart = days[0].fullDate.toISOString().slice(0, 10)
-        const weekEnd = days[6].fullDate.toISOString().slice(0, 10)
+        const weekStart = fmtDate(days[0].fullDate)
+        const weekEnd = fmtDate(days[6].fullDate)
         const visible = deduped.filter(
           (b) =>
             b.session_date >= weekStart &&
@@ -282,13 +337,42 @@ export function Schedule() {
       } catch {
         // non-critical — grid still shows availability
       } finally {
-        setLoading(false)
+        if (!hasLoadedRef.current) {
+          setLoading(false)
+          hasLoadedRef.current = true
+        }
       }
     }
 
     fetchBookings()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [weekOffset, refreshKey])
+  }, [weekOffset, bookingsRefreshKey])
+
+  // SCHEDULE-PROG-SESSIONS: fetch group programme sessions for the visible week.
+  // Mirrors the bookings fetch pattern — silent refetch via hasLoadedRef, swallow
+  // errors so the grid still renders availability + bookings if this fails.
+  useEffect(() => {
+    const fetchProgrammeSessions = async () => {
+      try {
+        if (!hasLoadedRef.current) setLoading(true)
+        const weekStart = fmtDate(days[0].fullDate)
+        const weekEnd = fmtDate(days[6].fullDate)
+        const res = await fetch(`/api/coaches/programme-sessions?from=${weekStart}&to=${weekEnd}`)
+        if (!res.ok) return
+        const data = (await res.json()) as { sessions: ProgrammeSessionBlock[] }
+        setProgrammeSessions(data.sessions ?? [])
+      } catch {
+        // non-critical — grid still shows availability + bookings
+      } finally {
+        if (!hasLoadedRef.current) {
+          setLoading(false)
+          hasLoadedRef.current = true
+        }
+      }
+    }
+    fetchProgrammeSessions()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weekOffset, programmeSessionsRefreshKey])
 
   // Fix-20: Auto-open New Session popover when ?action=new-session
   useEffect(() => {
@@ -369,7 +453,6 @@ export function Schedule() {
     dateStr: string,
     timeStr: string,
   ) => {
-    console.log('[AdHoc click]', block.id)
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
     const x = Math.min(rect.right + 8, window.innerWidth - RIGHT_PANEL_WIDTH - 388)
     const y = Math.min(rect.top, window.innerHeight - 400)
@@ -386,6 +469,23 @@ export function Schedule() {
       y,
     })
   }, [])
+
+  // SCHEDULE-PROG-SESSIONS: open SessionPopover programme branch with real data.
+  // Reuses the existing ActivePopover 'session' variant — sessionType='programme'
+  // is the trigger the popover switches on to read from the programmeSession prop.
+  // Same clamping as handleCardClick so the popover doesn't overlap the right panel.
+  const handleProgrammeSessionClick = (e: React.MouseEvent, sessionId: string) => {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    const x = Math.min(rect.right + 8, window.innerWidth - RIGHT_PANEL_WIDTH - 388)
+    const y = Math.min(rect.top, window.innerHeight - 400)
+    setActivePopover({
+      type: 'session',
+      sessionId,
+      sessionType: 'programme',
+      x,
+      y,
+    })
+  }
 
   // CF-D02c FIX 1: Handle empty/available slot click (single popover)
   // CF-D02d BUG FIX 3: Add source field
@@ -420,6 +520,23 @@ export function Schedule() {
     const dateObj = new Date(`${adHocDate}T00:00:00`)
     const dayOfWeek = dateObj.getDay()
 
+    // AF-H-32: prevent overlap with existing availability slots before POSTing
+    const newStart = sh * 60 + sm
+    const newEnd = eh * 60 + em
+    const hasOverlap = availability.some(slot => {
+      if (slot.specific_date && slot.specific_date !== adHocDate) return false
+      if (!slot.specific_date && slot.day_of_week !== dayOfWeek) return false
+      const [slotSh, slotSm] = slot.start_time.split(':').map(Number)
+      const [slotEh, slotEm] = slot.end_time.split(':').map(Number)
+      const slotStart = slotSh * 60 + slotSm
+      const slotEnd = slotEh * 60 + slotEm
+      return newStart < slotEnd && newEnd > slotStart
+    })
+    if (hasOverlap) {
+      setAdHocError('This time overlaps with an existing slot.')
+      return
+    }
+
     setAdHocSubmitting(true)
     try {
       const res = await fetch('/api/coaches/availability', {
@@ -433,6 +550,7 @@ export function Schedule() {
           venue_name: adHocVenueName || null,
           venue_address: adHocVenueAddress || null,
           price_override_pence: adHocPrice ? Math.round(parseFloat(adHocPrice) * 100) : null,
+          notes: adHocNotes || null,
           is_recurring: false,
           specific_date: adHocDate,
         }),
@@ -451,7 +569,8 @@ export function Schedule() {
       setVenueKey(k => k + 1)
       setAdHocPrice('')
       setAdHocError(null)
-      setRefreshKey(k => k + 1)
+      // AF-P-02: ad-hoc create only adds an availability slot; bookings unchanged
+      setAvailabilityRefreshKey(k => k + 1)
     } catch {
       setAdHocError('Network error — please try again.')
     } finally {
@@ -501,7 +620,7 @@ export function Schedule() {
   }
 
   return (
-    <div className="min-h-screen bg-white flex justify-center font-sans p-6" style={{ fontFamily: "'DM Sans', sans-serif" }}>
+    <div className="min-h-screen flex justify-center pt-8 pb-6 px-6">
       <div className="w-full max-w-7xl relative flex flex-col lg:flex-row gap-8" ref={scheduleContainerRef}>
 
         {/* LEFT COLUMN */}
@@ -511,7 +630,7 @@ export function Schedule() {
             {/* ROW 1 */}
             <div className="flex items-start justify-between mb-2 px-5 pt-4">
               <div>
-                <h1 className="text-[20px] font-medium text-gray-900">Schedule</h1>
+                <h1 className="text-[28px] font-bold tracking-tight text-gray-900">Schedule</h1>
                 {/* Fix-26: Dynamic week range */}
                 <p className="text-[14px] text-gray-500 mt-0.5">
                   {(() => {
@@ -527,18 +646,15 @@ export function Schedule() {
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                <div className="flex bg-white border border-gray-200 rounded-full p-1">
-                  {/* CF-D02c FIX 3: Day and Month disabled */}
-                  <button title="Coming soon" className="px-3 py-1 rounded-full text-[12px] font-medium text-gray-600 opacity-40 cursor-not-allowed">Day</button>
-                  <button className="px-3 py-1 rounded-full text-[12px] font-medium bg-[#0077CC] text-white">Week</button>
-                  <button title="Coming soon" className="px-3 py-1 rounded-full text-[12px] font-medium text-gray-600 opacity-40 cursor-not-allowed">Month</button>
-                </div>
+                {/* BUG-QA-05: Day + Month removed for go-live (week-only view).
+                    Week chip is non-interactive — preserved for visual context. */}
+                <div className="px-3 py-1 rounded-full text-[12px] font-medium bg-brand-600 text-white">Week</div>
                 {/* CF-D02c FIX 3: Today button resets to current week */}
-                <button onClick={() => setWeekOffset(0)} className="px-3 py-1 border border-gray-200 rounded-md text-[12px] font-medium text-gray-700 hover:bg-gray-50 h-[30px]">Today</button>
+                <button onClick={() => setWeekOffset(0)} className="px-3 py-1 border border-gray-200 rounded-md text-[12px] font-medium text-gray-700 hover:bg-neutral-50 h-[30px]">Today</button>
                 <div className="flex border border-gray-200 rounded-md">
                   {/* CF-D02c FIX 3: Prev/Next week navigation */}
-                  <button onClick={() => setWeekOffset(prev => prev - 1)} className="w-7 h-7 flex items-center justify-center border-r border-gray-200 hover:bg-gray-50 text-gray-600"><ChevronLeft size={16} /></button>
-                  <button onClick={() => setWeekOffset(prev => prev + 1)} className="w-7 h-7 flex items-center justify-center hover:bg-gray-50 text-gray-600"><ChevronRight size={16} /></button>
+                  <button onClick={() => setWeekOffset(prev => prev - 1)} className="w-7 h-7 flex items-center justify-center border-r border-gray-200 hover:bg-neutral-50 text-gray-600"><ChevronLeft size={16} /></button>
+                  <button onClick={() => setWeekOffset(prev => prev + 1)} className="w-7 h-7 flex items-center justify-center hover:bg-neutral-50 text-gray-600"><ChevronRight size={16} /></button>
                 </div>
               </div>
             </div>
@@ -546,10 +662,10 @@ export function Schedule() {
             <div className="flex items-center justify-between px-5 pt-2">
               <div className="flex items-center gap-2">
                 <button className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-800 text-[11px] font-medium hover:bg-blue-100 transition-colors">
-                  🏏 Cricket <Check size={12} strokeWidth={3} />
+                  Cricket <Check size={12} strokeWidth={3} />
                 </button>
                 <button className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-green-50 border border-green-200 text-green-800 text-[11px] font-medium hover:bg-green-100 transition-colors">
-                  ⚽ Football <Check size={12} strokeWidth={3} />
+                  Football <Check size={12} strokeWidth={3} />
                 </button>
               </div>
               <div className="flex items-center gap-3">
@@ -568,7 +684,7 @@ export function Schedule() {
             {loading && (
               <div className="absolute inset-0 bg-white/80 z-50 flex items-center justify-center">
                 <div className="flex flex-col items-center">
-                  <div className="w-8 h-8 border-3 border-gray-200 border-t-[#0077CC] rounded-full animate-spin mb-3" />
+                  <div className="w-8 h-8 border-3 border-gray-200 border-t-brand-600 rounded-full animate-spin mb-3" />
                   <p className="text-[14px] text-gray-500">Loading schedule...</p>
                 </div>
               </div>
@@ -578,14 +694,18 @@ export function Schedule() {
             {error && !loading && (
               <div className="absolute inset-0 bg-white z-50 flex items-center justify-center">
                 <div className="flex flex-col items-center text-center px-4">
-                  <div className="w-16 h-16 bg-red-50 text-red-600 rounded-full flex items-center justify-center mb-4">
-                    <span className="text-2xl">⚠</span>
+                  <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mb-4">
+                    <AlertTriangle size={28} className="text-red-500" />
                   </div>
                   <h3 className="text-[18px] font-bold text-gray-900 mb-2">Failed to load schedule</h3>
                   <p className="text-[14px] text-gray-500 mb-6">{error}</p>
-                  <button 
-                    onClick={() => window.location.reload()}
-                    className="bg-[#0077CC] hover:bg-[#0066AA] text-white px-6 py-3 rounded-xl text-[15px] font-bold transition-colors"
+                  <button
+                    onClick={() => {
+                      setError(null)
+                      setAvailabilityRefreshKey(k => k + 1)
+                      setBookingsRefreshKey(k => k + 1)
+                    }}
+                    className="bg-brand-600 hover:bg-brand-700 text-white px-6 py-3 rounded-xl text-[15px] font-bold transition-colors"
                   >
                     Try Again
                   </button>
@@ -593,14 +713,14 @@ export function Schedule() {
               </div>
             )}
             {/* CHANGE 2: Today column treatment */}
-            <div className="flex border-b border-gray-200 bg-gray-50/50 relative z-20">
+            <div className="flex border-b border-gray-200 bg-neutral-50/50 relative z-20">
               <div className="w-16 shrink-0 border-r border-gray-200" />
               {days.map((day, idx) => (
-                <div key={idx} className={`flex-1 py-3 text-center border-r last:border-r-0 border-gray-200 ${day.isToday ? 'bg-[#EFF7FF]' : ''}`}>
-                  <div className={`text-[11px] font-bold uppercase tracking-wider ${day.isToday ? 'text-[#0077CC]' : 'text-gray-500'}`}>{day.name}</div>
+                <div key={idx} className={`flex-1 py-3 text-center border-r last:border-r-0 border-gray-200 ${day.isToday ? 'bg-neutral-50' : ''}`}>
+                  <div className={`text-[11px] font-bold uppercase tracking-wider ${day.isToday ? 'text-brand-600' : 'text-gray-500'}`}>{day.name}</div>
                   {day.isToday ? (
                     <div className="flex justify-center mt-1">
-                      <div className="w-7 h-7 rounded-full bg-[#0077CC] text-white flex items-center justify-center text-[14px] font-medium">{day.date}</div>
+                      <div className="w-7 h-7 rounded-full bg-brand-600 text-white flex items-center justify-center text-[14px] font-medium">{day.date}</div>
                     </div>
                   ) : (
                     <div className="text-[20px] font-light leading-tight mt-1 text-gray-900">{day.date}</div>
@@ -625,7 +745,7 @@ export function Schedule() {
                         return (
                           <div 
                             key={idx} 
-                            className={`flex-1 border-r last:border-r-0 border-gray-100 cursor-pointer transition-colors hover:bg-[rgba(0,119,204,0.03)] ${day.isToday ? 'bg-[#EFF7FF]' : ''}`}
+                            className={`flex-1 border-r last:border-r-0 border-gray-100 cursor-pointer transition-colors hover:bg-[rgba(0,119,204,0.03)] ${day.isToday ? 'bg-neutral-50' : ''}`}
                             onClick={(e) => handleSlotClick(e, dateStr, timeStr)}
                           />
                         )
@@ -638,10 +758,8 @@ export function Schedule() {
                 <div className="absolute inset-0 flex pointer-events-auto z-10">
                   <div className="w-16 shrink-0" />
                   {days.map((day, dayIdx) => {
-                    // Filter availability for this day
-                    const pad = (n: number) => String(n).padStart(2, '0')
-                    const d = day.fullDate
-                    const dayIso = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+                    // Filter availability for this day — uses module-scoped fmtDate
+                    const dayIso = fmtDate(day.fullDate)
                     const dayBlocks = availability.filter(block => {
                       if (!block.is_active) return false
                       if (block.day_of_week !== day.dayOfWeek) return false
@@ -698,9 +816,7 @@ export function Schedule() {
                 <div className="absolute inset-0 flex pointer-events-none z-[15]">
                   <div className="w-16 shrink-0" />
                   {days.map((day, dayIdx) => {
-                    const _pad = (n: number) => String(n).padStart(2, '0')
-                    const _d = day.fullDate
-                    const isoDate = `${_d.getFullYear()}-${_pad(_d.getMonth() + 1)}-${_pad(_d.getDate())}`
+                    const isoDate = fmtDate(day.fullDate)
                     const dayBookings = bookings.filter((b) => b.session_date === isoDate)
                     return (
                       <div key={dayIdx} className="flex-1 relative border-r border-transparent">
@@ -729,12 +845,42 @@ export function Schedule() {
                   })}
                 </div>
 
+                {/* SCHEDULE-PROG-SESSIONS: Group programme session blocks (z-14, under bookings) */}
+                <div className="absolute inset-0 flex pointer-events-none z-[14]">
+                  <div className="w-16 shrink-0" />
+                  {days.map((day, dayIdx) => {
+                    const isoDate = fmtDate(day.fullDate)
+                    const daySessions = programmeSessions.filter((s) => s.session_date === isoDate)
+                    return (
+                      <div key={dayIdx} className="flex-1 relative border-r border-transparent">
+                        {daySessions.map((session) => {
+                          const topPosition = timeToPosition(session.start_time) * 64
+                          const heightPx = calculateDuration(session.start_time, session.end_time) * 64
+                          const subtitle = `${session.start_time.slice(0, 5)} · ${session.current_spots}/${session.max_spots} spots`
+                          return (
+                            <EventBlock
+                              key={session.id}
+                              top={topPosition}
+                              height={heightPx}
+                              type="programme"
+                              title={session.programme_title}
+                              subtitle={subtitle}
+                              sessionId={session.id}
+                              onCardClick={handleProgrammeSessionClick}
+                            />
+                          )
+                        })}
+                      </div>
+                    )
+                  })}
+                </div>
+
                 {/* CD-12: Empty state */}
                 {!loading && !error && availability.length === 0 && (
                   <div className="absolute inset-0 flex items-center justify-center z-20">
                     <div className="text-center px-4">
-                      <div className="w-16 h-16 bg-[#F0F7FF] rounded-full flex items-center justify-center mx-auto mb-4">
-                        <Calendar size={32} className="text-[#0077CC]" />
+                      <div className="w-16 h-16 bg-neutral-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <Calendar size={32} className="text-brand-600" />
                       </div>
                       <h3 className="text-[18px] font-bold text-gray-900 mb-2">No availability set</h3>
                       <p className="text-[14px] text-gray-500 mb-6 max-w-sm">
@@ -742,7 +888,7 @@ export function Schedule() {
                       </p>
                       <button 
                         onClick={() => router.push('/coach/availability')}
-                        className="bg-[#0077CC] hover:bg-[#0066AA] text-white px-6 py-3 rounded-xl text-[15px] font-bold transition-colors"
+                        className="bg-brand-600 hover:bg-brand-700 text-white px-6 py-3 rounded-xl text-[15px] font-bold transition-colors"
                       >
                         Set Availability
                       </button>
@@ -758,7 +904,7 @@ export function Schedule() {
           {/* CF-02a: FAB opens add modal */}
           <button
             onClick={() => { setAdHocStep('menu'); setAdHocError(null); setIsAddModalOpen(true) }}
-            className="self-end mt-3 mb-2 bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-full px-[18px] py-2 flex items-center gap-2 transition-colors text-[13px] font-medium"
+            className="self-end mt-3 mb-2 bg-brand-600 hover:bg-brand-700 text-white rounded-full px-[18px] py-2 flex items-center gap-2 transition-colors text-[13px] font-medium"
             style={{ boxShadow: '0 2px 8px rgba(0,119,204,0.20)' }}
           >
             <Plus size={14} />
@@ -774,8 +920,10 @@ export function Schedule() {
             sessionId={activePopover.sessionId}
             type={activePopover.sessionType}
             booking={bookings.find((b) => b.id === activePopover.sessionId) ?? null}
+            programmeSession={programmeSessions.find((s) => s.id === activePopover.sessionId) ?? null}
+            sportsMap={sportsMap}
             onClose={() => setActivePopover(null)}
-            onRefresh={() => { setActivePopover(null); setRefreshKey((k) => k + 1) }}
+            onRefresh={() => { setActivePopover(null); setBookingsRefreshKey((k) => k + 1) }}
           />
         )}
         {activePopover?.type === 'creation' && (
@@ -792,7 +940,7 @@ export function Schedule() {
           <AdHocPopover
             {...adHocPopover}
             onClose={() => setAdHocPopover(null)}
-            onDeleted={() => { setAdHocPopover(null); setRefreshKey(k => k + 1) }}
+            onDeleted={() => { setAdHocPopover(null); setAvailabilityRefreshKey(k => k + 1) }}
           />
         )}
       </div>
@@ -809,9 +957,9 @@ export function Schedule() {
                   <div className="space-y-3">
                     <button
                       onClick={() => setAdHocStep('form')}
-                      className="w-full flex items-center text-left p-4 rounded-xl border border-gray-100 hover:border-[#0077CC] hover:bg-[#EFF6FF] transition-colors group"
+                      className="w-full flex items-center text-left p-4 rounded-xl border border-gray-100 hover:border-brand-600 hover:bg-neutral-50 transition-colors group"
                     >
-                      <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center mr-4 shrink-0 text-gray-600 transition-colors group-hover:bg-white group-hover:text-[#0077CC]"><User size={20} /></div>
+                      <div className="w-10 h-10 rounded-full bg-neutral-50 flex items-center justify-center mr-4 shrink-0 text-gray-600 transition-colors group-hover:bg-white group-hover:text-brand-600"><User size={20} /></div>
                       <div>
                         <div className="text-[15px] font-bold text-gray-900">Ad hoc slot</div>
                         <div className="text-[13px] text-gray-500 mt-0.5">One-off availability on a specific date</div>
@@ -819,7 +967,7 @@ export function Schedule() {
                     </button>
 
                     <button disabled className="w-full flex items-center text-left p-4 rounded-xl border border-gray-100 opacity-50 cursor-not-allowed">
-                      <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center mr-4 shrink-0 text-gray-600"><RefreshCw size={20} /></div>
+                      <div className="w-10 h-10 rounded-full bg-neutral-50 flex items-center justify-center mr-4 shrink-0 text-gray-600"><RefreshCw size={20} /></div>
                       <div>
                         <div className="text-[15px] font-bold text-gray-900">Recurring session <span className="text-[11px] font-normal text-gray-400 ml-1">Coming soon</span></div>
                         <div className="text-[13px] text-gray-500 mt-0.5">Repeats weekly or custom schedule</div>
@@ -828,9 +976,9 @@ export function Schedule() {
 
                     <button
                       onClick={() => { setIsAddModalOpen(false); setAdHocStep('menu'); router.push('/coach/programmes/new') }}
-                      className="w-full flex items-center text-left p-4 rounded-xl border border-gray-100 hover:border-[#0077CC] hover:bg-[#EFF6FF] transition-colors group"
+                      className="w-full flex items-center text-left p-4 rounded-xl border border-gray-100 hover:border-brand-600 hover:bg-neutral-50 transition-colors group"
                     >
-                      <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center mr-4 shrink-0 text-gray-600 transition-colors group-hover:bg-white group-hover:text-[#0077CC]"><Users size={20} /></div>
+                      <div className="w-10 h-10 rounded-full bg-neutral-50 flex items-center justify-center mr-4 shrink-0 text-gray-600 transition-colors group-hover:bg-white group-hover:text-brand-600"><Users size={20} /></div>
                       <div>
                         <div className="text-[15px] font-bold text-gray-900">New programme</div>
                         <div className="text-[13px] text-gray-500 mt-0.5">Group sessions with fixed spots</div>
@@ -839,9 +987,9 @@ export function Schedule() {
 
                     <button
                       onClick={() => { setIsAddModalOpen(false); setAdHocStep('menu'); router.push('/coach/availability') }}
-                      className="w-full flex items-center text-left p-4 rounded-xl border border-gray-100 hover:border-gray-300 hover:bg-gray-50 transition-colors group"
+                      className="w-full flex items-center text-left p-4 rounded-xl border border-gray-100 hover:border-gray-300 hover:bg-neutral-50 transition-colors group"
                     >
-                      <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center mr-4 shrink-0 text-gray-600 group-hover:bg-white"><Ban size={20} /></div>
+                      <div className="w-10 h-10 rounded-full bg-neutral-50 flex items-center justify-center mr-4 shrink-0 text-gray-600 group-hover:bg-white"><Ban size={20} /></div>
                       <div>
                         <div className="text-[15px] font-bold text-gray-900">Block time</div>
                         <div className="text-[13px] text-gray-500 mt-0.5">Mark time as unavailable</div>
@@ -866,12 +1014,10 @@ export function Schedule() {
                   <div className="space-y-4">
                     <div>
                       <label className="block text-[12px] font-medium text-gray-700 mb-1">Date</label>
-                      <input
-                        type="date"
+                      <DatePicker
                         value={adHocDate}
-                        min={new Date().toISOString().split('T')[0]}
-                        onChange={e => setAdHocDate(e.target.value)}
-                        className="w-full text-[13px] border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#0077CC]"
+                        minDate={todayYYYYMMDD()}
+                        onChange={setAdHocDate}
                       />
                     </div>
 
@@ -881,7 +1027,7 @@ export function Schedule() {
                         <select
                           value={adHocSportId}
                           onChange={e => setAdHocSportId(e.target.value)}
-                          className="w-full text-[13px] border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#0077CC]"
+                          className="w-full text-[13px] border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand-600"
                         >
                           {sports.map(s => (
                             <option key={s.sport_id} value={s.sport_id}>{s.sport_name}</option>
@@ -923,20 +1069,16 @@ export function Schedule() {
                     <div className="flex gap-3">
                       <div className="flex-1">
                         <label className="block text-[12px] font-medium text-gray-700 mb-1">Start</label>
-                        <input
-                          type="time"
+                        <TimePicker
                           value={adHocStartTime}
-                          onChange={e => setAdHocStartTime(e.target.value)}
-                          className="w-full text-[13px] border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#0077CC]"
+                          onChange={setAdHocStartTime}
                         />
                       </div>
                       <div className="flex-1">
                         <label className="block text-[12px] font-medium text-gray-700 mb-1">End</label>
-                        <input
-                          type="time"
+                        <TimePicker
                           value={adHocEndTime}
-                          onChange={e => setAdHocEndTime(e.target.value)}
-                          className="w-full text-[13px] border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#0077CC]"
+                          onChange={setAdHocEndTime}
                         />
                       </div>
                     </div>
@@ -948,7 +1090,7 @@ export function Schedule() {
                         value={adHocNotes}
                         onChange={e => setAdHocNotes(e.target.value)}
                         placeholder="e.g. Available at Oval ground only"
-                        className="w-full text-[13px] border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#0077CC]"
+                        className="w-full text-[13px] border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand-600"
                       />
                     </div>
 
@@ -963,7 +1105,7 @@ export function Schedule() {
                           placeholder="e.g. 35"
                           value={adHocPrice}
                           onChange={e => setAdHocPrice(e.target.value.replace(/[^0-9.]/g, ''))}
-                          className="w-full text-[13px] border border-gray-200 rounded-lg pl-7 pr-3 py-2 focus:outline-none focus:border-[#0077CC]"
+                          className="w-full text-[13px] border border-gray-200 rounded-lg pl-7 pr-3 py-2 focus:outline-none focus:border-brand-600"
                         />
                       </div>
                       <p className="text-[11px] text-gray-400 mt-1">Leave blank to use your default price for this sport</p>
@@ -977,14 +1119,14 @@ export function Schedule() {
                   <div className="flex gap-3 mt-6">
                     <button
                       onClick={() => { setAdHocStep('menu'); setAdHocError(null) }}
-                      className="flex-1 py-2.5 border border-gray-200 rounded-xl text-[14px] font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                      className="flex-1 py-2.5 border border-gray-200 rounded-xl text-[14px] font-medium text-gray-700 hover:bg-neutral-50 transition-colors"
                     >
                       Back
                     </button>
                     <button
                       onClick={submitAdHoc}
                       disabled={adHocSubmitting}
-                      className="flex-1 py-2.5 bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-xl text-[14px] font-medium transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
+                      className="flex-1 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-[14px] font-medium transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
                     >
                       {adHocSubmitting ? <RefreshCw size={14} className="animate-spin" /> : null}
                       Add slot
@@ -1002,17 +1144,22 @@ export function Schedule() {
 }
 
 // CF-D02b CHANGE 1: Session Popover Component (4 types)
+// SCHEDULE-PROG-SESSIONS: programmeSession prop carries real data for the
+// 'programme' branch (was a graceful fallback off the booking prop until now).
 function SessionPopover({
-  x, y, sessionId, type, booking, onClose, onRefresh,
+  x, y, sessionId, type, booking, programmeSession, sportsMap, onClose, onRefresh,
 }: {
   x: number
   y: number
   sessionId: string
   type: string
   booking: BookingBlock | null
+  programmeSession: ProgrammeSessionBlock | null
+  sportsMap: Record<string, string>
   onClose: () => void
   onRefresh: () => void
 }) {
+  const router = useRouter()
   const [actionLoading, setActionLoading] = useState<'approve' | 'decline' | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
 
@@ -1040,70 +1187,129 @@ function SessionPopover({
 
   const getPopoverContent = () => {
     switch (type) {
-      case 'confirmed':
+      case 'confirmed': {
+        // AF-C-01: real data from booking prop
+        const clientName = booking?.child_name ?? booking?.booked_by_name ?? 'Client'
+        const dateLabel = booking
+          ? (() => {
+              const d = new Date(booking.session_date + 'T00:00:00')
+              const dayStr = d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+              return `${dayStr} · ${booking.session_start_time.slice(0, 5)} – ${booking.session_end_time.slice(0, 5)}`
+            })()
+          : '—'
+        const sportName = booking ? (sportsMap[booking.sport_id] ?? null) : null
+        const typeLabel = booking?.session_type === 'group' ? 'Group' : '1-on-1'
+        const sportTypeLine = sportName ? `${sportName} · ${typeLabel}` : typeLabel
+        const venueLabel = booking?.venue_name ?? 'Venue not set'
+        const earningsLabel = booking?.coach_price_pence != null
+          ? `£${(booking.coach_price_pence / 100).toFixed(2)} (you receive)`
+          : '–'
+        // AF-H-08: derive badge from booking.status (was hardcoded "Confirmed")
+        const statusLabel =
+          booking?.status === 'completed' ? 'Completed' :
+          booking?.status === 'no_show' ? 'No show' :
+          booking?.status === 'cancelled_coach' ? 'Cancelled' :
+          booking?.status === 'cancelled_parent' ? 'Cancelled' :
+          'Confirmed'
+        const statusColour =
+          booking?.status === 'completed'
+            ? 'bg-gray-100 text-gray-600 border border-gray-200' :
+          booking?.status === 'no_show'
+            ? 'bg-orange-50 text-orange-700 border border-orange-200' :
+          (booking?.status === 'cancelled_coach' || booking?.status === 'cancelled_parent')
+            ? 'bg-red-50 text-red-700 border border-red-200' :
+          'bg-teal-50 text-teal-800 border border-teal-200'
         return (
           <>
             <div className="flex items-start justify-between mb-3">
-              <h3 className="text-[15px] font-medium text-gray-900">James Okafor</h3>
-              <span className="px-2 py-0.5 bg-green-50 text-green-700 border border-green-200 rounded-full text-[11px] font-medium">Confirmed</span>
+              <h3 className="text-[15px] font-medium text-gray-900">{clientName}</h3>
+              <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${statusColour}`}>{statusLabel}</span>
             </div>
             <div className="space-y-2 mb-3">
               <div className="flex items-center gap-2 text-[13px] text-gray-600">
                 <Calendar size={14} />
-                <span>Mon 7 Apr · 09:00 – 10:00</span>
+                <span>{dateLabel}</span>
               </div>
               <div className="flex items-center gap-2 text-[13px] text-gray-600">
                 <User size={14} />
-                <span>Cricket · 1-on-1</span>
+                <span>{sportTypeLine}</span>
               </div>
               <div className="flex items-center gap-2 text-[13px] text-gray-600">
                 <MapPin size={14} />
-                <span>Oval Cricket Ground</span>
+                <span>{venueLabel}</span>
               </div>
               <div className="flex items-center gap-2 text-[13px] text-gray-900 font-medium">
                 <PoundSterling size={14} />
-                <span>£45.00 (you receive)</span>
+                <span>{earningsLabel}</span>
               </div>
             </div>
             <div className="flex gap-2 mt-3">
-              <button onClick={() => {/* TODO CF-D02b: wire View booking popover action */}} className="flex-1 bg-[#0077CC] text-white rounded-lg py-2 text-[13px] font-medium hover:bg-[#0066AA]">View booking →</button>
-              <button onClick={() => {/* TODO CF-D02b: wire Message popover action */}} className="flex-1 bg-white border border-gray-200 text-gray-700 rounded-lg py-2 text-[13px] font-medium hover:bg-gray-50">Message</button>
+              <button
+                onClick={() => { router.push(`/coach/bookings/${sessionId}`); onClose() }}
+                className="flex-1 bg-brand-600 text-white rounded-lg py-2 text-[13px] font-medium hover:bg-brand-700"
+              >
+                View booking →
+              </button>
+              <button
+                disabled
+                className="flex-1 bg-white border border-gray-200 text-gray-400 rounded-lg py-2 text-[13px] font-medium opacity-40 cursor-not-allowed"
+              >
+                Message
+              </button>
             </div>
           </>
         )
+      }
       
-      case 'programme':
+      case 'programme': {
+        // SCHEDULE-PROG-SESSIONS: real data from programmeSession prop. Defensive
+        // null-check — the click handler only sets type='programme' when the
+        // session is in programmeSessions[], so this should never render null.
+        if (!programmeSession) return null
+        const dateLabel = (() => {
+          const d = new Date(programmeSession.session_date + 'T00:00:00')
+          const dayStr = d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+          return `${dayStr} · ${programmeSession.start_time.slice(0, 5)} – ${programmeSession.end_time.slice(0, 5)}`
+        })()
+        const spotsLabel = `${programmeSession.current_spots} of ${programmeSession.max_spots} spots booked`
+        const venueLabel = programmeSession.venue_name ?? 'Venue not set'
         return (
           <>
             <div className="flex items-start justify-between mb-3">
-              <h3 className="text-[15px] font-medium text-gray-900">{sessionId === 'session-2' ? 'Junior Cricket Foundations' : 'Open Net Session'}</h3>
-              <span className="px-2 py-0.5 bg-purple-50 text-purple-700 border border-purple-200 rounded-full text-[11px] font-medium">Active</span>
+              <h3 className="text-[15px] font-medium text-gray-900">{programmeSession.programme_title}</h3>
+              <span className="px-2 py-0.5 bg-purple-50 text-purple-700 border border-purple-200 rounded-full text-[11px] font-medium">Group</span>
             </div>
             <div className="space-y-2 mb-3">
               <div className="flex items-center gap-2 text-[13px] text-gray-600">
                 <Calendar size={14} />
-                <span>{sessionId === 'session-2' ? 'Mon 7 Apr · 14:00 – 15:30' : 'Sun 12 Apr · 10:00 – 11:30'}</span>
-              </div>
-              <div className="flex items-center gap-2 text-[13px] text-gray-600">
-                <User size={14} />
-                <span>Cricket · Group</span>
+                <span>{dateLabel}</span>
               </div>
               <div className="flex items-center gap-2 text-[13px] text-gray-600">
                 <Users size={14} />
-                <span>{sessionId === 'session-2' ? '4 / 6 spots filled' : '2 / 8 spots filled'}</span>
+                <span>{spotsLabel}</span>
               </div>
-              <div className="mt-2">
-                <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-purple-500 rounded-full" style={{ width: sessionId === 'session-2' ? '66.67%' : '25%' }} />
-                </div>
+              <div className="flex items-center gap-2 text-[13px] text-gray-600">
+                <MapPin size={14} />
+                <span>{venueLabel}</span>
               </div>
             </div>
             <div className="flex gap-2 mt-3">
-              <button onClick={() => {/* TODO CF-D02b: wire View programme popover action */}} className="flex-1 bg-purple-600 text-white rounded-lg py-2 text-[13px] font-medium hover:bg-purple-700">View prog. →</button>
-              <button onClick={() => {/* TODO CF-D02b: wire Message popover action */}} className="flex-1 bg-white border border-gray-200 text-gray-700 rounded-lg py-2 text-[13px] font-medium hover:bg-gray-50">Message</button>
+              <button
+                onClick={() => { router.push(`/coach/programmes/${programmeSession.programme_id}/roster`); onClose() }}
+                className="flex-1 bg-brand-600 text-white rounded-lg py-2 text-[13px] font-medium hover:bg-brand-700"
+              >
+                View roster →
+              </button>
+              <button
+                disabled
+                className="flex-1 bg-white border border-gray-200 text-gray-400 rounded-lg py-2 text-[13px] font-medium opacity-40 cursor-not-allowed"
+              >
+                Message
+              </button>
             </div>
           </>
         )
+      }
       
       case 'pending': {
         const clientName = booking?.child_name ?? booking?.booked_by_name ?? '—'
@@ -1161,25 +1367,35 @@ function SessionPopover({
       }
       
       case 'blocked':
+        // AF-C-03: Blocked-date popover is wired for future use only.
+        // Schedule.tsx does not yet emit type='blocked' EventBlocks; blocked
+        // dates are managed in /coach/availability. This branch is preserved
+        // for when blocked dates are wired into the grid in a later wave.
         return (
           <>
             <div className="flex items-start justify-between mb-3">
-              <h3 className="text-[15px] font-medium text-gray-900">Blocked — Family Holiday</h3>
+              <h3 className="text-[15px] font-medium text-gray-900">Blocked</h3>
               <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full text-[11px] font-medium">Blocked</span>
             </div>
             <div className="space-y-2 mb-3">
-              <div className="flex items-center gap-2 text-[13px] text-gray-600">
-                <Calendar size={14} />
-                <span>Sat 11 Apr · 08:00 – 13:00</span>
-              </div>
               <div className="flex items-center gap-2 text-[13px] text-gray-500">
                 <Info size={14} />
                 <span>You are unavailable during this time</span>
               </div>
             </div>
             <div className="flex gap-2 mt-3">
-              <button onClick={() => {/* TODO CF-D02b: wire Edit block action */}} className="flex-1 bg-white border border-gray-200 text-gray-700 rounded-lg py-2 text-[13px] font-medium hover:bg-gray-50">Edit block</button>
-              <button onClick={() => {/* TODO CF-D02b: wire Remove block action */}} className="flex-1 bg-white border border-red-200 text-red-600 rounded-lg py-2 text-[13px] font-medium hover:bg-red-50">Remove</button>
+              <button
+                disabled
+                className="flex-1 bg-white border border-gray-200 text-gray-400 rounded-lg py-2 text-[13px] font-medium opacity-40 cursor-not-allowed"
+              >
+                Edit block
+              </button>
+              <button
+                disabled
+                className="flex-1 bg-white border border-gray-200 text-gray-400 rounded-lg py-2 text-[13px] font-medium opacity-40 cursor-not-allowed"
+              >
+                Remove
+              </button>
             </div>
           </>
         )
@@ -1220,6 +1436,8 @@ function CreationPopover({ x, y, source, date, time, onClose }: { x: number; y: 
     const endHour = (hours + 1).toString().padStart(2, '0')
     return `${endHour}:${mins.toString().padStart(2, '0')}`
   })
+  // UI-DATE-PICKER: wire the previously-uncontrolled stub date input.
+  const [stubDate, setStubDate] = useState(todayYYYYMMDD())
 
   const timeOptions = Array.from({ length: 17 }, (_, i) => {
     const hour = (i + 6).toString().padStart(2, '0')
@@ -1253,14 +1471,15 @@ function CreationPopover({ x, y, source, date, time, onClose }: { x: number; y: 
         />
         
         <div className="flex gap-2">
-          {/* CF-D02e BUG FIX 3: Native date input when triggered from button, read-only text when from slot */}
+          {/* CF-D02e BUG FIX 3 / UI-DATE-PICKER: controlled DatePicker when triggered from button, read-only text when from slot */}
           {source === 'button' ? (
-            <input
-              type="date"
-              defaultValue={new Date().toISOString().split('T')[0]}
-              min={new Date().toISOString().split('T')[0]}
-              className="text-[13px] border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-brand-600"
-            />
+            <div className="flex-1">
+              <DatePicker
+                value={stubDate}
+                minDate={todayYYYYMMDD()}
+                onChange={setStubDate}
+              />
+            </div>
           ) : (
             <div className="text-[13px] text-gray-600 py-2">{date}</div>
           )}
@@ -1285,9 +1504,9 @@ function CreationPopover({ x, y, source, date, time, onClose }: { x: number; y: 
           <button 
             onClick={() => setSessionType('1-on-1')}
             className={`flex-1 py-1.5 px-3 rounded-md text-[12px] font-medium transition-colors ${
-              sessionType === '1-on-1' 
-                ? 'bg-[#0077CC] text-white' 
-                : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'
+              sessionType === '1-on-1'
+                ? 'bg-brand-600 text-white'
+                : 'bg-white border border-gray-200 text-gray-700 hover:bg-neutral-50'
             }`}
           >
             1-on-1
@@ -1295,9 +1514,9 @@ function CreationPopover({ x, y, source, date, time, onClose }: { x: number; y: 
           <button 
             onClick={() => setSessionType('Group')}
             className={`flex-1 py-1.5 px-3 rounded-md text-[12px] font-medium transition-colors ${
-              sessionType === 'Group' 
-                ? 'bg-[#0077CC] text-white' 
-                : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'
+              sessionType === 'Group'
+                ? 'bg-brand-600 text-white'
+                : 'bg-white border border-gray-200 text-gray-700 hover:bg-neutral-50'
             }`}
           >
             Group
@@ -1306,15 +1525,20 @@ function CreationPopover({ x, y, source, date, time, onClose }: { x: number; y: 
         
         <div className="flex items-center gap-1.5 text-[12px] text-gray-500">
           <PoundSterling size={12} />
-          <span>45.00 (you receive)</span>
+          <span className="text-gray-400 italic">— set at booking</span>
         </div>
       </div>
-      
+
       <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
-        <button onClick={() => {/* TODO CF-D02b: wire Cancel to dismiss popover */onClose()}} className="text-[12px] text-gray-500 hover:text-gray-900">
+        <button onClick={onClose} className="text-[12px] text-gray-500 hover:text-gray-900">
           Cancel
         </button>
-        <button onClick={() => {/* TODO CF-D02b: wire Create session to booking/session creation API */}} className="bg-[#0077CC] text-white rounded-lg px-4 py-1.5 text-[13px] font-medium hover:bg-[#0066AA]">
+        {/* AF-H-11: Create session is disabled until shareable bookable widget exists (CG-BookableWidget-01) */}
+        <button
+          disabled
+          title="Shareable session links — coming soon"
+          className="bg-brand-600 text-white rounded-lg px-4 py-1.5 text-[13px] font-medium opacity-50 cursor-not-allowed"
+        >
           Create →
         </button>
       </div>

@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Target, Trophy, Circle, Waves, Medal, Feather, Activity, Flag, Dumbbell, Check } from 'lucide-react'
 import { OnboardingPreviewPanel } from '../OnboardingPreviewPanel'
+import { fetchCoachProfileCached, fetchSportsListCached, fetchCoachSportsCached } from '@/lib/onboarding-cache'
 
 interface CoachSportResponse {
   id: string
@@ -52,46 +53,40 @@ export function SportStep() {
   }
 
   // Fix-17c: Fetch available sports from API and saved coach sports
+  // AF-P-07: parallelise three independent fetches; sports list + profile use shared caches
+  // AF-H-21: Promise.allSettled — keep form usable when individual fetches fail
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Fix-30b: Cache raw data only, apply icon mapping after
-        const cachedSports = sessionStorage.getItem('sports_list_raw')
-        let rawSports: { id: string; name: string; slug: string }[] = []
+        const [sportsResult, coachSportsResult, profileResult] = await Promise.allSettled([
+          fetchSportsListCached() as Promise<{ id: string; name: string; slug: string }[]>,
+          fetchCoachSportsCached(),
+          fetchCoachProfileCached(),
+        ])
 
-        if (cachedSports) {
-          rawSports = JSON.parse(cachedSports)
+        if (sportsResult.status === 'fulfilled') {
+          // Always apply icon mapping after loading (never cache components)
+          const sportsWithIcons = sportsResult.value.map((sport) => ({
+            ...sport,
+            Icon: iconMap[sport.slug] || Target
+          }))
+          setSports(sportsWithIcons)
         } else {
-          const sportsResponse = await fetch('/api/sports')
-          if (!sportsResponse.ok) throw new Error('Failed to fetch sports')
-          const sportsData = await sportsResponse.json()
-          rawSports = sportsData.sports || []
-          sessionStorage.setItem('sports_list_raw', JSON.stringify(rawSports))
+          console.warn('[SportStep] Failed to load sports list:', sportsResult.reason)
         }
 
-        // Always apply icon mapping after loading (never cache components)
-        const sportsWithIcons = rawSports.map((sport) => ({
-          ...sport,
-          Icon: iconMap[sport.slug] || Target
-        }))
-        setSports(sportsWithIcons)
-        
-        // Fetch saved coach sports to pre-select
-        const coachSportsResponse = await fetch('/api/coaches/sports')
-        if (coachSportsResponse.ok) {
-          const data = await coachSportsResponse.json()
-          const savedSportNames = data.sports.map((s: CoachSportResponse) => s.sport_name)
+        if (coachSportsResult.status === 'fulfilled') {
+          const savedSportNames = (coachSportsResult.value.sports ?? []).map((s: CoachSportResponse) => s.sport_name)
           setSelectedSports(savedSportNames)
+        } else {
+          console.warn('[SportStep] Failed to load coach sports:', coachSportsResult.reason)
         }
-        
-        // Fix-16e: Fetch coach profile for name
-        const profileResponse = await fetch('/api/coaches/profile')
-        if (profileResponse.ok) {
-          const profileData = await profileResponse.json()
-          setCoachName(profileData.full_name || 'Your name')
+
+        if (profileResult.status === 'fulfilled') {
+          setCoachName(profileResult.value.full_name || 'Your name')
+        } else {
+          console.warn('[SportStep] Failed to load profile:', profileResult.reason)
         }
-      } catch (error) {
-        console.error('[SportStep] Failed to fetch data:', error)
       } finally {
         setLoading(false)
       }
@@ -167,7 +162,7 @@ export function SportStep() {
                     className={`flex items-center gap-2.5 px-3 py-2.5 rounded-[10px] text-[14px] transition-all ${
                       isSelected
                         ? 'bg-[#EFF7FF] border-[1.5px] border-[#0077CC] text-[#0C447C] font-medium'
-                        : 'bg-white border border-[#E2E8F0] text-gray-600 hover:border-gray-300 hover:bg-gray-50'
+                        : 'bg-white border border-neutral-100 text-gray-600 hover:border-gray-300 hover:bg-gray-50'
                     }`}
                   >
                     <Icon size={16} className={isSelected ? 'text-[#0077CC]' : 'text-gray-400'} strokeWidth={2.5} />

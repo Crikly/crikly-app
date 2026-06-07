@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { requireCoachContext } from '@/lib/auth/require-coach'
 
 interface AvailabilityResponse {
   id: string
@@ -40,45 +41,9 @@ export async function PATCH(
     const { blockId } = await params
     const supabase = await createClient()
     
-    // 1. Auth check
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
-    }
-
-    // 2. Get user profile and check coach role
-    const { data: userProfile, error: profileError } = await supabase
-      .from('user_profiles')
-      .select('id')
-      .eq('auth_user_id', user.id)
-      .single()
-
-    if (profileError || !userProfile) {
-      return NextResponse.json({ error: 'User profile not found' }, { status: 404 })
-    }
-
-    const { data: roleCheck, error: roleError } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_profile_id', userProfile.id)
-      .eq('role', 'coach')
-      .single()
-
-    if (roleError || !roleCheck) {
-      return NextResponse.json({ error: 'Forbidden — coach role required' }, { status: 403 })
-    }
-
-    // 3. Get coach profile
-    const { data: coachProfile, error: coachError } = await supabase
-      .from('coach_profiles')
-      .select('id')
-      .eq('user_profile_id', userProfile.id)
-      .single()
-
-    if (coachError || !coachProfile) {
-      return NextResponse.json({ error: 'Coach profile not found' }, { status: 404 })
-    }
+    const { context, error } = await requireCoachContext(supabase)
+    if (error) return error
+    const { coachProfile } = context
 
     // 4. Verify coach owns this block and get current values
     const { data: existingBlock, error: blockCheckError } = await supabase
@@ -108,6 +73,14 @@ export async function PATCH(
 
     if (body.end_time !== undefined && typeof body.end_time !== 'string') {
       validationErrors.push('end_time must be a string (HH:MM format)')
+    }
+
+    // Fix-93: venue snapshot fields (text on the block, nullable)
+    if (body.venue_name !== undefined && body.venue_name !== null && typeof body.venue_name !== 'string') {
+      validationErrors.push('venue_name must be a string or null')
+    }
+    if (body.venue_address !== undefined && body.venue_address !== null && typeof body.venue_address !== 'string') {
+      validationErrors.push('venue_address must be a string or null')
     }
 
     // Validate times
@@ -268,6 +241,8 @@ export async function PATCH(
       is_active?: boolean
       price_override_pence?: number | null
       session_type_id?: string | null
+      venue_name?: string | null
+      venue_address?: string | null
       updated_at: string
     } = {
       updated_at: new Date().toISOString(),
@@ -280,6 +255,9 @@ export async function PATCH(
     if (body.is_active !== undefined) updateData.is_active = body.is_active
     if (body.price_override_pence !== undefined) updateData.price_override_pence = body.price_override_pence
     if (body.session_type_id !== undefined) updateData.session_type_id = body.session_type_id
+    // Fix-93: venue snapshot fields
+    if (body.venue_name !== undefined) updateData.venue_name = body.venue_name
+    if (body.venue_address !== undefined) updateData.venue_address = body.venue_address
 
     // 10. Update block
     const { data: updatedBlock, error: updateError } = await supabase
@@ -355,45 +333,9 @@ export async function DELETE(
     const { blockId } = await params
     const supabase = await createClient()
     
-    // 1. Auth check
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
-    }
-
-    // 2. Get user profile and check coach role
-    const { data: userProfile, error: profileError } = await supabase
-      .from('user_profiles')
-      .select('id')
-      .eq('auth_user_id', user.id)
-      .single()
-
-    if (profileError || !userProfile) {
-      return NextResponse.json({ error: 'User profile not found' }, { status: 404 })
-    }
-
-    const { data: roleCheck, error: roleError } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_profile_id', userProfile.id)
-      .eq('role', 'coach')
-      .single()
-
-    if (roleError || !roleCheck) {
-      return NextResponse.json({ error: 'Forbidden — coach role required' }, { status: 403 })
-    }
-
-    // 3. Get coach profile
-    const { data: coachProfile, error: coachError } = await supabase
-      .from('coach_profiles')
-      .select('id')
-      .eq('user_profile_id', userProfile.id)
-      .single()
-
-    if (coachError || !coachProfile) {
-      return NextResponse.json({ error: 'Coach profile not found' }, { status: 404 })
-    }
+    const { context, error } = await requireCoachContext(supabase)
+    if (error) return error
+    const { coachProfile } = context
 
     // 4. Verify coach owns this block
     const { data: existingBlock, error: blockCheckError } = await supabase

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { requireCoachRole, requireCoachContext } from '@/lib/auth/require-coach'
 
 // ─── Slug helpers ─────────────────────────────────────────────────────────────
 
@@ -14,22 +15,28 @@ function generateSlug(name: string): string {
     .replace(/^-|-$/g, '')
 }
 
+const MAX_SLUG_SUFFIX = 50
+
 async function findUniqueSlug(
   supabase: SupabaseServerClient,
   name: string,
   excludeId?: string,
 ): Promise<string> {
-  const base = generateSlug(name)
+  // AF-H-51: empty-slug fallback for non-alphanumeric names (e.g. "!!!") which previously infinite-looped
+  const base = generateSlug(name) || 'coach'
   let candidate = base
   let suffix = 2
-
-  for (;;) {
+  while (suffix <= MAX_SLUG_SUFFIX + 2) {
     let q = supabase.from('coach_profiles').select('id').eq('slug', candidate)
     if (excludeId) q = q.neq('id', excludeId)
-    const { data } = await q.maybeSingle()
+    const { data, error } = await q.maybeSingle()
+    // AF-H-51: surface DB errors instead of silently returning a potentially non-unique slug
+    if (error) throw new Error(`Slug uniqueness check failed: ${error.message}`)
     if (!data) return candidate
     candidate = `${base}-${suffix++}`
   }
+  // AF-H-51: bounded fallback after MAX_SLUG_SUFFIX attempts
+  return `${base}-${Date.now()}`
 }
 
 /**
@@ -46,10 +53,13 @@ interface CoachProfileResponse {
   years_experience: number | null
   dbs_status: 'none' | 'pending' | 'verified' | 'expired'
   is_profile_live: boolean
+  is_paused: boolean
   stripe_onboarding_complete: boolean
   cancellation_window_hours: number
   min_advance_hours: number
   max_advance_days: number
+  requires_manual_approval: boolean
+  travel_radius_miles: number | null
   rating_avg: number | null
   rating_count: number
   sessions_completed: number
@@ -69,35 +79,15 @@ interface CoachProfileResponse {
 export async function GET(): Promise<NextResponse<CoachProfileResponse | { error: string }>> {
   try {
     const supabase = await createClient()
-    
-    // 1. Auth check
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
-    }
 
-    // 2. Check coach role exists
-    const { data: userProfile, error: profileError } = await supabase
-      .from('user_profiles')
-      .select('id, auth_user_id')
-      .eq('auth_user_id', user.id)
-      .single()
-
-    if (profileError || !userProfile) {
-      return NextResponse.json({ error: 'User profile not found' }, { status: 404 })
-    }
-
-    const { data: roleCheck, error: roleError } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_profile_id', userProfile.id)
-      .eq('role', 'coach')
-      .single()
-
-    if (roleError || !roleCheck) {
-      return NextResponse.json({ error: 'Forbidden — coach role required' }, { status: 403 })
-    }
+    // PERF-01-FIX: Variant B parallelises user_roles + coach_profiles
+    // gate checks (saves ~one round-trip vs Variant A's 3 sequential).
+    // The rich coach_profiles SELECT below still needs the
+    // user_profiles!inner join, so the coach_profiles ID returned by
+    // Variant B is unused — worth it for the parallelisation win.
+    const { context, error } = await requireCoachContext(supabase)
+    if (error) return error
+    const { userProfile } = context
 
     // 3. Fetch coach profile with user_profiles join
     const { data: coachProfile, error: coachError } = await supabase
@@ -109,10 +99,13 @@ export async function GET(): Promise<NextResponse<CoachProfileResponse | { error
         years_experience,
         dbs_status,
         is_profile_live,
+        is_paused,
         stripe_onboarding_complete,
         cancellation_window_hours,
         min_advance_hours,
         max_advance_days,
+        requires_manual_approval,
+        travel_radius_miles,
         rating_avg,
         rating_count,
         sessions_completed,
@@ -131,6 +124,10 @@ export async function GET(): Promise<NextResponse<CoachProfileResponse | { error
       .eq('user_profile_id', userProfile.id)
       .single()
 
+    // PERF-01-FIX: post-Variant-B, the missing-coach-row case is
+    // unreachable here (Variant B 404s earlier with the same status +
+    // message). This guard is kept to catch coachError from the rich
+    // SELECT itself (e.g. transient DB errors after the gate passes).
     if (coachError || !coachProfile) {
       return NextResponse.json({ error: 'Coach profile not found' }, { status: 404 })
     }
@@ -140,15 +137,13 @@ export async function GET(): Promise<NextResponse<CoachProfileResponse | { error
       ? coachProfile.user_profiles[0]
       : coachProfile.user_profiles
 
-    // 5. Backfill slug if missing
-    let slug: string | null = coachProfile.slug ?? null
-    if (!slug && userProfileData.full_name) {
-      slug = await findUniqueSlug(supabase, userProfileData.full_name, coachProfile.id)
-      await supabase
-        .from('coach_profiles')
-        .update({ slug })
-        .eq('id', coachProfile.id)
-    }
+    // PERF-01-FIX: slug backfill removed from GET — was a WRITE inside a
+    // READ path that ran 1+1 round-trips on every call where slug was null,
+    // and up to 51 round-trips on collision (see PERF-01 investigation).
+    // Existing NULL-slug rows backfilled via migration 028; new coaches
+    // get slugs from the POST handler below (gated on name-change or
+    // missing slug). The variable below preserves the response field type.
+    const slug: string | null = coachProfile.slug ?? null
 
     const response: CoachProfileResponse = {
       id: coachProfile.id,
@@ -161,10 +156,13 @@ export async function GET(): Promise<NextResponse<CoachProfileResponse | { error
       years_experience: coachProfile.years_experience,
       dbs_status: coachProfile.dbs_status as 'none' | 'pending' | 'verified' | 'expired',
       is_profile_live: coachProfile.is_profile_live,
+      is_paused: coachProfile.is_paused,
       stripe_onboarding_complete: coachProfile.stripe_onboarding_complete,
       cancellation_window_hours: coachProfile.cancellation_window_hours,
       min_advance_hours: coachProfile.min_advance_hours,
       max_advance_days: coachProfile.max_advance_days,
+      requires_manual_approval: coachProfile.requires_manual_approval,
+      travel_radius_miles: coachProfile.travel_radius_miles,
       rating_avg: coachProfile.rating_avg,
       rating_count: coachProfile.rating_count,
       sessions_completed: coachProfile.sessions_completed,
@@ -195,34 +193,9 @@ export async function POST(
   try {
     const supabase = await createClient()
     
-    // 1. Auth check
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
-    }
-
-    // 2. Check coach role exists
-    const { data: userProfile, error: profileError } = await supabase
-      .from('user_profiles')
-      .select('id, auth_user_id')
-      .eq('auth_user_id', user.id)
-      .single()
-
-    if (profileError || !userProfile) {
-      return NextResponse.json({ error: 'User profile not found' }, { status: 404 })
-    }
-
-    const { data: roleCheck, error: roleError } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_profile_id', userProfile.id)
-      .eq('role', 'coach')
-      .single()
-
-    if (roleError || !roleCheck) {
-      return NextResponse.json({ error: 'Forbidden — coach role required' }, { status: 403 })
-    }
+    const { context, error } = await requireCoachRole(supabase)
+    if (error) return error
+    const { userProfile } = context
 
     // 3. Parse and validate body
     const body = await request.json()
@@ -321,6 +294,34 @@ export async function POST(
       }
     }
 
+    // Fix-129 (AF-H-15): travel_radius_miles validation
+    if (body.travel_radius_miles !== undefined && body.travel_radius_miles !== null) {
+      if (typeof body.travel_radius_miles !== 'number' || !Number.isInteger(body.travel_radius_miles) || body.travel_radius_miles < 0 || body.travel_radius_miles > 200) {
+        validationErrors.push('travel_radius_miles must be an integer between 0 and 200')
+      }
+    }
+
+    // Fix-AC-14: requires_manual_approval validation
+    if (body.requires_manual_approval !== undefined) {
+      if (typeof body.requires_manual_approval !== 'boolean') {
+        validationErrors.push('requires_manual_approval must be a boolean')
+      }
+    }
+
+    // BUG-PROFILE-LIVE-WRITE: is_profile_live validation (boolean, optional)
+    if (body.is_profile_live !== undefined) {
+      if (typeof body.is_profile_live !== 'boolean') {
+        validationErrors.push('is_profile_live must be a boolean')
+      }
+    }
+
+    // C-Settings-01-API: is_paused validation (boolean, optional)
+    if (body.is_paused !== undefined) {
+      if (typeof body.is_paused !== 'boolean') {
+        validationErrors.push('is_paused must be a boolean')
+      }
+    }
+
     // Fix-16e: Validate languages if provided
     if (body.languages !== undefined && body.languages !== null) {
       if (!Array.isArray(body.languages)) {
@@ -370,6 +371,10 @@ export async function POST(
       cancellation_window_hours?: number
       min_advance_hours?: number
       max_advance_days?: number
+      travel_radius_miles?: number | null
+      requires_manual_approval?: boolean
+      is_profile_live?: boolean
+      is_paused?: boolean
       updated_at: string
     } = {
       user_profile_id: userProfile.id,
@@ -384,6 +389,14 @@ export async function POST(
     if (body.cancellation_window_hours !== undefined) coachProfileUpdates.cancellation_window_hours = body.cancellation_window_hours
     if (body.min_advance_hours !== undefined) coachProfileUpdates.min_advance_hours = body.min_advance_hours
     if (body.max_advance_days !== undefined) coachProfileUpdates.max_advance_days = body.max_advance_days
+    // Fix-129 (AF-H-15): travel_radius_miles assignment
+    if (body.travel_radius_miles !== undefined) coachProfileUpdates.travel_radius_miles = body.travel_radius_miles
+    // Fix-AC-14: requires_manual_approval assignment
+    if (body.requires_manual_approval !== undefined) coachProfileUpdates.requires_manual_approval = body.requires_manual_approval
+    // BUG-PROFILE-LIVE-WRITE: is_profile_live assignment — was silently dropped (typed object excluded the field, so POST {is_profile_live: true} from GetPaidStep was a no-op)
+    if (body.is_profile_live !== undefined) coachProfileUpdates.is_profile_live = body.is_profile_live
+    // C-Settings-01-API: is_paused assignment
+    if (body.is_paused !== undefined) coachProfileUpdates.is_paused = body.is_paused
 
     const { error: coachUpsertError } = await supabase
       .from('coach_profiles')
@@ -406,10 +419,13 @@ export async function POST(
         years_experience,
         dbs_status,
         is_profile_live,
+        is_paused,
         stripe_onboarding_complete,
         cancellation_window_hours,
         min_advance_hours,
         max_advance_days,
+        requires_manual_approval,
+        travel_radius_miles,
         rating_avg,
         rating_count,
         sessions_completed,
@@ -459,10 +475,13 @@ export async function POST(
       years_experience: updatedProfile.years_experience,
       dbs_status: updatedProfile.dbs_status as 'none' | 'pending' | 'verified' | 'expired',
       is_profile_live: updatedProfile.is_profile_live,
+      is_paused: updatedProfile.is_paused,
       stripe_onboarding_complete: updatedProfile.stripe_onboarding_complete,
       cancellation_window_hours: updatedProfile.cancellation_window_hours,
       min_advance_hours: updatedProfile.min_advance_hours,
       max_advance_days: updatedProfile.max_advance_days,
+      requires_manual_approval: updatedProfile.requires_manual_approval,
+      travel_radius_miles: updatedProfile.travel_radius_miles,
       rating_avg: updatedProfile.rating_avg,
       rating_count: updatedProfile.rating_count,
       sessions_completed: updatedProfile.sessions_completed,

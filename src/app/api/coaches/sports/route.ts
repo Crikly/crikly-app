@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { requireCoachContext } from '@/lib/auth/require-coach'
 
 /**
  * Coach sport with session type variants
@@ -26,6 +27,8 @@ interface CoachSportResponse {
     price_group_pence: number | null
     is_active: boolean
   }>
+  // AF-H-58: optional warning when session-type upsert fails non-fatally during sport creation
+  warning?: string
 }
 
 /**
@@ -37,50 +40,15 @@ export async function GET(): Promise<NextResponse<{ sports: CoachSportResponse[]
   try {
     const supabase = await createClient()
     
-    // 1. Auth check
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
-    }
-
-    // 2. Get user profile and check coach role
-    const { data: userProfile, error: profileError } = await supabase
-      .from('user_profiles')
-      .select('id')
-      .eq('auth_user_id', user.id)
-      .single()
-
-    if (profileError || !userProfile) {
-      return NextResponse.json({ error: 'User profile not found' }, { status: 404 })
-    }
-
-    const { data: roleCheck, error: roleError } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_profile_id', userProfile.id)
-      .eq('role', 'coach')
-      .single()
-
-    if (roleError || !roleCheck) {
-      return NextResponse.json({ error: 'Forbidden — coach role required' }, { status: 403 })
-    }
-
-    // 3. Get coach profile
-    const { data: coachProfile, error: coachError } = await supabase
-      .from('coach_profiles')
-      .select('id')
-      .eq('user_profile_id', userProfile.id)
-      .single()
-
-    if (coachError || !coachProfile) {
-      return NextResponse.json({ error: 'Coach profile not found' }, { status: 404 })
-    }
+    const { context, error } = await requireCoachContext(supabase)
+    if (error) return error
+    const { coachProfile } = context
 
     // 4. Fix-16d: Fetch coach sports WITHOUT joins (no sports!inner syntax)
     const { data: coachSports, error: sportsError } = await supabase
       .from('coach_sports')
-      .select('*')
+      // AF-P-Wave-2: explicit columns matching CoachSportResponse builder at L102–117
+      .select('id, sport_id, session_types, skill_levels, age_groups, price_individual_pence, price_group_pence, max_group_size, session_duration_minutes, currency, is_active')
       .eq('coach_profile_id', coachProfile.id)
 
     if (sportsError) {
@@ -88,31 +56,28 @@ export async function GET(): Promise<NextResponse<{ sports: CoachSportResponse[]
       return NextResponse.json({ error: 'Failed to fetch sports' }, { status: 500 })
     }
 
-    // 5. Fix-16d: Fetch sport details separately for each coach sport
+    // AF-P-Wave-2: parallelise sports + session_types lookups (both depend only on coach_sports rows above)
     const sportIds = [...new Set((coachSports || []).map(cs => cs.sport_id).filter(Boolean))]
-    
-    const { data: sportsData, error: sportsDataError } = sportIds.length > 0
-      ? await supabase
-          .from('sports')
-          .select('id, name, slug')
-          .in('id', sportIds)
-      : { data: [], error: null }
+    const coachSportIds = (coachSports || []).map(cs => cs.id)
+
+    const [
+      { data: sportsData, error: sportsDataError },
+      { data: sessionTypes, error: typesError },
+    ] = await Promise.all([
+      sportIds.length > 0
+        ? supabase.from('sports').select('id, name, slug').in('id', sportIds)
+        : Promise.resolve({ data: [], error: null }),
+      coachSportIds.length > 0
+        ? supabase.from('coach_session_types')
+            .select('id, coach_sport_id, duration_minutes, price_individual_pence, price_group_pence, is_active')
+            .in('coach_sport_id', coachSportIds)
+        : Promise.resolve({ data: [], error: null }),
+    ])
 
     if (sportsDataError) {
       console.error('[GET /api/coaches/sports] sports data error:', sportsDataError)
       return NextResponse.json({ error: 'Failed to fetch sports data' }, { status: 500 })
     }
-
-    // 6. Fetch session type variants for all coach sports
-    const coachSportIds = (coachSports || []).map(cs => cs.id)
-    
-    const { data: sessionTypes, error: typesError } = coachSportIds.length > 0
-      ? await supabase
-          .from('coach_session_types')
-          .select('id, coach_sport_id, duration_minutes, price_individual_pence, price_group_pence, is_active')
-          .in('coach_sport_id', coachSportIds)
-      : { data: [], error: null }
-
     if (typesError) {
       console.error('[GET /api/coaches/sports] session types error:', typesError)
       return NextResponse.json({ error: 'Failed to fetch session types' }, { status: 500 })
@@ -169,45 +134,9 @@ export async function POST(
   try {
     const supabase = await createClient()
     
-    // 1. Auth check
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
-    }
-
-    // 2. Get user profile and check coach role
-    const { data: userProfile, error: profileError } = await supabase
-      .from('user_profiles')
-      .select('id')
-      .eq('auth_user_id', user.id)
-      .single()
-
-    if (profileError || !userProfile) {
-      return NextResponse.json({ error: 'User profile not found' }, { status: 404 })
-    }
-
-    const { data: roleCheck, error: roleError } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_profile_id', userProfile.id)
-      .eq('role', 'coach')
-      .single()
-
-    if (roleError || !roleCheck) {
-      return NextResponse.json({ error: 'Forbidden — coach role required' }, { status: 403 })
-    }
-
-    // 3. Get coach profile
-    const { data: coachProfile, error: coachError } = await supabase
-      .from('coach_profiles')
-      .select('id')
-      .eq('user_profile_id', userProfile.id)
-      .single()
-
-    if (coachError || !coachProfile) {
-      return NextResponse.json({ error: 'Coach profile not found' }, { status: 404 })
-    }
+    const { context, error } = await requireCoachContext(supabase)
+    if (error) return error
+    const { coachProfile } = context
 
     // 4. Parse and validate body
     const body = await request.json()
@@ -347,6 +276,10 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to save sport' }, { status: 500 })
     }
 
+    // AF-H-58: track session-type save state for response builder
+    let savedVariant: CoachSportResponse['session_type_variants'][number] | null = null
+    let sessionTypeWarning: string | null = null
+
     // Fix-18b: Insert/upsert session type into coach_session_types table
     // This replaces the deprecated price columns in coach_sports
     if (body.session_duration_minutes && (body.price_individual_pence || body.price_group_pence)) {
@@ -366,7 +299,8 @@ export async function POST(
         is_active: true
       }
 
-      const { error: sessionTypeError } = await supabase
+      // AF-H-58: capture upsert row so the response can return the saved variant (was always [])
+      const { data: sessionTypeRow, error: sessionTypeError } = await supabase
         .from('coach_session_types')
         .upsert(sessionTypeData, {
           onConflict: 'coach_sport_id,duration_minutes',
@@ -377,7 +311,15 @@ export async function POST(
 
       if (sessionTypeError) {
         console.error('[POST /api/coaches/sports] session type upsert error:', sessionTypeError)
-        // Don't fail the whole request - coach_sports was saved successfully
+        sessionTypeWarning = 'Sport saved but pricing variant failed. Please update pricing in My Profile.'
+      } else if (sessionTypeRow) {
+        savedVariant = {
+          id: sessionTypeRow.id,
+          duration_minutes: sessionTypeRow.duration_minutes,
+          price_individual_pence: sessionTypeRow.price_individual_pence,
+          price_group_pence: sessionTypeRow.price_group_pence,
+          is_active: sessionTypeRow.is_active,
+        }
       }
     }
 
@@ -402,7 +344,9 @@ export async function POST(
       session_duration_minutes: newSport.session_duration_minutes,
       currency: newSport.currency,
       is_active: newSport.is_active,
-      session_type_variants: [], // No variants yet
+      // AF-H-58: was always [] — now returns the variant just upserted (or [] on upsert failure)
+      session_type_variants: savedVariant ? [savedVariant] : [],
+      ...(sessionTypeWarning && { warning: sessionTypeWarning }),
     }
 
     return NextResponse.json(response, { status: 201 })

@@ -1,16 +1,19 @@
 'use client'
-import React, { useState, useMemo, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { CheckCircle2, Circle, AlertTriangle } from 'lucide-react'
+import { CheckCircle2, Circle } from 'lucide-react'
 import { OnboardingPreviewPanel } from '../OnboardingPreviewPanel'
+import { fetchCoachProfileCached, clearCoachProfileCache } from '@/lib/onboarding-cache'
 
 export function BookingPolicyStep() {
   const router = useRouter()
   const [cancellationWindow, setCancellationWindow] = useState('48 hours')
   const [earliestBooking, setEarliestBooking] = useState('24 hours')
   const [latestBooking, setLatestBooking] = useState('8 weeks')
-  const [bookingApproval, setBookingApproval] = useState('Instant')
+  // Fix-AC-14: Manual approval is opt-in per updated BR-06
+  const [bookingApproval, setBookingApproval] = useState<'Instant' | 'Manual'>('Instant')
   const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [coachName, setCoachName] = useState<string>('Your name')
   
@@ -19,10 +22,8 @@ export function BookingPolicyStep() {
     const fetchPolicy = async () => {
       try {
         setLoading(true)
-        const response = await fetch('/api/coaches/profile')
-        if (!response.ok) throw new Error('Failed to fetch profile')
-        
-        const data = await response.json()
+        // AF-P-01: cached fetch — returns cached profile if hit, network otherwise
+        const data = await fetchCoachProfileCached()
         
         // Fix-16e: Set coach name
         setCoachName(data.full_name || 'Your name')
@@ -54,6 +55,11 @@ export function BookingPolicyStep() {
           else if (days === 56) setLatestBooking('8 weeks')
           else if (days === 84) setLatestBooking('12 weeks')
         }
+
+        // Fix-AC-14: pre-populate booking approval mode
+        if (data.requires_manual_approval !== undefined) {
+          setBookingApproval(data.requires_manual_approval ? 'Manual' : 'Instant')
+        }
       } catch (err) {
         console.error('Failed to fetch booking policy:', err)
       } finally {
@@ -70,38 +76,53 @@ export function BookingPolicyStep() {
 
   const handleSave = async () => {
     setSaving(true)
+    setSaveError(null)
     try {
       // CD-03: verified - BookingPolicyStep saves to coach_profiles table
       // Maps to: cancellation_window_hours, min_advance_hours, max_advance_days
-      
+
       // Convert UI strings to hours/days integers
       const cancellationHours = cancellationWindow === 'No cancellations' ? 0 :
                                 cancellationWindow === '24 hours' ? 24 :
                                 cancellationWindow === '48 hours' ? 48 :
                                 cancellationWindow === '72 hours' ? 72 :
                                 cancellationWindow === '1 week' ? 168 : 48
-      
+
       const minAdvanceHours = earliestBooking === '12 hours' ? 12 :
                              earliestBooking === '24 hours' ? 24 :
                              earliestBooking === '48 hours' ? 48 :
                              earliestBooking === '1 week' ? 168 : 24
-      
+
       const maxAdvanceDays = latestBooking === '2 weeks' ? 14 :
                             latestBooking === '4 weeks' ? 28 :
                             latestBooking === '8 weeks' ? 56 :
                             latestBooking === '12 weeks' ? 84 : 56
-      
-      await fetch('/api/coaches/profile', {
+
+      const response = await fetch('/api/coaches/profile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          cancellation_window_hours: cancellationHours, // CD-03: coach_profiles.cancellation_window_hours (integer)
-          min_advance_hours: minAdvanceHours, // CD-03: coach_profiles.min_advance_hours (integer)
-          max_advance_days: maxAdvanceDays, // CD-03: coach_profiles.max_advance_days (integer)
-          // Note: booking_approval not in current schema - skipped
+          cancellation_window_hours: cancellationHours,
+          min_advance_hours: minAdvanceHours,
+          max_advance_days: maxAdvanceDays,
+          // Fix-AC-14: persist manual-approval opt-in
+          requires_manual_approval: bookingApproval === 'Manual',
         })
       })
+
+      // Fix-AC-14: surface API errors instead of silently navigating
+      if (!response.ok) {
+        setSaveError('Failed to save booking policy. Please try again.')
+        return
+      }
+
+      // AF-P-01: invalidate cache — this save mutates coach_profiles
+      clearCoachProfileCache()
+
       router.push('/coach/onboarding/get-paid')
+    } catch (err) {
+      console.error('Failed to save booking policy:', err)
+      setSaveError('Failed to save booking policy. Please try again.')
     } finally {
       setSaving(false)
     }
@@ -194,15 +215,15 @@ export function BookingPolicyStep() {
             </div>
           </div>
 
-          {/* Booking approval */}
+          {/* Fix-AC-14: Booking approval — opt-in per updated BR-06 */}
           <div className="bg-white border border-gray-100 shadow-sm rounded-[24px] p-8 mb-6">
             <h2 className="text-[18px] font-bold text-gray-900 mb-6">Booking approval</h2>
             <div className="flex flex-col gap-3">
               <label className="text-[14px] font-bold text-gray-900 mb-2">How do you want to confirm bookings?</label>
               <div className="flex flex-col gap-3">
                 {[
-                  { key: 'Instant', desc: 'Bookings confirmed automatically on payment', helper: 'Parents get instant confirmation — better for conversion' },
-                  { key: 'Manual', desc: 'You review and approve each booking request', helper: 'You review each request before confirming — slower for parents' }
+                  { key: 'Instant' as const, desc: 'Bookings confirmed automatically on payment', helper: 'Parents get instant confirmation' },
+                  { key: 'Manual' as const, desc: 'You review and approve each booking request', helper: 'You review each request before confirming' }
                 ].map(({ key, desc, helper }) => (
                   <button key={key} onClick={() => setBookingApproval(key)} className={`flex items-start gap-4 p-5 rounded-xl border-2 transition-all text-left ${bookingApproval === key ? 'border-[#0077CC] bg-blue-50/50' : 'border-gray-100 hover:border-gray-200 hover:bg-gray-50'}`}>
                     <div className="mt-0.5 shrink-0">
@@ -223,18 +244,25 @@ export function BookingPolicyStep() {
           </div>
         </div>
 
+          {/* Fix-AC-14: inline save error */}
+          {saveError && (
+            <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-xl">
+              <p className="text-[13px] font-medium text-red-700">{saveError}</p>
+            </div>
+          )}
+
           {/* Standard onboarding footer */}
-          <div 
+          <div
             className="sticky bottom-0 bg-white border-t-[0.5px] border-gray-100 px-6 py-3 flex justify-between items-center"
             style={{ boxShadow: '0 -2px 8px rgba(0,0,0,0.04)' }}
           >
-            <button 
+            <button
               onClick={() => router.push('/coach/onboarding/availability')}
               className="text-[13px] text-gray-500 hover:text-gray-900 font-medium transition-colors"
             >
               ← Back
             </button>
-            <button 
+            <button
               onClick={handleSave}
               disabled={saving}
               className="bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-full px-7 py-2.5 text-[13px] font-medium transition-colors disabled:opacity-60"

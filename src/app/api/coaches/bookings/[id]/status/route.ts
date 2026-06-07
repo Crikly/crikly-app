@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { requireCoachContext } from '@/lib/auth/require-coach'
 
 // ─── PATCH /api/coaches/bookings/[id]/status ──────────────────────────────────
 
@@ -10,42 +11,9 @@ export async function PATCH(
   const supabase = await createClient()
   const { id: bookingId } = await params
 
-  // 1. Auth
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-  if (authError || !user) {
-    return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
-  }
-
-  // 2. user_profiles
-  const { data: userProfile, error: upError } = await supabase
-    .from('user_profiles')
-    .select('id')
-    .eq('auth_user_id', user.id)
-    .single()
-  if (upError || !userProfile) {
-    return NextResponse.json({ error: 'User profile not found' }, { status: 404 })
-  }
-
-  // 3. Coach role check
-  const { data: roleRow, error: roleError } = await supabase
-    .from('user_roles')
-    .select('role')
-    .eq('user_profile_id', userProfile.id)
-    .eq('role', 'coach')
-    .single()
-  if (roleError || !roleRow) {
-    return NextResponse.json({ error: 'Forbidden: coach role required' }, { status: 403 })
-  }
-
-  // 4. coach_profiles
-  const { data: coachProfile, error: cpError } = await supabase
-    .from('coach_profiles')
-    .select('id')
-    .eq('user_profile_id', userProfile.id)
-    .single()
-  if (cpError || !coachProfile) {
-    return NextResponse.json({ error: 'Coach profile not found' }, { status: 404 })
-  }
+  const { context, error } = await requireCoachContext(supabase)
+  if (error) return error
+  const { coachProfile } = context
 
   // 5. Parse + validate body
   let body: { action?: string; reason?: string }

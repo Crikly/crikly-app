@@ -1,10 +1,21 @@
 'use client'
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Check, Search, Calendar, Banknote, Copy, Share, ArrowRight } from 'lucide-react'
+import { fetchCoachProfileCached } from '@/lib/onboarding-cache'
 
 export function GoLiveStep() {
   const router = useRouter()
+  // AF-H-23: real coach slug for share URLs (was hardcoded 'crikly.app/coach')
+  const [coachSlug, setCoachSlug] = useState('')
+
+  useEffect(() => {
+    fetchCoachProfileCached()
+      .then(p => { if (p?.slug) setCoachSlug(p.slug) })
+      .catch(() => {})
+  }, [])
+
+  const profileUrl = coachSlug ? `https://crikly.app/${coachSlug}` : 'https://crikly.app'
 
   return (
     <div className="min-h-full bg-white font-sans text-gray-900 flex flex-col items-center pt-16 pb-32">
@@ -43,13 +54,31 @@ export function GoLiveStep() {
             <h2 className="text-[16px] font-bold text-gray-900 mb-1">Share your profile</h2>
             <p className="text-[14px] text-gray-500 font-medium mb-4">Let people know you're on Crikly</p>
             <div className="p-3 bg-gray-50 rounded-xl border border-gray-100 text-[14px] text-gray-700 font-medium mb-4 font-mono truncate">
-              crikly.app/coach
+              {coachSlug ? `crikly.app/${coachSlug}` : 'crikly.app'}
             </div>
             <div className="flex gap-3">
-              <button className="flex-1 py-2.5 bg-white border-2 border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-gray-700 rounded-xl font-bold text-[14px] transition-colors flex items-center justify-center gap-2">
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(profileUrl).catch(() => {})
+                }}
+                className="flex-1 py-2.5 bg-white border-2 border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-gray-700 rounded-xl font-bold text-[14px] transition-colors flex items-center justify-center gap-2"
+              >
                 <Copy size={16} />Copy link
               </button>
-              <button className="flex-1 py-2.5 bg-white border-2 border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-gray-700 rounded-xl font-bold text-[14px] transition-colors flex items-center justify-center gap-2">
+              <button
+                onClick={() => {
+                  const canShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function'
+                  if (canShare) {
+                    navigator.share({
+                      title: 'Book a session with me on Crikly',
+                      url: profileUrl,
+                    }).catch(() => {})
+                  } else {
+                    navigator.clipboard.writeText(profileUrl).catch(() => {})
+                  }
+                }}
+                className="flex-1 py-2.5 bg-white border-2 border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-gray-700 rounded-xl font-bold text-[14px] transition-colors flex items-center justify-center gap-2"
+              >
                 <Share size={16} />Share
               </button>
             </div>
@@ -64,7 +93,11 @@ export function GoLiveStep() {
             <p className="text-[14px] text-gray-500 font-medium mb-1">
               Want to upgrade to Premium? Get more bookings with priority search placement.
             </p>
-            <button className="text-[14px] font-bold text-[#0077CC] hover:text-blue-800 transition-colors inline-flex items-center gap-1">
+            <button
+              disabled
+              title="Premium tier coming soon"
+              className="text-[14px] font-bold text-[#0077CC] inline-flex items-center gap-1 opacity-50 cursor-not-allowed"
+            >
               See Premium <ArrowRight size={14} />
             </button>
           </div>

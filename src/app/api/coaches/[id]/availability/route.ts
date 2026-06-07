@@ -62,6 +62,10 @@ export async function GET(
 
     const validationErrors: string[] = []
     const dateRegex = /^\d{4}-\d{2}-\d{2}$/
+    // AF-H-59: validate sport_id as UUID before PostgREST .or() interpolation.
+    // Public no-auth route — without this guard, a crafted sport_id could break
+    // out of the .or() filter and expose other coaches' availability.
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
     if (from_date !== null && !dateRegex.test(from_date)) {
       validationErrors.push('from_date must be in YYYY-MM-DD format')
@@ -71,6 +75,9 @@ export async function GET(
     }
     if (from_date && to_date && from_date > to_date) {
       validationErrors.push('from_date must be on or before to_date')
+    }
+    if (sport_id !== null && !uuidRegex.test(sport_id)) {
+      validationErrors.push('sport_id must be a valid UUID')
     }
 
     if (validationErrors.length > 0) {
