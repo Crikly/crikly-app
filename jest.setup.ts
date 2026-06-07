@@ -22,6 +22,7 @@ global.Request = class Request {
   async text() {
     return this._bodyText
   }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 } as any
 
 global.Headers = class Headers {
@@ -34,6 +35,7 @@ global.Headers = class Headers {
           this._headers[key.toLowerCase()] = value
         })
       } else if (init instanceof Headers) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         Object.assign(this._headers, (init as any)._headers)
       } else {
         Object.entries(init).forEach(([key, value]) => {
@@ -54,4 +56,5 @@ global.Headers = class Headers {
   has(name: string) {
     return name.toLowerCase() in this._headers
   }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 } as any

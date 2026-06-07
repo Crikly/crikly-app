@@ -756,7 +756,7 @@ export function AvailabilityManagement() {
                     </select>
                     <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                   </div>
-                  <p className="text-[12px] text-gray-400 font-medium mt-1.5">Only sports you've already configured are shown</p>
+                  <p className="text-[12px] text-gray-400 font-medium mt-1.5">Only sports you&apos;ve already configured are shown</p>
                   {/* AF-H-Wave-5 addition: honest empty-state when coach hasn't configured any sport yet */}
                   {allSports.length === 0 && !loading && (
                     <p className="text-[12px] text-amber-700 mt-1">
@@ -907,7 +907,7 @@ export function AvailabilityManagement() {
         {activeTab === 'blocked' && (
           <div className="flex flex-col">
             <h2 className="text-[18px] font-bold text-gray-900 mb-1">Blocked dates</h2>
-            <p className="text-[14px] text-gray-500 font-medium mb-6 leading-relaxed">Block specific dates when you're not available — overrides your recurring schedule</p>
+            <p className="text-[14px] text-gray-500 font-medium mb-6 leading-relaxed">Block specific dates when you&apos;re not available — overrides your recurring schedule</p>
             
             {/* CD-05: Error state */}
             {blockedError && (
@@ -995,7 +995,7 @@ export function AvailabilityManagement() {
             )}
             <div className="bg-white border border-gray-100 shadow-sm rounded-[24px] p-6">
               <h3 className="text-[15px] font-bold text-gray-900 mb-1">Blocked periods</h3>
-              <p className="text-[13px] text-gray-400 font-medium mb-4">Parents and players won't be able to book on these dates</p>
+              <p className="text-[13px] text-gray-400 font-medium mb-4">Parents and players won&apos;t be able to book on these dates</p>
               {/* Fix-69-2: inline blocked action error */}
               {blockedActionError && (
                 <div className="mb-4 flex items-center justify-between bg-red-50 border border-red-200 rounded-xl px-3 py-2">
