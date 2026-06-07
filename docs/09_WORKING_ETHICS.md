@@ -896,6 +896,18 @@ refactor(auth): simplify multi-role context switcher
 
 ---
 
+## Git Operations Policy (PROD-FIX-01, June 2026)
+
+Claude Code MAY run `git add`, `git commit`, and `git push` on
+`feature/*`, `fix/*`, and `develop` branches after plan approval.
+Claude Code MUST use `gh pr create` + `gh pr merge` for merges into
+`main`. Claude Code must NEVER push directly to `main`.
+
+(TypeScript type checks remain `npx tsc --noEmit` only — see the
+Banned Commands and Quality Gate sections.)
+
+---
+
 ## Branch Lifecycle Rule
 
 Every feature branch must be merged into `develop` before
