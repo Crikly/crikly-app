@@ -5,7 +5,11 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import type { LoginFormData, AuthError } from '@/types/auth'
 
-export function LoginForm() {
+interface LoginFormProps {
+  onSuccess?: () => void
+}
+
+export function LoginForm({ onSuccess }: LoginFormProps = {}) {
   const router = useRouter()
   const [formData, setFormData] = useState<LoginFormData>({
     email: '',
