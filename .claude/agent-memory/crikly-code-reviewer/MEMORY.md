@@ -1,0 +1,13 @@
+- [User profile — Lasith](user_lasith.md) — Lasith is the product lead; reviews all output before commit; approves every gate
+- [Feedback — review scope discipline](feedback_review_scope.md) — only review in-scope changes, not pre-existing code
+- [Project — CF-PROG-SESSIONS-DB patterns](project_sessions_db_patterns.md) — recurring patterns from the sessions/camp-mode DB task worth remembering
+- [Feedback — E2E test patterns](feedback_e2e_patterns.md) — Playwright anti-patterns (.first().toHaveCount, hard DELETE in fixtures) and confirmed safe patterns (console.info in seed, SERVICE_ROLE_KEY in db.ts)
+- [Project — CF-R04 token audit patterns](project_cf_r04_token_patterns.md) — surviving hex values that are out-of-scope, confirmed safe patterns, and the brand-700 token addition
+- [Project — BUG-QA-04/02/06 patterns](project_bug_qa_patterns.md) — cache contamination fix patterns, synthetic LineupItem shape, known sports_list_raw gap
+- [Project — S-09 Landing Page patterns](project_s09_landing_patterns.md) — confirmed safe patterns (animationDelay inline, ★ unicode, pure-button CTAs, gradient hex in module CSS)
+- [Project — PUB-API-01 public coach discovery patterns](project_pub_api_01_patterns.md) — anon client choice, SECURITY DEFINER pattern, JS sort, over-fetch cap, and the suspended/paused coach RLS gap
+- [Project — PUB-03 auth shell patterns](project_pub03_auth_shell_patterns.md) — safe patterns, hydration mismatch gap on /join deep-links, aria-controls missing-target gap
+- [Project — CONTACT-01 contact page patterns](project_contact01_patterns.md) — approved honeypot inline-style exception, lazy Resend pattern, aria-describedby gap, DS component reuse rule (🟡 not 🔴 on public surface)
+- [Project — CONTACT-02 followup patterns](project_contact02_followup_patterns.md) — PublicFooter/SubjectDropdown safe patterns, gradient hex carve-out, aria-activedescendant/role=combobox gap on SubjectDropdown trigger
+- [Project — AUTH-FIX-01 auth gate patterns](project_auth_fix_01_patterns.md) — safe patterns (proxy.ts, 5-step layout gate, seed terms_accepted_at), silent zero-row UPDATE risk on accept-terms
+- [Project — HERO-SEARCH-01 hero search patterns](project_hero_search_01_patterns.md) — 3-layer activation, Fix-94 ref pattern, z-50 form / z-9999 pac-container, @types/google.maps bundled, empty onSelect gap
