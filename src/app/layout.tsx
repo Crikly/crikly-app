@@ -46,7 +46,8 @@ export const metadata: Metadata = {
   title: 'Crikly',
   description: 'Sports Coaching Marketplace',
   icons: {
-    icon: '/icon.jpeg',
+    icon: '/favicon.svg',
+    shortcut: '/favicon.svg',
     apple: '/icon.jpeg',
   },
   openGraph: {

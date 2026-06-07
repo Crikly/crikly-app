@@ -385,8 +385,8 @@ function SubjectDropdown({
         aria-invalid={hasError ? true : undefined}
         aria-activedescendant={activeId}
         onClick={handleToggle}
-        className={`flex h-input-desktop w-full items-center justify-between gap-2 rounded-[10px] border bg-white px-3.5 text-left text-[15px] outline-none transition-all focus:shadow-focus ${
-          hasError ? 'border-danger' : 'border-neutral-100 focus:border-brand-600'
+        className={`flex h-[52px] w-full items-center justify-between gap-2 rounded-[12px] border-[1.5px] bg-neutral-50 px-4 text-left text-[15px] outline-none transition-all focus:bg-white focus:shadow-focus ${
+          hasError ? 'border-danger bg-white' : 'border-neutral-100 focus:border-brand-600'
         }`}
       >
         <span className={value ? 'text-gray-900' : 'text-neutral-400'}>
