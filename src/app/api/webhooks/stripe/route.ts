@@ -23,7 +23,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import type Stripe from 'stripe'
-import { stripe } from '@/lib/stripe/client'
+import { getStripe } from '@/lib/stripe/client'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 export const runtime = 'nodejs'
@@ -44,6 +44,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
   if (!webhookSecret) {
     console.error('[Stripe Webhook] STRIPE_WEBHOOK_SECRET is not set')
+    return NextResponse.json({ error: 'Webhook not configured' }, { status: 500 })
+  }
+
+  // Stripe client is lazy-initialised (see lib/stripe/client.ts) so the module
+  // import never crashes the build. Surface a missing API key as a clear 500
+  // here at request time rather than an unhandled throw.
+  let stripe: Stripe
+  try {
+    stripe = getStripe()
+  } catch (err) {
+    console.error('[Stripe Webhook]', err instanceof Error ? err.message : err)
     return NextResponse.json({ error: 'Webhook not configured' }, { status: 500 })
   }
 
