@@ -117,6 +117,31 @@ export default async function proxy(request: NextRequest) {
     return response
   }
 
+  // AUTH-JOURNEY-01: profile-completeness gate. A logged-in user with an
+  // incomplete profile must finish onboarding before reaching any protected
+  // app route. Excludes /onboarding/* (would loop), /login and /register.
+  // Terms-first ordering, matching the OAuth callback + password-login gates.
+  if (
+    user &&
+    isProtectedRoute(pathname) &&
+    !pathname.startsWith('/onboarding') &&
+    pathname !== '/login' &&
+    pathname !== '/register'
+  ) {
+    const { data: profile } = await supabase
+      .from('user_profiles')
+      .select('active_role, terms_accepted_at')
+      .eq('auth_user_id', user.id)
+      .single()
+
+    if (!profile || !profile.terms_accepted_at) {
+      return NextResponse.redirect(new URL('/onboarding/terms', request.url))
+    }
+    if (!profile.active_role) {
+      return NextResponse.redirect(new URL('/onboarding/role', request.url))
+    }
+  }
+
   if (isProtectedRoute(pathname) && !user) {
     const loginUrl = new URL('/login', request.url)
     loginUrl.searchParams.set('next', pathname)

@@ -23,6 +23,10 @@ export default function LoginPage() {
       <AuthDivider />
       <SocialAuthButtons mode="login" />
 
+      <p className="mt-6 text-center text-[13px] text-neutral-400">
+        🎾 Parent and Player accounts coming soon
+      </p>
+
       <p className="mt-6 text-center text-[13px] text-gray-500">
         New to Crikly?{' '}
         <Link href="/register" className="font-medium text-brand-600 no-underline">

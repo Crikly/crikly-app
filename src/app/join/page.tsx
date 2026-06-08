@@ -1,16 +1,8 @@
-import type { Metadata } from 'next'
-import { JoinPageClient } from './JoinPageClient'
+import { redirect } from 'next/navigation'
 
-// PUB-03: pre-auth role chooser. Server component just owns metadata —
-// JoinPageClient handles all interactivity. The ?role= URL param landing
-// CTAs pass is no-op'd; we kept it on the landing links for analytics
-// breadcrumbing.
-
-export const metadata: Metadata = {
-  title: 'Join Crikly',
-  description: 'Tell us how you want to use Crikly — coach, parent, or player.',
-}
-
+// AUTH-JOURNEY-01: /join is retired in favour of /register. Kept as a redirect
+// so any external links to /join still resolve. JoinPageClient.tsx is now
+// unused but intentionally left in place.
 export default function JoinPage() {
-  return <JoinPageClient />
+  redirect('/register')
 }

@@ -6,6 +6,9 @@ interface RoleCardProps {
   role: Role
   isSelected: boolean
   onSelect: (role: Role) => void
+  // AUTH-JOURNEY-01: when true the card is greyed out, not selectable, and
+  // shows a "Coming soon" badge instead of the selection radio.
+  disabled?: boolean
 }
 
 const roleConfig: Record<Role, { name: string; description: string }> = {
@@ -25,7 +28,7 @@ const roleConfig: Record<Role, { name: string; description: string }> = {
 
 const getRoleIcon = (role: Role, isSelected: boolean) => {
   const iconColor = isSelected ? '#0077CC' : '#475569'
-  
+
   switch (role) {
     case 'parent':
       return (
@@ -59,15 +62,17 @@ const getRoleIcon = (role: Role, isSelected: boolean) => {
   }
 }
 
-export function RoleCard({ role, isSelected, onSelect }: RoleCardProps) {
+export function RoleCard({ role, isSelected, onSelect, disabled = false }: RoleCardProps) {
   const config = roleConfig[role]
 
   return (
     <button
-      onClick={() => onSelect(role)}
+      onClick={() => { if (!disabled) onSelect(role) }}
       type="button"
       data-testid={`role-card-${role}`}
       aria-pressed={isSelected}
+      aria-disabled={disabled}
+      disabled={disabled}
       style={{
         width: '100%',
         display: 'flex',
@@ -77,7 +82,8 @@ export function RoleCard({ role, isSelected, onSelect }: RoleCardProps) {
         background: isSelected ? '#E6F3FB' : '#fff',
         border: `1.5px solid ${isSelected ? '#0077CC' : '#E2E8F0'}`,
         borderRadius: '12px',
-        cursor: 'pointer',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.55 : 1,
         textAlign: 'left',
         transition: 'all 0.15s ease',
         fontFamily: 'DM Sans, sans-serif',
@@ -119,26 +125,44 @@ export function RoleCard({ role, isSelected, onSelect }: RoleCardProps) {
         </p>
       </div>
 
-      <div
-        style={{
-          width: '20px',
-          height: '20px',
-          borderRadius: '50%',
-          border: `2px solid ${isSelected ? '#0077CC' : '#CBD5E1'}`,
-          background: isSelected ? '#0077CC' : 'transparent',
-          flexShrink: 0,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-        aria-hidden="true"
-      >
-        {isSelected && (
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-            <path d="M2 5l2.5 2.5L8 3" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        )}
-      </div>
+      {disabled ? (
+        <span
+          style={{
+            flexShrink: 0,
+            fontSize: '11px',
+            fontWeight: 600,
+            color: '#64748B',
+            background: '#F1F5F9',
+            border: '1px solid #E2E8F0',
+            borderRadius: '999px',
+            padding: '3px 10px',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          Coming soon
+        </span>
+      ) : (
+        <div
+          style={{
+            width: '20px',
+            height: '20px',
+            borderRadius: '50%',
+            border: `2px solid ${isSelected ? '#0077CC' : '#CBD5E1'}`,
+            background: isSelected ? '#0077CC' : 'transparent',
+            flexShrink: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+          aria-hidden="true"
+        >
+          {isSelected && (
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+              <path d="M2 5l2.5 2.5L8 3" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          )}
+        </div>
+      )}
     </button>
   )
 }
