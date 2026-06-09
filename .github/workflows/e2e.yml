@@ -50,6 +50,11 @@ jobs:
       RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
       ONESIGNAL_REST_API_KEY: ${{ secrets.ONESIGNAL_REST_API_KEY }}
       NEXT_PUBLIC_APP_URL: http://localhost:3000
+      # Fix-CI-01: un-gate /coach/* and /onboarding/* in CI. Without this the
+      # MS-18 proxy guard redirects protected routes to /home, timing out the
+      # coach/session/RBAC E2E tests. Quoted so it matches the proxy's exact
+      # string check (process.env.NEXT_PUBLIC_COACH_APP_LIVE !== 'true').
+      NEXT_PUBLIC_COACH_APP_LIVE: 'true'
 
     steps:
       - name: Checkout
