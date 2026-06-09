@@ -151,9 +151,18 @@ export function CoachCard({ coach, photo, sportName, href, onClick }: CoachCardP
   }
 
   return (
-    <button type="button" onClick={onClick} className={`${baseClass} w-full text-left`}>
+    // Fix-UI-01: div (not button) wrapper — the card contains a nested heart
+    // <button>, and button-in-button is invalid HTML (hydration warning).
+    // role="button" + tabIndex preserve focus/announcement.
+    <div
+      onClick={onClick}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onClick?.() }}
+      className={`${baseClass} w-full text-left`}
+      role="button"
+      tabIndex={0}
+    >
       {inner}
-    </button>
+    </div>
   )
 }
 
