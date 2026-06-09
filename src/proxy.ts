@@ -6,7 +6,7 @@ import type { Database } from '@/types/database'
 // When NEXT_PUBLIC_COACH_APP_LIVE is not 'true', all authenticated app routes
 // redirect to /home. Flip to 'true' to unlock the full app with no code changes.
 // /coach-intro is intentionally NOT blocked: uses startsWith('/coach/') not '/coach'
-const APP_LIVE_BLOCKED_EXACT = ['/login', '/register', '/verify']
+const APP_LIVE_BLOCKED_EXACT = ['/verify']
 const APP_LIVE_BLOCKED_ROOTS = [
   '/onboarding',
   '/coach',
