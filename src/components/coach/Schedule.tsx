@@ -884,7 +884,7 @@ export function Schedule() {
                       </div>
                       <h3 className="text-[18px] font-bold text-gray-900 mb-2">No availability set</h3>
                       <p className="text-[14px] text-gray-500 mb-6 max-w-sm">
-                        Add your weekly availability to show when you're free for sessions.
+                        Add your weekly availability to show when you&apos;re free for sessions.
                       </p>
                       <button 
                         onClick={() => router.push('/coach/availability')}

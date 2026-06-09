@@ -1,4 +1,5 @@
 import Image from 'next/image'
+import Link from 'next/link'
 import type { ReactNode } from 'react'
 
 // CONTACT-02 followup: shared public footer for LegalPageLayout pages and
@@ -49,13 +50,13 @@ function FullFooter() {
         </div>
         <div className="grid grid-cols-3 gap-8 max-md:gap-4 max-[540px]:grid-cols-1">
           <FooterCol heading="Explore">
-            <a href="/#hero">Find a coach</a>
-            <a href="/#how">How it works</a>
-            <a href="/#activities">Activities</a>
+            <Link href="/#hero">Find a coach</Link>
+            <Link href="/#how">How it works</Link>
+            <Link href="/#activities">Activities</Link>
           </FooterCol>
           <FooterCol heading="Coaches">
-            <a href="/#personas">Become a coach</a>
-            <a href="/#how">Getting paid</a>
+            <Link href="/#personas">Become a coach</Link>
+            <Link href="/#how">Getting paid</Link>
             <span className="flex items-center gap-2 py-1.5 text-sm text-neutral-600">
               Schools &amp; clubs
               <span className="text-[11px] text-neutral-400">· soon</span>

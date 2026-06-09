@@ -369,7 +369,7 @@ export function AvailabilityStep() {
         <div className="w-full max-w-[640px] px-6 page-content-enter">
           <div className="mb-8">
             <h1 className="text-[32px] font-bold text-gray-900 leading-tight mb-2">Your availability</h1>
-            <p className="text-[16px] text-gray-500 font-medium">Set when you're available to coach</p>
+            <p className="text-[16px] text-gray-500 font-medium">Set when you&apos;re available to coach</p>
           </div>
           
           <div className="flex border-b border-gray-100 mb-8">
@@ -521,7 +521,7 @@ export function AvailabilityStep() {
                     </select>
                     <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                   </div>
-                  <p className="text-[12px] text-gray-400 font-medium mt-1.5">Only sports you've already configured are shown</p>
+                  <p className="text-[12px] text-gray-400 font-medium mt-1.5">Only sports you&apos;ve already configured are shown</p>
                 </div>
                 <div className="mb-4">
                   <label className="block text-[12px] font-bold text-gray-500 mb-1.5 uppercase tracking-wider">Days</label>
@@ -742,7 +742,7 @@ export function AvailabilityStep() {
           {activeTab === 'blocked' && (
             <div className="flex flex-col">
               <h2 className="text-[18px] font-bold text-gray-900 mb-1">Blocked dates</h2>
-              <p className="text-[14px] text-gray-500 font-medium mb-6 leading-relaxed">Block specific dates when you're not available — overrides your recurring schedule</p>
+              <p className="text-[14px] text-gray-500 font-medium mb-6 leading-relaxed">Block specific dates when you&apos;re not available — overrides your recurring schedule</p>
               
               {blockedError && (
                 <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
@@ -822,7 +822,7 @@ export function AvailabilityStep() {
               )}
               <div className="bg-white border border-gray-100 shadow-sm rounded-[24px] p-6">
                 <h3 className="text-[15px] font-bold text-gray-900 mb-1">Blocked periods</h3>
-                <p className="text-[13px] text-gray-400 font-medium mb-4">Parents and players won't be able to book on these dates</p>
+                <p className="text-[13px] text-gray-400 font-medium mb-4">Parents and players won&apos;t be able to book on these dates</p>
                 {blockedRanges.length === 0 ? (
                   <div className="text-center py-8">
                     <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3"><X size={18} className="text-gray-400" /></div>

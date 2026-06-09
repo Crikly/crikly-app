@@ -37,6 +37,7 @@ export function SportStep() {
   const [coachName, setCoachName] = useState<string>('Your name')
 
   // Icon mapping for sports
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const iconMap: Record<string, React.ComponentType<any>> = {
     'cricket': Target,
     'football': Trophy,
@@ -184,7 +185,7 @@ export function SportStep() {
             
             <div className="mt-6 pt-5 border-t border-gray-100">
               <p className="text-[13px] text-gray-500">
-                You'll set your availability and pricing for each sport in the next step
+                You&apos;ll set your availability and pricing for each sport in the next step
               </p>
             </div>
           </div>

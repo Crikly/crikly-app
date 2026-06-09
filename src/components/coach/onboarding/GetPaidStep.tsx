@@ -90,7 +90,7 @@ export function GetPaidStep() {
                 >
                   {isGoingLive ? 'Going live...' : 'Connect with Stripe'} <ArrowLeft size={18} className="rotate-180" />
                 </button>
-                <p className="text-[13px] text-gray-400 font-medium text-center">Takes about 5 minutes. You'll complete setup securely on Stripe.</p>
+                <p className="text-[13px] text-gray-400 font-medium text-center">Takes about 5 minutes. You&apos;ll complete setup securely on Stripe.</p>
               </div>
             </div>
 

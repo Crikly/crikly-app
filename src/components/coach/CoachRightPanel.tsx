@@ -170,6 +170,7 @@ export function CoachRightPanel() {
 
   useEffect(() => {
     if (weekOffset === 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setWeekStripBookings([])
       return
     }
@@ -200,6 +201,7 @@ export function CoachRightPanel() {
     const controller = new AbortController()
     // Clear stale rows BEFORE the new fetch so dots blank during navigation
     // (same pattern as weekStripBookings).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setWeekStripProgrammeSessions([])
 
     const weekDaysForOffset = getWeekDays(weekOffset)
@@ -279,6 +281,7 @@ export function CoachRightPanel() {
     let cancelled = false
     const cached = readStripeStatusCache()
     if (cached) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setStripeChargesEnabled(cached.charges_enabled ?? false)
       setStripePayoutsEnabled(cached.payouts_enabled ?? false)
       // Intentional bare return: no async work was started, so no cleanup
@@ -306,6 +309,7 @@ export function CoachRightPanel() {
     let cancelled = false
     const cached = readProfileCompletenessCache()
     if (cached) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setCompleteness(cached)
       return
     }

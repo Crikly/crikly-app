@@ -180,7 +180,7 @@ export function BookingPolicyStep() {
                   <p className="text-[13px] text-amber-700 font-medium">Strict policies can reduce booking confidence for first-time parents</p>
                 </div>
               ) : (
-                <p className="text-[13px] text-gray-500 font-medium">Parents who cancel within this window won't receive a refund</p>
+                <p className="text-[13px] text-gray-500 font-medium">Parents who cancel within this window won&apos;t receive a refund</p>
               )}
             </div>
           </div>
