@@ -2,6 +2,7 @@ import { AuthSplitShell } from '@/components/auth/AuthSplitShell'
 import { AuthDivider } from '@/components/auth/AuthDivider'
 import { SocialAuthButtons } from '@/components/auth/SocialAuthButtons'
 import { RegisterForm } from '@/components/auth/RegisterForm'
+import { Clock } from 'lucide-react'
 import Link from 'next/link'
 
 export const metadata = {
@@ -24,8 +25,9 @@ export default function RegisterPage() {
       <AuthDivider />
       <SocialAuthButtons mode="register" />
 
-      <p className="mt-6 text-center text-[13px] text-neutral-400">
-        🎾 Parent and Player accounts coming soon
+      <p className="mt-6 flex items-center justify-center gap-1.5 text-center text-[13px] text-neutral-400">
+        <Clock size={13} />
+        Parent and Player accounts coming soon
       </p>
 
       <p className="mt-6 text-center text-[13px] text-gray-500">

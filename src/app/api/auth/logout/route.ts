@@ -20,7 +20,11 @@ export async function POST() {
     }
   )
   await supabase.auth.signOut()
+  // 303 See Other forces the browser to follow with GET. A default redirect
+  // (307) preserves the POST verb, so a POST-based logout would re-POST to
+  // /login (a GET-only page) → 405 (Fix-AUDIT-03).
   return NextResponse.redirect(
-    new URL('/login', process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000')
+    new URL('/login', process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'),
+    { status: 303 }
   )
 }
