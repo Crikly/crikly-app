@@ -40,6 +40,7 @@ export function ComingSoonModal({ isOpen, onClose }: ComingSoonModalProps) {
       setTimeout(() => inputRef.current?.focus(), 50)
     } else {
       // Reset on close
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setEmail('')
       setSubmitState('idle')
       setEmailError('')

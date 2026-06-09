@@ -451,7 +451,7 @@ export function QualificationsStep() {
               Remove qualification?
             </h3>
             <p className="text-[14px] text-gray-500 mb-6">
-              "{confirmRemoveName}" will be permanently removed from your profile.
+              &quot;{confirmRemoveName}&quot; will be permanently removed from your profile.
             </p>
             <div className="flex gap-3">
               <button

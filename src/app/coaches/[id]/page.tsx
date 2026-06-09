@@ -216,6 +216,7 @@ export default async function CoachProfilePage({
 
   const minPrice = getMinPrice(coach.sports)
   const primaryPhoto = coach.photos.find(p => p.is_primary) ?? coach.photos[0] ?? null
+  // eslint-disable-next-line react-hooks/purity
   const galleryPhotos = [...coach.photos].sort(() => Math.random() - 0.5).slice(0, 5)
 
   return (

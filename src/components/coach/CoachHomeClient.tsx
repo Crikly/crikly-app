@@ -113,6 +113,7 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
   // Fix-36: Detect celebration query param and show modal
   useEffect(() => {
     if (searchParams.get('celebrated') === 'true') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setShowCelebration(true)
       // Clean URL without reload
       window.history.replaceState({}, '', '/coach/dashboard')
@@ -124,6 +125,7 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
     const slug = data.coachName.toLowerCase()
       .replace(/\s+/g, '-')
       .replace(/[^a-z0-9-]/g, '')
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setProfileUrl(`crikly.app/${slug}`)
   }, [data.coachName])
 
@@ -469,7 +471,7 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
                 <Check size={40} className="text-white" strokeWidth={3} />
               </div>
 
-              <h1 className="text-[28px] font-bold text-gray-900 leading-tight mb-2">You're live!</h1>
+              <h1 className="text-[28px] font-bold text-gray-900 leading-tight mb-2">You&apos;re live!</h1>
               <p className="text-[15px] text-gray-500 font-medium mb-8">
                 Parents and players can now find and book you on Crikly
               </p>
@@ -499,7 +501,7 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
               <div className="w-full border-t border-gray-100 pt-6 mb-6">
                 <h2 className="text-[14px] font-bold text-gray-900 mb-1 text-left">Share your profile</h2>
                 <p className="text-[13px] text-gray-500 mb-3 text-left">
-                  Let people know you're on Crikly
+                  Let people know you&apos;re on Crikly
                 </p>
                 <div className="p-3 bg-neutral-50 rounded-xl border border-gray-100 text-[13px] text-gray-700 font-mono truncate mb-3">
                   {profileUrl}

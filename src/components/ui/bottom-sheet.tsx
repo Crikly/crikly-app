@@ -31,6 +31,7 @@ export function BottomSheet({ isOpen, onClose, title, children, className = '' }
 
   useEffect(() => {
     if (isOpen) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setVisible(true)
       return
     }

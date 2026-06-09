@@ -156,6 +156,7 @@ export function BookingCard({ coachId, sports, priceFrom, ratingAvg, ratingCount
     const paramTime = searchParams.get('time')
 
     if (paramDate && paramTime) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setNextSlot(slotFromParams(paramDate, paramTime))
       setLoading(false)
       return

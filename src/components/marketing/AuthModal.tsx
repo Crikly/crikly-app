@@ -31,6 +31,7 @@ export function AuthModal({
 
   // Sync active tab when defaultMode changes (e.g. nav opens with 'register')
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setActiveTab(defaultMode)
   }, [defaultMode, isOpen])
 

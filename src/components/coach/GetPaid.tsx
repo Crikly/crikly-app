@@ -255,7 +255,7 @@ export function GetPaid() {
         <div className="bg-white rounded-xl shadow-sm p-4">
           <div className="mb-3">
             <h3 className="text-[13px] font-medium text-gray-900">How payouts work</h3>
-            <p className="text-[11px] text-gray-400 mt-0.5">Money moves automatically — here's the journey</p>
+            <p className="text-[11px] text-gray-400 mt-0.5">Money moves automatically — here&apos;s the journey</p>
           </div>
           
           {/* 3-step timeline */}

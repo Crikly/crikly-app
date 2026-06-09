@@ -85,6 +85,7 @@ export function DatePicker({
 
   // Follow externally-set `value` to its month (no jump on clear).
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (selectedDate) setViewMonth(startOfMonth(selectedDate))
   }, [selectedDate])
 

@@ -29,7 +29,7 @@ export function GoLiveStep() {
           <div className="w-20 h-20 bg-green-500 rounded-full flex items-center justify-center mb-8 shadow-sm">
             <Check size={40} className="text-white" strokeWidth={3} />
           </div>
-          <h1 className="text-[32px] font-bold text-[#0F172A] leading-tight mb-3">You're live!</h1>
+          <h1 className="text-[32px] font-bold text-[#0F172A] leading-tight mb-3">You&apos;re live!</h1>
           <p className="text-[16px] text-gray-500 font-medium">Parents and players can now find and book you on Crikly</p>
         </div>
 
@@ -52,7 +52,7 @@ export function GoLiveStep() {
           <div className="h-px bg-gray-100 w-full my-8"></div>
           <div className="flex flex-col">
             <h2 className="text-[16px] font-bold text-gray-900 mb-1">Share your profile</h2>
-            <p className="text-[14px] text-gray-500 font-medium mb-4">Let people know you're on Crikly</p>
+            <p className="text-[14px] text-gray-500 font-medium mb-4">Let people know you&apos;re on Crikly</p>
             <div className="p-3 bg-gray-50 rounded-xl border border-gray-100 text-[14px] text-gray-700 font-medium mb-4 font-mono truncate">
               {coachSlug ? `crikly.app/${coachSlug}` : 'crikly.app'}
             </div>

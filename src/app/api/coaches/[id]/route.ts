@@ -6,10 +6,21 @@ import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 // user_profiles RLS is "own record only", which blocks the anon client
 // on public routes. Service role bypasses RLS safely here because we only
 // read the coach's public display name and location — no sensitive data.
-const supabaseAdmin = createSupabaseClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-)
+//
+// Fix-LINT-02: lazy-init. A module-level `createSupabaseClient(...)` ran at
+// import time and threw "supabaseUrl is required" during `next build` page-data
+// collection when env vars are absent (CI build env). Instantiating on first
+// use keeps the build env-var-free; production still has the vars at runtime.
+let _supabaseAdmin: ReturnType<typeof createSupabaseClient> | null = null
+function getSupabaseAdmin() {
+  if (!_supabaseAdmin) {
+    _supabaseAdmin = createSupabaseClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    )
+  }
+  return _supabaseAdmin
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -201,7 +212,7 @@ export async function GET(
 
     // ── Fetch user_profiles separately (no nested join — see comment above) ────
 
-    const { data: userProfileData, error: userProfileError } = await supabaseAdmin
+    const { data: userProfileData, error: userProfileError } = await getSupabaseAdmin()
       .from('user_profiles')
       .select('full_name, location_city, location_lat, location_lng, avatar_url')
       .eq('id', coach.user_profile_id)

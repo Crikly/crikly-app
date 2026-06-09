@@ -12,10 +12,23 @@ type SessionNoteRow = Database['public']['Tables']['session_notes']['Row']
 // Service-role client for auth.users email lookup.
 // user_profiles RLS is "own record only" — service role bypasses it safely
 // since we only read name and then use admin.getUserById for email.
-const supabaseAdmin = createSupabaseClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-)
+//
+// Fix-LINT-02: lazy-init so the module-level client doesn't throw
+// "supabaseUrl is required" during `next build` page-data collection when env
+// vars are absent (CI build env). Instantiated on first request instead.
+function createAdminClient() {
+  return createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  )
+}
+let _supabaseAdmin: ReturnType<typeof createAdminClient> | null = null
+function getSupabaseAdmin() {
+  if (!_supabaseAdmin) {
+    _supabaseAdmin = createAdminClient()
+  }
+  return _supabaseAdmin
+}
 
 // ─── GET /api/coaches/bookings/[id] ──────────────────────────────────────────
 
@@ -44,7 +57,7 @@ export async function GET(
   const b = booking as BookingRow
 
   // 6. Booker's user_profile (name) via admin client — RLS blocks server client here
-  const { data: bookerProfile } = await supabaseAdmin
+  const { data: bookerProfile } = await getSupabaseAdmin()
     .from('user_profiles')
     .select('id, full_name, auth_user_id')
     .eq('id', b.booked_by_user_id)
@@ -53,7 +66,7 @@ export async function GET(
   // 7. Booker email via admin auth API
   let bookedByEmail: string | null = null
   if (bookerProfile?.auth_user_id) {
-    const { data: authUser } = await supabaseAdmin.auth.admin.getUserById(
+    const { data: authUser } = await getSupabaseAdmin().auth.admin.getUserById(
       bookerProfile.auth_user_id,
     )
     bookedByEmail = authUser?.user?.email ?? null
