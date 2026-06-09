@@ -78,8 +78,14 @@ export default async function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL('/home', request.url))
   }
 
+  // Fix-AUDIT-02: expose the request pathname to Server Components (App Router
+  // gives layouts no built-in pathname). coach/layout.tsx reads x-pathname to
+  // avoid redirecting to /coach/onboarding/sport when already on it.
+  const requestHeaders = new Headers(request.headers)
+  requestHeaders.set('x-pathname', pathname)
+
   const response = NextResponse.next({
-    request: { headers: request.headers },
+    request: { headers: requestHeaders },
   })
 
   const supabase = createServerClient<Database>(
@@ -117,14 +123,16 @@ export default async function proxy(request: NextRequest) {
     return response
   }
 
-  // AUTH-JOURNEY-01: profile-completeness gate. A logged-in user with an
-  // incomplete profile must finish onboarding before reaching any protected
-  // app route. Excludes /onboarding/* (would loop), /login and /register.
-  // Terms-first ordering, matching the OAuth callback + password-login gates.
+  // AUTH-JOURNEY-01 / Fix-AUDIT-02: profile-completeness gate. A logged-in user
+  // with an incomplete profile must finish onboarding before reaching any
+  // protected app route. Excludes /onboarding/* and /coach/onboarding/* (would
+  // loop), /login and /register. Role-first ordering (role selection precedes
+  // terms), matching the OAuth callback + password-login gates.
   if (
     user &&
     isProtectedRoute(pathname) &&
     !pathname.startsWith('/onboarding') &&
+    !pathname.startsWith('/coach/onboarding') &&
     pathname !== '/login' &&
     pathname !== '/register'
   ) {
@@ -134,11 +142,11 @@ export default async function proxy(request: NextRequest) {
       .eq('auth_user_id', user.id)
       .single()
 
-    if (!profile || !profile.terms_accepted_at) {
-      return NextResponse.redirect(new URL('/onboarding/terms', request.url))
-    }
-    if (!profile.active_role) {
+    if (!profile || !profile.active_role) {
       return NextResponse.redirect(new URL('/onboarding/role', request.url))
+    }
+    if (!profile.terms_accepted_at) {
+      return NextResponse.redirect(new URL('/onboarding/terms', request.url))
     }
   }
 
