@@ -16,13 +16,16 @@ type SessionNoteRow = Database['public']['Tables']['session_notes']['Row']
 // Fix-LINT-02: lazy-init so the module-level client doesn't throw
 // "supabaseUrl is required" during `next build` page-data collection when env
 // vars are absent (CI build env). Instantiated on first request instead.
-let _supabaseAdmin: ReturnType<typeof createSupabaseClient> | null = null
+function createAdminClient() {
+  return createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  )
+}
+let _supabaseAdmin: ReturnType<typeof createAdminClient> | null = null
 function getSupabaseAdmin() {
   if (!_supabaseAdmin) {
-    _supabaseAdmin = createSupabaseClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    )
+    _supabaseAdmin = createAdminClient()
   }
   return _supabaseAdmin
 }
