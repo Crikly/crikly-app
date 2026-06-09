@@ -143,10 +143,20 @@ export function ProfileDropdown() {
   }, [open])
 
   const handleSignOut = async () => {
-    const supabase = createClient()
-    await supabase.auth.signOut()
-    router.push('/')
-    router.refresh()
+    try {
+      const supabase = createClient()
+      await supabase.auth.signOut()
+    } finally {
+      // Reset local state so the UI flips to the logged-out buttons. On the
+      // landing page (/), router.push('/') is a no-op and router.refresh()
+      // only re-renders server components — not this client component — so
+      // without the reset the avatar would persist after sign-out.
+      setOpen(false)
+      setView(null)
+      setState('logged-out')
+      router.push('/')
+      router.refresh()
+    }
   }
 
   // Logged-out (and the brief-approved default while auth resolves): the
@@ -193,11 +203,17 @@ export function ProfileDropdown() {
         )}
       </button>
 
-      {open && (
-        <div
-          role="menu"
-          className="absolute right-0 z-50 mt-2 w-[260px] overflow-hidden rounded-[14px] border-[0.5px] border-neutral-100 bg-white shadow-sm"
-        >
+      {/* Always rendered so the close transition can play; visibility +
+          interactivity toggle via classes (Fix-NAV-03). */}
+      <div
+        role="menu"
+        aria-hidden={!open}
+        className={`absolute right-0 z-50 mt-2 w-[260px] origin-top-right overflow-hidden rounded-[14px] border-[0.5px] border-neutral-100 bg-white shadow-sm transition duration-150 ease-out ${
+          open
+            ? 'translate-y-0 opacity-100'
+            : 'pointer-events-none -translate-y-1 opacity-0'
+        }`}
+      >
           {/* Header — name + email */}
           <div className="px-4 py-3">
             <p className="truncate text-[14px] font-medium text-gray-900">
@@ -239,17 +255,13 @@ export function ProfileDropdown() {
           <button
             type="button"
             role="menuitem"
-            onClick={() => {
-              setOpen(false)
-              handleSignOut()
-            }}
+            onClick={handleSignOut}
             className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-[14px] text-danger transition-colors hover:bg-neutral-50"
           >
             <LogOut size={15} />
             Sign out
           </button>
-        </div>
-      )}
+      </div>
     </div>
   )
 }
