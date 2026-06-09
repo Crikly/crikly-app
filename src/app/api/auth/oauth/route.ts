@@ -31,10 +31,20 @@ export async function POST(request: Request) {
       }
     )
 
+    // Fix-OAUTH-02: build redirectTo from the request origin so OAuth works on
+    // any deployment (production, *.vercel.app previews, local) without a
+    // per-environment env var. NEXT_PUBLIC_SITE_URL is Production-only, so
+    // previews previously got `undefined/auth/callback`. Safe against a forged
+    // Origin because Supabase only honours redirect URLs in its allowlist.
+    const origin =
+      request.headers.get('origin') ??
+      process.env.NEXT_PUBLIC_SITE_URL ??
+      'http://localhost:3000'
+
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider,
       options: {
-        redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`,
+        redirectTo: `${origin}/auth/callback`,
         scopes: provider === 'google' ? 'openid email profile' : undefined,
       },
     })
