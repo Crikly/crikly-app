@@ -1,4 +1,4 @@
-import { resend } from './client'
+import { getResend } from './client'
 
 const FROM = process.env.RESEND_FROM_EMAIL ?? 'bookings@crikly.app'
 
@@ -141,7 +141,7 @@ export async function sendBookingConfirmationToParent(
     </p>
   `
 
-  const { error } = await resend.emails.send({
+  const { error } = await getResend().emails.send({
     from: FROM,
     to: parentEmail,
     subject: `Your session with ${coachName} is confirmed ✓`,
@@ -208,7 +208,7 @@ export async function sendNewBookingToCoach(
     </p>
   `
 
-  const { error } = await resend.emails.send({
+  const { error } = await getResend().emails.send({
     from: FROM,
     to: coachEmail,
     subject: `New booking from ${parentName} — ${sessionDate}`,
