@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { createClient } from '@/lib/supabase/client'
 import type { AuthError } from '@/types/auth'
 
 export function TermsAcceptanceForm() {
@@ -36,7 +37,21 @@ export function TermsAcceptanceForm() {
         })
         return
       }
-      router.push('/dashboard')
+      // Fix-AUDIT-02: route by canonical role after accepting terms — coaches to
+      // their dashboard, anyone without a coach role back to role selection
+      // (NOT /dashboard, which is now a redirect-only route).
+      const supabase = createClient()
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      const { data: profile } = user
+        ? await supabase
+            .from('user_profiles')
+            .select('active_role')
+            .eq('auth_user_id', user.id)
+            .single()
+        : { data: null }
+      router.push(profile?.active_role === 'coach' ? '/coach/dashboard' : '/onboarding/role')
     } catch {
       setApiError({
         code: 'NETWORK_ERROR',

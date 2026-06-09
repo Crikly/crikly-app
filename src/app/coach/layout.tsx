@@ -1,4 +1,5 @@
 import React from 'react'
+import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { CoachLayoutClient } from '@/components/coach/CoachLayoutClient'
@@ -44,13 +45,19 @@ export default async function CoachLayout({
   if (!roleRow) redirect('/dashboard')
 
   // 4. Has coach_profile? Coach role but no profile row means coach
-  // onboarding hasn't started — send them to step 1.
+  // onboarding hasn't started — send them to step 1. BUT skip this redirect
+  // when already inside /coach/onboarding/* (the destination is itself wrapped
+  // by this layout, so redirecting unconditionally caused ERR_TOO_MANY_REDIRECTS
+  // — Fix-AUDIT-02). pathname comes from the x-pathname header set in proxy.ts.
+  const pathname = (await headers()).get('x-pathname') ?? ''
   const { data: coachProfile } = await supabase
     .from('coach_profiles')
     .select('id')
     .eq('user_profile_id', userProfile.id)
     .single()
-  if (!coachProfile) redirect('/coach/onboarding/sport')
+  if (!coachProfile && !pathname.startsWith('/coach/onboarding')) {
+    redirect('/coach/onboarding/sport')
+  }
 
   // 5. Accepted terms? Must be done before any protected surface.
   if (!userProfile.terms_accepted_at) redirect('/onboarding/terms')

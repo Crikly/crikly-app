@@ -67,10 +67,11 @@ export async function GET(request: Request) {
     // User can complete profile later
   }
 
-  // AUTH-JOURNEY-01: route by canonical user_profiles state (terms-first),
-  // matching the password-login gate in /api/auth/login. Do NOT route on
-  // user_metadata.primary_role — it can drift from the DB and skips the
-  // terms gate. Uses the existing SSR client (the user's own session).
+  // AUTH-JOURNEY-01 / Fix-AUDIT-02: route by canonical user_profiles state
+  // (role-first), matching the proxy gate + password-login gate. Do NOT route
+  // on user_metadata.primary_role — it can drift from the DB. Uses the existing
+  // SSR client (the user's own session). active_role is nullable (Fix-AUDIT-01):
+  // NULL means no role chosen yet → role selection.
   const { data: userProfile } = await supabase
     .from('user_profiles')
     .select('active_role, terms_accepted_at')
@@ -78,16 +79,16 @@ export async function GET(request: Request) {
     .single()
 
   let redirectTo: string
-  if (!userProfile) {
+  if (!userProfile || !userProfile.active_role) {
     redirectTo = '/onboarding/role'
   } else if (!userProfile.terms_accepted_at) {
     redirectTo = '/onboarding/terms'
-  } else if (!userProfile.active_role) {
-    redirectTo = '/onboarding/role'
   } else if (userProfile.active_role === 'coach') {
     redirectTo = '/coach/dashboard'
   } else {
-    redirectTo = '/dashboard'
+    // No supported non-coach role yet. Send to role selection (NOT /login,
+    // which would loop via the proxy's session→/dashboard redirect).
+    redirectTo = '/onboarding/role'
   }
 
   return NextResponse.redirect(new URL(redirectTo, origin))
