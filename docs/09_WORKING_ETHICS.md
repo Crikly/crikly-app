@@ -1146,6 +1146,21 @@ Full structure map: Notion page 33c163fe25cf81b4800fe9c46298cadb
 
 ---
 
+## Claude Code Prompt Quality — Mandatory Rule
+
+Before writing ANY Claude Code prompt, Claude must:
+1. Load the crikly-prompt-builder skill
+2. Verify all 9 checklist items pass
+3. Only then post the prompt
+
+The 9 items: @AgentName, Task ID, CLAUDE.md, working ethics,
+agent .md file, relevant docs only, one-paragraph task,
+Step 0 gate, risk level.
+
+No exceptions regardless of task size or session urgency.
+
+---
+
 ## Document Maintenance
 
 When completing any task, update relevant docs in same commit:
