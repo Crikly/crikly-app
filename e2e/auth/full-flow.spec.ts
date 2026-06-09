@@ -1,10 +1,11 @@
 import { test, expect } from '@playwright/test'
 
 test.describe('Auth navigation flow', () => {
-  test('homepage Get started button navigates to /join', async ({ page }) => {
+  test('homepage Get started button navigates to /register', async ({ page }) => {
     await page.goto('/')
     await page.getByRole('link', { name: 'Get started' }).click()
-    await expect(page).toHaveURL('/join')
+    // AUTH-JOURNEY-01: /join retired; landing CTAs now go straight to /register.
+    await expect(page).toHaveURL('/register')
   })
 
   test('homepage Log in link navigates to login', async ({ page }) => {
