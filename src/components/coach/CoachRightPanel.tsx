@@ -42,6 +42,7 @@ import {
   writeProfileCompletenessCache,
   type ProfileCompleteness,
 } from '@/lib/profile-completeness-cache'
+import { scoreCompleteness } from '@/lib/profile-completeness-score'
 
 // BUG-QA-02/06: superset of BookingListItem with optional programme_id.
 // Programme sessions are normalised into this shape so they merge into
@@ -403,19 +404,18 @@ export function CoachRightPanel() {
   // returns and the missing checks surface.
   const completedChecks = useMemo(() => {
     if (!profile) return 6
-    let count = 0
-    if (profile.full_name && profile.bio && profile.location_city) count++
-    if (profile.cancellation_window_hours > 0) count++
-    if (stripeChargesEnabled && stripePayoutsEnabled) count++
-    if (completeness) {
-      if (completeness.sports) count++
-      if (completeness.qualifications) count++
-      if (completeness.availability) count++
-    } else {
-      // Pre-load assumption — see comment above.
-      count += 3
-    }
-    return Math.min(count, 6)
+    // Fix-NAV-01: shared scorer (also used by ProfileDropdown). Until the
+    // completeness fetch resolves we assume its 3 checks pass (the prior
+    // `+= 3` pre-load assumption), so already-complete coaches don't flash an
+    // "incomplete" state on first paint.
+    return scoreCompleteness({
+      basicProfile: !!(profile.full_name && profile.bio && profile.location_city),
+      bookingPolicy: profile.cancellation_window_hours > 0,
+      stripe: stripeChargesEnabled && stripePayoutsEnabled,
+      sports: completeness ? completeness.sports : true,
+      qualifications: completeness ? completeness.qualifications : true,
+      availability: completeness ? completeness.availability : true,
+    }).completed
   }, [profile, stripeChargesEnabled, stripePayoutsEnabled, completeness])
 
   // API-CMD-CENTRE: real unanswered-reviews count from the same endpoint.

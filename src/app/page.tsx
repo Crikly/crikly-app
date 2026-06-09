@@ -15,6 +15,7 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { ProfileDropdown } from '@/components/nav/ProfileDropdown'
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import {
   ArrowRight,
@@ -352,20 +353,9 @@ export default function HomePage() {
             For coaches
           </a>
         </nav>
-        <div className="flex items-center gap-1.5">
-          <Link
-            href="/login"
-            className="whitespace-nowrap rounded-[10px] px-3.5 py-2.5 text-[15px] font-medium text-neutral-600 no-underline transition-colors hover:bg-neutral-50 hover:text-gray-900"
-          >
-            Log in
-          </Link>
-          <Link
-            href="/register"
-            className="inline-flex h-11 items-center gap-2 whitespace-nowrap rounded-full bg-brand-600 px-5 text-[15px] font-medium text-white no-underline transition-all hover:bg-brand-700 active:scale-[0.98]"
-          >
-            Get started
-          </Link>
-        </div>
+        {/* Fix-NAV-01: avatar + dropdown when logged in, Log in / Get started
+            buttons when logged out (handled inside the component). */}
+        <ProfileDropdown />
       </header>
 
       {/* ═══ HERO ════════════════════════════════════════════════════════ */}
