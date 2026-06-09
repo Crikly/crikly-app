@@ -360,7 +360,7 @@ export default function HomePage() {
             Log in
           </Link>
           <Link
-            href="/join"
+            href="/register"
             className="inline-flex h-11 items-center gap-2 whitespace-nowrap rounded-full bg-brand-600 px-5 text-[15px] font-medium text-white no-underline transition-all hover:bg-brand-700 active:scale-[0.98]"
           >
             Get started
@@ -582,7 +582,7 @@ export default function HomePage() {
             </p>
             <PersonaList items={['Browse coaches near you', 'Book single sessions or whole programmes', 'Pay once, securely — no cash on the day']} />
             <Link
-              href="/join?role=parent"
+              href="/register"
               className="mt-auto inline-flex h-12 items-center justify-center gap-2 rounded-[12px] border-[1.5px] border-brand-600 bg-white text-[15px] font-medium text-brand-600 no-underline transition-all hover:bg-brand-50 active:scale-[0.98]"
             >
               Find a coach for my child
@@ -604,7 +604,7 @@ export default function HomePage() {
             </p>
             <PersonaList items={['Coaches for every level', 'Evening & weekend availability', 'Reschedule free up to 48 hours before']} />
             <Link
-              href="/join?role=player"
+              href="/register"
               className="mt-auto inline-flex h-12 items-center justify-center gap-2 rounded-[12px] border-[1.5px] border-brand-600 bg-white text-[15px] font-medium text-brand-600 no-underline transition-all hover:bg-brand-50 active:scale-[0.98]"
             >
               Book a session for me
@@ -630,7 +630,7 @@ export default function HomePage() {
             </p>
             <CoachList items={['List free — keep the lion’s share of every booking', 'One link does the chasing for you', 'Payouts straight to your bank via Stripe']} />
             <Link
-              href="/join?role=coach"
+              href="/register"
               className="relative mt-auto inline-flex h-12 items-center justify-center gap-2 rounded-[12px] border-0 bg-white text-[15px] font-medium text-brand-800 no-underline transition-all hover:bg-white/90 active:scale-[0.98]"
             >
               Start coaching on Crikly
@@ -784,7 +784,7 @@ export default function HomePage() {
                 <ArrowRight size={18} strokeWidth={2.2} />
               </Link>
               <Link
-                href="/join"
+                href="/register"
                 className="inline-flex h-14 items-center gap-2 rounded-full border border-white/[0.28] bg-white/[0.10] px-7 text-base font-medium text-white no-underline transition-all hover:bg-white/[0.18] active:scale-[0.98]"
               >
                 I&apos;m looking for a coach

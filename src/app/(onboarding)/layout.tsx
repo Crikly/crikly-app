@@ -1,30 +1,9 @@
 import type { ReactNode } from 'react'
 
+// AUTH-JOURNEY-01: the role + terms pages now render AuthSplitShell directly
+// (full-viewport split-screen), so this group layout is a pass-through — it
+// must NOT re-wrap children in a centered card or it would nest inside the
+// shell and break the layout. DM Sans inherits from globals.css.
 export default function OnboardingLayout({ children }: { children: ReactNode }) {
-  return (
-    <main
-      style={{
-        minHeight: '100vh',
-        background: '#F0F7FF',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '24px 16px',
-        fontFamily: 'DM Sans, sans-serif',
-      }}
-    >
-      <div
-        style={{
-          width: '100%',
-          maxWidth: '420px',
-          background: '#fff',
-          borderRadius: '16px',
-          padding: '40px 32px',
-          border: '0.5px solid #E2E8F0',
-        }}
-      >
-        {children}
-      </div>
-    </main>
-  )
+  return <main className="min-h-screen bg-white">{children}</main>
 }

@@ -53,20 +53,24 @@ export function RoleSelectionForm() {
         </div>
       )}
 
+      {/* AUTH-JOURNEY-01: Coach is the only live role at launch. Parent and
+          Player are greyed out + "Coming soon" and not selectable. */}
+      <RoleCard
+        role="coach"
+        isSelected={selectedRole === 'coach'}
+        onSelect={setSelectedRole}
+      />
       <RoleCard
         role="parent"
         isSelected={selectedRole === 'parent'}
         onSelect={setSelectedRole}
+        disabled
       />
       <RoleCard
         role="player"
         isSelected={selectedRole === 'player'}
         onSelect={setSelectedRole}
-      />
-      <RoleCard
-        role="coach"
-        isSelected={selectedRole === 'coach'}
-        onSelect={setSelectedRole}
+        disabled
       />
 
       <p style={{

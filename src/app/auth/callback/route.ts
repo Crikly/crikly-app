@@ -67,8 +67,28 @@ export async function GET(request: Request) {
     // User can complete profile later
   }
 
-  const hasRole = user.user_metadata?.primary_role
-  const redirectTo = hasRole ? '/dashboard' : '/onboarding/role'
+  // AUTH-JOURNEY-01: route by canonical user_profiles state (terms-first),
+  // matching the password-login gate in /api/auth/login. Do NOT route on
+  // user_metadata.primary_role — it can drift from the DB and skips the
+  // terms gate. Uses the existing SSR client (the user's own session).
+  const { data: userProfile } = await supabase
+    .from('user_profiles')
+    .select('active_role, terms_accepted_at')
+    .eq('auth_user_id', user.id)
+    .single()
+
+  let redirectTo: string
+  if (!userProfile) {
+    redirectTo = '/onboarding/role'
+  } else if (!userProfile.terms_accepted_at) {
+    redirectTo = '/onboarding/terms'
+  } else if (!userProfile.active_role) {
+    redirectTo = '/onboarding/role'
+  } else if (userProfile.active_role === 'coach') {
+    redirectTo = '/coach/dashboard'
+  } else {
+    redirectTo = '/dashboard'
+  }
 
   return NextResponse.redirect(new URL(redirectTo, origin))
 }

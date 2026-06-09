@@ -24,6 +24,10 @@ export default function RegisterPage() {
       <AuthDivider />
       <SocialAuthButtons mode="register" />
 
+      <p className="mt-6 text-center text-[13px] text-neutral-400">
+        🎾 Parent and Player accounts coming soon
+      </p>
+
       <p className="mt-6 text-center text-[13px] text-gray-500">
         Already have an account?{' '}
         <Link href="/login" className="font-medium text-brand-600 no-underline">

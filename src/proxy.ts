@@ -6,7 +6,7 @@ import type { Database } from '@/types/database'
 // When NEXT_PUBLIC_COACH_APP_LIVE is not 'true', all authenticated app routes
 // redirect to /home. Flip to 'true' to unlock the full app with no code changes.
 // /coach-intro is intentionally NOT blocked: uses startsWith('/coach/') not '/coach'
-const APP_LIVE_BLOCKED_EXACT = ['/login', '/register', '/verify']
+const APP_LIVE_BLOCKED_EXACT = ['/verify']
 const APP_LIVE_BLOCKED_ROOTS = [
   '/onboarding',
   '/coach',
@@ -115,6 +115,31 @@ export default async function proxy(request: NextRequest) {
 
   if (isOpenRoute(pathname)) {
     return response
+  }
+
+  // AUTH-JOURNEY-01: profile-completeness gate. A logged-in user with an
+  // incomplete profile must finish onboarding before reaching any protected
+  // app route. Excludes /onboarding/* (would loop), /login and /register.
+  // Terms-first ordering, matching the OAuth callback + password-login gates.
+  if (
+    user &&
+    isProtectedRoute(pathname) &&
+    !pathname.startsWith('/onboarding') &&
+    pathname !== '/login' &&
+    pathname !== '/register'
+  ) {
+    const { data: profile } = await supabase
+      .from('user_profiles')
+      .select('active_role, terms_accepted_at')
+      .eq('auth_user_id', user.id)
+      .single()
+
+    if (!profile || !profile.terms_accepted_at) {
+      return NextResponse.redirect(new URL('/onboarding/terms', request.url))
+    }
+    if (!profile.active_role) {
+      return NextResponse.redirect(new URL('/onboarding/role', request.url))
+    }
   }
 
   if (isProtectedRoute(pathname) && !user) {
