@@ -67,7 +67,7 @@ One row per registered user. Extends Supabase auth.users.
 | location_lat | numeric(10,7) | YES | null | Coordinates for distance search |
 | location_lng | numeric(10,7) | YES | null | Coordinates for distance search |
 | country_code | text | NO | 'GB' | ISO country code |
-| active_role | text | NO | 'parent' | Currently active role in app |
+| active_role | text | YES | null | Currently active role in app; NULL = no role selected yet (Fix-AUDIT-01) |
 | auth_provider | text | NO | 'email' | 'email', 'google', 'apple' |
 | terms_accepted_at | timestamptz | YES | null | When user accepted T&Cs — required before use |
 | deletion_requested_at | timestamptz | YES | null | GDPR right to deletion request |
