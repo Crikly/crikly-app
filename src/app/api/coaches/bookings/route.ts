@@ -13,10 +13,20 @@ const PAGE_SIZE = 10
 // Service-role client for user_profiles lookups.
 // user_profiles RLS is "own record only" — service role bypasses it safely
 // since we only read the booker's display name.
-const supabaseAdmin = createSupabaseClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-)
+//
+// Fix-LINT-02: lazy-init so the module-level client doesn't throw
+// "supabaseUrl is required" during `next build` page-data collection when env
+// vars are absent (CI build env). Instantiated on first request instead.
+let _supabaseAdmin: ReturnType<typeof createSupabaseClient> | null = null
+function getSupabaseAdmin() {
+  if (!_supabaseAdmin) {
+    _supabaseAdmin = createSupabaseClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    )
+  }
+  return _supabaseAdmin
+}
 
 // ─── GET /api/coaches/bookings ────────────────────────────────────────────────
 
@@ -101,7 +111,7 @@ export async function GET(request: Request) {
   const bookerIds = [...new Set(rows.map((b) => b.booked_by_user_id))]
   const bookerNameMap: Record<string, string> = {}
   if (bookerIds.length > 0) {
-    const { data: profiles } = await supabaseAdmin
+    const { data: profiles } = await getSupabaseAdmin()
       .from('user_profiles')
       .select('id, full_name')
       .in('id', bookerIds)
