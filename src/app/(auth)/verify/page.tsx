@@ -1,4 +1,5 @@
 import { AuthLogo } from '@/components/auth/AuthLogo'
+import { ResendEmailButton } from '@/components/auth/ResendEmailButton'
 import Link from 'next/link'
 
 export const metadata = {
@@ -77,12 +78,16 @@ export default async function VerifyPage({ searchParams }: VerifyPageProps) {
 
       <p style={{ textAlign: 'center', fontSize: '13px', color: '#64748B' }}>
         Didn&apos;t receive it?{' '}
-        <Link
-          href="/register"
-          style={{ color: '#0077CC', fontWeight: 500, textDecoration: 'none' }}
-        >
-          Resend email
-        </Link>
+        {email ? (
+          <ResendEmailButton email={email} />
+        ) : (
+          <Link
+            href="/register"
+            style={{ color: '#0077CC', fontWeight: 500, textDecoration: 'none' }}
+          >
+            Re-register
+          </Link>
+        )}
       </p>
     </>
   )
