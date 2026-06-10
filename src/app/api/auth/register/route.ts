@@ -45,12 +45,22 @@ export async function POST(request: Request) {
       }
     )
 
+    // Fix-PROD-PROFILE-01: build the verification-link base from the request
+    // origin. NEXT_PUBLIC_SITE_URL is Production-only, so on preview/other envs
+    // it was undefined → emailRedirectTo became `undefined/auth/callback`, the
+    // verification link was broken, the callback was never reached, and the
+    // email user's profile was never created.
+    const origin =
+      request.headers.get('origin') ??
+      process.env.NEXT_PUBLIC_SITE_URL ??
+      'http://localhost:3000'
+
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: { full_name: fullName },
-        emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`,
+        emailRedirectTo: `${origin}/auth/callback`,
       },
     })
 
