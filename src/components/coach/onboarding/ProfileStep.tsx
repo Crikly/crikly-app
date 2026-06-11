@@ -231,6 +231,10 @@ export function ProfileStep() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           full_name: displayName,
+          // Fix-COACH-UX-02: persist the display name to coach_profiles.display_name
+          // (was never sent, so it stayed null). Defaults to full_name since the
+          // field is initialised from user_profiles.full_name.
+          display_name: displayName,
           bio,
           location_city: baseLocation,
           location_postcode: locationPostcode,

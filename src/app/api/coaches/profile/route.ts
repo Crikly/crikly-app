@@ -260,6 +260,15 @@ export async function POST(
       }
     }
 
+    // Fix-COACH-UX-02: validate display_name (coach_profiles, nullable).
+    if (body.display_name !== undefined && body.display_name !== null) {
+      if (typeof body.display_name !== 'string') {
+        validationErrors.push('display_name must be a string')
+      } else if (body.display_name.length > 100) {
+        validationErrors.push('display_name must be 100 characters or less')
+      }
+    }
+
     if (body.location_city !== undefined && body.location_city !== null) {
       if (typeof body.location_city !== 'string') {
         validationErrors.push('location_city must be a string')
@@ -364,6 +373,7 @@ export async function POST(
     // 5. Upsert coach_profiles
     const coachProfileUpdates: {
       user_profile_id: string
+      display_name?: string | null
       bio?: string | null
       years_experience?: number | null
       gender?: string | null
@@ -381,6 +391,7 @@ export async function POST(
       updated_at: new Date().toISOString(),
     }
 
+    if (body.display_name !== undefined) coachProfileUpdates.display_name = body.display_name
     if (body.bio !== undefined) coachProfileUpdates.bio = body.bio
     if (body.years_experience !== undefined) coachProfileUpdates.years_experience = body.years_experience
     if (body.gender !== undefined) coachProfileUpdates.gender = body.gender
