@@ -159,10 +159,7 @@ export async function PATCH(
         is_active,
         created_at,
         coach_sports!inner (
-          sport_id,
-          sports!inner (
-            name
-          )
+          sport_id
         )
       `)
       .single()
@@ -172,20 +169,24 @@ export async function PATCH(
       return NextResponse.json({ error: 'Failed to update session type' }, { status: 500 })
     }
 
-    // 9. Build response
+    // 9. Build response — Fix-SESSION-01: fetch sport name separately (no
+    // coach_sports → sports FK for a nested join).
     const updatedCoachSportData = updatedType.coach_sports
       ? (Array.isArray(updatedType.coach_sports) ? updatedType.coach_sports[0] : updatedType.coach_sports)
       : null
+    const updatedSportId = updatedCoachSportData?.sport_id || ''
 
-    const sportData = updatedCoachSportData?.sports
-      ? (Array.isArray(updatedCoachSportData.sports) ? updatedCoachSportData.sports[0] : updatedCoachSportData.sports)
-      : null
+    const { data: sportRow } = await supabase
+      .from('sports')
+      .select('name')
+      .eq('id', updatedSportId)
+      .single()
 
     const response: SessionTypeResponse = {
       id: updatedType.id,
       coach_sport_id: updatedType.coach_sport_id,
-      sport_id: updatedCoachSportData?.sport_id || '',
-      sport_name: sportData?.name || '',
+      sport_id: updatedSportId,
+      sport_name: sportRow?.name || '',
       duration_minutes: updatedType.duration_minutes,
       price_individual_pence: updatedType.price_individual_pence,
       price_group_pence: updatedType.price_group_pence,
