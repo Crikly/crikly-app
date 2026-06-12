@@ -69,8 +69,7 @@ export async function GET(
         is_active,
         created_at,
         coach_sports!inner(
-          sport_id,
-          sports!inner(name)
+          sport_id
         )
       `)
       .in('coach_sport_id', coachSportIds)
@@ -82,19 +81,33 @@ export async function GET(
       return NextResponse.json({ error: 'Failed to fetch session types' }, { status: 500 })
     }
 
+    // Fix-SESSION-01: coach_sports.sport_id has no FK to sports, so a nested
+    // PostgREST join (sports!inner) can't resolve (PGRST200). Resolve sport
+    // names in a separate query keyed by sport_id (mirrors Fix-16d / Fix-65-1).
+    const sportIds = [...new Set(
+      (sessionTypes || []).map((t) => {
+        const cs = Array.isArray(t.coach_sports) ? t.coach_sports[0] : t.coach_sports
+        return cs?.sport_id
+      }).filter((id): id is string => typeof id === 'string')
+    )]
+    const sportNameById = new Map<string, string>()
+    if (sportIds.length > 0) {
+      const { data: sportsData } = await supabase
+        .from('sports')
+        .select('id, name')
+        .in('id', sportIds)
+      for (const s of sportsData ?? []) sportNameById.set(s.id, s.name)
+    }
+
     // 6. Build response and apply sport filter if needed
-    // AF-C-19: extract real sport_id + sport_name from joined coach_sports → sports.
-    // Defensive array/object handling — Supabase relationship inference may return either.
     const response: SessionTypeResponse[] = (sessionTypes || []).map((type) => {
       const coachSportData = Array.isArray(type.coach_sports) ? type.coach_sports[0] : type.coach_sports
-      const sportData = coachSportData?.sports
-        ? (Array.isArray(coachSportData.sports) ? coachSportData.sports[0] : coachSportData.sports)
-        : null
+      const sportId = coachSportData?.sport_id ?? ''
       return {
         id: type.id,
         coach_sport_id: type.coach_sport_id,
-        sport_id: coachSportData?.sport_id ?? '',
-        sport_name: sportData?.name ?? '',
+        sport_id: sportId,
+        sport_name: sportNameById.get(sportId) ?? '',
         duration_minutes: type.duration_minutes,
         price_individual_pence: type.price_individual_pence,
         price_group_pence: type.price_group_pence,
@@ -175,7 +188,7 @@ export async function POST(
     // 5. Verify sport_id is in coach's configured sports and get coach_sport_id
     const { data: coachSport, error: sportCheckError } = await supabase
       .from('coach_sports')
-      .select('id, sport_id, sports!inner(name)')
+      .select('id, sport_id')
       .eq('coach_profile_id', coachProfile.id)
       .eq('sport_id', body.sport_id)
       .single()
@@ -244,16 +257,19 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to create session type' }, { status: 500 })
     }
 
-    // 8. Build response
-    const sportData = coachSport.sports
-      ? (Array.isArray(coachSport.sports) ? coachSport.sports[0] : coachSport.sports)
-      : null
+    // 8. Build response — Fix-SESSION-01: fetch sport name separately (no
+    // coach_sports → sports FK for a nested join).
+    const { data: sportRow } = await supabase
+      .from('sports')
+      .select('name')
+      .eq('id', coachSport.sport_id)
+      .single()
 
     const response: SessionTypeResponse = {
       id: newType.id,
       coach_sport_id: newType.coach_sport_id,
       sport_id: coachSport.sport_id,
-      sport_name: sportData?.name || '',
+      sport_name: sportRow?.name || '',
       duration_minutes: newType.duration_minutes,
       price_individual_pence: newType.price_individual_pence,
       price_group_pence: newType.price_group_pence,

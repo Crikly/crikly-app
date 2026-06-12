@@ -150,11 +150,7 @@ export async function PATCH(
         max_group_size,
         session_duration_minutes,
         currency,
-        is_active,
-        sports!inner (
-          name,
-          slug
-        )
+        is_active
       `)
       .single()
 
@@ -163,14 +159,19 @@ export async function PATCH(
       return NextResponse.json({ error: 'Failed to update sport' }, { status: 500 })
     }
 
-    // 8. Build response
-    const sportData = Array.isArray(updatedSport.sports) ? updatedSport.sports[0] : updatedSport.sports
+    // 8. Build response — Fix-SESSION-01: fetch sport name/slug separately
+    // (coach_sports.sport_id has no FK to sports for a nested join).
+    const { data: sportRow } = await supabase
+      .from('sports')
+      .select('name, slug')
+      .eq('id', updatedSport.sport_id)
+      .single()
 
     const response: CoachSportResponse = {
       id: updatedSport.id,
       sport_id: updatedSport.sport_id,
-      sport_name: sportData.name,
-      sport_slug: sportData.slug,
+      sport_name: sportRow?.name ?? '',
+      sport_slug: sportRow?.slug ?? '',
       session_types: updatedSport.session_types,
       skill_levels: updatedSport.skill_levels,
       price_individual_pence: updatedSport.price_individual_pence,
