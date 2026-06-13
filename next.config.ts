@@ -26,9 +26,21 @@ const nextConfig: NextConfig = {
         hostname: 'images.unsplash.com',
       },
       {
+        // Dev / staging Supabase project.
         protocol: 'https',
         hostname: 'gzehxfnlfogkhadejowo.supabase.co',
       },
+      {
+        // Fix-LOCAL-IMAGE-01: production Supabase project (was missing —
+        // production-served Storage images were blocked by next/image).
+        protocol: 'https',
+        hostname: 'smwvtaeivmqaldvrbycm.supabase.co',
+      },
+      // Fix-LOCAL-IMAGE-01: local Supabase Storage (http://127.0.0.1:54321).
+      // Dev/test only — gated out of production builds via NODE_ENV.
+      ...(process.env.NODE_ENV !== 'production'
+        ? [{ protocol: 'http' as const, hostname: '127.0.0.1', port: '54321' }]
+        : []),
     ],
   },
 };
