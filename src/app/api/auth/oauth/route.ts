@@ -46,6 +46,10 @@ export async function POST(request: Request) {
       options: {
         redirectTo: `${origin}/auth/callback`,
         scopes: provider === 'google' ? 'openid email profile' : undefined,
+        // Fix-AUTH-GOOGLE-PROMPT-01: force Google to show the account picker every
+        // sign-in so multi-account users can switch (Google otherwise auto-selects
+        // the last account). Google-only — Apple ignores/doesn't use this param.
+        queryParams: provider === 'google' ? { prompt: 'select_account' } : undefined,
       },
     })
 
