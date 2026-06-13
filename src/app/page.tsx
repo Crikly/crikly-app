@@ -685,7 +685,7 @@ export default function HomePage() {
             <ArrowRight size={16} strokeWidth={2.2} />
           </Link>
         </div>
-        <div className={`${s.railScroll} -mx-10 grid auto-cols-[minmax(280px,1fr)] grid-flow-col gap-[22px] overflow-x-auto px-10 pt-1 pb-[18px] max-md:-mx-[22px] max-md:px-[22px]`}>
+        <div className={`${s.railScroll} -mx-10 grid auto-cols-[minmax(280px,360px)] grid-flow-col gap-[22px] overflow-x-auto px-10 pt-1 pb-[18px] max-md:-mx-[22px] max-md:px-[22px]`}>
           {coachesLoading ? (
             // PUB-01: 5 skeletons sized to match CoachCard.
             Array.from({ length: 5 }).map((_, i) => (
