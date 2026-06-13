@@ -16,6 +16,11 @@ const nextConfig: NextConfig = {
     turbopackFileSystemCacheForDev: false,
   },
   images: {
+    // Fix-LOCAL-IMAGE-02: bypass the Next.js image optimizer in dev. The
+    // optimizer refuses to fetch 127.0.0.1 (private-IP SSRF guard), so local
+    // Supabase Storage gallery images fail to render. Production keeps
+    // optimization ON (Supabase is a public IP there).
+    unoptimized: process.env.NODE_ENV !== 'production',
     remotePatterns: [
       {
         protocol: 'https',
