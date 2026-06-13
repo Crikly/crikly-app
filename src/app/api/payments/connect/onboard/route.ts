@@ -5,6 +5,22 @@ import { getStripe } from '@/lib/stripe/client'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
 
+// Fix-STRIPE-01: where Stripe sends the coach after the hosted onboarding flow.
+// Allow-listed to prevent an open redirect — the body value is attacker-influenceable,
+// so only these exact app paths may be used; anything else falls back to the default
+// dashboard route. The dashboard flow (GetPaid.tsx) sends no body → DEFAULT_RETURN_PATH.
+const DEFAULT_RETURN_PATH = '/coach/get-paid'
+const ALLOWED_RETURN_PATHS = new Set<string>([
+  '/coach/get-paid',
+  '/coach/onboarding/get-paid',
+])
+
+function resolveReturnPath(value: unknown): string {
+  return typeof value === 'string' && ALLOWED_RETURN_PATHS.has(value)
+    ? value
+    : DEFAULT_RETURN_PATH
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface CoachProfileRow {
@@ -84,8 +100,19 @@ export async function GET(_request: NextRequest): Promise<NextResponse> {
 // Creates a Stripe Express account if the coach doesn't have one,
 // then returns an account link URL to redirect the coach to Stripe onboarding.
 
-export async function POST(_request: NextRequest): Promise<NextResponse> {
+export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
+    // Fix-STRIPE-01: optional { return_path } body chooses where Stripe returns
+    // the coach (onboarding vs dashboard). Body may be empty — request.json()
+    // throws on no body, so default safely. Always run through the allowlist.
+    let returnPath = DEFAULT_RETURN_PATH
+    try {
+      const body = await request.json()
+      returnPath = resolveReturnPath((body as { return_path?: unknown })?.return_path)
+    } catch {
+      returnPath = DEFAULT_RETURN_PATH
+    }
+
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
 
@@ -156,8 +183,8 @@ export async function POST(_request: NextRequest): Promise<NextResponse> {
     // Create a new account link (these expire after a short time — always generate fresh)
     const accountLink = await stripe.accountLinks.create({
       account: stripeAccountId,
-      refresh_url: `${APP_URL}/coach/get-paid?refresh=true`,
-      return_url: `${APP_URL}/coach/get-paid?success=true`,
+      refresh_url: `${APP_URL}${returnPath}?refresh=true`,
+      return_url: `${APP_URL}${returnPath}?success=true`,
       type: 'account_onboarding',
     })
 
