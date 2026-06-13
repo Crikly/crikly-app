@@ -1,5 +1,5 @@
 'use client'
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, Check, CheckCircle } from 'lucide-react'
 import { OnboardingPreviewPanel } from '../OnboardingPreviewPanel'
@@ -10,7 +10,13 @@ export function GetPaidStep() {
   const router = useRouter()
   const [coachName, setCoachName] = useState<string>('Your name')
   const [isGoingLive, setIsGoingLive] = useState(false)
-  
+  // Fix-STRIPE-01: Path A (Connect with Stripe) state — distinct from Path B (Skip).
+  const [connecting, setConnecting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  // Guards the success-return effect against React strict-mode double-invoke
+  // (same pattern as GetPaid.tsx fetchingRef).
+  const handledReturnRef = useRef(false)
+
   // AF-P-Wave-1: use cache (was Fix-16e raw fetch)
   useEffect(() => {
     const fetchProfile = async () => {
@@ -23,14 +29,13 @@ export function GetPaidStep() {
     }
     fetchProfile()
   }, [])
-  
-  // CD-03: verified - GetPaidStep initiates Stripe Connect onboarding flow
-  // No direct Supabase save - stripe_onboarding_complete flag set by Stripe webhook
-  // coach_profiles.stripe_account_id populated after successful Stripe Connect
 
-  // Fix-36: Go live and navigate to dashboard with celebration modal
-  const handleGoLive = async () => {
-    if (isGoingLive) return
+  // Fix-36: Go live and navigate to dashboard with celebration modal.
+  // Fix-STRIPE-01: this is Path B ("Skip for now") AND the post-Stripe-return
+  // action. It sets ONLY is_profile_live=true — stripe_onboarding_complete is
+  // owned entirely by the Stripe webhook (charges_enabled && payouts_enabled),
+  // never written from the client.
+  const handleGoLive = useCallback(async () => {
     setIsGoingLive(true)
     try {
       await fetch('/api/coaches/profile', {
@@ -45,7 +50,49 @@ export function GetPaidStep() {
       console.error('Failed to go live:', error)
       setIsGoingLive(false)
     }
-  }
+  }, [router])
+
+  // Fix-STRIPE-01 Path A: initiate the REAL Stripe Connect onboarding flow.
+  // Mirrors GetPaid.tsx handleConnectStripe, but return_path brings the coach
+  // back to THIS onboarding step (not the dashboard) so we can complete go-live.
+  const handleConnectStripe = useCallback(async () => {
+    if (connecting) return
+    setConnecting(true)
+    setError(null)
+    try {
+      const response = await fetch('/api/payments/connect/onboard', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ return_path: '/coach/onboarding/get-paid' }),
+      })
+      if (!response.ok) throw new Error('Failed to start Stripe onboarding')
+      const { onboarding_url } = (await response.json()) as { onboarding_url: string }
+      window.location.href = onboarding_url
+    } catch (err) {
+      console.error('[GetPaidStep] Stripe onboarding error:', err)
+      setError('Could not connect to Stripe. Please try again.')
+      setConnecting(false)
+    }
+  }, [connecting])
+
+  // Fix-STRIPE-01 Path A return: Stripe redirects the coach back here.
+  //   ?success=true → finished the hosted flow → go live (is_profile_live=true)
+  //                   then head to the dashboard. The webhook flips
+  //                   stripe_onboarding_complete when Stripe enables the account.
+  //   ?refresh=true → link expired / abandoned → stay on this step to retry or
+  //                   skip. No go-live.
+  useEffect(() => {
+    if (handledReturnRef.current) return
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('success') === 'true') {
+      handledReturnRef.current = true
+      window.history.replaceState({}, '', '/coach/onboarding/get-paid')
+      handleGoLive()
+    } else if (params.get('refresh') === 'true') {
+      handledReturnRef.current = true
+      window.history.replaceState({}, '', '/coach/onboarding/get-paid')
+    }
+  }, [handleGoLive])
 
   return (
     <div className="flex-1 overflow-y-auto flex w-full">
@@ -83,13 +130,16 @@ export function GetPaidStep() {
                 ))}
               </div>
               <div className="flex flex-col items-center">
-                <button 
-                  onClick={handleGoLive}
-                  disabled={isGoingLive}
+                <button
+                  onClick={handleConnectStripe}
+                  disabled={connecting || isGoingLive}
                   className="w-full py-4 bg-[#0077CC] hover:bg-[#0066AA] disabled:opacity-60 text-white rounded-xl font-bold text-[16px] transition-colors shadow-sm flex items-center justify-center gap-2 mb-3"
                 >
-                  {isGoingLive ? 'Going live...' : 'Connect with Stripe'} <ArrowLeft size={18} className="rotate-180" />
+                  {connecting ? 'Connecting…' : 'Connect with Stripe'} <ArrowLeft size={18} className="rotate-180" />
                 </button>
+                {error && (
+                  <p className="text-[13px] text-red-600 font-medium text-center mb-2">{error}</p>
+                )}
                 <p className="text-[13px] text-gray-400 font-medium text-center">Takes about 5 minutes. You&apos;ll complete setup securely on Stripe.</p>
               </div>
             </div>
@@ -124,21 +174,21 @@ export function GetPaidStep() {
               ← Back
             </button>
             <div className="flex flex-col items-center">
-              <button 
+              <button
                 onClick={handleGoLive}
-                disabled={isGoingLive}
+                disabled={isGoingLive || connecting}
                 className="text-[13px] text-gray-500 hover:text-gray-900 font-medium transition-colors disabled:opacity-60"
               >
                 {isGoingLive ? 'Going live...' : 'Skip for now'}
               </button>
               <p className="text-[10px] text-gray-400 mt-0.5">You can complete this from your dashboard</p>
             </div>
-            <button 
-              onClick={handleGoLive}
-              disabled={isGoingLive}
+            <button
+              onClick={handleConnectStripe}
+              disabled={connecting || isGoingLive}
               className="bg-[#0077CC] hover:bg-[#0066AA] disabled:opacity-60 text-white rounded-full px-7 py-2.5 text-[13px] font-medium transition-colors"
             >
-              {isGoingLive ? 'Going live...' : 'Connect with Stripe →'}
+              {connecting ? 'Connecting…' : 'Connect with Stripe →'}
             </button>
           </div>
         </div>
