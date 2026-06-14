@@ -263,6 +263,25 @@ export function CoachRightPanel() {
     return () => { cancelled = true }
   }, [])
 
+  // Fix-COACH-UX-05b: re-read the profile when it changes elsewhere (e.g. the
+  // Settings pause toggle, which clears the cache then dispatches
+  // crikly:profile-updated) so the YOUR PROFILE Live/Paused state updates
+  // without a page reload. Mirrors the CoachLayoutClient sidebar listener; the
+  // cache is cleared before dispatch, so this fetch is fresh.
+  useEffect(() => {
+    let cancelled = false
+    const handleProfileUpdated = () => {
+      fetchCoachProfileCached()
+        .then((p) => { if (!cancelled && p) setProfile(p as ProfileData) })
+        .catch(() => {})
+    }
+    window.addEventListener('crikly:profile-updated', handleProfileUpdated)
+    return () => {
+      cancelled = true
+      window.removeEventListener('crikly:profile-updated', handleProfileUpdated)
+    }
+  }, [])
+
   // BUG-COMPLETION-STRIPE: Stripe charges + payouts enablement — same source
   // ProfileEdit reads from (Fix-45 pattern). Cache hit → instant; cache miss
   // → one /api/payments/connect/onboard call, write back to cache. Replaces

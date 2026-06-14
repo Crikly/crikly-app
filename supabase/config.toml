@@ -1,0 +1,81 @@
+# ============================================
+# Crikly — Supabase Local Development Config
+# ============================================
+# Configures the LOCAL Supabase stack only (supabase start).
+# Does NOT affect hosted dev, staging, or production.
+#
+# Auth is tuned for local testing:
+#   - Signups enabled, email confirmations OFF (no real inbox needed)
+#   - Confirmation/magic-link emails are captured by the built-in
+#     Mailpit server (inbucket) at http://127.0.0.1:54324 — nothing
+#     is sent to a real SMTP provider.
+#   - Google OAuth secrets are injected via env() substitution so no
+#     credentials are ever committed to git.
+#
+# NOTE: env() values below are resolved by the Supabase CLI from the
+# SHELL environment (or `supabase start --env-file <path>`), NOT from
+# Next.js's .env.local. Export GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET
+# in your shell (or pass --env-file) before `supabase start` for Google
+# sign-in to work locally.
+# ============================================
+
+project_id = "crikly-app"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 17
+
+[studio]
+enabled = true
+port = 54323
+api_url = "http://127.0.0.1:54321"
+
+# Local email testing — Mailpit (inbucket). All auth emails
+# (confirmations, magic links, recovery) land here in local dev.
+# No external SMTP is configured, so nothing leaves the machine.
+[inbucket]
+enabled = true
+port = 54324
+
+[storage]
+enabled = true
+file_size_limit = "50MiB"
+
+[auth]
+enabled = true
+# Base URL of the local web app. Used for redirect allow-list + email links.
+site_url = "http://127.0.0.1:3000"
+additional_redirect_urls = ["http://localhost:3000/**", "http://127.0.0.1:3000/**"]
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+refresh_token_reuse_interval = 10
+# Local only: allow new signups so auth flows can be tested freely.
+enable_signup = true
+enable_anonymous_sign_ins = false
+
+[auth.email]
+enable_signup = true
+double_confirm_changes = true
+# Local only: skip email confirmation so test users are usable instantly.
+# Verification emails are still generated and captured by Mailpit above.
+enable_confirmations = false
+secure_password_change = false
+
+# Google OAuth — enabled for local auth testing.
+# Credentials are pulled from environment variables via env() so the
+# actual client id/secret are NEVER hardcoded or committed.
+[auth.external.google]
+enabled = true
+client_id = "env(GOOGLE_CLIENT_ID)"
+secret = "env(GOOGLE_CLIENT_SECRET)"
+redirect_uri = "http://127.0.0.1:54321/auth/v1/callback"
+# Required for local Google sign-in to work without a real nonce.
+skip_nonce_check = true

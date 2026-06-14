@@ -186,6 +186,15 @@ ONESIGNAL_REST_API_KEY=             # SECRET — server only
 
 # App
 NEXT_PUBLIC_APP_URL=https://crikly.app
+
+# Feature Flags
+NEXT_PUBLIC_COACH_APP_LIVE=         # Public — 'true' unlocks authenticated coach app (src/proxy.ts gate)
+
+# Google OAuth — LOCAL Supabase auth testing only
+# Read by the Supabase CLI (supabase start) via env() in supabase/config.toml,
+# NOT by Next.js. Resolved from the shell env (or --env-file), not .env.local.
+GOOGLE_CLIENT_ID=                   # CLI only — local [auth.external.google]
+GOOGLE_CLIENT_SECRET=               # SECRET — CLI only, local
 ```
 
 ---
