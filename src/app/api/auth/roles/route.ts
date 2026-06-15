@@ -158,6 +158,31 @@ export async function POST(request: Request) {
       )
     }
 
+    // Fix-ROLES-01: eagerly create the coach_profiles row at role-selection
+    // time so the coach dashboard's parallel API fan-out (Variant-B routes —
+    // profile, sports, qualifications) doesn't 404 racing the lazy Variant-C
+    // creation. Non-fatal: requireCoachContextOrCreate stays as the safety net,
+    // and ignoreDuplicates makes a repeat call a silent no-op. Mirrors Variant
+    // C's payload (require-coach.ts) — minimal insert; other columns default.
+    if (role === 'coach') {
+      const { error: coachProfileError } = await supabase
+        .from('coach_profiles')
+        .upsert(
+          {
+            user_profile_id: userProfile.id,
+            updated_at: new Date().toISOString(),
+          },
+          {
+            onConflict: 'user_profile_id',
+            ignoreDuplicates: true,
+          }
+        )
+
+      if (coachProfileError) {
+        console.error('[Fix-ROLES-01] coach_profiles eager-create error:', coachProfileError)
+      }
+    }
+
     const { error: metaError } = await supabase.auth.updateUser({
       data: {
         ...user.user_metadata,
