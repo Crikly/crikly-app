@@ -58,6 +58,16 @@ export default async function CoachLayout({
     .eq('user_profile_id', userProfile.id)
     .single()
 
+  // Fix-LAYOUT-DIAG (TEMPORARY — remove immediately after the staging trace is
+  // captured): logs the gate inputs on every render, before the redirect gates,
+  // to confirm the x-pathname / inCoachOnboarding values seen on RSC re-renders.
+  console.log('[CoachLayout-DIAG]', {
+    pathname,
+    inCoachOnboarding,
+    isProfileLive: coachProfile?.is_profile_live ?? 'no-row',
+    termsAccepted: !!userProfile.terms_accepted_at,
+  })
+
   // 4a. No coach_profile row → onboarding never started → first step.
   // Fix-AUTH-ONBOARD-01 (State D): the first step is /profile (personal info),
   // not /sport — the previous target skipped step 1.
