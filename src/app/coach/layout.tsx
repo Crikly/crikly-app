@@ -48,8 +48,9 @@ export default async function CoachLayout({
   // proxy.ts; we skip these redirects when already inside /coach/onboarding/*
   // (the destinations are wrapped by this layout — redirecting unconditionally
   // caused ERR_TOO_MANY_REDIRECTS, Fix-AUDIT-02).
-  const pathname = (await headers()).get('x-pathname') ?? ''
-  const inCoachOnboarding = pathname.startsWith('/coach/onboarding')
+  const pathname = (await headers()).get('x-pathname')
+  const inCoachOnboarding = !pathname ||
+    pathname.startsWith('/coach/onboarding')
 
   const { data: coachProfile } = await supabase
     .from('coach_profiles')
