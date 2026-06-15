@@ -1,5 +1,4 @@
 import React from 'react'
-import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { CoachLayoutClient } from '@/components/coach/CoachLayoutClient'
@@ -44,45 +43,17 @@ export default async function CoachLayout({
     .single()
   if (!roleRow) redirect('/dashboard')
 
-  // 4. Coach onboarding gates. pathname comes from the x-pathname header set in
-  // proxy.ts; we skip these redirects when already inside /coach/onboarding/*
-  // (the destinations are wrapped by this layout — redirecting unconditionally
-  // caused ERR_TOO_MANY_REDIRECTS, Fix-AUDIT-02).
-  const pathname = (await headers()).get('x-pathname')
-  const inCoachOnboarding = !pathname ||
-    pathname.startsWith('/coach/onboarding')
-
+  // 4. Coach profile — fetched to drive the onboarding-completeness redirect,
+  // which now runs CLIENT-SIDE in CoachLayoutClient (Fix-LAYOUT-02). A
+  // server-side redirect() here was cached in the production RSC payload and
+  // looped (Fix-LAYOUT-01 patched the wrong branch). UX redirect only — role
+  // (gate 3) and terms (gate 5) stay server-side; API routes use
+  // requireCoachContext.
   const { data: coachProfile } = await supabase
     .from('coach_profiles')
     .select('id, is_profile_live')
     .eq('user_profile_id', userProfile.id)
     .single()
-
-  // Fix-LAYOUT-DIAG (TEMPORARY — remove immediately after the staging trace is
-  // captured): logs the gate inputs on every render, before the redirect gates,
-  // to confirm the x-pathname / inCoachOnboarding values seen on RSC re-renders.
-  console.log('[CoachLayout-DIAG]', {
-    pathname,
-    inCoachOnboarding,
-    isProfileLive: coachProfile?.is_profile_live ?? 'no-row',
-    termsAccepted: !!userProfile.terms_accepted_at,
-  })
-
-  // 4a. No coach_profile row → onboarding never started → first step.
-  // Fix-AUTH-ONBOARD-01 (State D): the first step is /profile (personal info),
-  // not /sport — the previous target skipped step 1.
-  if (!coachProfile && !inCoachOnboarding) {
-    redirect('/coach/onboarding/profile')
-  }
-
-  // 4b. coach_profile exists but is_profile_live = false → onboarding started
-  // but not completed → resume from step 1 (every step pre-populates from saved
-  // data). Fix-AUTH-ONBOARD-01 (State E): without this an incomplete coach could
-  // reach /coach/dashboard. is_profile_live is the only column-level "complete"
-  // signal; exact-step resume would need a new column (out of scope).
-  if (coachProfile && !coachProfile.is_profile_live && !inCoachOnboarding) {
-    redirect('/coach/onboarding/profile')
-  }
 
   // 5. Accepted terms? Must be done before any protected surface.
   if (!userProfile.terms_accepted_at) redirect('/onboarding/terms')
@@ -92,6 +63,8 @@ export default async function CoachLayout({
     <CoachLayoutClient
       initialCoachName={userProfile.full_name || ''}
       initialAvatarUrl={userProfile.avatar_url || null}
+      hasCoachProfile={!!coachProfile}
+      isProfileLive={coachProfile?.is_profile_live ?? false}
     >
       {children}
     </CoachLayoutClient>
