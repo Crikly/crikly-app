@@ -162,18 +162,22 @@ export function CoachLayoutClient({
     return () => window.removeEventListener('crikly:profile-updated', handleProfileUpdated)
   }, [])
 
-  // Fix-LAYOUT-02: onboarding-completeness redirect, moved here from the server
-  // layout. A server-side redirect() was cached in the production RSC payload →
-  // 153-request loop. Client router.push() is never cached and usePathname()
-  // always reflects the live path, so the loop cannot recur. UX-only gate
-  // (coach role + terms remain server-side; API routes use requireCoachContext).
+  // Fix-LAYOUT-02 / 02b: onboarding-completeness redirect, moved here from the
+  // server layout (a server-side redirect() was cached in the production RSC
+  // payload → 153-request loop). Fires ONCE on first entry into /coach/*: this
+  // layout persists across sibling /coach/* navigations and does not remount, so
+  // [] deps nudge an incomplete coach to onboarding once without bouncing every
+  // later navigation (REQ-C-001, dashboard-first). Reads mount-time props +
+  // pathname by design. UX-only gate — role + terms stay server-side; API routes
+  // use requireCoachContext.
   useEffect(() => {
     const incompleteCoach = !hasCoachProfile || !isProfileLive
     const onOnboarding = pathname.startsWith('/coach/onboarding')
     if (incompleteCoach && !onOnboarding) {
       router.push('/coach/onboarding/profile')
     }
-  }, [hasCoachProfile, isProfileLive, pathname, router])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // BUG-GO-LIVE-MODAL-SHARE: share URLs derived inside ShareLinkPanel from slug.
   // (Previously profileUrl/whatsappUrl/facebookUrl/emailUrl were derived here.)
