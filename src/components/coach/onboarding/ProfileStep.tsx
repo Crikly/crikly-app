@@ -241,7 +241,11 @@ export function ProfileStep() {
           location_lat: locationLat,
           location_lng: locationLng,
           years_experience: yearsExp,
-          gender: gender.toLowerCase().replace(/\s+/g, '_'),
+          // Fix-PROFILE-GENDER-01: omit gender entirely when unselected. The API
+          // only skips validation on `undefined` (not null), and JSON.stringify
+          // drops absent keys — so an unselected gender is never sent and the
+          // enum check is bypassed (no 400).
+          ...(gender ? { gender: gender.toLowerCase().replace(/\s+/g, '_') } : {}),
           languages: selectedLanguages, // Fix-16f: Include languages in save payload
           // Fix-103 (AF-C-11): persist uploaded avatar URL
           avatar_url: uploadedAvatarUrl,
