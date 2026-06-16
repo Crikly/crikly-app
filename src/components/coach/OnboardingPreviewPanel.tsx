@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react'
 import { MapPin, Calendar, XCircle, CalendarDays, CheckCircle, ShieldCheck } from 'lucide-react'
 // AF-P-Wave-1: profile cache adoption
-import { fetchCoachProfileCached } from '@/lib/onboarding-cache'
+import { fetchCoachProfileCached, fetchSessionTypesCached } from '@/lib/onboarding-cache'
 
 interface OnboardingPreviewPanelProps {
   coachName: string
@@ -44,17 +44,15 @@ export function OnboardingPreviewPanel({
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Fetch session types for price
-        const sessionTypesResponse = await fetch('/api/coaches/session-types')
-        if (sessionTypesResponse.ok) {
-          const data = await sessionTypesResponse.json()
-          if (data.session_types && data.session_types.length > 0) {
-            const prices = data.session_types
-              .map((st: { price_individual_pence: number | null }) => st.price_individual_pence)
-              .filter((p: number | null): p is number => p !== null && p > 0)
-            if (prices.length > 0) {
-              setFetchedPrice(Math.min(...prices))
-            }
+        // AF-P-01 / Fix-SESSION-TYPES-CACHE: cached — dedupes across the
+        // per-step panel remounts (was an uncached fetch per step).
+        const data = await fetchSessionTypesCached()
+        if (data.session_types && data.session_types.length > 0) {
+          const prices = data.session_types
+            .map((st: { price_individual_pence: number | null }) => st.price_individual_pence)
+            .filter((p: number | null): p is number => p !== null && p > 0)
+          if (prices.length > 0) {
+            setFetchedPrice(Math.min(...prices))
           }
         }
       } catch {

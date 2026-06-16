@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Check, X, Plus } from 'lucide-react'
-import { fetchCoachProfileCached, fetchSportsListCached, fetchCoachSportsCached, clearCoachSportsCache } from '@/lib/onboarding-cache'
+import { fetchCoachProfileCached, fetchSportsListCached, fetchCoachSportsCached, clearCoachSportsCache, clearSessionTypesCache } from '@/lib/onboarding-cache'
 
 interface Sport {
   id: string
@@ -278,6 +278,9 @@ export function PricingStep() {
 
       // PERF-Sports-01: invalidate cache — these POSTs mutate coach_sports
       clearCoachSportsCache()
+      // Fix-SESSION-TYPES-CACHE: pricing affects the session-types min-price the
+      // preview shows — drop that cache too so it re-reads after a save.
+      clearSessionTypesCache()
 
       router.push('/coach/onboarding/qualifications')
     } catch (error) {
