@@ -9,10 +9,10 @@
 //
 // Provider strategy:
 //   - Mounted at CoachLayoutClient level — wraps every coach route.
-//   - Single useEffect fires Promise.all of 4 endpoints on mount.
-//   - Exposes today / upcoming / pendingApproval / thisWeek + refresh().
+//   - Single useEffect fires Promise.all of 3 endpoints on mount.
+//   - Exposes upcoming / pendingApproval / thisWeek + refresh().
 //
-// Cost: 4 parallel fetches per coach page load (~200ms wall-clock).
+// Cost: 3 parallel fetches per coach page load (~200ms wall-clock).
 // On /coach/dashboard this duplicates some server-rendered data — see
 // PERF-RIGHT-PANEL-DASHBOARD-DEDUPE follow-up.
 
@@ -41,7 +41,6 @@ export interface BookingListItem {
 
 interface BookingsContextValue {
   upcoming: BookingListItem[]
-  today: BookingListItem[]
   pendingApproval: BookingListItem[]
   /** Mon-Sun of the current week (server-local time), all statuses except
    *  cancelled. Powers the right-panel week strip + daily lineup. Capped
@@ -49,7 +48,7 @@ interface BookingsContextValue {
   thisWeek: BookingListItem[]
   loading: boolean
   error: string | null
-  /** Re-fires all 4 fetches in parallel. Call after status mutations
+  /** Re-fires all 3 fetches in parallel. Call after status mutations
    *  (approve / decline / cancel) so cached lists reflect current state. */
   refresh: () => Promise<void>
 }
@@ -62,7 +61,6 @@ interface BookingsApiResponse {
 
 export function BookingsProvider({ children }: { children: ReactNode }) {
   const [upcoming, setUpcoming] = useState<BookingListItem[]>([])
-  const [today, setToday] = useState<BookingListItem[]>([])
   const [pendingApproval, setPendingApproval] = useState<BookingListItem[]>([])
   const [thisWeek, setThisWeek] = useState<BookingListItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -79,9 +77,8 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
     setLoading(true)
     setError(null)
     try {
-      const [upRes, todayRes, pendingRes, weekRes] = await Promise.all([
+      const [upRes, pendingRes, weekRes] = await Promise.all([
         fetch('/api/coaches/bookings?tab=upcoming&page=1'),
-        fetch('/api/coaches/bookings?tab=today'),
         fetch('/api/coaches/bookings?tab=pending_approval'),
         fetch('/api/coaches/bookings?tab=week'),
       ])
@@ -93,13 +90,6 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
         setUpcoming(data.bookings ?? [])
       } else {
         setUpcoming([])
-      }
-
-      if (todayRes.ok) {
-        const data = await todayRes.json() as BookingsApiResponse
-        setToday(data.bookings ?? [])
-      } else {
-        setToday([])
       }
 
       if (pendingRes.ok) {
@@ -132,7 +122,6 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
     <BookingsContext.Provider
       value={{
         upcoming,
-        today,
         pendingApproval,
         thisWeek,
         loading,
