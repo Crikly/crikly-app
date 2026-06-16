@@ -11,6 +11,8 @@
 //     coach_profiles (ProfileStep + BookingPolicyStep).
 //   clearCoachSportsCache() — call from any handleSave that mutates
 //     coach_sports (PricingStep, the only writer in onboarding).
+//   clearSessionTypesCache() — call wherever session types / pricing change
+//     (PricingStep save). Any future coach_session_types writer must call it too.
 //   Other steps leave caches warm.
 //
 // All sessionStorage access is wrapped in try/catch — sessionStorage throws
@@ -20,6 +22,7 @@
 const COACH_PROFILE_KEY = 'coach_profile_cache'
 const SPORTS_LIST_KEY = 'sports_list_raw'
 const COACH_SPORTS_KEY = 'coach_sports_cache'
+const SESSION_TYPES_KEY = 'session_types_cache'
 
 export async function fetchCoachProfileCached() {
   try {
@@ -82,6 +85,26 @@ export async function fetchCoachSportsCached() {
   return data
 }
 
+export async function fetchSessionTypesCached() {
+  try {
+    const cached = sessionStorage.getItem(SESSION_TYPES_KEY)
+    if (cached) return JSON.parse(cached)
+  } catch {
+    // fall through to network
+  }
+
+  const resp = await fetch('/api/coaches/session-types')
+  if (!resp.ok) throw new Error('Failed to fetch session types')
+  const data = await resp.json()
+
+  try {
+    sessionStorage.setItem(SESSION_TYPES_KEY, JSON.stringify(data))
+  } catch {
+    // non-critical
+  }
+  return data
+}
+
 export function clearCoachProfileCache() {
   try {
     sessionStorage.removeItem(COACH_PROFILE_KEY)
@@ -93,6 +116,14 @@ export function clearCoachProfileCache() {
 export function clearCoachSportsCache() {
   try {
     sessionStorage.removeItem(COACH_SPORTS_KEY)
+  } catch {
+    // sessionStorage unavailable — no cache to clear, no-op
+  }
+}
+
+export function clearSessionTypesCache() {
+  try {
+    sessionStorage.removeItem(SESSION_TYPES_KEY)
   } catch {
     // sessionStorage unavailable — no cache to clear, no-op
   }
