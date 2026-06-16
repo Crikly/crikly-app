@@ -650,7 +650,7 @@ export function CoachRightPanel() {
             )}
             {showCompletionRow && (
               <Link
-                href="/coach/profile"
+                href="/coach/profile/edit"
                 className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 bg-white hover:border-gray-200 transition-colors"
               >
                 <div className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center shrink-0">
@@ -742,7 +742,7 @@ export function CoachRightPanel() {
           the action that makes the paused state actionable. */}
       <section>
         <Link
-          href="/coach/profile"
+          href="/coach/profile/edit"
           className="block p-4 rounded-xl border border-gray-100 bg-white hover:border-gray-200 transition-colors group"
         >
           <div className="flex items-baseline justify-between mb-3">
