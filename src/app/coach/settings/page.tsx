@@ -139,6 +139,9 @@ export default function CoachSettingsPage() {
       setIsPaused(newValue)
       // Clear the cached profile so the dashboard banner picks up the new state on next mount.
       clearCoachProfileCache()
+      // Fix-COACH-UX-05b: notify the sidebar dot + right-panel YOUR PROFILE
+      // section so they reflect the new paused state without a page reload.
+      window.dispatchEvent(new CustomEvent('crikly:profile-updated'))
     } catch (err) {
       console.error('[settings] pause toggle error:', err)
       setPauseError('Could not update. Please try again.')

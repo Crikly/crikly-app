@@ -23,12 +23,16 @@ interface CoachLayoutClientProps {
   children: React.ReactNode
   initialCoachName: string
   initialAvatarUrl: string | null
+  hasCoachProfile: boolean
+  isProfileLive: boolean
 }
 
 export function CoachLayoutClient({
   children,
   initialCoachName,
   initialAvatarUrl,
+  hasCoachProfile,
+  isProfileLive,
 }: CoachLayoutClientProps) {
   const router = useRouter()
   const pathname = usePathname()
@@ -40,6 +44,13 @@ export function CoachLayoutClient({
   // null = unknown (don't render dot until fetch resolves to avoid flash).
   const [profileLive, setProfileLive] = useState<boolean | null>(null)
   const [profilePaused, setProfilePaused] = useState(false)
+  // Fix-COACH-UX-05: avatar + name held in state (seeded from the server props)
+  // so a photo/name change in ProfileEdit updates the sidebar live, without a
+  // page reload. Updated only by the crikly:profile-updated listener below —
+  // never by the warm-cache mount fetch (which could overwrite the fresh server
+  // prop with a stale cached URL).
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(initialAvatarUrl)
+  const [coachName, setCoachName] = useState(initialCoachName)
 
   const isActive = (path: string) => pathname === path ||
     (path !== '/coach/dashboard' && pathname.startsWith(path))
@@ -52,13 +63,17 @@ export function CoachLayoutClient({
   // as a prop, but the universal panel reads from contexts directly now.
   const showRightPanel = !pathname.includes('/onboarding')
 
-  // Extract initials from coach name (same logic as OnboardingPreviewPanel)
-  const initials = initialCoachName
+  // Extract initials from coach name (same logic as OnboardingPreviewPanel).
+  // Fix-COACH-UX-05: derived from coachName state so it tracks a live rename.
+  // `?? ''` + filter guards against empty tokens now that coachName is writable
+  // state (an empty token would otherwise yield the literal "undefined").
+  const initials = coachName
     .split(' ')
-    .map(n => n[0])
+    .map(n => n[0] ?? '')
+    .filter(Boolean)
     .join('')
     .toUpperCase()
-    .substring(0, 2) || initialCoachName.charAt(0).toUpperCase() || 'C'
+    .substring(0, 2) || coachName.charAt(0).toUpperCase() || 'C'
 
   // Fetch notification count
   useEffect(() => {
@@ -124,17 +139,44 @@ export function CoachLayoutClient({
   useEffect(() => {
     const handleProfileUpdated = () => {
       fetchCoachProfileCached()
-        .then((p: { slug?: string; is_profile_live?: boolean; is_paused?: boolean } | null) => {
+        .then((p: {
+          slug?: string
+          is_profile_live?: boolean
+          is_paused?: boolean
+          // Fix-COACH-UX-05: avatar + name so the sidebar reflects a photo
+          // upload / rename without a page reload.
+          avatar_url?: string | null
+          full_name?: string
+        } | null) => {
           if (p?.slug) setCoachSlug(p.slug)
           if (p) {
             setProfileLive(!!p.is_profile_live)
             setProfilePaused(!!p.is_paused)
+            setAvatarUrl(p.avatar_url ?? null)
+            if (p.full_name) setCoachName(p.full_name)
           }
         })
         .catch(() => {})
     }
     window.addEventListener('crikly:profile-updated', handleProfileUpdated)
     return () => window.removeEventListener('crikly:profile-updated', handleProfileUpdated)
+  }, [])
+
+  // Fix-LAYOUT-02 / 02b: onboarding-completeness redirect, moved here from the
+  // server layout (a server-side redirect() was cached in the production RSC
+  // payload → 153-request loop). Fires ONCE on first entry into /coach/*: this
+  // layout persists across sibling /coach/* navigations and does not remount, so
+  // [] deps nudge an incomplete coach to onboarding once without bouncing every
+  // later navigation (REQ-C-001, dashboard-first). Reads mount-time props +
+  // pathname by design. UX-only gate — role + terms stay server-side; API routes
+  // use requireCoachContext.
+  useEffect(() => {
+    const incompleteCoach = !hasCoachProfile || !isProfileLive
+    const onOnboarding = pathname.startsWith('/coach/onboarding')
+    if (incompleteCoach && !onOnboarding) {
+      router.push('/coach/onboarding/profile')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // BUG-GO-LIVE-MODAL-SHARE: share URLs derived inside ShareLinkPanel from slug.
@@ -159,9 +201,9 @@ export function CoachLayoutClient({
           <div className="flex items-center gap-3 p-2 -mx-2 rounded-xl hover:bg-gray-50 transition-colors border border-transparent hover:border-gray-100">
             <Link href="/coach/dashboard" className="flex items-center gap-3 flex-1 min-w-0">
               <div className="relative">
-                {initialAvatarUrl && initialAvatarUrl.trim() !== '' ? (
+                {avatarUrl && avatarUrl.trim() !== '' ? (
                   <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 shadow-sm">
-                    <img src={initialAvatarUrl} alt={initialCoachName} className="w-full h-full object-cover" />
+                    <img src={avatarUrl} alt={coachName} className="w-full h-full object-cover" />
                   </div>
                 ) : (
                   <div className="w-10 h-10 bg-[#E6F1FB] rounded-full flex items-center justify-center shrink-0">
@@ -174,7 +216,7 @@ export function CoachLayoutClient({
                   </span>
                 )}
               </div>
-              <p className="text-base font-bold text-gray-900 leading-tight truncate">{initialCoachName}</p>
+              <p className="text-base font-bold text-gray-900 leading-tight truncate">{coachName}</p>
             </Link>
             <button
               onClick={() => setIsShareModalOpen(true)}

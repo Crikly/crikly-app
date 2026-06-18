@@ -49,22 +49,36 @@ export async function GET(request: Request) {
       || user.user_metadata?.picture
       || null
 
-    await supabase
+    // Fix-PROD-PROFILE-01 (1b): capture + log the result. The previous bare
+    // catch swallowed every error with no logging, hiding the real failure
+    // cause on all environments. ignoreDuplicates:false → ON CONFLICT DO UPDATE
+    // so a returning user's name/avatar stay current. auth_provider set from
+    // the real provider (was defaulting to 'email' for OAuth users).
+    const { error: upsertError } = await supabase
       .from('user_profiles')
       .upsert(
         {
           auth_user_id: user.id,
           full_name: fullName,
           avatar_url: avatarUrl,
+          auth_provider: user.app_metadata?.provider ?? 'email',
         },
         {
           onConflict: 'auth_user_id',
-          ignoreDuplicates: true
+          ignoreDuplicates: false,
         }
       )
-  } catch {
-    // Never block auth flow for profile creation failure
-    // User can complete profile later
+    if (upsertError) {
+      console.error('[auth/callback] user_profiles upsert failed:', {
+        userId: user.id,
+        code: upsertError.code,
+        message: upsertError.message,
+        details: upsertError.details,
+      })
+      // Still do not block the auth flow — user can complete profile later.
+    }
+  } catch (err) {
+    console.error('[auth/callback] user_profiles upsert threw:', err)
   }
 
   // AUTH-JOURNEY-01 / Fix-AUDIT-02: route by canonical user_profiles state

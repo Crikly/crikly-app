@@ -1,5 +1,4 @@
 import React from 'react'
-import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { CoachLayoutClient } from '@/components/coach/CoachLayoutClient'
@@ -44,20 +43,17 @@ export default async function CoachLayout({
     .single()
   if (!roleRow) redirect('/dashboard')
 
-  // 4. Has coach_profile? Coach role but no profile row means coach
-  // onboarding hasn't started — send them to step 1. BUT skip this redirect
-  // when already inside /coach/onboarding/* (the destination is itself wrapped
-  // by this layout, so redirecting unconditionally caused ERR_TOO_MANY_REDIRECTS
-  // — Fix-AUDIT-02). pathname comes from the x-pathname header set in proxy.ts.
-  const pathname = (await headers()).get('x-pathname') ?? ''
+  // 4. Coach profile — fetched to drive the onboarding-completeness redirect,
+  // which now runs CLIENT-SIDE in CoachLayoutClient (Fix-LAYOUT-02). A
+  // server-side redirect() here was cached in the production RSC payload and
+  // looped (Fix-LAYOUT-01 patched the wrong branch). UX redirect only — role
+  // (gate 3) and terms (gate 5) stay server-side; API routes use
+  // requireCoachContext.
   const { data: coachProfile } = await supabase
     .from('coach_profiles')
-    .select('id')
+    .select('id, is_profile_live')
     .eq('user_profile_id', userProfile.id)
     .single()
-  if (!coachProfile && !pathname.startsWith('/coach/onboarding')) {
-    redirect('/coach/onboarding/sport')
-  }
 
   // 5. Accepted terms? Must be done before any protected surface.
   if (!userProfile.terms_accepted_at) redirect('/onboarding/terms')
@@ -67,6 +63,8 @@ export default async function CoachLayout({
     <CoachLayoutClient
       initialCoachName={userProfile.full_name || ''}
       initialAvatarUrl={userProfile.avatar_url || null}
+      hasCoachProfile={!!coachProfile}
+      isProfileLive={coachProfile?.is_profile_live ?? false}
     >
       {children}
     </CoachLayoutClient>

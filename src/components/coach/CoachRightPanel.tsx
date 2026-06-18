@@ -263,6 +263,25 @@ export function CoachRightPanel() {
     return () => { cancelled = true }
   }, [])
 
+  // Fix-COACH-UX-05b: re-read the profile when it changes elsewhere (e.g. the
+  // Settings pause toggle, which clears the cache then dispatches
+  // crikly:profile-updated) so the YOUR PROFILE Live/Paused state updates
+  // without a page reload. Mirrors the CoachLayoutClient sidebar listener; the
+  // cache is cleared before dispatch, so this fetch is fresh.
+  useEffect(() => {
+    let cancelled = false
+    const handleProfileUpdated = () => {
+      fetchCoachProfileCached()
+        .then((p) => { if (!cancelled && p) setProfile(p as ProfileData) })
+        .catch(() => {})
+    }
+    window.addEventListener('crikly:profile-updated', handleProfileUpdated)
+    return () => {
+      cancelled = true
+      window.removeEventListener('crikly:profile-updated', handleProfileUpdated)
+    }
+  }, [])
+
   // BUG-COMPLETION-STRIPE: Stripe charges + payouts enablement — same source
   // ProfileEdit reads from (Fix-45 pattern). Cache hit → instant; cache miss
   // → one /api/payments/connect/onboard call, write back to cache. Replaces
@@ -631,7 +650,7 @@ export function CoachRightPanel() {
             )}
             {showCompletionRow && (
               <Link
-                href="/coach/profile"
+                href="/coach/profile/edit"
                 className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 bg-white hover:border-gray-200 transition-colors"
               >
                 <div className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center shrink-0">
@@ -723,7 +742,7 @@ export function CoachRightPanel() {
           the action that makes the paused state actionable. */}
       <section>
         <Link
-          href="/coach/profile"
+          href="/coach/profile/edit"
           className="block p-4 rounded-xl border border-gray-100 bg-white hover:border-gray-200 transition-colors group"
         >
           <div className="flex items-baseline justify-between mb-3">

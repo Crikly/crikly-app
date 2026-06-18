@@ -6,7 +6,7 @@ import { Camera, Calendar, ChevronDown, Check } from 'lucide-react'
 import { OnboardingPreviewPanel } from '../OnboardingPreviewPanel'
 import { LocationAutocomplete } from '../shared/LocationAutocomplete'
 import { createClient } from '@/lib/supabase/client'
-import { fetchCoachProfileCached, clearCoachProfileCache } from '@/lib/onboarding-cache'
+import { fetchCoachProfileCached, clearCoachProfileCache, fetchSessionTypesCached } from '@/lib/onboarding-cache'
 
 // Fix-129 (AF-H-15): map travel-radius UI string → integer miles
 function parseTravelRadius(s: string): number | null {
@@ -135,22 +135,24 @@ export function ProfileStep() {
           setSelectedLanguages(data.languages)
         }
         
-        // Fix-18a: Fetch minimum price from session types
-        const sessionTypesResponse = await fetch('/api/coaches/session-types')
-        if (sessionTypesResponse.ok) {
-          const sessionTypesData = await sessionTypesResponse.json()
-          
+        // Fix-18a / AF-P-01: minimum price from session types (cached). Non-fatal —
+        // wrapped so a session-types failure doesn't fail the whole profile load.
+        try {
+          const sessionTypesData = await fetchSessionTypesCached()
+
           // Find minimum price_individual_pence across all session types
           if (sessionTypesData.session_types && sessionTypesData.session_types.length > 0) {
             const prices = sessionTypesData.session_types
               .map((st: { price_individual_pence: number | null }) => st.price_individual_pence)
               .filter((price: number | null): price is number => price !== null && price > 0)
-            
+
             if (prices.length > 0) {
               const minPrice = Math.min(...prices)
               setMinPricePence(minPrice)
             }
           }
+        } catch {
+          // session types unavailable — min-price badge falls back; non-fatal
         }
       } catch (err) {
         console.error('Failed to fetch profile:', err)
@@ -231,13 +233,21 @@ export function ProfileStep() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           full_name: displayName,
+          // Fix-COACH-UX-02: persist the display name to coach_profiles.display_name
+          // (was never sent, so it stayed null). Defaults to full_name since the
+          // field is initialised from user_profiles.full_name.
+          display_name: displayName,
           bio,
           location_city: baseLocation,
           location_postcode: locationPostcode,
           location_lat: locationLat,
           location_lng: locationLng,
           years_experience: yearsExp,
-          gender: gender.toLowerCase().replace(/\s+/g, '_'),
+          // Fix-PROFILE-GENDER-01: omit gender entirely when unselected. The API
+          // only skips validation on `undefined` (not null), and JSON.stringify
+          // drops absent keys — so an unselected gender is never sent and the
+          // enum check is bypassed (no 400).
+          ...(gender ? { gender: gender.toLowerCase().replace(/\s+/g, '_') } : {}),
           languages: selectedLanguages, // Fix-16f: Include languages in save payload
           // Fix-103 (AF-C-11): persist uploaded avatar URL
           avatar_url: uploadedAvatarUrl,

@@ -182,6 +182,7 @@ feat(marketing): auth modal overlay Option A — booking intent preserved (MS-17
 | D-06 | GitHub Actions CI pipeline — type-check, lint, test, build | @DevOpsEngineer | 🟢 | chore/ci-setup | ✅ |
 | D-07 | Configure Vercel environments (development, staging, production) | @DevOpsEngineer | 🟢 | chore/vercel-config | ✅ |
 | D-08 | Verify crikly.app domain working end-to-end | @DevOpsEngineer | 🟢 | — | ✅ |
+| ENV-LOCAL-01 | Add supabase/config.toml — self-contained local auth (Mailpit email capture, enable_confirmations=false, Google OAuth via env() substitution) + .env scaffolding | @DevOpsEngineer | 🟡 | chore/local-env-setup | ✅ |
 
 ### 1B — Database Migrations
 

@@ -6,15 +6,19 @@
 //   - DS-RIGHT-PANEL-01 (May 2026) ungated this provider so the universal
 //     right-panel command-centre can read sessions on every coach route.
 //     Added a 4th fetch for ?tab=week (Mon-Sun) to power the week strip.
+//   - Fix-BOOKINGS-TODAY-DEAD dropped the unused ?tab=today fetch (4 → 3).
+//   - Fix-BOOKINGS-ALL-ENDPOINT collapsed the remaining 3 fetches into a
+//     single /api/coaches/bookings/all request (3 → 1; one connection).
 //
 // Provider strategy:
 //   - Mounted at CoachLayoutClient level — wraps every coach route.
-//   - Single useEffect fires Promise.all of 4 endpoints on mount.
-//   - Exposes today / upcoming / pendingApproval / thisWeek + refresh().
+//   - Single useEffect fetches /api/coaches/bookings/all on mount; that
+//     endpoint partitions upcoming / pendingApproval / thisWeek server-side.
+//   - Exposes upcoming / pendingApproval / thisWeek + refresh().
 //
-// Cost: 4 parallel fetches per coach page load (~200ms wall-clock).
-// On /coach/dashboard this duplicates some server-rendered data — see
-// PERF-RIGHT-PANEL-DASHBOARD-DEDUPE follow-up.
+// Cost: 1 fetch per coach page load (Fix-BOOKINGS-ALL-ENDPOINT — was 3 parallel
+// fetches, each a separate server connection). On /coach/dashboard this still
+// duplicates some server-rendered data — see PERF-RIGHT-PANEL-DASHBOARD-DEDUPE.
 
 'use client'
 
@@ -41,7 +45,6 @@ export interface BookingListItem {
 
 interface BookingsContextValue {
   upcoming: BookingListItem[]
-  today: BookingListItem[]
   pendingApproval: BookingListItem[]
   /** Mon-Sun of the current week (server-local time), all statuses except
    *  cancelled. Powers the right-panel week strip + daily lineup. Capped
@@ -49,20 +52,21 @@ interface BookingsContextValue {
   thisWeek: BookingListItem[]
   loading: boolean
   error: string | null
-  /** Re-fires all 4 fetches in parallel. Call after status mutations
+  /** Re-fires all 3 fetches in parallel. Call after status mutations
    *  (approve / decline / cancel) so cached lists reflect current state. */
   refresh: () => Promise<void>
 }
 
 const BookingsContext = createContext<BookingsContextValue | null>(null)
 
-interface BookingsApiResponse {
-  bookings?: BookingListItem[]
+interface BookingsAllResponse {
+  upcoming?: BookingListItem[]
+  pendingApproval?: BookingListItem[]
+  thisWeek?: BookingListItem[]
 }
 
 export function BookingsProvider({ children }: { children: ReactNode }) {
   const [upcoming, setUpcoming] = useState<BookingListItem[]>([])
-  const [today, setToday] = useState<BookingListItem[]>([])
   const [pendingApproval, setPendingApproval] = useState<BookingListItem[]>([])
   const [thisWeek, setThisWeek] = useState<BookingListItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -70,7 +74,7 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
 
   // PERF-02b: in-flight guard prevents React strict-mode double-invoke
   // (and back-to-back refresh() calls during fast user actions) from
-  // firing two parallel Promise.all batches.
+  // firing two parallel fetches.
   const fetchingRef = useRef(false)
 
   const fetchAll = useCallback(async () => {
@@ -79,44 +83,28 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
     setLoading(true)
     setError(null)
     try {
-      const [upRes, todayRes, pendingRes, weekRes] = await Promise.all([
-        fetch('/api/coaches/bookings?tab=upcoming&page=1'),
-        fetch('/api/coaches/bookings?tab=today'),
-        fetch('/api/coaches/bookings?tab=pending_approval'),
-        fetch('/api/coaches/bookings?tab=week'),
-      ])
-
-      // Each tab's response is independent — a partial failure leaves the
-      // other tabs populated rather than wiping all four.
-      if (upRes.ok) {
-        const data = await upRes.json() as BookingsApiResponse
-        setUpcoming(data.bookings ?? [])
+      // Fix-BOOKINGS-ALL-ENDPOINT: one request → one server connection. The
+      // /all endpoint partitions the three buckets server-side and resolves
+      // names once. All-or-nothing: a 500 empties all three + sets error.
+      const res = await fetch('/api/coaches/bookings/all')
+      if (res.ok) {
+        const data = await res.json() as BookingsAllResponse
+        setUpcoming(data.upcoming ?? [])
+        setPendingApproval(data.pendingApproval ?? [])
+        setThisWeek(data.thisWeek ?? [])
       } else {
         setUpcoming([])
-      }
-
-      if (todayRes.ok) {
-        const data = await todayRes.json() as BookingsApiResponse
-        setToday(data.bookings ?? [])
-      } else {
-        setToday([])
-      }
-
-      if (pendingRes.ok) {
-        const data = await pendingRes.json() as BookingsApiResponse
-        setPendingApproval(data.bookings ?? [])
-      } else {
         setPendingApproval([])
-      }
-
-      if (weekRes.ok) {
-        const data = await weekRes.json() as BookingsApiResponse
-        setThisWeek(data.bookings ?? [])
-      } else {
         setThisWeek([])
+        setError('Failed to load bookings. Please try again.')
       }
     } catch (err) {
       console.error('[BookingsContext] fetchAll error:', err)
+      // Consistent with the non-OK branch (all-or-nothing): clear all three
+      // so a failed load never leaves stale cards beside the error banner.
+      setUpcoming([])
+      setPendingApproval([])
+      setThisWeek([])
       setError('Failed to load bookings. Please try again.')
     } finally {
       setLoading(false)
@@ -132,7 +120,6 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
     <BookingsContext.Provider
       value={{
         upcoming,
-        today,
         pendingApproval,
         thisWeek,
         loading,
