@@ -936,6 +936,27 @@ Only THEN start the next feature branch.
 
 ---
 
+## Branch Promotion — Enforced Flow
+
+Every change — including temp diagnostics, hotfixes, and docs — must
+flow through this chain and no other:
+
+develop → validate in develop → staging → validate in staging → main
+
+Rules:
+1. Never commit or merge directly to staging or main — they are
+   promotion-only targets.
+2. Validate in develop before promoting (CI must pass: build ✅ lint ✅
+   type-check ✅).
+3. Validate in staging before promoting to main (full manual E2E
+   verification).
+4. A session that merges code to develop must promote to staging before
+   closing — develop never stays ahead of staging overnight.
+5. Temp diagnostic branches are discarded locally — never merged to
+   any branch.
+
+---
+
 ## Quality Gate — Before Any Commit
 
 ```
