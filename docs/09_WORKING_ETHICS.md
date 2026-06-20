@@ -1359,6 +1359,61 @@ Fix]. Canonical Fix ID is Fix-MM in this log."
 
 ---
 
+## Step Context Summary — Required on Every Step
+
+Before executing any step, output this header:
+📍 Where we are:  [Task ID] | [Block or Phase name]
+
+📌 This step:     Step [N] — [Step name]
+
+🎯 Why:           [One sentence — the purpose of this step]
+
+Applies to Step 0, Step 1, and every subsequent step. No step executes
+without this header.
+
+---
+
+## Module Protection Rule
+
+The following surfaces are live in production and must not be touched
+without explicit blast radius analysis in the Step 0 plan:
+
+- Coach Module routes: /coaches/[id], /dashboard/coach/*, /onboarding/*
+- Auth routes: /login, /register, /verify-email, /auth/callback
+- Any shared component imported by the Coach Module
+
+Every Step 0 plan for a task that could touch a protected surface must include:
+
+1. Files I will modify that are used by live modules: [list or "none"]
+2. Blast radius: [what live behaviour could change, or "zero"]
+3. If blast radius is anything other than zero → STOP and escalate to
+   Lasith before Step 1 proceeds.
+
+This rule applies regardless of the task risk level — even 🟢 tasks.
+
+---
+
+## Regression Gate — Required Before Every Commit
+
+No code is committed without passing the following:
+
+🟢 All tasks:
+- npx tsc --noEmit — zero errors
+- npm run lint — zero errors
+
+🟡/🔴 Any route or component change:
+- npm run test — all Jest pass
+
+🟡/🔴 Any change touching live UI routes:
+- npm run test:e2e — 38/39 pass (T1.4 known flaky skip)
+
+🔴 Any DB/RLS change:
+- Manually verify RLS policies still protect data before committing
+
+If any gate fails → fix before committing. Never commit failing tests.
+
+---
+
 *Crikly Working Ethics v1.10 — 12 May 2026 — L-07-RM-NEXT-BAN*
 *Review after each phase completion.*
 *Any process change must be agreed with Lasith first.*
