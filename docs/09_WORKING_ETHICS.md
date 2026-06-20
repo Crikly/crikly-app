@@ -936,6 +936,27 @@ Only THEN start the next feature branch.
 
 ---
 
+## Branch Promotion — Enforced Flow
+
+Every change — including temp diagnostics, hotfixes, and docs — must
+flow through this chain and no other:
+
+develop → validate in develop → staging → validate in staging → main
+
+Rules:
+1. Never commit or merge directly to staging or main — they are
+   promotion-only targets.
+2. Validate in develop before promoting (CI must pass: build ✅ lint ✅
+   type-check ✅).
+3. Validate in staging before promoting to main (full manual E2E
+   verification).
+4. A session that merges code to develop must promote to staging before
+   closing — develop never stays ahead of staging overnight.
+5. Temp diagnostic branches are discarded locally — never merged to
+   any branch.
+
+---
+
 ## Quality Gate — Before Any Commit
 
 ```
@@ -1123,6 +1144,28 @@ If a task is done in Claude Code but not marked in Notion — **it doesn't exist
 ### Rule
 > If it happened, it's in Notion.
 > If it's not in Notion, it didn't happen.
+
+---
+
+## Build Plan DB — Update Responsibility
+
+The Build Plan database (Notion) is the live source of truth for the status of
+every build task (C-XX, P-XX). Keeping it accurate is a process obligation.
+
+**Claude (chat) is the sole updater of the Build Plan DB. Claude Code never writes to it.**
+
+| Step | Status change | Responsible |
+|---|---|---|
+| Plan approved (Step 0), not yet started | stays ⚪ Planned | — |
+| Work begins (approved prompt handed to Claude Code) | → 🟡 In Progress | Claude (chat) |
+| Blocked (waiting on a prerequisite or upstream task) | → 🔴 Blocked, blocker named in Notes | Claude (chat) |
+| Merged through to the target branch | → ✅ Complete, log branch/develop/staging SHA + PR # | Claude (chat), using SHAs Lasith provides |
+
+Rules:
+1. Claude Code never updates the Build Plan DB — it executes code only (separation of duties).
+2. Nothing is marked ✅ Complete without Lasith's confirmation; he owns every merge and is the source of the SHAs.
+3. SHA logging is mandatory on completion — branch commit SHA, develop merge SHA, staging merge SHA, and PR number, logged immediately after the merge.
+4. Bug fixes (Fix-XX) go in the Bug & Fix Log, never the Build Plan, with the same SHA-logging rule.
 
 ---
 
