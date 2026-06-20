@@ -1126,6 +1126,28 @@ If a task is done in Claude Code but not marked in Notion — **it doesn't exist
 
 ---
 
+## Build Plan DB — Update Responsibility
+
+The Build Plan database (Notion) is the live source of truth for the status of
+every build task (C-XX, P-XX). Keeping it accurate is a process obligation.
+
+**Claude (chat) is the sole updater of the Build Plan DB. Claude Code never writes to it.**
+
+| Step | Status change | Responsible |
+|---|---|---|
+| Plan approved (Step 0), not yet started | stays ⚪ Planned | — |
+| Work begins (approved prompt handed to Claude Code) | → 🟡 In Progress | Claude (chat) |
+| Blocked (waiting on a prerequisite or upstream task) | → 🔴 Blocked, blocker named in Notes | Claude (chat) |
+| Merged through to the target branch | → ✅ Complete, log branch/develop/staging SHA + PR # | Claude (chat), using SHAs Lasith provides |
+
+Rules:
+1. Claude Code never updates the Build Plan DB — it executes code only (separation of duties).
+2. Nothing is marked ✅ Complete without Lasith's confirmation; he owns every merge and is the source of the SHAs.
+3. SHA logging is mandatory on completion — branch commit SHA, develop merge SHA, staging merge SHA, and PR number, logged immediately after the merge.
+4. Bug fixes (Fix-XX) go in the Bug & Fix Log, never the Build Plan, with the same SHA-logging rule.
+
+---
+
 ## Notion Page Placement — Enforced Rule
 
 NEVER create a Notion page at the Crikly HQ root level.
