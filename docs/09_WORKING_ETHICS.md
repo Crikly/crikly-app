@@ -1149,23 +1149,17 @@ If a task is done in Claude Code but not marked in Notion — **it doesn't exist
 
 ## Build Plan DB — Update Responsibility
 
-The Build Plan database (Notion) is the live source of truth for the status of
-every build task (C-XX, P-XX). Keeping it accurate is a process obligation.
+Claude Code updates the Build Plan DB (Notion) as the primary updater
+on task completion. Claude (chat) cross-checks the update and updates
+block/phase-level status as tasks complete. Lasith is the final arbiter
+of all status decisions.
 
-**Claude (chat) is the sole updater of the Build Plan DB. Claude Code never writes to it.**
+SHA-logging is mandatory on completion — branch commit SHA, develop
+merge SHA, staging merge SHA, and PR number, logged immediately after
+the merge.
 
-| Step | Status change | Responsible |
-|---|---|---|
-| Plan approved (Step 0), not yet started | stays ⚪ Planned | — |
-| Work begins (approved prompt handed to Claude Code) | → 🟡 In Progress | Claude (chat) |
-| Blocked (waiting on a prerequisite or upstream task) | → 🔴 Blocked, blocker named in Notes | Claude (chat) |
-| Merged through to the target branch | → ✅ Complete, log branch/develop/staging SHA + PR # | Claude (chat), using SHAs Lasith provides |
-
-Rules:
-1. Claude Code never updates the Build Plan DB — it executes code only (separation of duties).
-2. Nothing is marked ✅ Complete without Lasith's confirmation; he owns every merge and is the source of the SHAs.
-3. SHA logging is mandatory on completion — branch commit SHA, develop merge SHA, staging merge SHA, and PR number, logged immediately after the merge.
-4. Bug fixes (Fix-XX) go in the Bug & Fix Log, never the Build Plan, with the same SHA-logging rule.
+Bug fixes (Fix-XX) go in the Bug & Fix Log, never the Build Plan.
+Same SHA-logging rule applies.
 
 ---
 
@@ -1411,6 +1405,34 @@ No code is committed without passing the following:
 - Manually verify RLS policies still protect data before committing
 
 If any gate fails → fix before committing. Never commit failing tests.
+
+---
+
+## Build Plan Structure & Status Rule
+
+### Task Hierarchy
+
+Every Build Plan item follows this three-level hierarchy:
+
+  Level 1 — Block / Phase    (e.g. Block 0 — Guest Booking MVP)
+  Level 2 — Task             (e.g. P-00b — Coach public profile fixes)
+  Level 3 — User Stories     (e.g. US-P00b-01 — CTA clarity)
+
+Every task must have user stories written and added to its Build Plan
+page before build begins.
+User story format: "As a [role], I want to [action] so that [benefit]."
+
+### Status Update Rule — All Levels
+
+Status must be kept current at every level:
+
+- User Story: marked ✅ as each story is delivered and verified.
+- Task: updated to ✅ Complete when all its user stories are delivered.
+- Block / Phase: updated to ✅ Complete when all tasks within it complete.
+
+Claude Code updates task-level status (primary).
+Claude (chat) cross-checks and updates block/phase-level status.
+No level is left stale — all three levels must reflect current build state.
 
 ---
 
