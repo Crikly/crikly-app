@@ -1436,6 +1436,47 @@ No level is left stale — all three levels must reflect current build state.
 
 ---
 
+## Local Testing Gate — Required Before Any Branch Promotion
+
+Local testing is the primary QA environment. Every feature is tested
+locally by Lasith before any branch promotion.
+
+### Feature branch → develop
+- CC runs the regression gate (npx tsc --noEmit, npm run lint,
+  npm run test, npm run test:e2e)
+- Lasith pulls the feature branch locally and tests
+  (npm run dev → localhost:3000)
+- Lasith gives explicit approval before CC merges to develop
+
+### Develop → staging
+- Lasith tests the integrated develop branch locally
+  (git checkout develop, npm run dev → localhost:3000)
+- Lasith gives explicit approval before staging promotion
+
+### Staging → main
+- Lasith validates on staging.crikly.app
+- Milestone complete (see Milestone Release Rule below)
+- Lasith gives explicit milestone release sign-off
+- This is the only path to main
+
+---
+
+## Milestone Release Rule
+
+Main is a milestone release branch only.
+
+Main is updated ONLY when ALL of the following are true:
+1. All tasks in the milestone are complete and merged to develop
+2. The integrated feature set is validated locally by Lasith
+3. The feature set is validated on staging.crikly.app by Lasith
+4. Lasith gives explicit milestone release sign-off
+
+No individual feature task ever merges directly to main.
+Staging accumulates validated features until a milestone is ready to ship.
+Milestone definitions live in the Release Plan (Notion — Product section).
+
+---
+
 *Crikly Working Ethics v1.10 — 12 May 2026 — L-07-RM-NEXT-BAN*
 *Review after each phase completion.*
 *Any process change must be agreed with Lasith first.*
