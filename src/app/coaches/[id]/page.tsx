@@ -1,6 +1,5 @@
 import { Suspense } from 'react'
 import type { Metadata } from 'next'
-import { Fraunces } from 'next/font/google'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
@@ -13,14 +12,17 @@ import {
   Users,
   ChevronRight,
   Calendar,
+  CalendarDays,
   CheckCircle2,
   Globe,
+  ArrowDown,
 } from 'lucide-react'
 import { BioExpander } from './_components/BioExpander'
 import { ShareButton } from './_components/ShareButton'
 import { BookingCard } from './_components/BookingCard'
-
-const fraunces = Fraunces({ subsets: ['latin'], weight: ['500'], variable: '--font-fraunces' })
+import { ProgrammesCarousel } from './_components/ProgrammesCarousel'
+import { fetchCoachProgrammes } from './_components/_data/programmes'
+import { PublicFooter } from '@/components/public/PublicFooter'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -213,8 +215,15 @@ export default async function CoachProfilePage({
   if (!coach) notFound()
 
   const avail = await fetchAvailability(coach.id)
+  // P-00b: bookable group programmes (Model A) — separate RLS-respecting fetch,
+  // not via the coach API route. Empty array hides the programmes UI entirely.
+  const programmes = await fetchCoachProgrammes(coach.id)
 
   const minPrice = getMinPrice(coach.sports)
+  const minProgrammePrice =
+    programmes.length > 0 ? Math.min(...programmes.map(p => p.pricePence)) : null
+  const fromCandidates = [minPrice, minProgrammePrice].filter((v): v is number => v !== null)
+  const mobileFromPence = fromCandidates.length > 0 ? Math.min(...fromCandidates) : null
   const primaryPhoto = coach.photos.find(p => p.is_primary) ?? coach.photos[0] ?? null
   // eslint-disable-next-line react-hooks/purity
   const galleryPhotos = [...coach.photos].sort(() => Math.random() - 0.5).slice(0, 5)
@@ -252,11 +261,9 @@ export default async function CoachProfilePage({
         </nav>
 
         {/* ── Coach name + meta row ───────────────────────────────────────── */}
-        <div className={`mt-6 mb-4 ${fraunces.variable}`}>
-          <h1
-            className="text-[34px] tracking-tight text-gray-900 leading-tight"
-            style={{ fontFamily: 'var(--font-fraunces), Georgia, serif', fontWeight: 500 }}
-          >
+        {/* P-00b: DM Sans weight-600 (design system) — was Fraunces in the mock. */}
+        <div className="mt-6 mb-4">
+          <h1 className="text-[34px] font-semibold tracking-tight text-gray-900 leading-tight">
             {coach.full_name}
           </h1>
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-2 text-sm text-gray-700">
@@ -293,6 +300,67 @@ export default async function CoachProfilePage({
 
         {/* ── Trust row ───────────────────────────────────────────────────── */}
         <TrustRow coach={coach} />
+
+        {/* ── Train with [coach] — primary CTA (P-00b) ────────────────────── */}
+        <section aria-labelledby="getstarted-heading" className="mt-9">
+          <h2 id="getstarted-heading" className="text-xl font-bold text-gray-900 mb-1">
+            Train with {coach.full_name.split(' ')[0]}
+          </h2>
+          <p className="text-sm text-gray-500 mb-5">
+            Book a private session{programmes.length > 0 ? ', or join one of their group programmes' : ''}.
+          </p>
+          <div className={`grid gap-4 ${programmes.length > 0 ? 'sm:grid-cols-2' : ''}`}>
+            {/* Primary: 1-on-1 */}
+            <div className="flex flex-col rounded-2xl border border-gray-200 p-5">
+              <h3 className="text-[16px] font-bold text-gray-900">One-to-one coaching</h3>
+              <p className="text-sm text-gray-600 mt-1.5 leading-relaxed">
+                Private sessions built around your child. You pick the day and time.
+              </p>
+              <div className="flex items-center justify-between gap-3 mt-auto pt-5">
+                <span className="text-[15px] text-gray-900">
+                  {minPrice !== null ? (
+                    <>
+                      <span className="font-bold">{formatPence(minPrice)}</span>
+                      <span className="text-gray-500 text-sm"> / session</span>
+                    </>
+                  ) : (
+                    <span className="text-gray-500 text-sm">Price on request</span>
+                  )}
+                </span>
+                <Link
+                  href={`/book/${coach.id}`}
+                  data-testid="cta-book-1to1"
+                  className="inline-flex items-center justify-center h-11 px-5 rounded-xl bg-brand-600 text-white font-semibold text-sm hover:bg-brand-700 active:scale-[0.99] transition-all"
+                >
+                  Book a session
+                </Link>
+              </div>
+            </div>
+
+            {/* Secondary: programmes (only when the coach has live programmes) */}
+            {programmes.length > 0 && (
+              <div className="flex flex-col rounded-2xl border border-gray-200 p-5">
+                <h3 className="text-[16px] font-bold text-gray-900">Group programmes</h3>
+                <p className="text-sm text-gray-600 mt-1.5 leading-relaxed">
+                  Weekly academies and holiday camps in small groups.
+                </p>
+                <div className="flex items-center justify-between gap-3 mt-auto pt-5">
+                  <span className="text-[15px] text-gray-900">
+                    {minProgrammePrice !== null && (
+                      <span className="font-bold">From {formatPence(minProgrammePrice)}</span>
+                    )}
+                  </span>
+                  <Link
+                    href="#programmes"
+                    className="group inline-flex items-center gap-1.5 h-11 px-5 rounded-xl border border-gray-300 text-gray-900 font-semibold text-sm hover:border-brand-600 hover:text-brand-600 transition-colors"
+                  >
+                    See programmes <ArrowDown className="w-4 h-4 group-hover:translate-y-0.5 transition-transform" />
+                  </Link>
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
 
         {/* ── Main layout ─────────────────────────────────────────────────── */}
         <div className="grid lg:grid-cols-[minmax(0,1fr)_380px] gap-12 items-start mt-10">
@@ -337,11 +405,24 @@ export default async function CoachProfilePage({
               </section>
             )}
 
-            {/* Sports & Pricing */}
+            {/* Group programmes (P-00b) — only when the coach has live programmes */}
+            {programmes.length > 0 && (
+              <section id="programmes" aria-labelledby="programmes-heading" className="pt-10 pb-8 border-t border-gray-100">
+                <h2 id="programmes-heading" className="text-xl font-bold text-gray-900">
+                  Group programmes
+                </h2>
+                <p className="text-sm text-gray-500 mb-5">
+                  Weekly academies and holiday camps. Reserve a spot — payment is held until the first session.
+                </p>
+                <ProgrammesCarousel programmes={programmes} coachId={coach.id} />
+              </section>
+            )}
+
+            {/* 1-on-1 Sessions & Pricing */}
             {coach.sports.length > 0 && (
               <section aria-labelledby="sports-heading" className="pt-10 pb-8 border-t border-gray-100">
                 <h2 id="sports-heading" className="text-xl font-bold text-gray-900 mb-4">
-                  Sessions &amp; Pricing
+                  1-on-1 sessions &amp; pricing
                 </h2>
                 <div className="space-y-4">
                   {coach.sports.map(sport => (
@@ -398,22 +479,25 @@ export default async function CoachProfilePage({
             {/* Availability */}
             {avail && avail.availability.length > 0 && (
               <section aria-labelledby="availability-heading" className="pt-10 pb-8 border-t border-gray-100">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 id="availability-heading" className="text-xl font-bold text-gray-900">
-                    Availability
-                  </h2>
-                  <Link
-                    href="#availability-heading"
-                    className="text-sm text-[#0077CC] font-medium hover:underline flex items-center gap-1"
-                  >
-                    View full calendar <ChevronRight className="w-3.5 h-3.5" />
-                  </Link>
-                </div>
+                <h2 id="availability-heading" className="text-xl font-bold text-gray-900 mb-4">
+                  Availability
+                </h2>
                 <AvailabilityGrid
                   templates={avail.availability}
                   blockedDates={avail.blocked_dates}
                   minAdvanceHours={avail.booking_policy.min_advance_hours}
                 />
+                {/* P-00b: real, styled CTA replacing the dead #availability-heading anchor.
+                    Target route /coaches/[id]/availability is built later (link only). */}
+                <Link
+                  href={`/coaches/${coach.id}/availability`}
+                  data-testid="view-full-calendar"
+                  className="mt-5 flex items-center justify-center gap-2 w-full h-12 rounded-xl border-[1.5px] border-brand-600 text-brand-600 font-semibold hover:bg-brand-50 active:scale-[0.99] transition-all"
+                >
+                  <CalendarDays className="w-[18px] h-[18px]" />
+                  View full calendar
+                  <ChevronRight className="w-4 h-4" />
+                </Link>
               </section>
             )}
 
@@ -466,21 +550,29 @@ export default async function CoachProfilePage({
         </div>
       </main>
 
+      {/* ── Site footer (P-00b fix) — shared full footer, matches the listing page ── */}
+      <PublicFooter variant="full" />
+
       {/* ── Mobile sticky booking bar ───────────────────────────────────── */}
-      <div className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white border-t border-gray-200 px-4 py-3 flex items-center justify-between gap-4">
+      <div className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white border-t border-gray-200 px-4 py-3 flex items-center justify-between gap-4 shadow-[0_-4px_16px_rgba(15,23,42,0.06)]">
         <div>
-          {minPrice !== null ? (
-            <p className="text-base font-bold text-gray-900">
-              From {formatPence(minPrice)}
-              <span className="font-normal text-gray-500 text-sm"> / session</span>
-            </p>
+          {mobileFromPence !== null ? (
+            <>
+              <p className="text-base font-bold text-gray-900 leading-tight">
+                From {formatPence(mobileFromPence)}
+                <span className="font-normal text-gray-500 text-sm"> / session</span>
+              </p>
+              <p className="text-[11px] text-gray-500">
+                {programmes.length > 0 ? '1-on-1 & group programmes' : '1-on-1 coaching'}
+              </p>
+            </>
           ) : (
             <p className="text-sm text-gray-500">Price on request</p>
           )}
         </div>
         <Link
           href={`/book/${coach.id}`}
-          className="flex-shrink-0 inline-flex items-center justify-center h-11 px-6 rounded-xl bg-[#0077CC] text-white font-semibold text-sm hover:bg-[#005fa3] transition-colors"
+          className="flex-shrink-0 inline-flex items-center justify-center h-12 px-7 rounded-xl bg-brand-600 text-white font-bold text-sm hover:bg-brand-700 active:scale-[0.98] transition-all shadow-sm"
           data-testid="mobile-book-cta"
         >
           Book a session
