@@ -22,6 +22,7 @@ import { ShareButton } from './_components/ShareButton'
 import { BookingCard } from './_components/BookingCard'
 import { ProgrammesCarousel } from './_components/ProgrammesCarousel'
 import { fetchCoachProgrammes } from './_components/_data/programmes'
+import { PublicFooter } from '@/components/public/PublicFooter'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -548,6 +549,9 @@ export default async function CoachProfilePage({
           </aside>
         </div>
       </main>
+
+      {/* ── Site footer (P-00b fix) — shared full footer, matches the listing page ── */}
+      <PublicFooter variant="full" />
 
       {/* ── Mobile sticky booking bar ───────────────────────────────────── */}
       <div className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white border-t border-gray-200 px-4 py-3 flex items-center justify-between gap-4 shadow-[0_-4px_16px_rgba(15,23,42,0.06)]">
