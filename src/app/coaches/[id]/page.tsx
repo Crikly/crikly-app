@@ -474,10 +474,12 @@ export default async function CoachProfilePage({
                   blockedDates={avail.blocked_dates}
                   minAdvanceHours={avail.booking_policy.min_advance_hours}
                 />
-                {/* P-00b: real, styled CTA replacing the dead #availability-heading anchor.
-                    Target route /coaches/[id]/availability is built later (link only). */}
+                {/* P-00b: styled CTA to the full availability page. Use the URL
+                    `id` param (not coach.id) so the slug is preserved — a visitor
+                    on /coaches/<slug> stays on the slug, not the UUID. The
+                    availability route resolves slug-or-UUID via the same API. */}
                 <Link
-                  href={`/coaches/${coach.id}/availability`}
+                  href={`/coaches/${id}/availability`}
                   data-testid="view-full-calendar"
                   className="mt-5 flex items-center justify-center gap-2 w-full h-12 rounded-xl border-[1.5px] border-brand-600 text-brand-600 font-semibold hover:bg-brand-50 active:scale-[0.99] transition-all"
                 >
