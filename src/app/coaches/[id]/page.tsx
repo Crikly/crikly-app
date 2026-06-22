@@ -18,7 +18,7 @@ import {
   ArrowDown,
 } from 'lucide-react'
 import { BioExpander } from './_components/BioExpander'
-import { ShareButton } from './_components/ShareButton'
+import { PublicHeader } from '@/components/nav/PublicHeader'
 import { BookingCard } from './_components/BookingCard'
 import { ProgrammesCarousel } from './_components/ProgrammesCarousel'
 import { fetchCoachProgrammes } from './_components/_data/programmes'
@@ -230,22 +230,9 @@ export default async function CoachProfilePage({
 
   return (
     <div className="min-h-screen bg-white">
-      {/* ── Top nav ─────────────────────────────────────────────────────── */}
-      <nav className="sticky top-0 z-40 h-16 bg-white border-b border-gray-100 flex items-center justify-between px-4 sm:px-6">
-        <Link href="/" data-testid="nav-logo">
-          <img src="/logo.png" alt="Crikly" className="w-36 h-auto object-contain" />
-        </Link>
-        <div className="flex items-center gap-3">
-          <ShareButton coachName={coach.full_name} />
-          <Link
-            href="/coaches"
-            className="text-sm font-medium text-gray-600 hover:text-gray-900 flex items-center gap-1"
-          >
-            <ChevronRight className="w-4 h-4 rotate-180" />
-            Back to search
-          </Link>
-        </div>
-      </nav>
+      {/* ── Top nav — shared public header (P-00b-Nav): logo + middle nav +
+          auth-aware Log in / Get started. Replaces the old minimal nav. ── */}
+      <PublicHeader />
 
       <main className="max-w-6xl mx-auto px-4 sm:px-6 pb-32 lg:pb-16 pt-6">
         {/* Breadcrumb — desktop only */}

@@ -15,7 +15,7 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ProfileDropdown } from '@/components/nav/ProfileDropdown'
+import { PublicHeader } from '@/components/nav/PublicHeader'
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import {
   ArrowRight,
@@ -146,19 +146,6 @@ function useCountUp() {
   }, [])
 }
 
-// ─── Nav scroll hook ─────────────────────────────────────────────────────────
-
-function useNavScroll() {
-  const [scrolled, setScrolled] = useState(false)
-  useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 16)
-    onScroll()
-    window.addEventListener('scroll', onScroll, { passive: true })
-    return () => window.removeEventListener('scroll', onScroll)
-  }, [])
-  return scrolled
-}
-
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
 function ActivityMenu({
@@ -225,7 +212,6 @@ function ActivityMenu({
 
 export default function HomePage() {
   const router = useRouter()
-  const navScrolled = useNavScroll()
   const { message: toastMessage, show: showToast } = useToast()
   useReveal()
   useCountUp()
@@ -316,47 +302,9 @@ export default function HomePage() {
   return (
     <main className="min-h-screen bg-transparent font-sans text-neutral-900 antialiased">
       {/* ═══ NAV ═════════════════════════════════════════════════════════ */}
-      <header
-        className={`sticky top-0 z-[60] flex items-center justify-between border-b px-10 py-4 transition-all duration-200 ease-out ${
-          navScrolled
-            ? 'border-neutral-100 bg-white/80 backdrop-blur-[16px] backdrop-saturate-150'
-            : 'border-transparent bg-transparent'
-        } max-md:px-[22px]`}
-      >
-        <a href="#hero" aria-label="Crikly home" className="no-underline">
-          <Image
-            src="/logo.png"
-            alt="Crikly"
-            width={120}
-            height={32}
-            className="h-8 w-auto"
-            priority
-          />
-        </a>
-        <nav aria-label="Primary" className="absolute left-1/2 hidden -translate-x-1/2 gap-1.5 md:flex">
-          <a
-            href="#how"
-            className="whitespace-nowrap rounded-[10px] px-3.5 py-2 text-[15px] font-medium text-neutral-600 no-underline transition-colors hover:bg-neutral-50 hover:text-gray-900"
-          >
-            How it works
-          </a>
-          <a
-            href="#activities"
-            className="whitespace-nowrap rounded-[10px] px-3.5 py-2 text-[15px] font-medium text-neutral-600 no-underline transition-colors hover:bg-neutral-50 hover:text-gray-900"
-          >
-            Activities
-          </a>
-          <a
-            href="#personas"
-            className="whitespace-nowrap rounded-[10px] px-3.5 py-2 text-[15px] font-medium text-neutral-600 no-underline transition-colors hover:bg-neutral-50 hover:text-gray-900"
-          >
-            For coaches
-          </a>
-        </nav>
-        {/* Fix-NAV-01: avatar + dropdown when logged in, Log in / Get started
-            buttons when logged out (handled inside the component). */}
-        <ProfileDropdown />
-      </header>
+      {/* P-00b-Nav: extracted to the shared PublicHeader (same markup + scroll
+          behaviour); now reused on the coach profile and any public page. */}
+      <PublicHeader />
 
       {/* ═══ HERO ════════════════════════════════════════════════════════ */}
       <section id="hero" className="relative">
