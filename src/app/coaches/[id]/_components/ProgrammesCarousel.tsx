@@ -6,6 +6,7 @@
 // in — this component is presentational + handles the scroll-fade interaction only.
 
 import { useEffect, useRef, useState } from 'react'
+import Image from 'next/image'
 import Link from 'next/link'
 import { Calendar, Clock, MapPin, ArrowRight } from 'lucide-react'
 
@@ -22,6 +23,7 @@ export interface ProgrammeCardData {
   filled: number
   total: number
   isFull: boolean
+  imageUrl: string | null
 }
 
 // Header gradients use brand/teal Tailwind tokens (no raw hex) — cycled per card.
@@ -83,6 +85,21 @@ export function ProgrammesCarousel({
               className="snap-start flex-none w-[280px] lg:w-auto bg-white rounded-2xl overflow-hidden flex flex-col shadow-sm border border-gray-100"
             >
               <div className={`relative h-[140px] overflow-hidden flex items-center justify-center bg-gradient-to-br ${GRADIENTS[i % GRADIENTS.length]}`}>
+                {/* Real cover photo when set; the gradient above shows through as
+                    the fallback for programmes with no image (mirrors dashboard). */}
+                {p.imageUrl && (
+                  <>
+                    <Image
+                      src={p.imageUrl}
+                      alt={p.title}
+                      fill
+                      sizes="(max-width: 1024px) 280px, 33vw"
+                      className="object-cover"
+                    />
+                    {/* Scrim keeps the Full / spots-left / sport badges legible over the photo. */}
+                    <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-transparent" />
+                  </>
+                )}
                 {p.isFull ? (
                   <span className="absolute top-2.5 left-2.5 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-white/90 backdrop-blur text-gray-600">
                     Full

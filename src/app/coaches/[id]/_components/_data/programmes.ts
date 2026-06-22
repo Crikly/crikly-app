@@ -45,6 +45,7 @@ interface ProgrammeRow {
   venue_name: string | null
   starts_at: string | null
   status: string
+  image_url: string | null
 }
 
 function buildSchedule(r: ProgrammeRow): string {
@@ -75,7 +76,7 @@ export async function fetchCoachProgrammes(coachProfileId: string): Promise<Prog
   const { data, error } = await supabase
     .from('group_programmes')
     .select(
-      'id, title, sport_id, age_groups, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, price_per_session_pence, payment_type, venue_name, starts_at, status',
+      'id, title, sport_id, age_groups, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, price_per_session_pence, payment_type, venue_name, starts_at, status, image_url',
     )
     .eq('coach_profile_id', coachProfileId)
     .eq('model', 'programme')
@@ -111,5 +112,6 @@ export async function fetchCoachProgrammes(coachProfileId: string): Promise<Prog
     filled: r.current_spots,
     total: r.max_spots,
     isFull: r.current_spots >= r.max_spots,
+    imageUrl: r.image_url,
   }))
 }
