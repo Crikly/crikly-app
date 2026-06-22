@@ -223,7 +223,7 @@ export function AvailabilityClient({
   return (
     <div className="grid lg:grid-cols-[minmax(0,1fr)_400px] gap-8 lg:gap-10 items-start">
       {/* LEFT — month calendar */}
-      <section aria-label="Calendar" className="rounded-2xl border border-gray-200 p-4 sm:p-6">
+      <section aria-label="Calendar" className="rounded-2xl border border-gray-200 shadow-sm p-4 sm:p-6">
         <div className="flex items-center justify-between mb-5">
           <h3 className="text-[17px] font-bold text-gray-900" aria-live="polite">
             {MON_L[viewMonth]} {viewYear}
