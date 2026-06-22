@@ -271,9 +271,12 @@ export function AvailabilityClient({
 
             let cls =
               'relative flex flex-col items-center justify-center aspect-square rounded-xl text-[15px] sm:text-[16px] font-semibold tabular-nums transition-all '
+            // Session-type colours mirror the coach schedule legend
+            // (Schedule.tsx): 1-on-1 = blue-500, programme = purple-600, ad hoc
+            // = teal-500. "Selected" is the brand action state, not a type.
             if (selected) cls += 'bg-brand-600 text-white shadow-md'
-            else if (bookable) cls += 'bg-brand-50 text-brand-600 hover:bg-brand-100 cursor-pointer'
-            else if (hasProg) cls += 'bg-white text-gray-900 border border-gray-200 hover:border-teal-600 cursor-pointer'
+            else if (bookable) cls += 'bg-blue-50 text-blue-700 hover:bg-blue-100 cursor-pointer'
+            else if (hasProg) cls += 'bg-white text-gray-900 border border-gray-200 hover:border-purple-600 cursor-pointer'
             else cls += 'text-gray-300 cursor-default'
 
             return (
@@ -295,7 +298,7 @@ export function AvailabilityClient({
                 {hasProg && (
                   <span
                     aria-hidden
-                    className={`mt-0.5 w-1.5 h-1.5 rounded-full ${selected ? 'bg-white' : 'bg-teal-600'}`}
+                    className={`mt-0.5 w-1.5 h-1.5 rounded-full ${selected ? 'bg-white' : 'bg-purple-600'}`}
                   />
                 )}
                 {isToday && (
@@ -309,23 +312,21 @@ export function AvailabilityClient({
           })}
         </div>
 
-        {/* Legend — includes group programmes (teal) per task */}
+        {/* Legend — session-type swatches matching the coach schedule legend
+            (Schedule.tsx): 1-on-1 = blue-500, Programme = purple-600, Ad hoc =
+            teal-500. Unavailable days simply render greyed, with no label. */}
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2 mt-5 pt-5 border-t border-gray-100 text-[13px] text-gray-500">
           <span className="flex items-center gap-2">
-            <span className="w-3 h-3 rounded-md bg-brand-50 ring-1 ring-brand-100" />
-            Available
+            <span className="w-2.5 h-2.5 rounded-sm bg-blue-500" />
+            1-on-1
           </span>
           <span className="flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-teal-600" />
-            Group programme
+            <span className="w-2.5 h-2.5 rounded-sm bg-purple-600" />
+            Programme
           </span>
           <span className="flex items-center gap-2">
-            <span className="w-3 h-3 rounded-md bg-brand-600" />
-            Selected
-          </span>
-          <span className="flex items-center gap-2">
-            <span className="w-3 h-3 rounded-md bg-gray-100" />
-            Unavailable
+            <span className="w-2.5 h-2.5 rounded-sm bg-teal-500" />
+            Ad hoc
           </span>
         </div>
       </section>
@@ -418,15 +419,15 @@ export function AvailabilityClient({
                         p.isFull
                           ? 'border-gray-200 opacity-60 cursor-not-allowed'
                           : isSel
-                            ? 'border-teal-600 bg-teal-50'
-                            : 'border-gray-200 hover:border-teal-600'
+                            ? 'border-purple-600 bg-purple-50'
+                            : 'border-gray-200 hover:border-purple-600'
                       }`}
                       data-testid={`programme-${p.id}`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-50 text-teal-800">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 text-purple-700">
                               {p.sportName}
                             </span>
                             {p.startTime && <span className="text-[12px] text-gray-500">{formatTimeLabel(p.startTime)}</span>}
@@ -442,7 +443,7 @@ export function AvailabilityClient({
                         </div>
                       </div>
                       <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
-                        <span className={`text-[12px] font-semibold ${p.isFull ? 'text-gray-400' : 'text-teal-800'}`}>
+                        <span className={`text-[12px] font-semibold ${p.isFull ? 'text-gray-400' : 'text-purple-700'}`}>
                           {p.isFull ? 'Full' : `${p.spotsLeft} spot${p.spotsLeft !== 1 ? 's' : ''} left`}
                         </span>
                         {!p.isFull && (
