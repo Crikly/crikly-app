@@ -2,12 +2,16 @@
 // full availability calendar. Read directly via the RLS-respecting SSR client
 // (NOT via /api/coaches/[id], which must not be modified).
 //
-// group_programme_sessions is the canonical per-date schedule (docs/03 §6.4) and
-// its SELECT RLS is "public when the parent programme is status='active'", so an
-// anonymous visitor receives exactly the right rows. We embed the sessions in a
-// single query off group_programmes (FK group_programme_id → group_programmes.id).
+// Two schedule sources, in priority order, per programme:
+//   1. Persisted rows in group_programme_sessions (the canonical schedule,
+//      docs/03 §6.4). SELECT RLS is public when the parent programme is
+//      status='active', so a guest sees exactly the right rows.
+//   2. Fallback — many programmes have NO session rows and instead carry a
+//      recurring day_of_week / days_of_week + start_time on group_programmes
+//      itself. We expand that pattern across the visible calendar window.
 
 import { createClient } from '@/lib/supabase/server'
+import { localISODate } from './slots'
 
 export interface DayProgramme {
   id: string
@@ -25,7 +29,7 @@ export interface DayProgramme {
 export interface ProgrammeSchedule {
   /** YYYY-MM-DD → programmes running that day (sorted by start time). */
   byDate: Record<string, DayProgramme[]>
-  /** Sorted unique dates that have at least one scheduled session. */
+  /** Sorted unique dates that have at least one session. */
   programmeDates: string[]
 }
 
@@ -43,37 +47,86 @@ interface ProgrammeRow {
   max_spots: number
   current_spots: number
   price_per_session_pence: number | null
+  block_price_pence: number | null
   payment_type: string
+  day_of_week: number
+  days_of_week: number[] | null
+  start_time: string
+  starts_at: string | null
+  ends_at: string | null
   group_programme_sessions: SessionRow[] | null
 }
 
-function todayISO(): string {
-  const now = new Date()
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+/**
+ * Calendar dates for a programme with NO persisted session rows: expand its
+ * recurring weekday pattern (days_of_week when present, else the legacy
+ * day_of_week) across [windowStart, windowEnd], bounded by the programme's own
+ * starts_at / ends_at anchors when set.
+ */
+/**
+ * Parse the date portion of a timestamptz/date string as LOCAL midnight. Using
+ * `new Date(ts)` then flooring would shift midnight-UTC anchors back a day in
+ * BST (UTC+1); these anchors conceptually carry a date, so we take YYYY-MM-DD.
+ */
+function dateAnchor(ts: string | null): Date | null {
+  if (!ts) return null
+  const [y, m, d] = ts.slice(0, 10).split('-').map(Number)
+  return new Date(y, m - 1, d)
+}
+
+function recurringDates(row: ProgrammeRow, windowStart: Date, windowEnd: Date): string[] {
+  const days = row.days_of_week && row.days_of_week.length > 0 ? row.days_of_week : [row.day_of_week]
+  const daySet = new Set(days)
+
+  let start = new Date(windowStart)
+  const startAnchor = dateAnchor(row.starts_at)
+  if (startAnchor && startAnchor > start) start = startAnchor
+
+  let end = new Date(windowEnd)
+  const endAnchor = dateAnchor(row.ends_at)
+  if (endAnchor && endAnchor < end) end = endAnchor
+
+  const out: string[] = []
+  const cur = new Date(start)
+  while (cur <= end) {
+    if (daySet.has(cur.getDay())) out.push(localISODate(cur))
+    cur.setDate(cur.getDate() + 1)
+  }
+  return out
 }
 
 export async function fetchProgrammeSchedule(coachProfileId: string): Promise<ProgrammeSchedule> {
   const supabase = await createClient()
 
-  const cutoff = todayISO()
+  // Visible window: today through the end of next month (the calendar opens on
+  // the current month and pages forward one). Recurring programmes are expanded
+  // across this window; persisted sessions are filtered to it at the DB layer.
+  const now = new Date()
+  const windowStart = new Date(now)
+  windowStart.setHours(0, 0, 0, 0)
+  const windowEnd = new Date(now.getFullYear(), now.getMonth() + 2, 0)
+  windowEnd.setHours(0, 0, 0, 0)
+  const cutoff = localISODate(windowStart)
 
-  // Embedded-resource filters (regular embed, not !inner) trim the sessions
-  // array to scheduled, future rows at the DB layer — programmes with no
-  // upcoming sessions still return (with an empty array) and contribute
-  // nothing. The app-level guards below are kept as defence-in-depth.
   const { data, error } = await supabase
     .from('group_programmes')
     .select(
-      'id, title, sport_id, age_groups, max_spots, current_spots, price_per_session_pence, payment_type, group_programme_sessions(session_date, start_time, status)',
+      'id, title, sport_id, age_groups, max_spots, current_spots, price_per_session_pence, block_price_pence, payment_type, day_of_week, days_of_week, start_time, starts_at, ends_at, group_programme_sessions(session_date, start_time, status)',
     )
     .eq('coach_profile_id', coachProfileId)
     .eq('model', 'programme')
-    .eq('status', 'active')
+    // active + full are both publicly visible (RLS §6.3); a full programme
+    // still shows on the calendar with its "Full" indicator.
+    .in('status', ['active', 'full'])
     .is('deleted_at', null)
     .eq('group_programme_sessions.status', 'scheduled')
     .gte('group_programme_sessions.session_date', cutoff)
 
-  if (error || !data || data.length === 0) {
+  if (error) {
+    console.error('[fetchProgrammeSchedule] Supabase error:', error.message)
+    return { byDate: {}, programmeDates: [] }
+  }
+  if (!data || data.length === 0) {
     return { byDate: {}, programmeDates: [] }
   }
 
@@ -93,23 +146,39 @@ export async function fetchProgrammeSchedule(coachProfileId: string): Promise<Pr
   const byDate: Record<string, DayProgramme[]> = {}
 
   for (const r of rows) {
-    const sessions = r.group_programme_sessions ?? []
-    for (const s of sessions) {
-      if (s.status !== 'scheduled') continue
-      const date = s.session_date.slice(0, 10)
-      if (date < cutoff) continue // hide past sessions
-      const card: DayProgramme = {
-        id: r.id,
-        title: r.title,
-        sportName: sportNameById.get(r.sport_id) ?? 'Programme',
-        ageGroups: r.age_groups ?? [],
-        startTime: s.start_time ? s.start_time.slice(0, 5) : null,
-        pricePence: r.price_per_session_pence ?? 0,
-        per: r.payment_type === 'block' ? 'total' : 'session',
-        spotsLeft: Math.max(0, r.max_spots - r.current_spots),
-        isFull: r.current_spots >= r.max_spots,
-      }
-      ;(byDate[date] ??= []).push(card)
+    const base = {
+      id: r.id,
+      title: r.title,
+      sportName: sportNameById.get(r.sport_id) ?? 'Programme',
+      ageGroups: r.age_groups ?? [],
+      pricePence:
+        r.payment_type === 'block_upfront'
+          ? r.block_price_pence ?? 0
+          : r.price_per_session_pence ?? 0,
+      per: (r.payment_type === 'block_upfront' ? 'total' : 'session') as 'session' | 'total',
+      spotsLeft: Math.max(0, r.max_spots - r.current_spots),
+      isFull: r.current_spots >= r.max_spots,
+    }
+
+    // Prefer persisted future sessions; fall back to the recurring pattern when
+    // a programme has none (group_programme_sessions empty).
+    const persisted = (r.group_programme_sessions ?? []).filter(
+      s => s.status === 'scheduled' && s.session_date.slice(0, 10) >= cutoff,
+    )
+
+    const dated: { date: string; startTime: string | null }[] =
+      persisted.length > 0
+        ? persisted.map(s => ({
+            date: s.session_date.slice(0, 10),
+            startTime: s.start_time ? s.start_time.slice(0, 5) : null,
+          }))
+        : recurringDates(r, windowStart, windowEnd).map(date => ({
+            date,
+            startTime: r.start_time ? r.start_time.slice(0, 5) : null,
+          }))
+
+    for (const { date, startTime } of dated) {
+      ;(byDate[date] ??= []).push({ ...base, startTime })
     }
   }
 

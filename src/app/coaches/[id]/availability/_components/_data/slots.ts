@@ -28,7 +28,8 @@ export interface GeneratedSlot {
   available: boolean
 }
 
-const SLOT_STRIDE_MINUTES = 30
+// Fallback session length when a coach's sport carries no duration.
+const DEFAULT_SESSION_MINUTES = 60
 
 /** Local-timezone YYYY-MM-DD (avoids the UTC-midnight shift in BST etc.). */
 export function localISODate(d: Date): string {
@@ -75,6 +76,7 @@ export function bookableSlots(
   minAdvanceHours: number,
   maxAdvanceDays: number,
   now: Date,
+  sessionDurationMinutes: number,
 ): GeneratedSlot[] {
   const startOfToday = new Date(now)
   startOfToday.setHours(0, 0, 0, 0)
@@ -89,13 +91,17 @@ export function bookableSlots(
   const dow = date.getDay()
   const minAdvanceMs = minAdvanceHours * 3600 * 1000
 
-  // Dedup overlapping template ranges into a single sorted set of start times.
+  // Step by the session length and only emit a slot if the whole session fits
+  // inside the template window (start + duration <= end). e.g. 09:00–10:00 with
+  // a 60-min session yields exactly one slot (09:00), not two. Overlapping
+  // template ranges are deduped into a single sorted set of start times.
+  const stride = sessionDurationMinutes > 0 ? sessionDurationMinutes : DEFAULT_SESSION_MINUTES
   const minutesSet = new Set<number>()
   for (const t of templates) {
     if (t.day_of_week !== dow) continue
     const start = toMinutes(t.start_time)
     const end = toMinutes(t.end_time)
-    for (let mins = start; mins < end; mins += SLOT_STRIDE_MINUTES) {
+    for (let mins = start; mins + stride <= end; mins += stride) {
       minutesSet.add(mins)
     }
   }

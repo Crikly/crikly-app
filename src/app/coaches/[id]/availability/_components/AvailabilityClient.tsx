@@ -110,8 +110,8 @@ export function AvailabilityClient({
 
   const slotsFor = useMemo(
     () => (date: Date): GeneratedSlot[] =>
-      bookableSlots(date, templates, blockedSet, minAdvanceHours, maxAdvanceDays, now),
-    [templates, blockedSet, minAdvanceHours, maxAdvanceDays, now],
+      bookableSlots(date, templates, blockedSet, minAdvanceHours, maxAdvanceDays, now, sessionDurationMinutes),
+    [templates, blockedSet, minAdvanceHours, maxAdvanceDays, now, sessionDurationMinutes],
   )
 
   const slots = useMemo<GeneratedSlot[]>(
