@@ -1477,6 +1477,44 @@ Milestone definitions live in the Release Plan (Notion — Product section).
 
 ---
 
+## Progress Tracker — Update Rule
+
+The Progress Tracker is the top-level summary view of the Parent &
+Player build. It must be kept current alongside the Build Plan DB.
+
+**Page:** Notion `388163fe25cf814c80acf83787b66b38`
+**Updated by:** Claude (chat) — sole updater.
+
+After every task merge:
+- Flip the task row Status to ✅ Complete
+- Update any associated user story statuses (✅ / ⚠️ / ⚪)
+
+After every block complete:
+- Flip the Epic row to ✅ Complete
+
+After a bug is fixed:
+- Flip the Fix-XX bug row from 🔴 Open to 🐛 Fixed
+
+No task is considered done until both the Build Plan DB
+and the Progress Tracker reflect the same ✅ status.
+
+---
+
+## Bug Tracking Rule
+
+When a bug is found during any task:
+
+1. Claude Code (or Claude chat) creates a Fix-XX entry in the
+   Bug & Fix Log DB (234b073a-27a6-4d8d-9103-58290accc850).
+2. Claude (chat) adds a 🔴 Bug row to the Progress Tracker.
+3. When the fix is merged: Fix-XX → ✅ Fixed in Bug & Fix Log +
+   Progress Tracker bug row → 🐛 Fixed.
+
+Bug fixes (Fix-XX) never go in the Build Plan DB.
+SHA-logging applies to bug fixes exactly as it does to feature tasks.
+
+---
+
 *Crikly Working Ethics v1.10 — 12 May 2026 — L-07-RM-NEXT-BAN*
 *Review after each phase completion.*
 *Any process change must be agreed with Lasith first.*
