@@ -251,7 +251,27 @@ async function main(): Promise<void> {
   console.info(`        coach_profile_id = ${coachProfileId}`)
 }
 
-main().catch((err) => {
-  console.error('[seed] unexpected error:', err)
-  process.exit(1)
-})
+// Fix-E2E-01a: Playwright globalSetup entry point. Wiring this as
+// `globalSetup` in playwright.config.ts means every local `npm run test:e2e`
+// self-provisions the test coach — the seed can no longer be silently skipped
+// on a clean local Supabase. globalSetup requires a default-exported function.
+export default async function globalSetup(): Promise<void> {
+  await main()
+}
+
+// Fix-E2E-01a: direct CLI run support (`npx tsx e2e/fixtures/seed.ts`).
+// The argv guard ensures the module import performed by Playwright's
+// globalSetup loader does NOT also auto-run main() — otherwise the seed would
+// execute twice per run (once on import, once via the default export). The
+// check is module-format agnostic (no import.meta) because package.json has no
+// "type": "module".
+if (
+  process.argv[1] &&
+  (process.argv[1].endsWith('/e2e/fixtures/seed.ts') ||
+    process.argv[1].endsWith('\\e2e\\fixtures\\seed.ts'))
+) {
+  main().catch((err) => {
+    console.error('[seed] unexpected error:', err)
+    process.exit(1)
+  })
+}
