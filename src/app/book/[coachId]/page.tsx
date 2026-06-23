@@ -8,9 +8,7 @@ export const metadata: Metadata = {
   description: 'Review your coaching session and pay securely.',
 }
 
-// STUB — replaced with the real coach profile and the slot the guest selected
-// on the availability page in P-00c-API. Money is integer pence (BR-10); the
-// platform fee is added on top of the coach fee at 10% (BR-01, BR-02).
+// TODO(P-00c-API): replace with server fetch using coachId + slot params.
 const STUB_SUMMARY: BookingSummary = {
   coachName: 'Alex Stuart',
   sportLabel: 'Cricket',
@@ -24,7 +22,8 @@ const STUB_SUMMARY: BookingSummary = {
 type CheckoutError = 'payment' | 'slot_taken'
 
 function parseSimulatedError(value: string | string[] | undefined): CheckoutError | undefined {
-  return value === 'payment' || value === 'slot_taken' ? value : undefined
+  if (value === 'payment' || value === 'slot_taken') return value
+  return undefined
 }
 
 export default async function GuestBookingPage({
@@ -40,7 +39,7 @@ export default async function GuestBookingPage({
   return (
     <main className="min-h-screen bg-white">
       <PublicHeader />
-      <div className="mx-auto w-full max-w-6xl px-5 py-6 lg:px-10 lg:pb-14">
+      <div className="mx-auto w-full max-w-6xl px-5 py-5 lg:px-10 lg:pt-6 lg:pb-14">
         <GuestBookingFlow
           coachId={coachId}
           summary={STUB_SUMMARY}

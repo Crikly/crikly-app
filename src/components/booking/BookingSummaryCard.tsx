@@ -2,41 +2,26 @@ import type { ReactNode } from 'react'
 import { Calendar, Clock, User, Check } from 'lucide-react'
 import { Avatar } from '@/components/ui/Avatar'
 
-/**
- * Shape of the booking summary shown on the guest checkout + confirmation
- * screens. All money is stored as integer pence (never decimals) per BR-10.
- * In P-00c-API this is populated from the real coach profile and the slot the
- * guest selected on the availability page.
- */
 export interface BookingSummary {
   coachName: string
-  /** Display label only, e.g. "Cricket" — rendered as a brand-coloured pill. */
   sportLabel: string
-  /** Pre-formatted session date, e.g. "Saturday, 27 June". */
   sessionDate: string
-  /** Pre-formatted time + duration, e.g. "10:00am · 60 minutes". */
   sessionTime: string
-  /** Session type label, e.g. "1-to-1 technical session". */
   sessionType: string
-  /** Coach's fee in pence (the amount the coach receives — BR-01). */
+  /** Coach's fee in pence (BR-10). */
   sessionFeePence: number
-  /** Platform commission in pence, added on top of the coach fee (BR-01). */
+  /** Platform commission in pence, added on top of coach fee (BR-01). */
   platformFeePence: number
 }
 
 interface BookingSummaryCardProps {
   summary: BookingSummary
-  /** `checkout` shows the fee breakdown; `paid` shows the settled total. */
   variant: 'checkout' | 'paid'
-  /**
-   * Optional content rendered inside the card after the total — used on the
-   * desktop checkout layout to fuse the Pay button into the summary card,
-   * matching the approved design. Hidden on mobile by the caller.
-   */
+  /** Desktop only: Pay button and stripe note fused inside the card below Total. */
   footer?: ReactNode
 }
 
-/** Format integer pence as GBP, e.g. 4000 → "£40.00". */
+/** Format integer pence as GBP — e.g. 4400 → "£44.00". */
 export function formatPence(pence: number): string {
   return new Intl.NumberFormat('en-GB', {
     style: 'currency',
@@ -46,27 +31,32 @@ export function formatPence(pence: number): string {
   }).format(pence / 100)
 }
 
-function Divider() {
-  return <div className="my-4 h-px bg-neutral-100" />
-}
-
 export function BookingSummaryCard({ summary, variant, footer }: BookingSummaryCardProps) {
   const totalPence = summary.sessionFeePence + summary.platformFeePence
-  // Derive the displayed rate from the fee values so the label stays correct
-  // when P-00c-API supplies a non-default commission rate (BR-02).
   const feePercent =
     summary.sessionFeePence > 0
       ? Math.round((summary.platformFeePence / summary.sessionFeePence) * 100)
       : 0
+  const isCheckout = variant === 'checkout'
 
   return (
-    <div className="rounded-[12px] border border-neutral-100 bg-white p-4 lg:rounded-lg lg:border-none lg:p-6 lg:shadow-md">
+    <div
+      className={
+        isCheckout
+          ? 'rounded-[12px] border border-neutral-100 bg-white p-4 lg:rounded-[14px] lg:border-none lg:p-[22px] lg:shadow-md'
+          : 'rounded-[12px] border border-neutral-100 bg-white p-4'
+      }
+    >
       {/* Coach header */}
       <div className="flex items-center gap-3">
         {/* 52px per guest checkout design spec — larger than avatar-md token (44px) */}
-        <Avatar name={summary.coachName} size="md" className="!w-[52px] !h-[52px] !text-[18px]" />
+        <Avatar
+          name={summary.coachName}
+          size="md"
+          className="!h-[52px] !w-[52px] !text-[18px]"
+        />
         <div className="min-w-0">
-          <p className="text-base font-semibold tracking-tight text-neutral-900">
+          <p className="text-[16px] font-semibold tracking-[-0.01em] text-neutral-900">
             {summary.coachName}
           </p>
           <span className="mt-1.5 inline-flex h-6 items-center rounded-full bg-brand-50 px-2.5 text-xs font-semibold text-brand-800">
@@ -75,48 +65,55 @@ export function BookingSummaryCard({ summary, variant, footer }: BookingSummaryC
         </div>
       </div>
 
-      <Divider />
+      {/* Divider */}
+      <div className={`h-px bg-neutral-100 ${isCheckout ? 'my-4 lg:my-[18px]' : 'my-4'}`} />
 
       {/* Session details */}
       <div className="flex flex-col gap-3">
         <div className="flex items-center gap-2.5">
           <Calendar size={18} className="flex-shrink-0 text-neutral-400" aria-hidden="true" />
-          <span className="text-sm text-neutral-900">{summary.sessionDate}</span>
+          <span className="text-[14.5px] text-[#1E293B]">{summary.sessionDate}</span>
         </div>
         <div className="flex items-center gap-2.5">
           <Clock size={18} className="flex-shrink-0 text-neutral-400" aria-hidden="true" />
-          <span className="text-sm text-neutral-900">{summary.sessionTime}</span>
+          <span className="text-[14.5px] text-[#1E293B]">{summary.sessionTime}</span>
         </div>
         <div className="flex items-center gap-2.5">
           <User size={18} className="flex-shrink-0 text-neutral-400" aria-hidden="true" />
-          <span className="text-sm text-neutral-900">{summary.sessionType}</span>
+          <span className="text-[14.5px] text-[#1E293B]">{summary.sessionType}</span>
         </div>
       </div>
 
-      <Divider />
+      {/* Divider */}
+      <div className={`h-px bg-neutral-100 ${isCheckout ? 'my-4 lg:my-[18px]' : 'my-4'}`} />
 
-      {variant === 'checkout' ? (
+      {isCheckout ? (
         <>
+          {/* Fee breakdown */}
           <div className="flex flex-col gap-2.5">
-            <div className="flex justify-between">
-              <span className="text-sm text-neutral-600">Session fee</span>
-              <span className="text-sm tabular-nums text-neutral-900">
+            <div className="flex items-center justify-between">
+              <span className="text-[14px] text-neutral-600">Session fee</span>
+              <span className="tabular-nums text-[14px] text-neutral-900">
                 {formatPence(summary.sessionFeePence)}
               </span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-sm text-neutral-600">Platform fee ({feePercent}%)</span>
-              <span className="text-sm tabular-nums text-neutral-900">
+            <div className="flex items-center justify-between">
+              <span className="text-[14px] text-neutral-600">
+                Platform fee ({feePercent}%)
+              </span>
+              <span className="tabular-nums text-[14px] text-neutral-900">
                 {formatPence(summary.platformFeePence)}
               </span>
             </div>
           </div>
 
-          <Divider />
+          {/* Sub-divider */}
+          <div className="my-[14px] h-px bg-neutral-100" />
 
+          {/* Total */}
           <div className="flex items-baseline justify-between">
-            <span className="text-base font-semibold text-neutral-900">Total</span>
-            <span className="text-xl font-bold tracking-tight tabular-nums text-neutral-900 lg:text-[22px]">
+            <span className="text-[15px] font-semibold text-neutral-900">Total</span>
+            <span className="tabular-nums text-xl font-bold tracking-[-0.01em] text-neutral-900 lg:text-[22px]">
               {formatPence(totalPence)}
             </span>
           </div>
@@ -124,12 +121,13 @@ export function BookingSummaryCard({ summary, variant, footer }: BookingSummaryC
           {footer}
         </>
       ) : (
+        /* Paid variant — shows check badge + total */
         <div className="flex items-center justify-between">
-          <span className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-label text-success">
+          <span className="inline-flex items-center gap-1.5 text-[13px] font-semibold uppercase tracking-[0.04em] text-[#15803D]">
             <Check size={15} strokeWidth={2.2} aria-hidden="true" />
             Paid
           </span>
-          <span className="text-lg font-semibold tabular-nums text-neutral-900">
+          <span className="tabular-nums text-[16px] font-bold text-neutral-900">
             {formatPence(totalPence)}
           </span>
         </div>

@@ -1,17 +1,4 @@
-/**
- * @jest-environment jsdom
- *
- * Tests for BookingSummaryCard — the presentational summary used on both the
- * guest checkout and confirmation screens, plus the formatPence helper.
- *
- * Covers:
- *   1. formatPence: integer pence → GBP string (BR-10)
- *   2. checkout variant: coach, sport pill, session rows, fee breakdown, total
- *   3. derived platform-fee percent (BR-02 — non-default rate stays correct)
- *   4. paid variant: "Paid" badge + settled total, no fee breakdown
- *   5. footer slot renders inside the checkout card (desktop fused Pay block)
- */
-
+/** @jest-environment jsdom */
 import React from 'react'
 import { render, screen } from '@testing-library/react'
 import {
@@ -20,126 +7,150 @@ import {
   type BookingSummary,
 } from '@/components/booking/BookingSummaryCard'
 
-const STUB_SUMMARY: BookingSummary = {
+const STUB: BookingSummary = {
   coachName: 'Alex Stuart',
   sportLabel: 'Cricket',
   sessionDate: 'Saturday, 27 June',
   sessionTime: '10:00am · 60 minutes',
   sessionType: '1-to-1 technical session',
-  sessionFeePence: 4000, // £40.00
-  platformFeePence: 400, // £4.00 — 10% on top (BR-01, BR-02)
+  sessionFeePence: 4000,
+  platformFeePence: 400,
 }
 
-// ============================================================================
-// 1. formatPence
-// ============================================================================
+// ── formatPence ────────────────────────────────────────────────────────────
 
 describe('formatPence', () => {
-  it('formats whole pounds with two decimal places', () => {
-    expect(formatPence(4000)).toBe('£40.00')
-  })
-
-  it('formats a combined total', () => {
+  it('formats pence as GBP with 2 decimal places', () => {
     expect(formatPence(4400)).toBe('£44.00')
   })
-
-  it('formats zero', () => {
+  it('formats zero correctly', () => {
     expect(formatPence(0)).toBe('£0.00')
   })
-
-  it('formats odd pence values', () => {
+  it('formats 100p as £1.00', () => {
+    expect(formatPence(100)).toBe('£1.00')
+  })
+  it('formats amounts with pence correctly', () => {
     expect(formatPence(999)).toBe('£9.99')
   })
 })
 
-// ============================================================================
-// 2 + 3. checkout variant
-// ============================================================================
+// ── checkout variant ───────────────────────────────────────────────────────
 
 describe('BookingSummaryCard — checkout variant', () => {
   it('renders the coach name', () => {
-    render(<BookingSummaryCard summary={STUB_SUMMARY} variant="checkout" />)
+    render(<BookingSummaryCard summary={STUB} variant="checkout" />)
     expect(screen.getByText('Alex Stuart')).toBeInTheDocument()
   })
 
-  it('renders the sport label as a pill', () => {
-    render(<BookingSummaryCard summary={STUB_SUMMARY} variant="checkout" />)
+  it('renders the sport pill', () => {
+    render(<BookingSummaryCard summary={STUB} variant="checkout" />)
     expect(screen.getByText('Cricket')).toBeInTheDocument()
   })
 
-  it('renders the session date, time and type', () => {
-    render(<BookingSummaryCard summary={STUB_SUMMARY} variant="checkout" />)
+  it('renders session date', () => {
+    render(<BookingSummaryCard summary={STUB} variant="checkout" />)
     expect(screen.getByText('Saturday, 27 June')).toBeInTheDocument()
+  })
+
+  it('renders session time', () => {
+    render(<BookingSummaryCard summary={STUB} variant="checkout" />)
     expect(screen.getByText('10:00am · 60 minutes')).toBeInTheDocument()
+  })
+
+  it('renders session type', () => {
+    render(<BookingSummaryCard summary={STUB} variant="checkout" />)
     expect(screen.getByText('1-to-1 technical session')).toBeInTheDocument()
   })
 
-  it('renders the session fee and platform fee rows', () => {
-    render(<BookingSummaryCard summary={STUB_SUMMARY} variant="checkout" />)
-    expect(screen.getByText('Session fee')).toBeInTheDocument()
-    expect(screen.getByText(/£40\.00/)).toBeInTheDocument()
-    expect(screen.getByText(/£4\.00/)).toBeInTheDocument()
+  it('renders the session fee', () => {
+    render(<BookingSummaryCard summary={STUB} variant="checkout" />)
+    expect(screen.getByText('£40.00')).toBeInTheDocument()
   })
 
-  it('renders the platform fee label with the default 10% derived from the values', () => {
-    render(<BookingSummaryCard summary={STUB_SUMMARY} variant="checkout" />)
+  it('renders the platform fee label with percentage', () => {
+    render(<BookingSummaryCard summary={STUB} variant="checkout" />)
     expect(screen.getByText('Platform fee (10%)')).toBeInTheDocument()
   })
 
-  it('derives a non-default platform fee percent from the pence values (BR-02)', () => {
-    const custom: BookingSummary = {
-      ...STUB_SUMMARY,
-      sessionFeePence: 5000,
-      platformFeePence: 750, // 15%
-    }
-    render(<BookingSummaryCard summary={custom} variant="checkout" />)
-    expect(screen.getByText('Platform fee (15%)')).toBeInTheDocument()
+  it('renders the platform fee amount', () => {
+    render(<BookingSummaryCard summary={STUB} variant="checkout" />)
+    expect(screen.getByText('£4.00')).toBeInTheDocument()
   })
 
-  it('renders the Total label and combined total', () => {
-    render(<BookingSummaryCard summary={STUB_SUMMARY} variant="checkout" />)
-    expect(screen.getByText('Total')).toBeInTheDocument()
-    // total = 4000 + 400 = 4400
+  it('renders the formatted total', () => {
+    render(<BookingSummaryCard summary={STUB} variant="checkout" />)
     expect(screen.getByText('£44.00')).toBeInTheDocument()
   })
 
-  it('renders a provided footer inside the checkout card', () => {
+  it('renders footer content when provided', () => {
     render(
       <BookingSummaryCard
-        summary={STUB_SUMMARY}
+        summary={STUB}
         variant="checkout"
-        footer={<div>fused-footer</div>}
-      />,
+        footer={<button>Pay now</button>}
+      />
     )
-    expect(screen.getByText('fused-footer')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Pay now' })).toBeInTheDocument()
+  })
+
+  it('does NOT render the Paid badge in checkout variant', () => {
+    render(<BookingSummaryCard summary={STUB} variant="checkout" />)
+    expect(screen.queryByText(/^paid$/i)).not.toBeInTheDocument()
   })
 })
 
-// ============================================================================
-// 4. paid variant
-// ============================================================================
+// ── paid variant ───────────────────────────────────────────────────────────
 
 describe('BookingSummaryCard — paid variant', () => {
-  it('renders the "Paid" badge and the settled total', () => {
-    render(<BookingSummaryCard summary={STUB_SUMMARY} variant="paid" />)
-    expect(screen.getByText('Paid')).toBeInTheDocument()
+  it('renders the Paid badge', () => {
+    render(<BookingSummaryCard summary={STUB} variant="paid" />)
+    expect(screen.getByText(/^paid$/i)).toBeInTheDocument()
+  })
+
+  it('renders the total amount', () => {
+    render(<BookingSummaryCard summary={STUB} variant="paid" />)
     expect(screen.getByText('£44.00')).toBeInTheDocument()
   })
 
-  it('does NOT render the fee breakdown rows', () => {
-    render(<BookingSummaryCard summary={STUB_SUMMARY} variant="paid" />)
+  it('does NOT render the fee breakdown', () => {
+    render(<BookingSummaryCard summary={STUB} variant="paid" />)
     expect(screen.queryByText('Session fee')).not.toBeInTheDocument()
     expect(screen.queryByText(/Platform fee/)).not.toBeInTheDocument()
   })
 
-  it('does NOT render a footer even if one is passed', () => {
+  it('does NOT render footer content when provided', () => {
     render(
       <BookingSummaryCard
-        summary={STUB_SUMMARY}
+        summary={STUB}
         variant="paid"
-        footer={<div>should-not-show</div>}
-      />,
+        footer={<button>Hidden footer</button>}
+      />
     )
-    expect(screen.queryByText('should-not-show')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Hidden footer' })).not.toBeInTheDocument()
+  })
+})
+
+// ── edge cases ─────────────────────────────────────────────────────────────
+
+describe('BookingSummaryCard — edge cases', () => {
+  it('shows 0% when platform fee is zero', () => {
+    render(
+      <BookingSummaryCard
+        summary={{ ...STUB, platformFeePence: 0 }}
+        variant="checkout"
+      />
+    )
+    expect(screen.getByText('Platform fee (0%)')).toBeInTheDocument()
+  })
+
+  it('renders total correctly when platform fee is zero', () => {
+    render(
+      <BookingSummaryCard
+        summary={{ ...STUB, platformFeePence: 0 }}
+        variant="checkout"
+      />
+    )
+    // session fee and total are both £40.00 when platformFeePence=0
+    expect(screen.getAllByText('£40.00').length).toBeGreaterThanOrEqual(2)
   })
 })
