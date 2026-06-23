@@ -12,7 +12,18 @@ jest.mock('next/headers', () => ({
 import { createServerClient } from '@supabase/ssr'
 
 const mockSignIn = jest.fn()
-const mockSupabase = { auth: { signInWithPassword: mockSignIn } }
+// Fix-JEST-01: AUTH-FIX-01 routes by canonical user_profiles state
+// (active_role + terms_accepted_at), read via from().select().eq().single() —
+// not by user_metadata. The mock now needs a chainable from() returning that
+// row; each test sets mockSingle to the profile under test.
+const mockSingle = jest.fn()
+const mockFrom = jest.fn(() => {
+  const c: Record<string, jest.Mock> = {}
+  for (const m of ['select', 'eq']) c[m] = jest.fn(() => c)
+  c.single = mockSingle
+  return c
+})
+const mockSupabase = { auth: { signInWithPassword: mockSignIn }, from: mockFrom }
 
 beforeEach(() => {
   jest.clearAllMocks()
@@ -73,8 +84,14 @@ describe('POST /api/auth/login', () => {
     mockSignIn.mockResolvedValue({
       data: {
         session: { access_token: 'token' },
-        user: { user_metadata: {} },
+        user: { id: 'user-123', user_metadata: {} },
       },
+      error: null,
+    })
+    // AUTH-FIX-01: terms accepted (so not gated to /onboarding/terms) but no
+    // active_role yet → /onboarding/role.
+    mockSingle.mockResolvedValue({
+      data: { active_role: null, terms_accepted_at: '2026-01-01T00:00:00Z' },
       error: null,
     })
     const res = await callLogin({ email: 'test@example.com', password: 'password123' })
@@ -88,11 +105,17 @@ describe('POST /api/auth/login', () => {
     mockSignIn.mockResolvedValue({
       data: {
         session: { access_token: 'token' },
-        user: { user_metadata: { primary_role: 'coach' } },
+        user: { id: 'user-123', user_metadata: {} },
       },
       error: null,
     })
-    const res = await callLogin({ email: 'coach@example.com', password: 'password123' })
+    // AUTH-FIX-01: a non-coach role with terms accepted → /dashboard. (A coach
+    // active_role would route to /coach/dashboard; parent/player → /dashboard.)
+    mockSingle.mockResolvedValue({
+      data: { active_role: 'parent', terms_accepted_at: '2026-01-01T00:00:00Z' },
+      error: null,
+    })
+    const res = await callLogin({ email: 'parent@example.com', password: 'password123' })
     expect(res.status).toBe(200)
     const data = await res.json()
     expect(data.redirectTo).toBe('/dashboard')
