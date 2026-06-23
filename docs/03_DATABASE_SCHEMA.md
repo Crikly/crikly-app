@@ -1,8 +1,8 @@
 # Crikly — Database Schema
 
-**Version:** 1.4
-**Last Updated:** May 2026
-**Changed:** Migration 031 — CF-PROG-SESSIONS-DB. Adds `group_programmes.camp_mode` (boolean) and `group_programme_sessions.slots` (jsonb), plus a `UNIQUE (group_programme_id, session_date)` constraint that enables UPSERT reconciliation in the programmes PATCH route. Also documents `group_programme_sessions` for the first time (table created in migration 011 but never written into this doc).
+**Version:** 1.5
+**Last Updated:** June 2026
+**Changed:** Migration 20260623120000 — P-00c-DB. Makes `user_profiles.auth_user_id` nullable for provisional/guest users. Adds `user_profiles.is_provisional` (boolean, NOT NULL DEFAULT false) and `user_profiles.provisional_until` (timestamptz). Hardens the public "live coaches" SELECT policy with an `is_provisional = false` guard so provisional rows are never exposed to unauthenticated requests.
 **Maintainer:** Lasith Jayarathne
 **Single source of truth for all database tables.**
 
@@ -57,7 +57,7 @@ One row per registered user. Extends Supabase auth.users.
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
 | id | uuid | NO | gen_random_uuid() | Primary key |
-| auth_user_id | uuid | NO | — | FK → auth.users(id) ON DELETE CASCADE |
+| auth_user_id | uuid | YES | — | FK → auth.users(id) ON DELETE CASCADE. Nullable since P-00c-DB — provisional (guest) users have no auth credentials yet |
 | full_name | text | NO | — | Display name |
 | avatar_url | text | YES | null | Supabase Storage URL |
 | phone | text | YES | null | Optional — for SMS Phase 2 |
@@ -72,6 +72,8 @@ One row per registered user. Extends Supabase auth.users.
 | terms_accepted_at | timestamptz | YES | null | When user accepted T&Cs — required before use |
 | deletion_requested_at | timestamptz | YES | null | GDPR right to deletion request |
 | deleted_at | timestamptz | YES | null | Soft delete |
+| is_provisional | boolean | NO | false | P-00c-DB — marks a guest-created row for the cleanup cron. Provisional rows go through the service-role API only |
+| provisional_until | timestamptz | YES | null | P-00c-DB — set to now() + 6 months at the API layer on creation; read by a future cleanup cron |
 | created_at | timestamptz | NO | now() | |
 | updated_at | timestamptz | NO | now() | Auto-updated |
 
@@ -80,10 +82,13 @@ One row per registered user. Extends Supabase auth.users.
 - INSERT: Own record only
 - UPDATE: Own record only
 - DELETE: Not permitted (soft delete via deleted_at)
+- Public SELECT (live coaches): exposes a row to anonymous clients only when a live coach_profile references it AND is_provisional = false (P-00c-DB hardening — provisional rows never exposed to unauthenticated requests)
 
 **Indexes:**
-- auth_user_id_idx (unique)
+- auth_user_id_idx (unique — Postgres allows multiple NULLs, so many provisional rows coexist)
 - deleted_at_idx (partial — where deleted_at is null)
+
+**Migrations:** 001_create_user_profiles.sql · 20260623120000_provisional_user_support.sql (P-00c-DB: auth_user_id nullable + is_provisional + provisional_until + public-policy guard)
 
 ---
 
