@@ -13,9 +13,22 @@ import { createServerClient } from '@supabase/ssr'
 
 const mockGetUser = jest.fn()
 const mockUpdateUser = jest.fn()
-const mockUpdate = jest.fn()
-const mockEq = jest.fn()
-const mockFrom = jest.fn(() => ({ update: mockUpdate }))
+
+// Fix-JEST-01: chainable Supabase mock. The route (Fix-12 + Fix-ROLES-01) calls
+// user_profiles.select('id').eq().single(), user_profiles.update().eq(),
+// user_roles.upsert(), and (coach) coach_profiles.upsert(). Every chain method
+// returns the chain; .single() resolves the user_profile id. Awaiting a chain
+// that doesn't end in .single() yields the chain object itself, whose `error`
+// is undefined — so the route's `{ error } = await ...` checks see no error.
+function makeChain() {
+  const c: Record<string, jest.Mock> = {}
+  for (const m of ['select', 'eq', 'update', 'upsert', 'insert']) {
+    c[m] = jest.fn(() => c)
+  }
+  c.single = jest.fn().mockResolvedValue({ data: { id: 'profile-123' }, error: null })
+  return c
+}
+const mockFrom = jest.fn(() => makeChain())
 
 const mockSupabase = {
   auth: {
@@ -29,8 +42,7 @@ beforeEach(() => {
   jest.clearAllMocks()
   ;(createServerClient as jest.Mock).mockReturnValue(mockSupabase)
   mockUpdateUser.mockResolvedValue({ error: null })
-  mockUpdate.mockReturnValue({ eq: mockEq })
-  mockEq.mockResolvedValue({ error: null })
+  mockFrom.mockImplementation(() => makeChain())
 })
 
 async function callRoles(body: Record<string, unknown>) {

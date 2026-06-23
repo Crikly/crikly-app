@@ -104,7 +104,13 @@ describe('POST /api/coaches/blocked-dates — validation', () => {
 
   it('returns 400 when blocked_date_end is before blocked_date', async () => {
     passAuth()
-    const res = await callPost({ blocked_date: '2026-06-10', blocked_date_end: '2026-06-05' })
+    // Fix-JEST-01: dynamic future dates so the past-date guard isn't co-triggered;
+    // end is 5 days before start (both future) → isolates the blocked_date_end error.
+    const fmt = (d: Date) => d.toISOString().slice(0, 10)
+    const base = new Date(); base.setMonth(base.getMonth() + 3)
+    const start = fmt(base)
+    const end = fmt(new Date(base.getTime() - 5 * 86400000))
+    const res = await callPost({ blocked_date: start, blocked_date_end: end })
     expect(res.status).toBe(400)
     const data = await res.json()
     expect(data.details).toEqual(expect.arrayContaining([expect.stringContaining('blocked_date_end')]))
@@ -112,7 +118,10 @@ describe('POST /api/coaches/blocked-dates — validation', () => {
 
   it('returns 400 when label exceeds 100 characters', async () => {
     passAuth()
-    const res = await callPost({ blocked_date: '2026-06-01', label: 'x'.repeat(101) })
+    // Fix-JEST-01: dynamic future date so only the label error is asserted.
+    const fmt = (d: Date) => d.toISOString().slice(0, 10)
+    const base = new Date(); base.setMonth(base.getMonth() + 3)
+    const res = await callPost({ blocked_date: fmt(base), label: 'x'.repeat(101) })
     expect(res.status).toBe(400)
     const data = await res.json()
     expect(data.details).toEqual(expect.arrayContaining([expect.stringContaining('label')]))
@@ -124,6 +133,16 @@ describe('POST /api/coaches/blocked-dates — validation', () => {
 describe('POST /api/coaches/blocked-dates — overlap detection', () => {
   it('returns 409 when new date overlaps an existing blocked period', async () => {
     mockGetUser.mockResolvedValue({ data: { user: { id: 'user-123' } }, error: null })
+
+    // Fix-JEST-01: dynamic dates ~3 months ahead so the test never ages into the
+    // route's past-date guard (which would 400 before the overlap check). The new
+    // date sits inside an existing block spanning [base-3d, base+3d] → overlap.
+    const fmt = (d: Date) => d.toISOString().slice(0, 10)
+    const base = new Date()
+    base.setMonth(base.getMonth() + 3)
+    const blockStart = new Date(base); blockStart.setDate(blockStart.getDate() - 3)
+    const blockEnd = new Date(base); blockEnd.setDate(blockEnd.getDate() + 3)
+    const newDate = fmt(base)
 
     mockFrom
       .mockImplementationOnce(() => {
@@ -148,8 +167,8 @@ describe('POST /api/coaches/blocked-dates — overlap detection', () => {
         c.eq = jest.fn(() => Promise.resolve({
           data: [{
             id: 'existing-block-uuid',
-            blocked_date: '2026-06-01',
-            blocked_date_end: '2026-06-07',
+            blocked_date: fmt(blockStart),
+            blocked_date_end: fmt(blockEnd),
             label: 'Holiday',
           }],
           error: null,
@@ -157,7 +176,7 @@ describe('POST /api/coaches/blocked-dates — overlap detection', () => {
         return c
       })
 
-    const res = await callPost({ blocked_date: '2026-06-05' })
+    const res = await callPost({ blocked_date: newDate })
     expect(res.status).toBe(409)
     const data = await res.json()
     expect(data.conflicting_block_id).toBe('existing-block-uuid')
