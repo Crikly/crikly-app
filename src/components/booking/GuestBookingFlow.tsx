@@ -131,7 +131,7 @@ export function GuestBookingFlow({
 
   if (view === 'confirmed') {
     return (
-      <div className="flex flex-col items-center text-center">
+      <div className="mx-auto flex w-full max-w-md flex-col items-center text-center">
         {/* Success check */}
         <div className="flex h-[88px] w-[88px] items-center justify-center rounded-full bg-success/10">
           <div className="flex h-[60px] w-[60px] items-center justify-center rounded-full bg-success">
@@ -224,7 +224,7 @@ export function GuestBookingFlow({
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Header */}
+      {/* Header — spans the full content width above the grid */}
       <div>
         <Link
           href={availabilityHref}
@@ -241,260 +241,275 @@ export function GuestBookingFlow({
         </p>
       </div>
 
-      {/* Booking summary */}
-      <BookingSummaryCard summary={summary} variant="checkout" />
+      {/* Checkout reflow grid — one instance of each node moves between layouts
+          via grid placement: the summary is top on mobile / right on desktop,
+          and the Pay block is bottom on mobile / right on desktop. */}
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_380px] lg:gap-8 lg:items-start">
 
-      {/* Your details */}
-      <section className="flex flex-col gap-3.5">
-        <h2 className="text-base font-semibold text-neutral-900">Your details</h2>
-        <Input
-          label="Full name"
-          placeholder="Your full name"
-          autoComplete="name"
-          value={form.fullName}
-          onChange={(e) => setField('fullName', e.target.value)}
-        />
-        <Input
-          label="Email address"
-          type="email"
-          placeholder="you@example.com"
-          autoComplete="email"
-          value={form.email}
-          onChange={(e) => setField('email', e.target.value)}
-        />
-        <Input
-          label="Phone"
-          type="tel"
-          placeholder="07700 900000"
-          autoComplete="tel"
-          value={form.phone}
-          onChange={(e) => setField('phone', e.target.value)}
-        />
-        <Input
-          label="Address"
-          placeholder="Address line"
-          autoComplete="street-address"
-          value={form.address}
-          onChange={(e) => setField('address', e.target.value)}
-        />
-        <div className="grid grid-cols-[1fr_120px] gap-3">
-          <Input
-            label="Town/city"
-            autoComplete="address-level2"
-            value={form.townCity}
-            onChange={(e) => setField('townCity', e.target.value)}
-          />
-          <Input
-            label="Postcode"
-            autoComplete="postal-code"
-            className="uppercase"
-            value={form.postcode}
-            onChange={(e) => setField('postcode', e.target.value)}
-          />
-        </div>
-      </section>
-
-      {/* Your child */}
-      <section className="flex flex-col gap-3.5">
-        <h2 className="text-base font-semibold text-neutral-900">Your child</h2>
-        <div className="grid grid-cols-[1fr_96px] gap-3">
-          <Input
-            label="First name"
-            placeholder="e.g. Sam"
-            value={form.childFirstName}
-            onChange={(e) => setField('childFirstName', e.target.value)}
-          />
-          <Input
-            label="Age"
-            inputMode="numeric"
-            maxLength={2}
-            className="text-center"
-            value={form.childAge}
-            onChange={(e) => setField('childAge', e.target.value.replace(/\D/g, ''))}
-          />
-        </div>
-      </section>
-
-      {/* Payment */}
-      <section className="flex flex-col gap-3">
-        <h2 className="text-base font-semibold text-neutral-900">Payment</h2>
-
-        {/* Express checkout — placeholders wired in P-00c-API */}
-        <div className="grid grid-cols-2 gap-2.5">
-          <button
-            type="button"
-            onClick={handleExpressPay}
-            aria-label="Pay with Apple Pay"
-            className="flex h-12 items-center justify-center rounded-md bg-neutral-900 text-base font-semibold text-white transition-transform active:scale-[0.98]"
-          >
-            Apple Pay
-          </button>
-          <button
-            type="button"
-            onClick={handleExpressPay}
-            aria-label="Pay with Google Pay"
-            className="flex h-12 items-center justify-center rounded-md bg-neutral-900 text-base font-medium text-white transition-transform active:scale-[0.98]"
-          >
-            Google Pay
-          </button>
+        {/* Booking summary */}
+        <div className="lg:col-start-2 lg:row-start-1 lg:sticky lg:top-24">
+          <BookingSummaryCard summary={summary} variant="checkout" />
         </div>
 
-        {/* Divider */}
-        <div className="flex items-center gap-3 py-0.5">
-          <span className="h-px flex-1 bg-neutral-100" />
-          <span className="whitespace-nowrap text-sm font-medium text-neutral-400">
-            Or pay with card
-          </span>
-          <span className="h-px flex-1 bg-neutral-100" />
-        </div>
+        {/* Form column */}
+        <div className="flex flex-col gap-5 lg:col-start-1 lg:row-start-1 lg:row-span-2">
 
-        <Input
-          label="Cardholder name"
-          placeholder="Name on card"
-          autoComplete="cc-name"
-          value={form.cardholderName}
-          onChange={(e) => setField('cardholderName', e.target.value)}
-        />
-
-        {/* Billing address */}
-        <div className="flex flex-col gap-2.5">
-          <button
-            type="button"
-            onClick={() => setBillingSame((prev) => !prev)}
-            className="flex items-center gap-2.5 text-left"
-            aria-pressed={billingSame}
-          >
-            <span
-              className={[
-                'flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md',
-                billingSame
-                  ? 'bg-brand-600'
-                  : 'border-[1.5px] border-neutral-100 bg-white',
-              ].join(' ')}
-            >
-              {billingSame ? (
-                <Check size={14} strokeWidth={2.6} className="text-white" aria-hidden="true" />
-              ) : null}
-            </span>
-            <span className="text-sm font-medium text-neutral-600">
-              Billing address same as my details
-            </span>
-          </button>
-          {billingSame ? (
-            <p className="pl-[30px] text-sm text-neutral-600">
-              {[form.address, form.townCity, form.postcode]
-                .filter(Boolean)
-                .join(', ') || 'Uses the address from your details above.'}
-            </p>
-          ) : (
-            <div className="flex flex-col gap-2.5">
+          {/* Your details */}
+          <section className="flex flex-col gap-3.5 lg:rounded-lg lg:bg-white lg:p-6 lg:shadow-sm">
+            <h2 className="text-base font-semibold text-neutral-900 lg:text-lg">Your details</h2>
+            <Input
+              label="Full name"
+              placeholder="Your full name"
+              autoComplete="name"
+              value={form.fullName}
+              onChange={(e) => setField('fullName', e.target.value)}
+            />
+            <Input
+              label="Email address"
+              type="email"
+              placeholder="you@example.com"
+              autoComplete="email"
+              value={form.email}
+              onChange={(e) => setField('email', e.target.value)}
+            />
+            <Input
+              label="Phone"
+              type="tel"
+              placeholder="07700 900000"
+              autoComplete="tel"
+              value={form.phone}
+              onChange={(e) => setField('phone', e.target.value)}
+            />
+            <Input
+              label="Address"
+              placeholder="Address line"
+              autoComplete="street-address"
+              value={form.address}
+              onChange={(e) => setField('address', e.target.value)}
+            />
+            <div className="grid grid-cols-[1fr_120px] gap-3">
               <Input
-                placeholder="Billing address"
-                autoComplete="billing street-address"
-                value={form.billingAddress}
-                onChange={(e) => setField('billingAddress', e.target.value)}
+                label="Town/city"
+                autoComplete="address-level2"
+                value={form.townCity}
+                onChange={(e) => setField('townCity', e.target.value)}
               />
-              <div className="grid grid-cols-[1fr_120px] gap-2.5">
-                <Input
-                  placeholder="Town/city"
-                  autoComplete="billing address-level2"
-                  value={form.billingTownCity}
-                  onChange={(e) => setField('billingTownCity', e.target.value)}
-                />
-                <Input
-                  placeholder="Postcode"
-                  autoComplete="billing postal-code"
-                  className="uppercase"
-                  value={form.billingPostcode}
-                  onChange={(e) => setField('billingPostcode', e.target.value)}
-                />
+              <Input
+                label="Postcode"
+                autoComplete="postal-code"
+                className="uppercase"
+                value={form.postcode}
+                onChange={(e) => setField('postcode', e.target.value)}
+              />
+            </div>
+          </section>
+
+          {/* Your child */}
+          <section className="flex flex-col gap-3.5 lg:rounded-lg lg:bg-white lg:p-6 lg:shadow-sm">
+            <h2 className="text-base font-semibold text-neutral-900 lg:text-lg">Your child</h2>
+            <div className="grid grid-cols-[1fr_96px] gap-3">
+              <Input
+                label="First name"
+                placeholder="e.g. Sam"
+                value={form.childFirstName}
+                onChange={(e) => setField('childFirstName', e.target.value)}
+              />
+              <Input
+                label="Age"
+                inputMode="numeric"
+                maxLength={2}
+                className="text-center"
+                value={form.childAge}
+                onChange={(e) => setField('childAge', e.target.value.replace(/\D/g, ''))}
+              />
+            </div>
+          </section>
+
+          {/* Payment */}
+          <section className="flex flex-col gap-3 lg:rounded-lg lg:bg-white lg:p-6 lg:shadow-sm">
+            <h2 className="text-base font-semibold text-neutral-900 lg:text-lg">Payment</h2>
+
+            {/* Express checkout — placeholders wired in P-00c-API */}
+            <div className="grid grid-cols-2 gap-2.5">
+              <button
+                type="button"
+                onClick={handleExpressPay}
+                aria-label="Pay with Apple Pay"
+                className="flex h-12 items-center justify-center rounded-md bg-neutral-900 text-base font-semibold text-white transition-transform active:scale-[0.98]"
+              >
+                Apple Pay
+              </button>
+              <button
+                type="button"
+                onClick={handleExpressPay}
+                aria-label="Pay with Google Pay"
+                className="flex h-12 items-center justify-center rounded-md bg-neutral-900 text-base font-medium text-white transition-transform active:scale-[0.98]"
+              >
+                Google Pay
+              </button>
+            </div>
+
+            {/* Divider */}
+            <div className="flex items-center gap-3 py-0.5">
+              <span className="h-px flex-1 bg-neutral-100" />
+              <span className="whitespace-nowrap text-sm font-medium text-neutral-400">
+                Or pay with card
+              </span>
+              <span className="h-px flex-1 bg-neutral-100" />
+            </div>
+
+            <Input
+              label="Cardholder name"
+              placeholder="Name on card"
+              autoComplete="cc-name"
+              value={form.cardholderName}
+              onChange={(e) => setField('cardholderName', e.target.value)}
+            />
+
+            {/* Billing address */}
+            <div className="flex flex-col gap-2.5">
+              <button
+                type="button"
+                onClick={() => setBillingSame((prev) => !prev)}
+                className="flex items-center gap-2.5 text-left"
+                aria-pressed={billingSame}
+              >
+                <span
+                  className={[
+                    'flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md',
+                    billingSame
+                      ? 'bg-brand-600'
+                      : 'border-[1.5px] border-neutral-100 bg-white',
+                  ].join(' ')}
+                >
+                  {billingSame ? (
+                    <Check size={14} strokeWidth={2.6} className="text-white" aria-hidden="true" />
+                  ) : null}
+                </span>
+                <span className="text-sm font-medium text-neutral-600">
+                  Billing address same as my details
+                </span>
+              </button>
+              {billingSame ? (
+                <p className="pl-[30px] text-sm text-neutral-600">
+                  {[form.address, form.townCity, form.postcode]
+                    .filter(Boolean)
+                    .join(', ') || 'Uses the address from your details above.'}
+                </p>
+              ) : (
+                <div className="flex flex-col gap-2.5">
+                  <Input
+                    placeholder="Billing address"
+                    autoComplete="billing street-address"
+                    value={form.billingAddress}
+                    onChange={(e) => setField('billingAddress', e.target.value)}
+                  />
+                  <div className="grid grid-cols-[1fr_120px] gap-2.5">
+                    <Input
+                      placeholder="Town/city"
+                      autoComplete="billing address-level2"
+                      value={form.billingTownCity}
+                      onChange={(e) => setField('billingTownCity', e.target.value)}
+                    />
+                    <Input
+                      placeholder="Postcode"
+                      autoComplete="billing postal-code"
+                      className="uppercase"
+                      value={form.billingPostcode}
+                      onChange={(e) => setField('billingPostcode', e.target.value)}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Card element placeholder — replaced by the Stripe Card Element in
+                P-00c-API. */}
+            <div className="overflow-hidden rounded-md border border-neutral-100 bg-white">
+              <div className="flex h-input-mobile items-center gap-2.5 border-b border-neutral-100 px-3.5">
+                <CreditCard size={18} className="flex-shrink-0 text-neutral-400" aria-hidden="true" />
+                <span className="text-base text-neutral-400">Card number</span>
+              </div>
+              <div className="flex">
+                <div className="flex h-input-mobile flex-1 items-center border-r border-neutral-100 px-3.5">
+                  <span className="text-base text-neutral-400">MM / YY</span>
+                </div>
+                <div className="flex h-input-mobile flex-1 items-center px-3.5">
+                  <span className="text-base text-neutral-400">CVC</span>
+                </div>
               </div>
             </div>
-          )}
+          </section>
         </div>
 
-        {/* Card element placeholder — replaced by the Stripe Card Element in
-            P-00c-API. */}
-        <div className="overflow-hidden rounded-md border border-neutral-100 bg-white">
-          <div className="flex h-input-mobile items-center gap-2.5 border-b border-neutral-100 px-3.5">
-            <CreditCard size={18} className="flex-shrink-0 text-neutral-400" aria-hidden="true" />
-            <span className="text-base text-neutral-400">Card number</span>
-          </div>
-          <div className="flex">
-            <div className="flex h-input-mobile flex-1 items-center border-r border-neutral-100 px-3.5">
-              <span className="text-base text-neutral-400">MM / YY</span>
+        {/* Pay block — bottom on mobile, right column on desktop */}
+        <div className="flex flex-col gap-3.5 lg:col-start-2 lg:row-start-2">
+          {/* Error banner — directly above the Pay button */}
+          {error ? (
+            <div
+              role="alert"
+              className="flex items-start gap-2.5 rounded-md bg-danger/10 p-3.5 text-danger"
+            >
+              <AlertCircle size={18} className="mt-0.5 flex-shrink-0" aria-hidden="true" />
+              <div className="min-w-0 text-sm">
+                {error === 'slot_taken' ? (
+                  <>
+                    <p className="font-medium">
+                      This time slot was just booked by someone else.
+                    </p>
+                    <Link
+                      href={availabilityHref}
+                      className="mt-1 inline-block font-medium underline"
+                    >
+                      Choose another time
+                    </Link>
+                  </>
+                ) : (
+                  <p className="font-medium">
+                    {"Payment couldn't be completed. Please check your card details and try again."}
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setError(null)}
+                aria-label="Dismiss error"
+                className="-mr-1 -mt-1 ml-auto flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md"
+              >
+                <X size={16} aria-hidden="true" />
+              </button>
             </div>
-            <div className="flex h-input-mobile flex-1 items-center px-3.5">
-              <span className="text-base text-neutral-400">CVC</span>
-            </div>
-          </div>
-        </div>
+          ) : null}
 
-        <div className="flex items-center justify-center gap-1.5 text-sm text-neutral-400">
-          <Lock size={14} aria-hidden="true" />
-          <span>
-            Secured by <span className="font-medium text-neutral-600">Stripe</span>
-          </span>
-        </div>
-      </section>
-
-      {/* Error banner — above the Pay button */}
-      {error ? (
-        <div
-          role="alert"
-          className="flex items-start gap-2.5 rounded-md bg-danger/10 p-3.5 text-danger"
-        >
-          <AlertCircle size={18} className="mt-0.5 flex-shrink-0" aria-hidden="true" />
-          <div className="min-w-0 text-sm">
-            {error === 'slot_taken' ? (
-              <>
-                <p className="font-medium">
-                  This time slot was just booked by someone else.
-                </p>
-                <Link
-                  href={availabilityHref}
-                  className="mt-1 inline-block font-medium underline"
-                >
-                  Choose another time
-                </Link>
-              </>
-            ) : (
-              <p className="font-medium">
-                {"Payment couldn't be completed. Please check your card details and try again."}
-              </p>
-            )}
-          </div>
+          {/* Pay CTA */}
           <button
             type="button"
-            onClick={() => setError(null)}
-            aria-label="Dismiss error"
-            className="-mr-1 -mt-1 ml-auto flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md"
+            onClick={handlePay}
+            className="flex h-btn-mobile w-full items-center justify-center gap-2 rounded-full bg-brand-600 text-base font-medium text-white transition-all hover:bg-brand-700 active:scale-[0.98]"
           >
-            <X size={16} aria-hidden="true" />
+            <Lock size={17} aria-hidden="true" />
+            Pay {formatPence(totalPence)}
           </button>
-        </div>
-      ) : null}
 
-      {/* Pay CTA */}
-      <div className="flex flex-col gap-3.5">
-        <button
-          type="button"
-          onClick={handlePay}
-          className="flex h-btn-mobile w-full items-center justify-center gap-2 rounded-full bg-brand-600 text-base font-medium text-white transition-all hover:bg-brand-700 active:scale-[0.98]"
-        >
-          <Lock size={17} aria-hidden="true" />
-          Pay {formatPence(totalPence)}
-        </button>
-        <p className="px-1.5 text-center text-xs text-neutral-400">
-          By booking you agree to our{' '}
-          <Link href="/terms" className="font-medium text-brand-600">
-            Terms
-          </Link>{' '}
-          and{' '}
-          <Link href="/privacy" className="font-medium text-brand-600">
-            Privacy Policy
-          </Link>
-        </p>
+          {/* Secured by Stripe */}
+          <div className="flex items-center justify-center gap-1.5 text-sm text-neutral-400">
+            <Lock size={14} aria-hidden="true" />
+            <span>
+              Secured by <span className="font-medium text-neutral-600">Stripe</span>
+            </span>
+          </div>
+
+          <p className="px-1.5 text-center text-xs text-neutral-400">
+            By booking you agree to our{' '}
+            <Link href="/terms" className="font-medium text-brand-600">
+              Terms
+            </Link>{' '}
+            and{' '}
+            <Link href="/privacy" className="font-medium text-brand-600">
+              Privacy Policy
+            </Link>
+          </p>
+        </div>
       </div>
     </div>
   )

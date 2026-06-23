@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { PublicHeader } from '@/components/nav/PublicHeader'
 import { GuestBookingFlow } from '@/components/booking/GuestBookingFlow'
 import type { BookingSummary } from '@/components/booking/BookingSummaryCard'
 
@@ -38,7 +39,8 @@ export default async function GuestBookingPage({
 
   return (
     <main className="min-h-screen bg-neutral-50">
-      <div className="mx-auto w-full max-w-md px-4 py-8 md:py-12">
+      <PublicHeader />
+      <div className="mx-auto w-full max-w-6xl px-5 py-6 md:px-10 md:py-10">
         <GuestBookingFlow
           coachId={coachId}
           summary={STUB_SUMMARY}
