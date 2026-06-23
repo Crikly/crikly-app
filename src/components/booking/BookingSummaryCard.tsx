@@ -10,7 +10,7 @@ import { Avatar } from '@/components/ui/Avatar'
  */
 export interface BookingSummary {
   coachName: string
-  /** Display label only, e.g. "Cricket" — rendered as a text-only teal pill. */
+  /** Display label only, e.g. "Cricket" — rendered as a brand-coloured pill. */
   sportLabel: string
   /** Pre-formatted session date, e.g. "Saturday, 27 June". */
   sessionDate: string
@@ -60,7 +60,7 @@ export function BookingSummaryCard({ summary, variant, footer }: BookingSummaryC
       : 0
 
   return (
-    <div className="rounded-lg bg-white p-4 shadow-sm lg:p-6 lg:shadow-md">
+    <div className="rounded-lg border border-neutral-100 bg-white p-4 shadow-sm lg:p-6 lg:shadow-md">
       {/* Coach header */}
       <div className="flex items-center gap-3">
         <Avatar name={summary.coachName} size="md" />
@@ -68,7 +68,7 @@ export function BookingSummaryCard({ summary, variant, footer }: BookingSummaryC
           <p className="text-base font-semibold tracking-tight text-neutral-900">
             {summary.coachName}
           </p>
-          <span className="mt-1.5 inline-flex h-6 items-center rounded-full bg-teal-50 px-2.5 text-xs font-semibold text-teal-800">
+          <span className="mt-1.5 inline-flex h-6 items-center rounded-full bg-brand-50 px-2.5 text-xs font-semibold text-brand-800">
             {summary.sportLabel}
           </span>
         </div>

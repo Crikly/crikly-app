@@ -204,6 +204,14 @@ export function GuestBookingFlow({
   if (view === 'confirmed') {
     return (
       <div className="mx-auto flex w-full max-w-md flex-col items-center text-center">
+        {/* Brand lockup */}
+        <div className="mb-7 flex items-center gap-2">
+          <span className="inline-flex h-6 w-6 items-center justify-center rounded-[7px] bg-brand-600 text-[13px] font-bold leading-none tracking-tight text-white">
+            c
+          </span>
+          <span className="text-base font-bold tracking-tight text-brand-800">Crikly</span>
+        </div>
+
         {/* Success check */}
         <div className="flex h-[88px] w-[88px] items-center justify-center rounded-full bg-success/10">
           <div className="flex h-[60px] w-[60px] items-center justify-center rounded-full bg-success">
@@ -348,7 +356,7 @@ export function GuestBookingFlow({
         <div className="flex flex-col gap-5 lg:col-start-1 lg:row-start-1 lg:row-span-2">
 
           {/* Your details */}
-          <section className="flex flex-col gap-3.5 lg:gap-4 lg:rounded-lg lg:bg-white lg:p-6 lg:shadow-sm">
+          <section className="flex flex-col gap-3.5 lg:gap-4 lg:rounded-lg lg:border lg:border-neutral-100 lg:bg-white lg:p-6 lg:shadow-sm">
             <h2 className="text-base font-semibold text-neutral-900 lg:text-lg">Your details</h2>
             <Input
               label="Full name"
@@ -400,7 +408,7 @@ export function GuestBookingFlow({
           </section>
 
           {/* Your child */}
-          <section className="flex flex-col gap-3.5 lg:gap-4 lg:rounded-lg lg:bg-white lg:p-6 lg:shadow-sm">
+          <section className="flex flex-col gap-3.5 lg:gap-4 lg:rounded-lg lg:border lg:border-neutral-100 lg:bg-white lg:p-6 lg:shadow-sm">
             <h2 className="text-base font-semibold text-neutral-900 lg:text-lg">Your child</h2>
             <div className="grid grid-cols-[1fr_96px] gap-3 lg:grid-cols-[1fr_140px] lg:gap-4">
               <Input
@@ -421,7 +429,7 @@ export function GuestBookingFlow({
           </section>
 
           {/* Payment */}
-          <section className="flex flex-col gap-3 lg:rounded-lg lg:bg-white lg:p-6 lg:shadow-sm">
+          <section className="flex flex-col gap-3 lg:rounded-lg lg:border lg:border-neutral-100 lg:bg-white lg:p-6 lg:shadow-sm">
             <h2 className="text-base font-semibold text-neutral-900 lg:text-lg">Payment</h2>
 
             {/* Express checkout — placeholders. P-00c-API swaps these for the
