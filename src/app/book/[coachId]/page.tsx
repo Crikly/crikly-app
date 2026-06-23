@@ -40,7 +40,7 @@ export default async function GuestBookingPage({
   return (
     <main className="min-h-screen bg-neutral-50">
       <PublicHeader />
-      <div className="mx-auto w-full max-w-6xl px-5 py-6 md:px-10 md:py-10">
+      <div className="mx-auto w-full max-w-6xl px-5 py-6 lg:px-10 lg:py-8">
         <GuestBookingFlow
           coachId={coachId}
           summary={STUB_SUMMARY}

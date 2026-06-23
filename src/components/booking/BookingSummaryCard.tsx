@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { Calendar, Clock, User, Check } from 'lucide-react'
 import { Avatar } from '@/components/ui/Avatar'
 
@@ -27,6 +28,12 @@ interface BookingSummaryCardProps {
   summary: BookingSummary
   /** `checkout` shows the fee breakdown; `paid` shows the settled total. */
   variant: 'checkout' | 'paid'
+  /**
+   * Optional content rendered inside the card after the total — used on the
+   * desktop checkout layout to fuse the Pay button into the summary card,
+   * matching the approved design. Hidden on mobile by the caller.
+   */
+  footer?: ReactNode
 }
 
 /** Format integer pence as GBP, e.g. 4000 → "£40.00". */
@@ -43,7 +50,7 @@ function Divider() {
   return <div className="my-4 h-px bg-neutral-100" />
 }
 
-export function BookingSummaryCard({ summary, variant }: BookingSummaryCardProps) {
+export function BookingSummaryCard({ summary, variant, footer }: BookingSummaryCardProps) {
   const totalPence = summary.sessionFeePence + summary.platformFeePence
   // Derive the displayed rate from the fee values so the label stays correct
   // when P-00c-API supplies a non-default commission rate (BR-02).
@@ -53,15 +60,15 @@ export function BookingSummaryCard({ summary, variant }: BookingSummaryCardProps
       : 0
 
   return (
-    <div className="rounded-lg bg-white p-4 shadow-sm">
+    <div className="rounded-lg bg-white p-4 shadow-sm lg:p-6 lg:shadow-md">
       {/* Coach header */}
       <div className="flex items-center gap-3">
         <Avatar name={summary.coachName} size="md" />
         <div className="min-w-0">
-          <p className="text-lg font-semibold text-neutral-900">
+          <p className="text-base font-semibold tracking-tight text-neutral-900">
             {summary.coachName}
           </p>
-          <span className="mt-1.5 inline-flex h-6 items-center rounded-full bg-teal-50 px-2.5 text-sm font-medium text-teal-800">
+          <span className="mt-1.5 inline-flex h-6 items-center rounded-full bg-teal-50 px-2.5 text-xs font-semibold text-teal-800">
             {summary.sportLabel}
           </span>
         </div>
@@ -108,10 +115,12 @@ export function BookingSummaryCard({ summary, variant }: BookingSummaryCardProps
 
           <div className="flex items-baseline justify-between">
             <span className="text-base font-semibold text-neutral-900">Total</span>
-            <span className="text-xl font-semibold tabular-nums text-neutral-900">
+            <span className="text-xl font-bold tracking-tight tabular-nums text-neutral-900">
               {formatPence(totalPence)}
             </span>
           </div>
+
+          {footer}
         </>
       ) : (
         <div className="flex items-center justify-between">

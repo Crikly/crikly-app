@@ -79,6 +79,9 @@ export function GuestBookingFlow({
   const bookingReference = 'CRK-7F3A9K'
   const totalPence = summary.sessionFeePence + summary.platformFeePence
   const availabilityHref = `/coaches/${coachId}`
+  const billingSummary =
+    [form.address, form.townCity, form.postcode].filter(Boolean).join(', ') ||
+    'Uses the address from your details above.'
 
   function setField(key: keyof GuestForm, value: string): void {
     setForm((prev) => ({ ...prev, [key]: value }))
@@ -98,7 +101,8 @@ export function GuestBookingFlow({
   function handleExpressPay(): void {
     // TODO(P-00c-API): launch the Stripe wallet payment sheet. Apple Pay and
     // Google Pay need separate handlers (Apple Pay via the PaymentRequest API,
-    // Google Pay via its own Stripe Element) — split this before wiring.
+    // Google Pay via its own Stripe Element) — split this before wiring. The
+    // real buttons render their own Apple/Google branding via Stripe.
     // Placeholder only in this task.
   }
 
@@ -129,6 +133,74 @@ export function GuestBookingFlow({
     }
   }
 
+  // ──────────────────────────────────────────────────────────────────────
+  // Shared checkout pieces (computed once per render, reused in both slots).
+  // The error banner and the Pay button each appear in two slots — fused
+  // inside the summary card on desktop, and stacked at the bottom of the page
+  // on mobile — so exactly one of each is visible per breakpoint (the hidden
+  // copy is display:none and out of the a11y tree). This keeps the single
+  // primary CTA per screen the design intends.
+  // ──────────────────────────────────────────────────────────────────────
+  const errorBanner = error ? (
+    <div
+      role="alert"
+      className="flex items-start gap-2.5 rounded-md bg-danger/10 p-3.5 text-danger"
+    >
+      <AlertCircle size={18} className="mt-0.5 flex-shrink-0" aria-hidden="true" />
+      <div className="min-w-0 text-sm">
+        {error === 'slot_taken' ? (
+          <>
+            <p className="font-medium">
+              This time slot was just booked by someone else.
+            </p>
+            <Link
+              href={availabilityHref}
+              className="mt-1 inline-block font-medium underline"
+            >
+              Choose another time
+            </Link>
+          </>
+        ) : (
+          <p className="font-medium">
+            {"Payment couldn't be completed. Please check your card details and try again."}
+          </p>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={() => setError(null)}
+        aria-label="Dismiss error"
+        className="-mr-1 -mt-1 ml-auto flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md"
+      >
+        <X size={16} aria-hidden="true" />
+      </button>
+    </div>
+  ) : null
+
+  const payButton = (
+    <button
+      type="button"
+      onClick={handlePay}
+      className="flex h-btn-mobile w-full items-center justify-center gap-2 rounded-md bg-brand-600 text-base font-semibold text-white transition-all hover:bg-brand-700 active:scale-[0.98]"
+    >
+      <Lock size={17} aria-hidden="true" />
+      Pay {formatPence(totalPence)}
+    </button>
+  )
+
+  const terms = (
+    <p className="px-1.5 text-center text-xs text-neutral-400">
+      By booking you agree to our{' '}
+      <Link href="/terms" className="font-medium text-brand-600">
+        Terms
+      </Link>{' '}
+      and{' '}
+      <Link href="/privacy" className="font-medium text-brand-600">
+        Privacy Policy
+      </Link>
+    </p>
+  )
+
   if (view === 'confirmed') {
     return (
       <div className="mx-auto flex w-full max-w-md flex-col items-center text-center">
@@ -139,7 +211,7 @@ export function GuestBookingFlow({
           </div>
         </div>
 
-        <h1 className="mt-6 text-[28px] font-bold tracking-tight text-neutral-900">
+        <h1 className="mt-6 text-3xl font-bold tracking-heading text-neutral-900">
           {"You're all booked!"}
         </h1>
         <p className="mt-2.5 max-w-[290px] text-base text-neutral-600">
@@ -150,7 +222,7 @@ export function GuestBookingFlow({
         </p>
 
         {/* Booking reference */}
-        <div className="mt-7 flex w-full items-center justify-between gap-3 rounded-lg bg-neutral-50 px-4 py-3.5">
+        <div className="mt-7 flex w-full items-center justify-between gap-3 rounded-lg bg-brand-50 px-4 py-3.5">
           <div className="min-w-0 text-left">
             <p className="text-xs font-semibold uppercase tracking-label text-brand-800">
               Booking reference
@@ -189,9 +261,9 @@ export function GuestBookingFlow({
         </div>
 
         {/* Account nudge */}
-        <div className="mt-4 flex w-full flex-col gap-3.5 rounded-lg bg-neutral-50 p-4 text-left">
+        <div className="mt-4 flex w-full flex-col gap-3.5 rounded-lg bg-brand-50 p-4 text-left">
           <div className="flex items-start gap-3">
-            <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-md bg-brand-50 text-brand-600">
+            <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-md bg-white text-brand-600">
               <Bookmark size={20} aria-hidden="true" />
             </span>
             <div>
@@ -205,7 +277,7 @@ export function GuestBookingFlow({
           </div>
           <Link
             href="/register"
-            className="flex h-btn-mobile items-center justify-center rounded-full border-[1.5px] border-brand-600 bg-white text-base font-medium text-brand-600 transition-colors hover:bg-brand-50"
+            className="flex h-btn-mobile items-center justify-center rounded-md border-[1.5px] border-brand-600 bg-white text-base font-semibold text-brand-600 transition-colors hover:bg-brand-50"
           >
             Create account
           </Link>
@@ -224,7 +296,7 @@ export function GuestBookingFlow({
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Header — spans the full content width above the grid */}
+      {/* Page header */}
       <div>
         <Link
           href={availabilityHref}
@@ -233,7 +305,7 @@ export function GuestBookingFlow({
           <ArrowLeft size={16} aria-hidden="true" />
           Back to availability
         </Link>
-        <h1 className="mt-4 text-[28px] font-bold tracking-tight text-neutral-900">
+        <h1 className="mt-4 text-2xl font-semibold tracking-heading text-neutral-900 lg:text-3xl">
           Complete your booking
         </h1>
         <p className="mt-2 text-sm text-neutral-600">
@@ -241,21 +313,42 @@ export function GuestBookingFlow({
         </p>
       </div>
 
-      {/* Checkout reflow grid — one instance of each node moves between layouts
-          via grid placement: the summary is top on mobile / right on desktop,
-          and the Pay block is bottom on mobile / right on desktop. */}
+      {/* Checkout layout — single instance of the summary and the form. The
+          summary moves from the top (mobile) to the right column (desktop)
+          via grid placement; its footer fuses the Pay block into the card on
+          desktop, while the mobile Pay block sits at the bottom of the page. */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_380px] lg:gap-8 lg:items-start">
 
-        {/* Booking summary */}
-        <div className="lg:col-start-2 lg:row-start-1 lg:sticky lg:top-24">
-          <BookingSummaryCard summary={summary} variant="checkout" />
+        {/* Booking summary — desktop right column, with the fused Pay block */}
+        <div className="lg:col-start-2 lg:row-start-1">
+          <BookingSummaryCard
+            summary={summary}
+            variant="checkout"
+            footer={
+              <div className="mt-5 hidden flex-col gap-3 lg:flex">
+                {errorBanner}
+                {payButton}
+                <div className="flex items-center justify-center gap-1.5 text-xs text-neutral-400">
+                  <Lock size={13} aria-hidden="true" />
+                  {/* TODO(P-00c-API): make the cancellation window dynamic per
+                      coach (BR-05) — 24h is the current default. */}
+                  <span>
+                    Secured by <span className="font-semibold text-neutral-600">Stripe</span> · free cancellation 24h before
+                  </span>
+                </div>
+              </div>
+            }
+          />
+          <div className="mt-3.5 hidden lg:block">
+            {terms}
+          </div>
         </div>
 
         {/* Form column */}
         <div className="flex flex-col gap-5 lg:col-start-1 lg:row-start-1 lg:row-span-2">
 
           {/* Your details */}
-          <section className="flex flex-col gap-3.5 lg:rounded-lg lg:bg-white lg:p-6 lg:shadow-sm">
+          <section className="flex flex-col gap-3.5 lg:gap-4 lg:rounded-lg lg:bg-white lg:p-6 lg:shadow-sm">
             <h2 className="text-base font-semibold text-neutral-900 lg:text-lg">Your details</h2>
             <Input
               label="Full name"
@@ -264,22 +357,24 @@ export function GuestBookingFlow({
               value={form.fullName}
               onChange={(e) => setField('fullName', e.target.value)}
             />
-            <Input
-              label="Email address"
-              type="email"
-              placeholder="you@example.com"
-              autoComplete="email"
-              value={form.email}
-              onChange={(e) => setField('email', e.target.value)}
-            />
-            <Input
-              label="Phone"
-              type="tel"
-              placeholder="07700 900000"
-              autoComplete="tel"
-              value={form.phone}
-              onChange={(e) => setField('phone', e.target.value)}
-            />
+            <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-2 lg:gap-4">
+              <Input
+                label="Email address"
+                type="email"
+                placeholder="you@example.com"
+                autoComplete="email"
+                value={form.email}
+                onChange={(e) => setField('email', e.target.value)}
+              />
+              <Input
+                label="Phone"
+                type="tel"
+                placeholder="07700 900000"
+                autoComplete="tel"
+                value={form.phone}
+                onChange={(e) => setField('phone', e.target.value)}
+              />
+            </div>
             <Input
               label="Address"
               placeholder="Address line"
@@ -287,7 +382,7 @@ export function GuestBookingFlow({
               value={form.address}
               onChange={(e) => setField('address', e.target.value)}
             />
-            <div className="grid grid-cols-[1fr_120px] gap-3">
+            <div className="grid grid-cols-[1fr_120px] gap-3 lg:grid-cols-[1fr_160px] lg:gap-4">
               <Input
                 label="Town/city"
                 autoComplete="address-level2"
@@ -305,9 +400,9 @@ export function GuestBookingFlow({
           </section>
 
           {/* Your child */}
-          <section className="flex flex-col gap-3.5 lg:rounded-lg lg:bg-white lg:p-6 lg:shadow-sm">
+          <section className="flex flex-col gap-3.5 lg:gap-4 lg:rounded-lg lg:bg-white lg:p-6 lg:shadow-sm">
             <h2 className="text-base font-semibold text-neutral-900 lg:text-lg">Your child</h2>
-            <div className="grid grid-cols-[1fr_96px] gap-3">
+            <div className="grid grid-cols-[1fr_96px] gap-3 lg:grid-cols-[1fr_140px] lg:gap-4">
               <Input
                 label="First name"
                 placeholder="e.g. Sam"
@@ -329,8 +424,11 @@ export function GuestBookingFlow({
           <section className="flex flex-col gap-3 lg:rounded-lg lg:bg-white lg:p-6 lg:shadow-sm">
             <h2 className="text-base font-semibold text-neutral-900 lg:text-lg">Payment</h2>
 
-            {/* Express checkout — placeholders wired in P-00c-API */}
-            <div className="grid grid-cols-2 gap-2.5">
+            {/* Express checkout — placeholders. P-00c-API swaps these for the
+                Stripe wallet buttons, which render real Apple/Google branding.
+                The weight difference below (Apple semibold / Google medium)
+                mirrors each brand's own wordmark, per the approved design. */}
+            <div className="grid grid-cols-2 gap-2.5 lg:gap-3">
               <button
                 type="button"
                 onClick={handleExpressPay}
@@ -352,7 +450,7 @@ export function GuestBookingFlow({
             {/* Divider */}
             <div className="flex items-center gap-3 py-0.5">
               <span className="h-px flex-1 bg-neutral-100" />
-              <span className="whitespace-nowrap text-sm font-medium text-neutral-400">
+              <span className="whitespace-nowrap text-xs font-medium text-neutral-400">
                 Or pay with card
               </span>
               <span className="h-px flex-1 bg-neutral-100" />
@@ -376,7 +474,7 @@ export function GuestBookingFlow({
               >
                 <span
                   className={[
-                    'flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md',
+                    'flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-sm',
                     billingSame
                       ? 'bg-brand-600'
                       : 'border-[1.5px] border-neutral-100 bg-white',
@@ -391,11 +489,9 @@ export function GuestBookingFlow({
                 </span>
               </button>
               {billingSame ? (
-                <p className="pl-[30px] text-sm text-neutral-600">
-                  {[form.address, form.townCity, form.postcode]
-                    .filter(Boolean)
-                    .join(', ') || 'Uses the address from your details above.'}
-                </p>
+                // pl-[30px] aligns the text under the label, clearing the
+                // checkbox (w-5 = 20px) + its gap-2.5 (10px) = 30px.
+                <p className="pl-[30px] text-sm text-neutral-600">{billingSummary}</p>
               ) : (
                 <div className="flex flex-col gap-2.5">
                   <Input
@@ -404,7 +500,7 @@ export function GuestBookingFlow({
                     value={form.billingAddress}
                     onChange={(e) => setField('billingAddress', e.target.value)}
                   />
-                  <div className="grid grid-cols-[1fr_120px] gap-2.5">
+                  <div className="grid grid-cols-[1fr_120px] gap-2.5 lg:grid-cols-[1fr_160px]">
                     <Input
                       placeholder="Town/city"
                       autoComplete="billing address-level2"
@@ -439,76 +535,24 @@ export function GuestBookingFlow({
                 </div>
               </div>
             </div>
+
+            {/* Secured by Stripe — sits in the payment section on mobile and
+                in the desktop form card, matching the design. */}
+            <div className="flex items-center justify-center gap-1.5 text-xs text-neutral-400">
+              <Lock size={13} aria-hidden="true" />
+              <span>
+                Secured by <span className="font-semibold text-neutral-600">Stripe</span>
+              </span>
+            </div>
           </section>
         </div>
 
-        {/* Pay block — bottom on mobile, right column on desktop */}
-        <div className="flex flex-col gap-3.5 lg:col-start-2 lg:row-start-2">
-          {/* Error banner — directly above the Pay button */}
-          {error ? (
-            <div
-              role="alert"
-              className="flex items-start gap-2.5 rounded-md bg-danger/10 p-3.5 text-danger"
-            >
-              <AlertCircle size={18} className="mt-0.5 flex-shrink-0" aria-hidden="true" />
-              <div className="min-w-0 text-sm">
-                {error === 'slot_taken' ? (
-                  <>
-                    <p className="font-medium">
-                      This time slot was just booked by someone else.
-                    </p>
-                    <Link
-                      href={availabilityHref}
-                      className="mt-1 inline-block font-medium underline"
-                    >
-                      Choose another time
-                    </Link>
-                  </>
-                ) : (
-                  <p className="font-medium">
-                    {"Payment couldn't be completed. Please check your card details and try again."}
-                  </p>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={() => setError(null)}
-                aria-label="Dismiss error"
-                className="-mr-1 -mt-1 ml-auto flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md"
-              >
-                <X size={16} aria-hidden="true" />
-              </button>
-            </div>
-          ) : null}
-
-          {/* Pay CTA */}
-          <button
-            type="button"
-            onClick={handlePay}
-            className="flex h-btn-mobile w-full items-center justify-center gap-2 rounded-full bg-brand-600 text-base font-medium text-white transition-all hover:bg-brand-700 active:scale-[0.98]"
-          >
-            <Lock size={17} aria-hidden="true" />
-            Pay {formatPence(totalPence)}
-          </button>
-
-          {/* Secured by Stripe */}
-          <div className="flex items-center justify-center gap-1.5 text-sm text-neutral-400">
-            <Lock size={14} aria-hidden="true" />
-            <span>
-              Secured by <span className="font-medium text-neutral-600">Stripe</span>
-            </span>
-          </div>
-
-          <p className="px-1.5 text-center text-xs text-neutral-400">
-            By booking you agree to our{' '}
-            <Link href="/terms" className="font-medium text-brand-600">
-              Terms
-            </Link>{' '}
-            and{' '}
-            <Link href="/privacy" className="font-medium text-brand-600">
-              Privacy Policy
-            </Link>
-          </p>
+        {/* Pay block — bottom of the page on mobile, hidden on desktop where it
+            is fused into the summary card above. */}
+        <div className="flex flex-col gap-3.5 lg:hidden">
+          {errorBanner}
+          {payButton}
+          {terms}
         </div>
       </div>
     </div>

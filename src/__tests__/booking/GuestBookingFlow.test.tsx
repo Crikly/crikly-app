@@ -3,21 +3,19 @@
  *
  * Tests for GuestBookingFlow — the 'use client' checkout + confirmation component.
  *
- * Covers:
- *   1. Checkout view: renders coach name and sport label (Cricket pill)
- *   2. Form persistence on error (critical): typing into fields then triggering
- *      an error state does NOT reset form values
- *   3. Slot-taken banner: role="alert", correct message copy, "Choose another
- *      time" link pointing to /coaches/{coachId}
- *   4. View toggle: clicking "Pay …" button switches to the confirmation view —
- *      "You're all booked!" and booking reference appear, checkout form gone
- *   5. Confirmation email: the email typed by the guest appears in the
- *      confirmation copy
- *   6. Payment error banner: correct copy for the 'payment' error variant
+ * The checkout layout renders the Pay block and the error banner in two
+ * responsive slots (fused into the summary card on desktop, stacked at the
+ * page bottom on mobile). jsdom does not apply the Tailwind responsive
+ * visibility classes, so both copies are present in the DOM — tests use
+ * getAllBy* and act on the first match.
  *
- * NOTE: Stripe, real network calls, and navigator APIs are not invoked.
- * The Pay button calls handlePay() which advances to confirmed view (stub).
- * navigator.clipboard and navigator.share are mocked to avoid jsdom errors.
+ * Covers:
+ *   1. Checkout view: coach name, sport pill, Pay button with total
+ *   2. Form persistence on error (critical): typing does not reset the form
+ *   3. Slot-taken banner: role="alert", message, "Choose another time" link
+ *   4. Payment error banner: copy + dismiss removes it
+ *   5. View toggle: Pay → confirmation; checkout form gone
+ *   6. Confirmation: typed email appears in the copy
  */
 
 import React from 'react'
@@ -46,9 +44,6 @@ import userEvent from '@testing-library/user-event'
 import { GuestBookingFlow } from '@/components/booking/GuestBookingFlow'
 import type { BookingSummary } from '@/components/booking/BookingSummaryCard'
 
-// ----------------------------------------------------------------------------
-// Shared stub — matches the page.tsx placeholder data
-// ----------------------------------------------------------------------------
 const STUB_SUMMARY: BookingSummary = {
   coachName: 'Alex Stuart',
   sportLabel: 'Cricket',
@@ -56,14 +51,11 @@ const STUB_SUMMARY: BookingSummary = {
   sessionTime: '10:00am · 60 minutes',
   sessionType: '1-to-1 technical session',
   sessionFeePence: 4000, // £40.00
-  platformFeePence: 400, // £4.00  — 10% on top (BR-01, BR-02)
+  platformFeePence: 400, // £4.00 — 10% on top (BR-01, BR-02)
 }
 
 const STUB_COACH_ID = 'coach-abc-123'
 
-// ----------------------------------------------------------------------------
-// navigator mocks — clipboard and share are not available in jsdom
-// ----------------------------------------------------------------------------
 beforeAll(() => {
   Object.defineProperty(navigator, 'clipboard', {
     value: { writeText: jest.fn().mockResolvedValue(undefined) },
@@ -85,58 +77,29 @@ afterEach(() => {
 
 describe('GuestBookingFlow — checkout view', () => {
   it('renders the coach name from the summary', () => {
-    render(
-      <GuestBookingFlow
-        coachId={STUB_COACH_ID}
-        summary={STUB_SUMMARY}
-      />,
-    )
-    // Coach name appears in the BookingSummaryCard header
-    expect(screen.getAllByText('Alex Stuart').length).toBeGreaterThanOrEqual(1)
+    render(<GuestBookingFlow coachId={STUB_COACH_ID} summary={STUB_SUMMARY} />)
+    expect(screen.getByText('Alex Stuart')).toBeInTheDocument()
   })
 
   it('renders the sport pill label (Cricket)', () => {
-    render(
-      <GuestBookingFlow
-        coachId={STUB_COACH_ID}
-        summary={STUB_SUMMARY}
-      />,
-    )
+    render(<GuestBookingFlow coachId={STUB_COACH_ID} summary={STUB_SUMMARY} />)
     expect(screen.getByText('Cricket')).toBeInTheDocument()
   })
 
-  it('renders the Pay button with the formatted total amount', () => {
-    render(
-      <GuestBookingFlow
-        coachId={STUB_COACH_ID}
-        summary={STUB_SUMMARY}
-      />,
-    )
-    // total = 4000 + 400 = 4400 → £44.00
-    expect(
-      screen.getByRole('button', { name: /Pay £44\.00/i }),
-    ).toBeInTheDocument()
+  it('renders a Pay button with the formatted total in each responsive slot', () => {
+    render(<GuestBookingFlow coachId={STUB_COACH_ID} summary={STUB_SUMMARY} />)
+    // total = 4000 + 400 = 4400 → £44.00. Two slots: desktop fused + mobile.
+    const payButtons = screen.getAllByRole('button', { name: /Pay £44\.00/i })
+    expect(payButtons).toHaveLength(2)
   })
 
   it('does NOT show the confirmation view on initial render', () => {
-    render(
-      <GuestBookingFlow
-        coachId={STUB_COACH_ID}
-        summary={STUB_SUMMARY}
-      />,
-    )
-    expect(
-      screen.queryByText("You're all booked!"),
-    ).not.toBeInTheDocument()
+    render(<GuestBookingFlow coachId={STUB_COACH_ID} summary={STUB_SUMMARY} />)
+    expect(screen.queryByText("You're all booked!")).not.toBeInTheDocument()
   })
 
   it('does NOT show an error banner when no initialError is supplied', () => {
-    render(
-      <GuestBookingFlow
-        coachId={STUB_COACH_ID}
-        summary={STUB_SUMMARY}
-      />,
-    )
+    render(<GuestBookingFlow coachId={STUB_COACH_ID} summary={STUB_SUMMARY} />)
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 })
@@ -154,7 +117,7 @@ describe('GuestBookingFlow — form persistence on error (slot_taken)', () => {
         initialError="slot_taken"
       />,
     )
-    expect(screen.getByRole('alert')).toBeInTheDocument()
+    expect(screen.getAllByRole('alert').length).toBeGreaterThanOrEqual(1)
   })
 
   it('banner contains the "just booked by someone else" message', () => {
@@ -165,15 +128,13 @@ describe('GuestBookingFlow — form persistence on error (slot_taken)', () => {
         initialError="slot_taken"
       />,
     )
-    const alert = screen.getByRole('alert')
+    const alert = screen.getAllByRole('alert')[0]
     expect(
-      within(alert).getByText(
-        /This time slot was just booked by someone else/i,
-      ),
+      within(alert).getByText(/This time slot was just booked by someone else/i),
     ).toBeInTheDocument()
   })
 
-  it('banner contains a "Choose another time" link pointing to /coaches/{coachId}', () => {
+  it('banner has a "Choose another time" link pointing to /coaches/{coachId}', () => {
     render(
       <GuestBookingFlow
         coachId={STUB_COACH_ID}
@@ -181,11 +142,8 @@ describe('GuestBookingFlow — form persistence on error (slot_taken)', () => {
         initialError="slot_taken"
       />,
     )
-    const alert = screen.getByRole('alert')
-    const link = within(alert).getByRole('link', {
-      name: /Choose another time/i,
-    })
-    expect(link).toBeInTheDocument()
+    const alert = screen.getAllByRole('alert')[0]
+    const link = within(alert).getByRole('link', { name: /Choose another time/i })
     expect(link).toHaveAttribute('href', `/coaches/${STUB_COACH_ID}`)
   })
 
@@ -199,30 +157,23 @@ describe('GuestBookingFlow — form persistence on error (slot_taken)', () => {
       />,
     )
 
-    // The banner must be visible before we type
-    expect(screen.getByRole('alert')).toBeInTheDocument()
+    expect(screen.getAllByRole('alert').length).toBeGreaterThanOrEqual(1)
 
-    // Type into the Full name field
     const nameInput = screen.getByLabelText(/Full name/i)
     await user.clear(nameInput)
     await user.type(nameInput, 'James Holder')
 
-    // Type into the Email address field
     const emailInput = screen.getByLabelText(/Email address/i)
     await user.clear(emailInput)
     await user.type(emailInput, 'james@example.com')
 
-    // Banner must still be present — form state must NOT be reset on error
-    expect(screen.getByRole('alert')).toBeInTheDocument()
-
-    // Typed values must still be in the inputs
+    // Banner still present — form state must NOT reset on error
+    expect(screen.getAllByRole('alert').length).toBeGreaterThanOrEqual(1)
     expect(nameInput).toHaveValue('James Holder')
     expect(emailInput).toHaveValue('james@example.com')
   })
 
-  it('typed field values persist across a simulated re-render with the error still set', async () => {
-    // This test verifies nothing in the component inadvertently clears the
-    // form state when the error prop is present at mount time.
+  it('typed values persist across re-render with the error still set', async () => {
     const user = userEvent.setup()
     render(
       <GuestBookingFlow
@@ -235,15 +186,13 @@ describe('GuestBookingFlow — form persistence on error (slot_taken)', () => {
     const nameInput = screen.getByLabelText(/Full name/i)
     await user.type(nameInput, 'Ada Lovelace')
 
-    // The input must retain the typed value
     expect(nameInput).toHaveValue('Ada Lovelace')
-    // The error banner must still be shown
-    expect(screen.getByRole('alert')).toBeInTheDocument()
+    expect(screen.getAllByRole('alert').length).toBeGreaterThanOrEqual(1)
   })
 })
 
 // ============================================================================
-// 2b. Error banner — payment error variant
+// 4. Error banner — payment error variant
 // ============================================================================
 
 describe('GuestBookingFlow — payment error banner', () => {
@@ -255,11 +204,9 @@ describe('GuestBookingFlow — payment error banner', () => {
         initialError="payment"
       />,
     )
-    const alert = screen.getByRole('alert')
+    const alert = screen.getAllByRole('alert')[0]
     expect(
-      within(alert).getByText(
-        /Payment couldn't be completed/i,
-      ),
+      within(alert).getByText(/Payment couldn't be completed/i),
     ).toBeInTheDocument()
   })
 
@@ -271,7 +218,7 @@ describe('GuestBookingFlow — payment error banner', () => {
         initialError="payment"
       />,
     )
-    const alert = screen.getByRole('alert')
+    const alert = screen.getAllByRole('alert')[0]
     expect(
       within(alert).queryByRole('link', { name: /Choose another time/i }),
     ).not.toBeInTheDocument()
@@ -286,119 +233,83 @@ describe('GuestBookingFlow — payment error banner', () => {
         initialError="payment"
       />,
     )
-    expect(screen.getByRole('alert')).toBeInTheDocument()
+    expect(screen.getAllByRole('alert').length).toBeGreaterThanOrEqual(1)
 
-    await user.click(screen.getByRole('button', { name: /Dismiss error/i }))
+    await user.click(screen.getAllByRole('button', { name: /Dismiss error/i })[0])
 
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 })
 
 // ============================================================================
-// 4. View toggle — Pay button transitions to confirmation view
+// 5. View toggle — Pay button transitions to confirmation view
 // ============================================================================
 
 describe('GuestBookingFlow — view toggle on Pay', () => {
   it('clicking Pay switches to the confirmation view', async () => {
+    // STUB: handlePay advances synchronously today; once P-00c-API wires the
+    // real Stripe flow this will need to await PaymentIntent confirmation.
     const user = userEvent.setup()
-    render(
-      <GuestBookingFlow
-        coachId={STUB_COACH_ID}
-        summary={STUB_SUMMARY}
-      />,
-    )
+    render(<GuestBookingFlow coachId={STUB_COACH_ID} summary={STUB_SUMMARY} />)
 
-    await user.click(screen.getByRole('button', { name: /Pay £44\.00/i }))
+    await user.click(screen.getAllByRole('button', { name: /Pay £44\.00/i })[0])
 
     expect(screen.getByText("You're all booked!")).toBeInTheDocument()
   })
 
   it('the booking reference is shown in the confirmation view', async () => {
     const user = userEvent.setup()
-    render(
-      <GuestBookingFlow
-        coachId={STUB_COACH_ID}
-        summary={STUB_SUMMARY}
-      />,
-    )
+    render(<GuestBookingFlow coachId={STUB_COACH_ID} summary={STUB_SUMMARY} />)
 
-    await user.click(screen.getByRole('button', { name: /Pay £44\.00/i }))
+    await user.click(screen.getAllByRole('button', { name: /Pay £44\.00/i })[0])
 
-    // The stub reference is 'CRK-7F3A9K'
     expect(screen.getByText('CRK-7F3A9K')).toBeInTheDocument()
   })
 
   it('the checkout form is no longer visible after Pay is clicked', async () => {
     const user = userEvent.setup()
-    render(
-      <GuestBookingFlow
-        coachId={STUB_COACH_ID}
-        summary={STUB_SUMMARY}
-      />,
-    )
+    render(<GuestBookingFlow coachId={STUB_COACH_ID} summary={STUB_SUMMARY} />)
 
-    await user.click(screen.getByRole('button', { name: /Pay £44\.00/i }))
+    await user.click(screen.getAllByRole('button', { name: /Pay £44\.00/i })[0])
 
-    // The Pay button belongs to the checkout view — it must be gone
     expect(
       screen.queryByRole('button', { name: /Pay £44\.00/i }),
     ).not.toBeInTheDocument()
-
-    // The "Full name" field belongs to the checkout form — it must be gone
     expect(screen.queryByLabelText(/Full name/i)).not.toBeInTheDocument()
   })
 
   it('the booking reference section label reads "Booking reference"', async () => {
     const user = userEvent.setup()
-    render(
-      <GuestBookingFlow
-        coachId={STUB_COACH_ID}
-        summary={STUB_SUMMARY}
-      />,
-    )
+    render(<GuestBookingFlow coachId={STUB_COACH_ID} summary={STUB_SUMMARY} />)
 
-    await user.click(screen.getByRole('button', { name: /Pay £44\.00/i }))
+    await user.click(screen.getAllByRole('button', { name: /Pay £44\.00/i })[0])
 
     expect(screen.getByText('Booking reference')).toBeInTheDocument()
   })
 })
 
 // ============================================================================
-// 5. Confirmation — typed email appears in confirmation copy
+// 6. Confirmation — typed email appears in confirmation copy
 // ============================================================================
 
 describe('GuestBookingFlow — email in confirmation copy', () => {
   it('shows the typed email address in the confirmation message', async () => {
     const user = userEvent.setup()
-    render(
-      <GuestBookingFlow
-        coachId={STUB_COACH_ID}
-        summary={STUB_SUMMARY}
-      />,
-    )
+    render(<GuestBookingFlow coachId={STUB_COACH_ID} summary={STUB_SUMMARY} />)
 
-    // Type an email address into the checkout form
     const emailInput = screen.getByLabelText(/Email address/i)
     await user.type(emailInput, 'sarah@example.com')
 
-    // Click Pay to advance to the confirmation view
-    await user.click(screen.getByRole('button', { name: /Pay £44\.00/i }))
+    await user.click(screen.getAllByRole('button', { name: /Pay £44\.00/i })[0])
 
-    // The confirmation copy must include the email the user typed
     expect(screen.getByText('sarah@example.com')).toBeInTheDocument()
   })
 
   it('shows "your email" as fallback when no email was typed', async () => {
     const user = userEvent.setup()
-    render(
-      <GuestBookingFlow
-        coachId={STUB_COACH_ID}
-        summary={STUB_SUMMARY}
-      />,
-    )
+    render(<GuestBookingFlow coachId={STUB_COACH_ID} summary={STUB_SUMMARY} />)
 
-    // Do NOT type an email — leave it blank
-    await user.click(screen.getByRole('button', { name: /Pay £44\.00/i }))
+    await user.click(screen.getAllByRole('button', { name: /Pay £44\.00/i })[0])
 
     expect(screen.getByText('your email')).toBeInTheDocument()
   })
