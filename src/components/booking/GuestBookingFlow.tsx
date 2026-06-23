@@ -219,7 +219,7 @@ export function GuestBookingFlow({
           </div>
         </div>
 
-        <h1 className="mt-6 text-3xl font-bold tracking-heading text-neutral-900">
+        <h1 className="mt-6 text-[27px] font-medium tracking-heading text-neutral-900">
           {"You're all booked!"}
         </h1>
         <p className="mt-2.5 max-w-[290px] text-base text-neutral-600">
@@ -230,12 +230,12 @@ export function GuestBookingFlow({
         </p>
 
         {/* Booking reference */}
-        <div className="mt-7 flex w-full items-center justify-between gap-3 rounded-lg bg-brand-50 px-4 py-3.5">
+        <div className="mt-7 flex w-full items-center justify-between gap-3 rounded-[12px] bg-neutral-50 px-4 py-3.5">
           <div className="min-w-0 text-left">
-            <p className="text-xs font-semibold uppercase tracking-label text-brand-800">
+            <p className="text-xs font-semibold uppercase tracking-label text-brand-800 opacity-75">
               Booking reference
             </p>
-            <p className="mt-1 font-mono text-lg font-semibold tracking-wider text-brand-600">
+            <p className="mt-1 font-mono text-[19px] font-semibold tracking-wider text-brand-600">
               {bookingReference}
             </p>
           </div>
@@ -244,7 +244,7 @@ export function GuestBookingFlow({
               type="button"
               onClick={handleCopyReference}
               aria-label="Copy booking reference"
-              className="flex h-10 w-10 items-center justify-center rounded-md bg-white text-brand-600 shadow-sm transition-transform active:scale-95"
+              className="flex h-10 w-10 items-center justify-center rounded-md border border-brand-100 bg-white text-brand-600 transition-transform active:scale-95"
             >
               {copied ? (
                 <Check size={18} className="text-success" aria-hidden="true" />
@@ -256,7 +256,7 @@ export function GuestBookingFlow({
               type="button"
               onClick={handleShareReference}
               aria-label="Share booking"
-              className="flex h-10 w-10 items-center justify-center rounded-md bg-white text-brand-600 shadow-sm transition-transform active:scale-95"
+              className="flex h-10 w-10 items-center justify-center rounded-md border border-brand-100 bg-white text-brand-600 transition-transform active:scale-95"
             >
               <Share2 size={18} aria-hidden="true" />
             </button>
@@ -269,9 +269,9 @@ export function GuestBookingFlow({
         </div>
 
         {/* Account nudge */}
-        <div className="mt-4 flex w-full flex-col gap-3.5 rounded-lg bg-brand-50 p-4 text-left">
+        <div className="mt-4 flex w-full flex-col gap-3.5 rounded-[12px] border border-brand-100 bg-neutral-50 p-4 text-left">
           <div className="flex items-start gap-3">
-            <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-md bg-white text-brand-600">
+            <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-md bg-brand-50 text-brand-600">
               <Bookmark size={20} aria-hidden="true" />
             </span>
             <div>
@@ -285,7 +285,7 @@ export function GuestBookingFlow({
           </div>
           <Link
             href="/register"
-            className="flex h-btn-mobile items-center justify-center rounded-md border-[1.5px] border-brand-600 bg-white text-base font-semibold text-brand-600 transition-colors hover:bg-brand-50"
+            className="flex h-[46px] items-center justify-center rounded-md border-[1.5px] border-brand-600 bg-white text-base font-semibold text-brand-600 transition-colors hover:bg-brand-50"
           >
             Create account
           </Link>
@@ -356,7 +356,7 @@ export function GuestBookingFlow({
         <div className="flex flex-col gap-5 lg:col-start-1 lg:row-start-1 lg:row-span-2">
 
           {/* Your details */}
-          <section className="flex flex-col gap-3.5 lg:gap-4 lg:rounded-lg lg:border lg:border-neutral-100 lg:bg-white lg:p-6 lg:shadow-sm">
+          <section className="flex flex-col gap-3.5 lg:gap-4 lg:rounded-[12px] lg:border lg:border-neutral-100 lg:bg-white lg:p-6">
             <h2 className="text-base font-semibold text-neutral-900 lg:text-lg">Your details</h2>
             <Input
               label="Full name"
@@ -408,7 +408,7 @@ export function GuestBookingFlow({
           </section>
 
           {/* Your child */}
-          <section className="flex flex-col gap-3.5 lg:gap-4 lg:rounded-lg lg:border lg:border-neutral-100 lg:bg-white lg:p-6 lg:shadow-sm">
+          <section className="flex flex-col gap-3.5 lg:gap-4 lg:rounded-[12px] lg:border lg:border-neutral-100 lg:bg-white lg:p-6">
             <h2 className="text-base font-semibold text-neutral-900 lg:text-lg">Your child</h2>
             <div className="grid grid-cols-[1fr_96px] gap-3 lg:grid-cols-[1fr_140px] lg:gap-4">
               <Input
@@ -429,7 +429,7 @@ export function GuestBookingFlow({
           </section>
 
           {/* Payment */}
-          <section className="flex flex-col gap-3 lg:rounded-lg lg:border lg:border-neutral-100 lg:bg-white lg:p-6 lg:shadow-sm">
+          <section className="flex flex-col gap-3 lg:rounded-[12px] lg:border lg:border-neutral-100 lg:bg-white lg:p-6">
             <h2 className="text-base font-semibold text-neutral-900 lg:text-lg">Payment</h2>
 
             {/* Express checkout — placeholders. P-00c-API swaps these for the
@@ -528,8 +528,8 @@ export function GuestBookingFlow({
             </div>
 
             {/* Card element placeholder — replaced by the Stripe Card Element in
-                P-00c-API. */}
-            <div className="overflow-hidden rounded-md border border-neutral-100 bg-white">
+                P-00c-API. Mobile: two-row; desktop: single-row per design. */}
+            <div className="overflow-hidden rounded-md border border-neutral-100 bg-white lg:hidden">
               <div className="flex h-input-mobile items-center gap-2.5 border-b border-neutral-100 px-3.5">
                 <CreditCard size={18} className="flex-shrink-0 text-neutral-400" aria-hidden="true" />
                 <span className="text-base text-neutral-400">Card number</span>
@@ -543,13 +543,25 @@ export function GuestBookingFlow({
                 </div>
               </div>
             </div>
+            <div className="hidden overflow-hidden rounded-md border border-neutral-100 bg-white lg:flex lg:h-input-desktop">
+              <div className="flex flex-1 items-center gap-2.5 border-r border-neutral-100 px-3.5">
+                <CreditCard size={18} className="flex-shrink-0 text-neutral-400" aria-hidden="true" />
+                <span className="flex-1 text-base text-neutral-400">Card number</span>
+              </div>
+              <div className="flex w-[100px] items-center border-r border-neutral-100 px-3.5">
+                <span className="text-base text-neutral-400">MM / YY</span>
+              </div>
+              <div className="flex items-center px-3.5">
+                <span className="text-base text-neutral-400">CVC</span>
+              </div>
+            </div>
 
-            {/* Secured by Stripe — sits in the payment section on mobile and
-                in the desktop form card, matching the design. */}
+            {/* Secured by Stripe — mobile: short form. Desktop: full reassurance text. */}
             <div className="flex items-center justify-center gap-1.5 text-xs text-neutral-400">
               <Lock size={13} aria-hidden="true" />
               <span>
                 Secured by <span className="font-semibold text-neutral-600">Stripe</span>
+                <span className="hidden lg:inline">{". Your card details never touch Crikly's servers."}</span>
               </span>
             </div>
           </section>

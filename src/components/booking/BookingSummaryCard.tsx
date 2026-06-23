@@ -60,10 +60,11 @@ export function BookingSummaryCard({ summary, variant, footer }: BookingSummaryC
       : 0
 
   return (
-    <div className="rounded-lg border border-neutral-100 bg-white p-4 shadow-sm lg:p-6 lg:shadow-md">
+    <div className="rounded-[12px] border border-neutral-100 bg-white p-4 lg:rounded-lg lg:border-none lg:p-6 lg:shadow-md">
       {/* Coach header */}
       <div className="flex items-center gap-3">
-        <Avatar name={summary.coachName} size="md" />
+        {/* 52px per guest checkout design spec — larger than avatar-md token (44px) */}
+        <Avatar name={summary.coachName} size="md" className="!w-[52px] !h-[52px] !text-[18px]" />
         <div className="min-w-0">
           <p className="text-base font-semibold tracking-tight text-neutral-900">
             {summary.coachName}
@@ -115,7 +116,7 @@ export function BookingSummaryCard({ summary, variant, footer }: BookingSummaryC
 
           <div className="flex items-baseline justify-between">
             <span className="text-base font-semibold text-neutral-900">Total</span>
-            <span className="text-xl font-bold tracking-tight tabular-nums text-neutral-900">
+            <span className="text-xl font-bold tracking-tight tabular-nums text-neutral-900 lg:text-[22px]">
               {formatPence(totalPence)}
             </span>
           </div>

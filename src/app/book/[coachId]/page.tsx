@@ -38,9 +38,9 @@ export default async function GuestBookingPage({
   const { simulateError } = await searchParams
 
   return (
-    <main className="min-h-screen bg-neutral-50">
+    <main className="min-h-screen bg-white">
       <PublicHeader />
-      <div className="mx-auto w-full max-w-6xl px-5 py-6 lg:px-10 lg:py-8">
+      <div className="mx-auto w-full max-w-6xl px-5 py-6 lg:px-10 lg:pb-14">
         <GuestBookingFlow
           coachId={coachId}
           summary={STUB_SUMMARY}
