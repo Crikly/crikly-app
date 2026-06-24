@@ -315,7 +315,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       {
         amount: parentTotalPence,
         currency: currency.toLowerCase(),
-        automatic_payment_methods: { enabled: true },
+        // Card only. Pinning payment_method_types server-side is the reliable
+        // way to suppress Stripe Link / Klarna / Amazon Pay etc. — the client
+        // paymentMethodTypes hint alone does not fully exclude Link. (Cannot be
+        // combined with automatic_payment_methods.) Wallets are handled by the
+        // Express Checkout Element separately.
+        payment_method_types: ['card'],
         metadata: {
           booking_id: booking.id,
           booking_reference: reference,
