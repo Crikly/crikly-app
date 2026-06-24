@@ -12,6 +12,7 @@ import {
 import type {
   StripeElementsOptions,
   StripeExpressCheckoutElementConfirmEvent,
+  StripeExpressCheckoutElementReadyEvent,
 } from '@stripe/stripe-js'
 import {
   ArrowLeft,
@@ -297,6 +298,16 @@ function GuestCheckoutForm({
   // tap, card-path + wallet-path race) reuses this token so the server returns
   // the SAME booking + PaymentIntent instead of creating orphaned pending rows.
   const [idempotencyToken] = useState<string>(() => crypto.randomUUID())
+
+  // True once the Express Checkout Element reports a real wallet (Apple/Google
+  // Pay) is available on this device. Starts false so the static SVG placeholders
+  // show until proven otherwise — on localhost no wallet exists, so the
+  // placeholders remain and the real element renders nothing.
+  const [walletsAvailable, setWalletsAvailable] = useState<boolean>(false)
+
+  function handleExpressReady(event: StripeExpressCheckoutElementReadyEvent): void {
+    setWalletsAvailable(event.availablePaymentMethods != null)
+  }
 
   const totalPence = summary.sessionFeePence + summary.platformFeePence
   const availabilityHref = `/coaches/${coachId}`
@@ -654,17 +665,78 @@ function GuestCheckoutForm({
                 Payment
               </h2>
 
-              {/* Express checkout — real Apple Pay / Google Pay (renders only when
-                  a wallet is available on the device/browser). */}
-              <ExpressCheckoutElement
-                onConfirm={handleExpressConfirm}
-                options={{
-                  emailRequired: true,
-                  billingAddressRequired: true,
-                  buttonHeight: 48,
-                  paymentMethods: { applePay: 'auto', googlePay: 'auto' },
-                }}
-              />
+              {/* Express checkout — real Apple Pay / Google Pay only. The real
+                  element renders when a wallet is available on the device; when
+                  none is (e.g. localhost), onReady reports null and we fall back
+                  to the static SVG placeholders below so the layout never empties. */}
+              <div>
+                <ExpressCheckoutElement
+                  onReady={handleExpressReady}
+                  onConfirm={handleExpressConfirm}
+                  options={{
+                    emailRequired: true,
+                    billingAddressRequired: true,
+                    buttonHeight: 48,
+                    // Restrict to Apple/Google Pay — everything else off so the
+                    // test account's Klarna/Amazon Pay/Link/PayPal never appear.
+                    paymentMethods: {
+                      applePay: 'auto',
+                      googlePay: 'auto',
+                      link: 'never',
+                      amazonPay: 'never',
+                      klarna: 'never',
+                      paypal: 'never',
+                    },
+                  }}
+                />
+
+                {/* Static placeholders — shown only while no real wallet is
+                    available (visual parity with the design; non-interactive). */}
+                {!walletsAvailable && (
+                  <div className="grid grid-cols-2 gap-2.5 lg:gap-3" aria-hidden="true">
+                    <div
+                      data-testid="apple-pay-placeholder"
+                      className="flex h-12 items-center justify-center gap-1.5 rounded-[10px] bg-black"
+                    >
+                      <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true">
+                        <path
+                          fill="#fff"
+                          d="M17.05 12.04c-.03-2.6 2.12-3.85 2.22-3.91-1.21-1.77-3.09-2.01-3.76-2.04-1.6-.16-3.12.94-3.93.94-.81 0-2.06-.92-3.39-.89-1.74.03-3.35 1.01-4.25 2.57-1.81 3.14-.46 7.79 1.3 10.34.86 1.25 1.88 2.65 3.22 2.6 1.29-.05 1.78-.83 3.34-.83 1.56 0 2 .83 3.37.81 1.39-.03 2.27-1.27 3.12-2.53.98-1.45 1.39-2.85 1.41-2.92-.03-.01-2.7-1.04-2.73-4.12z"
+                        />
+                        <path
+                          fill="#fff"
+                          d="M14.46 4.47c.71-.86 1.19-2.06 1.06-3.25-1.02.04-2.26.68-2.99 1.54-.66.76-1.23 1.98-1.08 3.15 1.14.09 2.3-.58 3.01-1.44z"
+                        />
+                      </svg>
+                      <span className="text-[17px] font-semibold tracking-[-0.01em] text-white">Pay</span>
+                    </div>
+                    <div
+                      data-testid="google-pay-placeholder"
+                      className="flex h-12 items-center justify-center gap-1.5 rounded-[10px] bg-black"
+                    >
+                      <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true">
+                        <path
+                          fill="#4285F4"
+                          d="M23 12.27c0-.79-.07-1.54-.2-2.27H12v4.51h6.16c-.27 1.4-1.07 2.59-2.28 3.38v2.81h3.69C21.64 18.72 23 15.78 23 12.27z"
+                        />
+                        <path
+                          fill="#34A853"
+                          d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.69-2.81c-1.02.69-2.33 1.1-4.24 1.1-3.26 0-6.02-2.2-7.01-5.16H1.18v2.9C3.15 21.32 7.26 24 12 24z"
+                        />
+                        <path
+                          fill="#FBBC05"
+                          d="M4.99 14.22c-.25-.69-.39-1.43-.39-2.22s.14-1.53.39-2.22V6.88H1.18C.43 8.39 0 10.15 0 12s.43 3.61 1.18 5.12l3.81-2.9z"
+                        />
+                        <path
+                          fill="#EA4335"
+                          d="M12 4.77c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.26 0 3.15 2.68 1.18 6.88l3.81 2.9C5.98 6.97 8.74 4.77 12 4.77z"
+                        />
+                      </svg>
+                      <span className="text-[17px] font-medium tracking-[-0.01em] text-white">Pay</span>
+                    </div>
+                  </div>
+                )}
+              </div>
 
               {/* Or divider */}
               <div className="flex items-center gap-3 py-0.5">
