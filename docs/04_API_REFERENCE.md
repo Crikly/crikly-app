@@ -375,6 +375,63 @@ Create a new booking. Triggers payment intent creation.
 
 ---
 
+### POST /api/guest/bookings
+Guest (logged-out) checkout. Creates a provisional user, a `pending_payment` booking, and a Stripe PaymentIntent, then returns the client secret so the browser can confirm payment with the Stripe Payment Element. The booking is flipped to `confirmed` by the `payment_intent.succeeded` webhook (BR-06).
+**Status: Implemented — P-00c-API**
+**Auth: None (public). Uses the service-role client — provisional users have no Supabase Auth credentials.**
+
+**Request:**
+```json
+{
+  "coachId": "uuid",
+  "sportId": "uuid",
+  "sessionType": "individual",
+  "date": "2026-06-27",
+  "startTime": "10:00",
+  "pricePence": 4000,
+  "idempotencyToken": "client-generated-uuid",
+  "guest": {
+    "fullName": "Alex Parent",
+    "email": "alex@example.com",
+    "phone": "07700 900000",
+    "address": "1 High St",
+    "townCity": "London",
+    "postcode": "SW1A 1AA"
+  }
+}
+```
+
+**Response 200:**
+```json
+{
+  "clientSecret": "pi_..._secret_...",
+  "bookingReference": "CRK-2026-7F3A9K",
+  "bookingId": "uuid"
+}
+```
+On a retry carrying the same `idempotencyToken`, the existing booking + PaymentIntent are returned (no new rows created).
+
+**Error responses:**
+```
+400 invalid_body              malformed/missing fields
+400 sport_unavailable         coach does not offer this sport (or inactive)
+400 session_type_unavailable  no price set for the requested session type
+400 invalid_session_time      start time + duration is malformed / crosses midnight
+404 coach_unavailable         coach not found, not live, paused, or suspended
+409 price_mismatch            client pricePence ≠ coach_sports canonical price (tamper/stale)
+409 slot_taken                slot already booked (unique slot constraint)
+502 payment_init_failed       Stripe PaymentIntent could not be created
+500 internal_error            DB failure (rolls back via soft-delete — no orphan rows)
+```
+
+**Business rules applied:**
+- BR-01: Commission read from `platform_config`, added on top of the coach price. The client `pricePence` is re-verified server-side against `coach_sports` — never trusted for the charge.
+- BR-10: All amounts integer pence; Stripe charged `parent_total_pence`.
+- BR-12: `booking_reference` is `CRK-YYYY-XXXXXX` (random base32).
+- Funds (P-00c-API MVP): plain PaymentIntent captured by the platform for the full total; the coach/commission split is recorded on `payment_intents` for the payout system. No Connect destination charge — coaches need not have completed Stripe onboarding.
+
+---
+
 ### GET /api/bookings
 Get bookings for the authenticated user.
 
@@ -579,8 +636,8 @@ Sends a dummy email via Resend to verify delivery. Uses fixed stub data (coach "
 ## Webhook Routes
 
 ### POST /api/webhooks/stripe
-Receive and process Stripe webhook events. Currently handles `account.updated` only; every other event type is acknowledged with 200 and ignored.
-**Status: Implemented — BUG-STRIPE-ONBOARDING-COMPLETE-WIRING**
+Receive and process Stripe webhook events. Handles `account.updated`, `payment_intent.succeeded`, and `payment_intent.payment_failed`; every other event type is acknowledged with 200 and ignored.
+**Status: Implemented — BUG-STRIPE-ONBOARDING-COMPLETE-WIRING + P-00c-API**
 **Auth: Stripe signature (no Crikly auth — `STRIPE_WEBHOOK_SECRET` is the trust root)**
 
 **Headers:**
@@ -595,6 +652,8 @@ stripe-signature   required — verified against STRIPE_WEBHOOK_SECRET
 | `event.type` | Action |
 |---|---|
 | `account.updated` | Computes `isComplete = charges_enabled && payouts_enabled` from `event.data.object` (Stripe.Account) and `UPDATE coach_profiles SET stripe_onboarding_complete = isComplete WHERE stripe_account_id = account.id`. Both directions written, so a Stripe-side capability revocation flips the flag back to `false`. |
+| `payment_intent.succeeded` | Guest checkout (P-00c-API). Reads `metadata.booking_id`; sets `payment_intents.status = 'succeeded'`, and `UPDATE bookings SET status = 'confirmed', messaging_unlocked = true WHERE id = booking_id AND status = 'pending_payment'`. The status-scoped UPDATE is the idempotency guard — a redelivered event affects 0 rows and is a no-op (BR-06, BR-07). `TODO(P-00c-EMAIL)`: send Resend confirmation inside this transition. |
+| `payment_intent.payment_failed` | Sets `payment_intents.status = 'failed'` with `stripe_error_code` / `stripe_error_message`. The booking stays `pending_payment` (payer can retry; abandoned rows reaped by the provisional-user cleanup cron). |
 | any other | `console.info` log only, no DB writes, returns 200. |
 
 **Response 200:** `{ "received": true }` — sent for every event Stripe successfully signed, including unhandled types and post-error paths. Stripe retries on any non-2xx, so the route MUST NOT 5xx on DB errors.
@@ -607,7 +666,7 @@ stripe-signature   required — verified against STRIPE_WEBHOOK_SECRET
 **Response 500:** `STRIPE_WEBHOOK_SECRET` is not set in the runtime environment. Configuration error — Stripe will retry until the env is fixed.
 
 **Setup notes:**
-- The endpoint must be registered in the Stripe Dashboard for both **test** and **live** modes (Developers → Webhooks → Add endpoint). Subscribe to event `account.updated` only — every event is a billable round-trip.
+- The endpoint must be registered in the Stripe Dashboard for both **test** and **live** modes (Developers → Webhooks → Add endpoint). Subscribe to `account.updated`, `payment_intent.succeeded`, and `payment_intent.payment_failed` — every event is a billable round-trip.
 - Webhook receivers have no Crikly user session — the route uses `createAdminClient()` to write to `coach_profiles`; ownership is implicit in the `stripe_account_id` match.
 - **Card data is never touched.** This route only reads booleans (`charges_enabled`, `payouts_enabled`) from `Stripe.Account`. PCI scope unchanged.
 - Local testing: `stripe listen --forward-to localhost:3000/api/webhooks/stripe` + `stripe trigger account.updated`.

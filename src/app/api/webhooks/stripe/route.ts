@@ -14,12 +14,22 @@
 // Runtime: Node.js (Stripe SDK isn't edge-safe). `force-dynamic` so Next.js
 // doesn't try to cache or pre-render this route.
 //
-// Follow-ups when more events are wired (e.g. payment_intent.succeeded):
-//   - Add a `stripe_webhook_events` audit table keyed on event.id UNIQUE for
-//     idempotency. The account.updated handler is naturally idempotent (writing
-//     the same boolean twice is a no-op) so no audit table is needed yet.
-//   - Add a handler for `account.application.deauthorized` so a revoked Connect
-//     account also flips stripe_onboarding_complete back to false.
+// Handled events:
+//   - account.updated                 → coach Connect onboarding status
+//   - payment_intent.succeeded        → confirm guest booking (P-00c-API)
+//   - payment_intent.payment_failed   → record payment failure (P-00c-API)
+//
+// Idempotency: each handler is self-guarding rather than relying on a shared
+// audit table. account.updated writes an idempotent boolean; the booking confirm
+// is scoped to status='pending_payment' so redelivery is a no-op; the PI audit
+// updates are state-convergent. A `stripe_webhook_events` table keyed on event.id
+// is the next hardening step if we add non-idempotent side effects.
+//
+// Follow-ups:
+//   - TODO(P-00c-EMAIL): send the Resend confirmation inside the booking-confirm
+//     transition (single-fire is already guaranteed by the pending_payment guard).
+//   - Add `account.application.deauthorized` so a revoked Connect account flips
+//     stripe_onboarding_complete back to false.
 
 import { NextRequest, NextResponse } from 'next/server'
 import type Stripe from 'stripe'
@@ -98,6 +108,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         await handleAccountUpdated(event.data.object as Stripe.Account)
         break
 
+      case 'payment_intent.succeeded':
+        // Guest checkout (P-00c-API): payment cleared → confirm the booking.
+        await handlePaymentIntentSucceeded(event.data.object as Stripe.PaymentIntent)
+        break
+
+      case 'payment_intent.payment_failed':
+        // Mark the payment_intents row failed so we don't leave it stuck at
+        // 'pending'. The booking stays 'pending_payment' and is reaped by the
+        // provisional-user cleanup cron (guest) or retried by the payer.
+        await handlePaymentIntentFailed(event.data.object as Stripe.PaymentIntent)
+        break
+
       default:
         // Stripe sends many event types we don't subscribe to here. Acknowledge
         // and move on — silence is correct. console.info gives ops visibility
@@ -158,4 +180,94 @@ async function handleAccountUpdated(account: Stripe.Account): Promise<void> {
   console.info(
     `[Stripe Webhook] account.updated: ${rows.length} coach row(s) set stripe_onboarding_complete=${isComplete} for ${account.id}`,
   )
+}
+
+/**
+ * payment_intent.succeeded — the guest's card cleared.
+ *
+ * Confirms the booking (BR-06 instant confirmation) and unlocks messaging
+ * (BR-07), and marks the payment_intents audit row succeeded.
+ *
+ * Idempotency: Stripe may deliver this event more than once. We only act when
+ * the booking is still 'pending_payment', so a redelivery is a no-op. We also
+ * scope the booking UPDATE to status='pending_payment' so concurrent deliveries
+ * cannot double-fire side effects (e.g. the confirmation email).
+ *
+ * Never throws — DB errors are logged and swallowed so the outer handler returns
+ * 200 and Stripe stops retrying.
+ */
+async function handlePaymentIntentSucceeded(intent: Stripe.PaymentIntent): Promise<void> {
+  const bookingId = intent.metadata?.booking_id
+  if (!bookingId) {
+    // Not a Crikly-originated intent (or metadata missing). Nothing to do.
+    console.info(`[Stripe Webhook] payment_intent.succeeded ${intent.id} has no booking_id metadata`)
+    return
+  }
+
+  const adminSupabase = createAdminClient()
+
+  // Always reconcile the audit row to the terminal success state.
+  const { error: piError } = await adminSupabase
+    .from('payment_intents')
+    .update({ status: 'succeeded', stripe_status: intent.status })
+    .eq('stripe_payment_intent_id', intent.id)
+
+  if (piError) {
+    console.error(`[Stripe Webhook] payment_intents update failed for ${intent.id}:`, piError)
+  }
+
+  // Confirm the booking only if still awaiting payment — this is the idempotency
+  // guard. .select() lets us tell whether THIS delivery did the transition.
+  const { data: confirmed, error: bookingError } = await adminSupabase
+    .from('bookings')
+    .update({ status: 'confirmed', messaging_unlocked: true })
+    .eq('id', bookingId)
+    .eq('status', 'pending_payment')
+    .select('id, booking_reference')
+
+  if (bookingError) {
+    console.error(`[Stripe Webhook] booking confirm failed for ${bookingId}:`, bookingError)
+    return
+  }
+
+  if (!confirmed || confirmed.length === 0) {
+    // Already confirmed by a prior delivery (or cancelled). No-op — correct.
+    console.info(`[Stripe Webhook] booking ${bookingId} not in pending_payment; skipping (idempotent)`)
+    return
+  }
+
+  // TODO(P-00c-EMAIL): trigger the Resend booking-confirmation email here, using
+  // confirmed[0].booking_reference. Guarded by the pending_payment transition
+  // above so it fires exactly once.
+  console.info(`[Stripe Webhook] booking ${bookingId} confirmed via ${intent.id}`)
+}
+
+/**
+ * payment_intent.payment_failed — the card was declined / authentication failed.
+ *
+ * Records the failure on the payment_intents audit row (including Stripe's error
+ * code/message for support). The booking is intentionally left 'pending_payment'
+ * so the payer can retry against the same intent; abandoned rows are reaped by
+ * the provisional-user cleanup cron. Never throws.
+ */
+async function handlePaymentIntentFailed(intent: Stripe.PaymentIntent): Promise<void> {
+  const lastError = intent.last_payment_error
+  const adminSupabase = createAdminClient()
+
+  const { error } = await adminSupabase
+    .from('payment_intents')
+    .update({
+      status: 'failed',
+      stripe_status: intent.status,
+      stripe_error_code: lastError?.code ?? null,
+      stripe_error_message: lastError?.message ?? null,
+    })
+    .eq('stripe_payment_intent_id', intent.id)
+
+  if (error) {
+    console.error(`[Stripe Webhook] payment_intents failure update failed for ${intent.id}:`, error)
+    return
+  }
+
+  console.info(`[Stripe Webhook] payment_intent.payment_failed recorded for ${intent.id}`)
 }
