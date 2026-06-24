@@ -106,6 +106,10 @@ export function GuestBookingFlow({ coachId, summary, checkout, initialError }: G
       mode: 'payment',
       amount: totalPence,
       currency: 'gbp',
+      // Card only — Apple/Google Pay are handled by the Express Checkout Element,
+      // and the Stripe account's other methods (Klarna/Revolut/Amazon Pay) are
+      // explicitly excluded from the card tab.
+      paymentMethodTypes: ['card'],
       appearance: {
         theme: 'stripe',
         variables: {
@@ -820,6 +824,7 @@ function GuestCheckoutForm({
                 <PaymentElement
                   options={{
                     layout: 'tabs',
+                    paymentMethodOrder: ['card'],
                     fields: {
                       billingDetails: {
                         name: 'never',
