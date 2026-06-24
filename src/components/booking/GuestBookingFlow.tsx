@@ -182,7 +182,7 @@ export function GuestBookingFlow({ coachId, summary, initialError }: GuestBookin
 
   if (view === 'confirmed') {
     return (
-      <div className="mx-auto flex w-full max-w-md flex-col items-center text-center">
+      <div className="mx-auto flex w-full max-w-md lg:max-w-lg flex-col items-center text-center lg:py-12">
         {/* Brand lockup */}
         <div className="mt-3 mb-[30px] flex items-center gap-[7px]">
           <span className="inline-flex h-6 w-6 items-center justify-center rounded-[7px] bg-brand-600 text-[13px] font-bold leading-none tracking-[-0.02em] text-white">

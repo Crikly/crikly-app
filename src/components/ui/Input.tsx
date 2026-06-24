@@ -25,10 +25,10 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           id={inputId}
           className={[
             'h-input-mobile md:h-input-desktop w-full px-4',
-            'bg-neutral-50 border rounded-md',
+            'bg-neutral-50 border-[1.5px] rounded-[12px]',
             'text-base text-neutral-900 placeholder:text-neutral-400',
             'transition-colors duration-fast',
-            'focus:outline-none focus:border-brand-600 focus:shadow-focus',
+            'focus:outline-none focus:border-brand-600 focus:shadow-focus focus:bg-white',
             error
               ? 'border-danger focus:border-danger focus:shadow-none'
               : 'border-neutral-100',
