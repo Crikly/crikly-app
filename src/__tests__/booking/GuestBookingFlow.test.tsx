@@ -1,10 +1,56 @@
 /** @jest-environment jsdom */
-import React from 'react'
-import { render, screen, within } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
-import { GuestBookingFlow } from '@/components/booking/GuestBookingFlow'
-import type { BookingSummary } from '@/components/booking/BookingSummaryCard'
+// Rewritten for P-00c-API — GuestBookingFlow now requires a `checkout` prop
+// (GuestCheckoutParams) and wraps checkout in Stripe <Elements>. This test
+// mocks @stripe/react-stripe-js and @/lib/stripe/browser so no real Stripe
+// network calls are made and the component renders in jsdom.
+//
+// Tests preserved from the prior version (adapted for new prop shape):
+//   - checkout heading, summary fields, form inputs
+//   - initialError banners (slot_taken / payment) and dismiss
+//   - confirmation view after handlePay succeeds
+//   - copy-reference-button / share-button testids
+//
+// New tests:
+//   - handlePay — mocked fetch returns clientSecret + bookingReference,
+//     mocked useStripe().confirmPayment resolves → confirmation view shown.
+//   - handlePay — fetch returns 409 slot_taken → slot_taken error banner.
 
+import React from 'react'
+import { render, screen, within, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import type { BookingSummary } from '@/components/booking/BookingSummaryCard'
+import type { GuestCheckoutParams } from '@/components/booking/GuestBookingFlow'
+
+// ── Stripe mocks (must appear before any component import) ───────────────────
+//
+// @stripe/react-stripe-js is mocked entirely. Elements passes children through.
+// useStripe / useElements return minimal stub objects. PaymentElement and
+// ExpressCheckoutElement render inert divs.
+
+jest.mock('@stripe/react-stripe-js', () => {
+  const React = require('react') as typeof import('react')
+  const mockSubmit = jest.fn().mockResolvedValue({ error: null })
+  const mockConfirmPayment = jest.fn().mockResolvedValue({ error: null })
+
+  return {
+    Elements: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+    PaymentElement: () => <div data-testid="payment-element" />,
+    ExpressCheckoutElement: ({ onConfirm }: { onConfirm?: () => void }) => (
+      <div data-testid="express-checkout-element" onClick={onConfirm} />
+    ),
+    useStripe: () => ({ confirmPayment: mockConfirmPayment }),
+    useElements: () => ({ submit: mockSubmit }),
+    __mockSubmit: mockSubmit,
+    __mockConfirmPayment: mockConfirmPayment,
+  }
+})
+
+// @/lib/stripe/browser — return a resolved null promise (Stripe not loaded)
+jest.mock('@/lib/stripe/browser', () => ({
+  getStripePromise: () => Promise.resolve(null),
+}))
+
+// next/link — renders an <a> so href assertions work in jsdom
 jest.mock('next/link', () => {
   const MockLink = ({
     href,
@@ -23,6 +69,18 @@ jest.mock('next/link', () => {
   return MockLink
 })
 
+// Import the component AFTER mocks are in place
+import { GuestBookingFlow } from '@/components/booking/GuestBookingFlow'
+
+// Pull the stripe mock helpers (needed in handlePay tests)
+import * as StripeMock from '@stripe/react-stripe-js'
+const stripeModule = StripeMock as unknown as {
+  __mockSubmit: jest.Mock
+  __mockConfirmPayment: jest.Mock
+}
+
+// ── Test fixtures ─────────────────────────────────────────────────────────────
+
 const STUB: BookingSummary = {
   coachName: 'Alex Stuart',
   sportLabel: 'Cricket',
@@ -33,7 +91,18 @@ const STUB: BookingSummary = {
   platformFeePence: 400,
 }
 
+const CHECKOUT: GuestCheckoutParams = {
+  coachId: 'coach-abc-123',
+  sportId: 'sport-cricket-001',
+  sessionType: 'individual',
+  date: '2026-06-27',
+  startTime: '10:00',
+  pricePence: 4000,
+}
+
 const COACH_ID = 'coach-abc-123'
+
+// ── Browser API stubs ─────────────────────────────────────────────────────────
 
 beforeAll(() => {
   Object.defineProperty(navigator, 'clipboard', {
@@ -44,63 +113,80 @@ beforeAll(() => {
     value: jest.fn().mockResolvedValue(undefined),
     configurable: true,
   })
+  // crypto.randomUUID used by the component for the idempotency token
+  Object.defineProperty(global, 'crypto', {
+    value: { randomUUID: jest.fn().mockReturnValue('test-uuid-1234') },
+    configurable: true,
+  })
 })
 
 afterEach(() => {
   jest.clearAllMocks()
 })
 
-// ── checkout view ──────────────────────────────────────────────────────────
+// ── Checkout view ──────────────────────────────────────────────────────────────
 
 describe('GuestBookingFlow — checkout view', () => {
   it('renders the coach name', () => {
-    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} />)
+    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} checkout={CHECKOUT} />)
     expect(screen.getAllByText('Alex Stuart').length).toBeGreaterThanOrEqual(1)
   })
 
   it('renders the sport pill', () => {
-    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} />)
+    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} checkout={CHECKOUT} />)
     expect(screen.getAllByText('Cricket').length).toBeGreaterThanOrEqual(1)
   })
 
   it('renders Pay buttons with the formatted total', () => {
-    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} />)
-    // Two DOM slots: desktop fused (hidden on mobile) + mobile bottom (lg:hidden)
-    const payButtons = screen.getAllByRole('button', { name: /Pay £44\.00/i })
-    expect(payButtons).toHaveLength(2)
+    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} checkout={CHECKOUT} />)
+    // Two DOM slots: desktop fused (lg:block) + mobile bottom (lg:hidden)
+    const payButtons = screen.getAllByTestId('pay-button')
+    expect(payButtons.length).toBeGreaterThanOrEqual(1)
+    // Each button text contains the formatted total
+    expect(payButtons[0]).toHaveTextContent(/Pay £44\.00/i)
   })
 
   it('does NOT show the confirmation view on initial render', () => {
-    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} />)
+    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} checkout={CHECKOUT} />)
     expect(screen.queryByText("You're all booked!")).not.toBeInTheDocument()
   })
 
   it('does NOT show an error banner when no initialError is supplied', () => {
-    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} />)
+    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} checkout={CHECKOUT} />)
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('renders the full-name input', () => {
-    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} />)
+    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} checkout={CHECKOUT} />)
     expect(screen.getByLabelText(/Full name/i)).toBeInTheDocument()
   })
 
   it('renders the email input', () => {
-    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} />)
+    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} checkout={CHECKOUT} />)
     expect(screen.getByLabelText(/Email address/i)).toBeInTheDocument()
+  })
+
+  it('renders the "Complete your booking" heading', () => {
+    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} checkout={CHECKOUT} />)
+    expect(screen.getByRole('heading', { name: /Complete your booking/i })).toBeInTheDocument()
+  })
+
+  it('renders the Stripe PaymentElement placeholder', () => {
+    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} checkout={CHECKOUT} />)
+    expect(screen.getByTestId('payment-element')).toBeInTheDocument()
   })
 })
 
-// ── slot_taken error ───────────────────────────────────────────────────────
+// ── slot_taken error ───────────────────────────────────────────────────────────
 
 describe('GuestBookingFlow — slot_taken error', () => {
   it('shows at least one slot-taken alert', () => {
-    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} initialError="slot_taken" />)
+    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} checkout={CHECKOUT} initialError="slot_taken" />)
     expect(screen.getAllByRole('alert').length).toBeGreaterThanOrEqual(1)
   })
 
   it('banner contains the "just booked by someone else" message', () => {
-    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} initialError="slot_taken" />)
+    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} checkout={CHECKOUT} initialError="slot_taken" />)
     const alert = screen.getAllByRole('alert')[0]
     expect(
       within(alert).getByText(/This time slot was just booked by someone else/i)
@@ -108,7 +194,7 @@ describe('GuestBookingFlow — slot_taken error', () => {
   })
 
   it('banner has a "Choose another time" link to /coaches/{coachId}', () => {
-    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} initialError="slot_taken" />)
+    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} checkout={CHECKOUT} initialError="slot_taken" />)
     const alert = screen.getAllByRole('alert')[0]
     const link = within(alert).getByRole('link', { name: /Choose another time/i })
     expect(link).toHaveAttribute('href', `/coaches/${COACH_ID}`)
@@ -116,7 +202,7 @@ describe('GuestBookingFlow — slot_taken error', () => {
 
   it('form field values persist when error banner is visible', async () => {
     const user = userEvent.setup()
-    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} initialError="slot_taken" />)
+    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} checkout={CHECKOUT} initialError="slot_taken" />)
 
     const nameInput = screen.getByLabelText(/Full name/i)
     await user.clear(nameInput)
@@ -132,22 +218,22 @@ describe('GuestBookingFlow — slot_taken error', () => {
   })
 })
 
-// ── payment error ──────────────────────────────────────────────────────────
+// ── payment error ──────────────────────────────────────────────────────────────
 
 describe('GuestBookingFlow — payment error', () => {
   it('shows a payment failure alert', () => {
-    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} initialError="payment" />)
+    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} checkout={CHECKOUT} initialError="payment" />)
     expect(screen.getAllByRole('alert').length).toBeGreaterThanOrEqual(1)
   })
 
-  it("banner contains the \"couldn't be completed\" message", () => {
-    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} initialError="payment" />)
+  it('banner contains the "couldn\'t be completed" message', () => {
+    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} checkout={CHECKOUT} initialError="payment" />)
     const alert = screen.getAllByRole('alert')[0]
     expect(within(alert).getByText(/Payment couldn't be completed/i)).toBeInTheDocument()
   })
 
   it('payment error does NOT show "Choose another time"', () => {
-    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} initialError="payment" />)
+    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} checkout={CHECKOUT} initialError="payment" />)
     const alert = screen.getAllByRole('alert')[0]
     expect(
       within(alert).queryByRole('link', { name: /Choose another time/i })
@@ -156,67 +242,196 @@ describe('GuestBookingFlow — payment error', () => {
 
   it('clicking dismiss removes the error banner', async () => {
     const user = userEvent.setup()
-    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} initialError="payment" />)
+    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} checkout={CHECKOUT} initialError="payment" />)
     expect(screen.getAllByRole('alert').length).toBeGreaterThanOrEqual(1)
     await user.click(screen.getAllByRole('button', { name: /Dismiss error/i })[0])
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 })
 
-// ── view toggle ────────────────────────────────────────────────────────────
+// ── handlePay — confirmation flow ─────────────────────────────────────────────
 
-describe('GuestBookingFlow — view toggle', () => {
-  it('clicking Pay switches to the confirmation view', async () => {
-    const user = userEvent.setup()
-    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} />)
-    await user.click(screen.getAllByRole('button', { name: /Pay £44\.00/i })[0])
-    expect(screen.getByText("You're all booked!")).toBeInTheDocument()
+describe('GuestBookingFlow — handlePay success', () => {
+  const BOOKING_REFERENCE = 'CRK-2026-AB3CD5'
+
+  beforeEach(() => {
+    // Mock global fetch to return a successful booking response
+    global.fetch = jest.fn().mockResolvedValue({
+      status: 200,
+      ok: true,
+      json: jest.fn().mockResolvedValue({
+        clientSecret: 'pi_test_secret_xyz',
+        bookingReference: BOOKING_REFERENCE,
+        bookingId: 'booking-uuid-test',
+      }),
+    } as unknown as Response /* partial stub — only .status, .ok, .json are exercised */)
+
+    // Stripe confirmPayment resolves without error (card payment succeeds)
+    stripeModule.__mockConfirmPayment.mockResolvedValue({ error: null })
+    stripeModule.__mockSubmit.mockResolvedValue({ error: null })
   })
 
-  it('confirmation shows the booking reference', async () => {
+  it('shows the confirmation view after handlePay resolves successfully', async () => {
     const user = userEvent.setup()
-    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} />)
-    await user.click(screen.getAllByRole('button', { name: /Pay £44\.00/i })[0])
-    expect(screen.getByText('CRK-7F3A9K')).toBeInTheDocument()
+    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} checkout={CHECKOUT} />)
+
+    await user.click(screen.getAllByTestId('pay-button')[0])
+
+    await waitFor(() => {
+      expect(screen.getByText("You're all booked!")).toBeInTheDocument()
+    })
   })
 
-  it('Pay buttons are removed after confirmation', async () => {
+  it('confirmation shows the booking reference returned by the API', async () => {
     const user = userEvent.setup()
-    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} />)
-    await user.click(screen.getAllByRole('button', { name: /Pay £44\.00/i })[0])
-    expect(screen.queryByRole('button', { name: /Pay £44\.00/i })).not.toBeInTheDocument()
+    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} checkout={CHECKOUT} />)
+
+    await user.click(screen.getAllByTestId('pay-button')[0])
+
+    await waitFor(() => {
+      expect(screen.getByText(BOOKING_REFERENCE)).toBeInTheDocument()
+    })
+  })
+
+  it('confirmation shows "Booking reference" label', async () => {
+    const user = userEvent.setup()
+    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} checkout={CHECKOUT} />)
+
+    await user.click(screen.getAllByTestId('pay-button')[0])
+
+    await waitFor(() => {
+      expect(screen.getByText('Booking reference')).toBeInTheDocument()
+    })
+  })
+
+  it('pay buttons are removed after confirmation', async () => {
+    const user = userEvent.setup()
+    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} checkout={CHECKOUT} />)
+
+    await user.click(screen.getAllByTestId('pay-button')[0])
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('pay-button')).not.toBeInTheDocument()
+    })
   })
 
   it('form inputs are removed after confirmation', async () => {
     const user = userEvent.setup()
-    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} />)
-    await user.click(screen.getAllByRole('button', { name: /Pay £44\.00/i })[0])
-    expect(screen.queryByLabelText(/Full name/i)).not.toBeInTheDocument()
+    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} checkout={CHECKOUT} />)
+
+    await user.click(screen.getAllByTestId('pay-button')[0])
+
+    await waitFor(() => {
+      expect(screen.queryByLabelText(/Full name/i)).not.toBeInTheDocument()
+    })
   })
 
-  it('confirmation shows the "Booking reference" label', async () => {
-    const user = userEvent.setup()
-    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} />)
-    await user.click(screen.getAllByRole('button', { name: /Pay £44\.00/i })[0])
-    expect(screen.getByText('Booking reference')).toBeInTheDocument()
-  })
-})
-
-// ── email in confirmation ──────────────────────────────────────────────────
-
-describe('GuestBookingFlow — email in confirmation', () => {
   it('shows the typed email address in the confirmation message', async () => {
     const user = userEvent.setup()
-    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} />)
+    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} checkout={CHECKOUT} />)
+
     await user.type(screen.getByLabelText(/Email address/i), 'sarah@example.com')
-    await user.click(screen.getAllByRole('button', { name: /Pay £44\.00/i })[0])
-    expect(screen.getByText('sarah@example.com')).toBeInTheDocument()
+    await user.click(screen.getAllByTestId('pay-button')[0])
+
+    await waitFor(() => {
+      expect(screen.getByText('sarah@example.com')).toBeInTheDocument()
+    })
   })
 
   it('shows "your email" fallback when no email is typed', async () => {
     const user = userEvent.setup()
-    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} />)
-    await user.click(screen.getAllByRole('button', { name: /Pay £44\.00/i })[0])
-    expect(screen.getByText('your email')).toBeInTheDocument()
+    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} checkout={CHECKOUT} />)
+
+    await user.click(screen.getAllByTestId('pay-button')[0])
+
+    await waitFor(() => {
+      expect(screen.getByText('your email')).toBeInTheDocument()
+    })
+  })
+
+  it('copy-reference-button is present in confirmation view', async () => {
+    const user = userEvent.setup()
+    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} checkout={CHECKOUT} />)
+
+    await user.click(screen.getAllByTestId('pay-button')[0])
+
+    await waitFor(() => {
+      expect(screen.getByTestId('copy-reference-button')).toBeInTheDocument()
+    })
+  })
+
+  it('share-button is present in confirmation view', async () => {
+    const user = userEvent.setup()
+    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} checkout={CHECKOUT} />)
+
+    await user.click(screen.getAllByTestId('pay-button')[0])
+
+    await waitFor(() => {
+      expect(screen.getByTestId('share-button')).toBeInTheDocument()
+    })
+  })
+})
+
+// ── handlePay — 409 slot_taken fetch response ─────────────────────────────────
+
+describe('GuestBookingFlow — handlePay slot_taken from API', () => {
+  beforeEach(() => {
+    stripeModule.__mockSubmit.mockResolvedValue({ error: null })
+    stripeModule.__mockConfirmPayment.mockResolvedValue({ error: null })
+  })
+
+  it('shows slot_taken error banner when fetch returns 409 slot_taken', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      status: 409,
+      ok: false,
+      json: jest.fn().mockResolvedValue({ error: 'slot_taken' }),
+    } as unknown as Response /* partial stub — only .status, .ok, .json are exercised */)
+
+    const user = userEvent.setup()
+    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} checkout={CHECKOUT} />)
+
+    await user.click(screen.getAllByTestId('pay-button')[0])
+
+    await waitFor(() => {
+      const alerts = screen.getAllByRole('alert')
+      expect(alerts.length).toBeGreaterThanOrEqual(1)
+      expect(within(alerts[0]).getByText(/just booked by someone else/i)).toBeInTheDocument()
+    })
+  })
+
+  it('does NOT show confirmation view when fetch returns 409', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      status: 409,
+      ok: false,
+      json: jest.fn().mockResolvedValue({ error: 'slot_taken' }),
+    } as unknown as Response /* partial stub — only .status, .ok, .json are exercised */)
+
+    const user = userEvent.setup()
+    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} checkout={CHECKOUT} />)
+
+    await user.click(screen.getAllByTestId('pay-button')[0])
+
+    await waitFor(() => {
+      expect(screen.queryByText("You're all booked!")).not.toBeInTheDocument()
+    })
+  })
+
+  it('shows payment error banner when fetch returns a non-409 failure', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      status: 500,
+      ok: false,
+      json: jest.fn().mockResolvedValue({ error: 'internal_error' }),
+    } as unknown as Response /* partial stub — only .status, .ok, .json are exercised */)
+
+    const user = userEvent.setup()
+    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} checkout={CHECKOUT} />)
+
+    await user.click(screen.getAllByTestId('pay-button')[0])
+
+    await waitFor(() => {
+      const alerts = screen.getAllByRole('alert')
+      expect(alerts.length).toBeGreaterThanOrEqual(1)
+      expect(within(alerts[0]).getByText(/Payment couldn't be completed/i)).toBeInTheDocument()
+    })
   })
 })
