@@ -7,11 +7,6 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "14.4"
-  }
   graphql_public: {
     Tables: {
       [_ in never]: never
@@ -2573,9 +2568,9 @@ export type Database = {
       }
       user_profiles: {
         Row: {
-          active_role: string
+          active_role: string | null
           auth_provider: string
-          auth_user_id: string
+          auth_user_id: string | null
           avatar_url: string | null
           country_code: string
           created_at: string
@@ -2583,19 +2578,21 @@ export type Database = {
           deletion_requested_at: string | null
           full_name: string
           id: string
+          is_provisional: boolean
           location_city: string | null
           location_lat: number | null
           location_lng: number | null
           location_postcode: string | null
           phone: string | null
+          provisional_until: string | null
           terms_accepted_at: string | null
           updated_at: string
           whatsapp_number: string | null
         }
         Insert: {
-          active_role?: string
+          active_role?: string | null
           auth_provider?: string
-          auth_user_id: string
+          auth_user_id?: string | null
           avatar_url?: string | null
           country_code?: string
           created_at?: string
@@ -2603,19 +2600,21 @@ export type Database = {
           deletion_requested_at?: string | null
           full_name: string
           id?: string
+          is_provisional?: boolean
           location_city?: string | null
           location_lat?: number | null
           location_lng?: number | null
           location_postcode?: string | null
           phone?: string | null
+          provisional_until?: string | null
           terms_accepted_at?: string | null
           updated_at?: string
           whatsapp_number?: string | null
         }
         Update: {
-          active_role?: string
+          active_role?: string | null
           auth_provider?: string
-          auth_user_id?: string
+          auth_user_id?: string | null
           avatar_url?: string | null
           country_code?: string
           created_at?: string
@@ -2623,11 +2622,13 @@ export type Database = {
           deletion_requested_at?: string | null
           full_name?: string
           id?: string
+          is_provisional?: boolean
           location_city?: string | null
           location_lat?: number | null
           location_lng?: number | null
           location_postcode?: string | null
           phone?: string | null
+          provisional_until?: string | null
           terms_accepted_at?: string | null
           updated_at?: string
           whatsapp_number?: string | null
@@ -2701,7 +2702,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      user_profile_has_live_coach: {
+        Args: { target_user_profile_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
       [_ in never]: never
@@ -2837,3 +2841,4 @@ export const Constants = {
     Enums: {},
   },
 } as const
+

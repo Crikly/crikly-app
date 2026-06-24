@@ -637,7 +637,7 @@ The core transaction record. Created on successful payment.
 | commission_pence | integer | NO | — | Commission amount in pence |
 | parent_total_pence | integer | NO | — | coach_price + commission in pence |
 | currency | text | NO | 'GBP' | ISO currency code |
-| status | text | NO | 'confirmed' | 'confirmed', 'completed', 'cancelled_parent', 'cancelled_coach', 'no_show' |
+| status | text | NO | 'confirmed' | 'pending_payment', 'confirmed', 'completed', 'cancelled_parent', 'cancelled_coach', 'no_show' (see migration 032) |
 | messaging_unlocked | boolean | NO | false | True after booking confirmed |
 | promo_code_id | uuid | YES | null | FK → promo_codes(id) — if discount applied |
 | discount_applied_pence | integer | YES | null | Actual discount amount in pence |

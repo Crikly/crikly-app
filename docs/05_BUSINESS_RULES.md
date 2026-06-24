@@ -199,14 +199,25 @@ Enforced in API route — reject if under 16
 Every booking gets a human-readable reference number.
 
 ```
-Format: CRK-YYYY-NNNN
-Example: CRK-2026-0042
+Format: CRK-YYYY-XXXXXX
+Example: CRK-2026-7F3A9K
 
-YYYY = year of booking
-NNNN = sequential number within that year (zero-padded to 4 digits)
+YYYY   = year of booking
+XXXXXX = 6 random characters from an unambiguous base32 alphabet
+         (Crockford-style, excludes 0/O/1/I)
 ```
 
-Generated in booking creation API route.
+**Why random, not sequential:** a per-year sequence requires a race-safe counter
+and leaks total booking volume to anyone holding a reference. A 6-char random
+suffix (~1.07e9 combinations/year) avoids both. Uniqueness is not enforced at the
+DB level — collisions are astronomically unlikely and references are a
+human-facing convenience, not a primary key (`bookings.id` is the UUID PK).
+
+Generated in the booking creation API route via
+`generateBookingReference()` in `src/lib/booking/guest-checkout.ts`.
+
+> Changed P-00c-API (2026-06-24): was `CRK-YYYY-NNNN` sequential. Approved by
+> Lasith in the P-00c-API plan gate.
 
 ---
 
