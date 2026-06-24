@@ -43,8 +43,8 @@ export function BookingSummaryCard({ summary, variant, footer }: BookingSummaryC
     <div
       className={
         isCheckout
-          ? 'rounded-[12px] border border-neutral-100 bg-white p-4 lg:rounded-[14px] lg:border-none lg:p-[22px] lg:shadow-md'
-          : 'rounded-[12px] border border-neutral-100 bg-white p-4'
+          ? 'rounded-[12px] border border-neutral-100 bg-white p-4 lg:rounded-[14px] lg:border-none lg:p-[22px] lg:shadow-[0_4px_16px_rgba(0,0,0,0.08)]'
+          : 'rounded-[12px] border border-neutral-100 bg-white p-4 lg:p-5'
       }
     >
       {/* Coach header */}
@@ -53,13 +53,13 @@ export function BookingSummaryCard({ summary, variant, footer }: BookingSummaryC
         <Avatar
           name={summary.coachName}
           size="md"
-          className="!h-[52px] !w-[52px] !text-[18px]"
+          className="!h-[52px] !w-[52px] !text-[18px] font-semibold"
         />
         <div className="min-w-0">
           <p className="text-[16px] font-semibold tracking-[-0.01em] text-neutral-900">
             {summary.coachName}
           </p>
-          <span className="mt-1.5 inline-flex h-6 items-center rounded-full bg-brand-50 px-2.5 text-xs font-semibold text-brand-800">
+          <span className="mt-1.5 inline-flex h-6 items-center rounded-full bg-brand-50 px-2.5 text-[12px] font-semibold text-brand-800">
             {summary.sportLabel}
           </span>
         </div>

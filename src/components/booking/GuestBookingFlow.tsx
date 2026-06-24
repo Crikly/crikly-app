@@ -165,6 +165,16 @@ export function GuestBookingFlow({ coachId, summary, initialError }: GuestBookin
     </div>
   )
 
+  const summaryStripeNote = (
+    <div className="flex items-center justify-center gap-1.5 text-center text-[12px] text-neutral-400">
+      <Lock size={13} className="flex-shrink-0" aria-hidden="true" />
+      <span>
+        Secured by{' '}
+        <span className="font-semibold text-[#64748B]">Stripe</span> · free cancellation 24h before
+      </span>
+    </div>
+  )
+
   const terms = (
     <p className="px-1.5 text-center text-[12px] leading-[1.5] text-neutral-400">
       By booking you agree to our{' '}
@@ -182,9 +192,9 @@ export function GuestBookingFlow({ coachId, summary, initialError }: GuestBookin
 
   if (view === 'confirmed') {
     return (
-      <div className="mx-auto flex w-full max-w-md lg:max-w-lg flex-col items-center text-center lg:py-12">
-        {/* Brand lockup */}
-        <div className="mt-3 mb-[30px] flex items-center gap-[7px]">
+      <div className="mx-auto flex w-full max-w-md lg:max-w-[560px] flex-col items-center text-center lg:py-12">
+        {/* Brand lockup — mobile only; desktop shows the PublicHeader */}
+        <div className="mt-3 mb-[30px] flex items-center gap-[7px] lg:hidden">
           <span className="inline-flex h-6 w-6 items-center justify-center rounded-[7px] bg-brand-600 text-[13px] font-bold leading-none tracking-[-0.02em] text-white">
             c
           </span>
@@ -192,27 +202,31 @@ export function GuestBookingFlow({ coachId, summary, initialError }: GuestBookin
         </div>
 
         {/* Success circle */}
-        <div className="flex h-[88px] w-[88px] items-center justify-center rounded-full bg-[#DCFCE7]">
-          <div className="flex h-[60px] w-[60px] items-center justify-center rounded-full bg-success">
-            <Check size={30} strokeWidth={2.4} className="text-white" aria-hidden="true" />
+        <div className="flex h-[88px] w-[88px] items-center justify-center rounded-full bg-[#DCFCE7] lg:h-24 lg:w-24">
+          <div className="flex h-[60px] w-[60px] items-center justify-center rounded-full bg-success lg:h-[66px] lg:w-[66px]">
+            <Check
+              strokeWidth={2.4}
+              className="h-[30px] w-[30px] text-white lg:h-[34px] lg:w-[34px]"
+              aria-hidden="true"
+            />
           </div>
         </div>
 
-        <h1 className="mt-6 text-[27px] font-medium tracking-[-0.01em] text-neutral-900">
+        <h1 className="mt-6 text-[27px] font-medium tracking-[-0.01em] text-neutral-900 lg:text-[32px]">
           {"You're all booked!"}
         </h1>
-        <p className="mt-2.5 max-w-[290px] text-base text-neutral-600">
+        <p className="mt-2.5 max-w-[290px] text-base text-neutral-600 lg:max-w-[380px] lg:text-[16px]">
           A confirmation email is on its way to{' '}
           <span className="font-medium text-neutral-900">{form.email || 'your email'}</span>
         </p>
 
         {/* Reference card */}
-        <div className="mt-7 flex w-full items-center justify-between gap-3 rounded-[12px] bg-neutral-50 px-4 py-3.5">
+        <div className="mt-7 flex w-full items-center justify-between gap-3 rounded-[12px] bg-[#F0F7FF] px-4 py-3.5 lg:px-5 lg:py-4">
           <div className="min-w-0 text-left">
-            <p className="text-[12px] font-semibold uppercase tracking-[0.06em] text-brand-800 opacity-75">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-brand-800 opacity-75">
               Booking reference
             </p>
-            <p className="mt-[5px] font-mono text-[19px] font-semibold tracking-[0.06em] text-brand-600">
+            <p className="mt-[5px] font-mono text-[19px] font-semibold tracking-[0.06em] text-brand-600 lg:text-[20px]">
               {BOOKING_REFERENCE}
             </p>
           </div>
@@ -222,7 +236,7 @@ export function GuestBookingFlow({ coachId, summary, initialError }: GuestBookin
               onClick={handleCopyReference}
               aria-label="Copy booking reference"
               data-testid="copy-reference-button"
-              className="flex h-10 w-10 items-center justify-center rounded-[10px] border border-brand-100 bg-white text-brand-600 transition-transform hover:bg-brand-50 active:scale-95"
+              className="flex h-10 w-10 items-center justify-center rounded-[10px] border border-brand-100 bg-white text-brand-600 transition-transform hover:bg-brand-50 active:scale-95 lg:h-[42px] lg:w-[42px]"
             >
               {copied ? (
                 <Check size={18} className="text-success" aria-hidden="true" />
@@ -235,7 +249,7 @@ export function GuestBookingFlow({ coachId, summary, initialError }: GuestBookin
               onClick={handleShareReference}
               aria-label="Share booking"
               data-testid="share-button"
-              className="flex h-10 w-10 items-center justify-center rounded-[10px] border border-brand-100 bg-white text-brand-600 transition-transform hover:bg-brand-50 active:scale-95"
+              className="flex h-10 w-10 items-center justify-center rounded-[10px] border border-brand-100 bg-white text-brand-600 transition-transform hover:bg-brand-50 active:scale-95 lg:h-[42px] lg:w-[42px]"
             >
               <Share2 size={18} aria-hidden="true" />
             </button>
@@ -247,9 +261,9 @@ export function GuestBookingFlow({ coachId, summary, initialError }: GuestBookin
           <BookingSummaryCard summary={summary} variant="paid" />
         </div>
 
-        {/* Account nudge */}
-        <div className="mt-4 flex w-full flex-col gap-[13px] rounded-[12px] border border-[#CFE3F8] bg-neutral-50 p-4 text-left">
-          <div className="flex items-start gap-3">
+        {/* Account nudge — mobile: stacked; desktop: single row with inline button */}
+        <div className="mt-4 flex w-full flex-col gap-[13px] rounded-[12px] border border-[#CFE3F8] bg-[#F0F7FF] p-4 text-left lg:flex-row lg:items-center lg:gap-[14px] lg:px-[18px]">
+          <div className="flex items-start gap-3 lg:flex-1 lg:items-center">
             <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-[10px] bg-brand-50 text-brand-600">
               <Bookmark size={20} aria-hidden="true" />
             </span>
@@ -257,14 +271,14 @@ export function GuestBookingFlow({ coachId, summary, initialError }: GuestBookin
               <p className="text-[15px] font-semibold tracking-[-0.01em] text-neutral-900">
                 Save your bookings
               </p>
-              <p className="mt-0.5 text-[13px] leading-[1.45] text-[#64748B]">
+              <p className="mt-0.5 text-[13px] leading-[1.45] text-neutral-600">
                 Create a free Crikly account to manage and rebook in seconds.
               </p>
             </div>
           </div>
           <Link
             href="/register"
-            className="flex h-[46px] items-center justify-center rounded-[10px] border-[1.5px] border-brand-600 bg-white text-[15px] font-semibold text-brand-600 transition-colors hover:bg-brand-50"
+            className="flex h-[46px] items-center justify-center rounded-[10px] border-[1.5px] border-brand-600 bg-white text-[15px] font-semibold text-brand-600 transition-colors hover:bg-brand-50 lg:h-11 lg:flex-shrink-0 lg:px-[18px]"
           >
             Create account
           </Link>
@@ -273,7 +287,7 @@ export function GuestBookingFlow({ coachId, summary, initialError }: GuestBookin
         {/* Back link */}
         <Link
           href={availabilityHref}
-          className="mt-6 inline-flex items-center gap-1.5 text-[14px] font-medium text-[#64748B] transition-colors hover:text-neutral-900"
+          className="mt-6 inline-flex items-center gap-1.5 text-[14px] font-medium text-neutral-600 transition-colors hover:text-neutral-900 lg:mt-7"
         >
           <ArrowLeft size={16} aria-hidden="true" />
           Back to coach profile
@@ -298,7 +312,7 @@ export function GuestBookingFlow({ coachId, summary, initialError }: GuestBookin
         Complete your booking
       </h1>
       <p className="mb-6 mt-2 text-base text-[#64748B] lg:mb-7">
-        {`Review your session with ${summary.coachName} and pay securely.`}
+        {`Review your session with ${summary.coachName} and pay securely. You won't be charged until you confirm.`}
       </p>
 
       {/* 3-item grid — reflows between mobile (1 col) and desktop (2 col) */}
@@ -313,7 +327,7 @@ export function GuestBookingFlow({ coachId, summary, initialError }: GuestBookin
               <div className="mt-5 hidden flex-col gap-3 lg:flex">
                 {errorBanner}
                 {payButton}
-                {stripeNote}
+                {summaryStripeNote}
               </div>
             }
           />
@@ -334,10 +348,10 @@ export function GuestBookingFlow({ coachId, summary, initialError }: GuestBookin
 
           {/* Your details */}
           <section className="flex flex-col">
-            <h2 className="mb-[14px] text-base font-semibold tracking-[-0.01em] text-neutral-900 lg:mb-[18px] lg:text-lg">
-              Your details
-            </h2>
             <div className="flex flex-col gap-[14px] lg:gap-4 lg:rounded-[12px] lg:border lg:border-neutral-100 lg:bg-white lg:p-6">
+              <h2 className="text-base font-semibold tracking-[-0.01em] text-neutral-900 lg:text-lg">
+                Your details
+              </h2>
               <Input
                 label="Full name"
                 placeholder="Your full name"
@@ -372,7 +386,7 @@ export function GuestBookingFlow({ coachId, summary, initialError }: GuestBookin
               />
               <div className="grid grid-cols-[1fr_120px] gap-3 lg:grid-cols-[1fr_160px] lg:gap-4">
                 <Input
-                  label="Town / city"
+                  label="Town/city"
                   autoComplete="address-level2"
                   value={form.townCity}
                   onChange={(e) => setField('townCity', e.target.value)}
@@ -390,10 +404,10 @@ export function GuestBookingFlow({ coachId, summary, initialError }: GuestBookin
 
           {/* Payment */}
           <section className="flex flex-col">
-            <h2 className="mb-3 text-base font-semibold tracking-[-0.01em] text-neutral-900 lg:mb-4 lg:text-lg">
-              Payment
-            </h2>
             <div className="flex flex-col gap-3 lg:gap-4 lg:rounded-[12px] lg:border lg:border-neutral-100 lg:bg-white lg:p-6">
+              <h2 className="text-base font-semibold tracking-[-0.01em] text-neutral-900 lg:text-lg">
+                Payment
+              </h2>
 
               {/* Express checkout */}
               <div className="grid grid-cols-2 gap-2.5 lg:gap-3">
@@ -402,18 +416,46 @@ export function GuestBookingFlow({ coachId, summary, initialError }: GuestBookin
                   onClick={handleExpressPay}
                   aria-label="Pay with Apple Pay"
                   data-testid="apple-pay-button"
-                  className="flex h-12 items-center justify-center rounded-[10px] bg-black text-[17px] font-semibold text-white transition-transform active:scale-[0.98]"
+                  className="flex h-12 items-center justify-center gap-1.5 rounded-[10px] bg-black transition-transform active:scale-[0.98]"
                 >
-                  Apple Pay
+                  <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true">
+                    <path
+                      fill="#fff"
+                      d="M17.05 12.04c-.03-2.6 2.12-3.85 2.22-3.91-1.21-1.77-3.09-2.01-3.76-2.04-1.6-.16-3.12.94-3.93.94-.81 0-2.06-.92-3.39-.89-1.74.03-3.35 1.01-4.25 2.57-1.81 3.14-.46 7.79 1.3 10.34.86 1.25 1.88 2.65 3.22 2.6 1.29-.05 1.78-.83 3.34-.83 1.56 0 2 .83 3.37.81 1.39-.03 2.27-1.27 3.12-2.53.98-1.45 1.39-2.85 1.41-2.92-.03-.01-2.7-1.04-2.73-4.12z"
+                    />
+                    <path
+                      fill="#fff"
+                      d="M14.46 4.47c.71-.86 1.19-2.06 1.06-3.25-1.02.04-2.26.68-2.99 1.54-.66.76-1.23 1.98-1.08 3.15 1.14.09 2.3-.58 3.01-1.44z"
+                    />
+                  </svg>
+                  <span className="text-[17px] font-semibold tracking-[-0.01em] text-white">Pay</span>
                 </button>
                 <button
                   type="button"
                   onClick={handleExpressPay}
                   aria-label="Pay with Google Pay"
                   data-testid="google-pay-button"
-                  className="flex h-12 items-center justify-center rounded-[10px] bg-black text-[17px] font-medium text-white transition-transform active:scale-[0.98]"
+                  className="flex h-12 items-center justify-center gap-1.5 rounded-[10px] bg-black transition-transform active:scale-[0.98]"
                 >
-                  Google Pay
+                  <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true">
+                    <path
+                      fill="#4285F4"
+                      d="M23 12.27c0-.79-.07-1.54-.2-2.27H12v4.51h6.16c-.27 1.4-1.07 2.59-2.28 3.38v2.81h3.69C21.64 18.72 23 15.78 23 12.27z"
+                    />
+                    <path
+                      fill="#34A853"
+                      d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.69-2.81c-1.02.69-2.33 1.1-4.24 1.1-3.26 0-6.02-2.2-7.01-5.16H1.18v2.9C3.15 21.32 7.26 24 12 24z"
+                    />
+                    <path
+                      fill="#FBBC05"
+                      d="M4.99 14.22c-.25-.69-.39-1.43-.39-2.22s.14-1.53.39-2.22V6.88H1.18C.43 8.39 0 10.15 0 12s.43 3.61 1.18 5.12l3.81-2.9z"
+                    />
+                    <path
+                      fill="#EA4335"
+                      d="M12 4.77c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.26 0 3.15 2.68 1.18 6.88l3.81 2.9C5.98 6.97 8.74 4.77 12 4.77z"
+                    />
+                  </svg>
+                  <span className="text-[17px] font-medium tracking-[-0.01em] text-white">Pay</span>
                 </button>
               </div>
 
@@ -461,6 +503,7 @@ export function GuestBookingFlow({ coachId, summary, initialError }: GuestBookin
                   </span>
                 </button>
                 {billingSame ? (
+                  /* pl-[30px] aligns text under the label: checkbox w-5 (20px) + gap-2.5 (10px) */
                   <p className="pl-[30px] text-[13px] leading-[1.45] text-[#64748B]">
                     {billingSummary}
                   </p>
@@ -474,7 +517,7 @@ export function GuestBookingFlow({ coachId, summary, initialError }: GuestBookin
                     />
                     <div className="grid grid-cols-[1fr_120px] gap-2.5 lg:grid-cols-[1fr_160px]">
                       <Input
-                        placeholder="Town / city"
+                        placeholder="Town/city"
                         autoComplete="billing address-level2"
                         value={form.billingTownCity}
                         onChange={(e) => setField('billingTownCity', e.target.value)}

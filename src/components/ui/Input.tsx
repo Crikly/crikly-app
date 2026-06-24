@@ -15,7 +15,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         {label ? (
           <label
             htmlFor={inputId}
-            className="text-xs font-medium text-neutral-600 uppercase tracking-label"
+            className="text-xs font-semibold text-[#64748B] uppercase tracking-label"
           >
             {label}
           </label>
@@ -24,11 +24,11 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           ref={ref}
           id={inputId}
           className={[
-            'h-input-mobile md:h-input-desktop w-full px-4',
-            'bg-neutral-50 border-[1.5px] rounded-[12px]',
+            'h-[48px] md:h-[44px] w-full px-[14px]',
+            'bg-[#F8FAFC] border rounded-[10px]',
             'text-base text-neutral-900 placeholder:text-neutral-400',
             'transition-colors duration-fast',
-            'focus:outline-none focus:border-brand-600 focus:shadow-focus focus:bg-white',
+            'focus:outline-none focus:border-brand-600 focus:shadow-[0_0_0_3px_rgba(0,119,204,0.18)] focus:bg-white',
             error
               ? 'border-danger focus:border-danger focus:shadow-none'
               : 'border-neutral-100',
