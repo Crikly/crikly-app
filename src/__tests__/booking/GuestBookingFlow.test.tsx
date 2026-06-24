@@ -28,7 +28,8 @@ import type { GuestCheckoutParams } from '@/components/booking/GuestBookingFlow'
 // ExpressCheckoutElement render inert divs.
 
 jest.mock('@stripe/react-stripe-js', () => {
-  const React = require('react') as typeof import('react')
+  // No `require('react')` needed — the project's automatic JSX runtime
+  // (tsconfig jsx: react-jsx) compiles the JSX below without React in scope.
   const mockSubmit = jest.fn().mockResolvedValue({ error: null })
   const mockConfirmPayment = jest.fn().mockResolvedValue({ error: null })
 
