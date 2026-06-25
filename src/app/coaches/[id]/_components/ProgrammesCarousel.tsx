@@ -157,7 +157,7 @@ export function ProgrammesCarousel({
                   </span>
                 ) : (
                   <Link
-                    href={`/book/${coachId}?programme=${p.id}`}
+                    href={`/coaches/${coachId}/programmes/${p.id}`}
                     className="mt-2 flex items-center justify-center gap-1.5 w-full h-11 rounded-xl bg-brand-600 text-white font-semibold text-sm hover:bg-brand-700 active:scale-[0.99] transition-all"
                     data-testid="programme-enrol-cta"
                   >
