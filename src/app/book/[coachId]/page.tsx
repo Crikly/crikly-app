@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { PublicHeader } from '@/components/nav/PublicHeader'
+import { PublicFooter } from '@/components/public/PublicFooter'
 import { GuestBookingFlow, type GuestCheckoutParams } from '@/components/booking/GuestBookingFlow'
 import type { BookingSummary } from '@/components/booking/BookingSummaryCard'
 
@@ -90,6 +91,7 @@ export default async function GuestBookingPage({
           initialError={parseSimulatedError(firstParam(sp.simulateError))}
         />
       </div>
+      <PublicFooter variant="links" />
     </main>
   )
 }

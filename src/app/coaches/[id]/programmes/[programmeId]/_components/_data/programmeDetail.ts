@@ -54,6 +54,7 @@ export interface ProgrammeDetailView {
   coach: CoachLite
   title: string
   sportName: string
+  imageUrl: string | null
   ageGroups: string[]
   scheduleType: string
   paymentType: 'per_session' | 'block_upfront'
@@ -102,6 +103,7 @@ interface ProgrammeRow {
   camp_mode: boolean
   currency: string
   status: string
+  image_url: string | null
 }
 
 interface SessionRow {
@@ -251,7 +253,7 @@ export const fetchProgrammeDetail = cache(
     const { data: programmeData, error: programmeError } = await supabase
       .from('group_programmes')
       .select(
-        'id, coach_profile_id, sport_id, title, age_groups, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, starts_at, ends_at, camp_mode, currency, status',
+        'id, coach_profile_id, sport_id, title, age_groups, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, starts_at, ends_at, camp_mode, currency, status, image_url',
       )
       .eq('id', programmeId)
       .eq('status', 'active')
@@ -389,6 +391,7 @@ export const fetchProgrammeDetail = cache(
       coach,
       title: programme.title,
       sportName,
+      imageUrl: programme.image_url,
       ageGroups: programme.age_groups ?? [],
       scheduleType: programme.schedule_type,
       paymentType,

@@ -1,8 +1,10 @@
 import type { ReactNode } from 'react'
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
+import Image from 'next/image'
 import { CalendarDays, Clock, Users, CalendarRange, ShieldCheck, Star } from 'lucide-react'
 import { PublicHeader } from '@/components/nav/PublicHeader'
+import { PublicFooter } from '@/components/public/PublicFooter'
 import { fetchProgrammeDetail, type ProgrammeDetailView } from './_components/_data/programmeDetail'
 import { SessionPicker } from './_components/SessionPicker'
 import { ProgrammeSchedule } from './_components/ProgrammeSchedule'
@@ -28,6 +30,33 @@ export async function generateMetadata({
     title: `${programme.title} · ${programme.coach.fullName} — Crikly`,
     description: `Book ${programme.title} with ${programme.coach.fullName} on Crikly.`,
   }
+}
+
+// ─── Hero image (server) ───────────────────────────────────────────────────────
+
+function ProgrammeHero({ imageUrl, title, sportName }: { imageUrl: string | null; title: string; sportName: string }) {
+  return (
+    <div
+      className="relative -mx-4 sm:-mx-6 lg:mx-0 h-[240px] md:h-[320px] overflow-hidden sm:rounded-[14px]"
+      data-testid="programme-hero"
+    >
+      {imageUrl ? (
+        <Image
+          src={imageUrl}
+          alt={`${title} — ${sportName} programme image`}
+          fill
+          sizes="(max-width: 720px) 100vw, 720px"
+          className="object-cover"
+          priority
+        />
+      ) : (
+        // Graceful fallback — brand-tinted block with the sport name centred.
+        <div className="absolute inset-0 flex items-center justify-center bg-brand-50">
+          <span className="text-2xl md:text-3xl font-semibold text-brand-800 tracking-tight">{sportName}</span>
+        </div>
+      )}
+    </div>
+  )
 }
 
 // ─── Coach card (server) ───────────────────────────────────────────────────────
@@ -170,8 +199,9 @@ export default async function ProgrammeDetailPage({
     <div className="min-h-screen bg-white">
       <PublicHeader />
 
-      <main className="max-w-[720px] mx-auto px-4 sm:px-6 pt-8 pb-12">
+      <main className="max-w-[720px] mx-auto px-4 sm:px-6 pt-6 pb-12">
         <div className="flex flex-col gap-[18px]">
+          <ProgrammeHero imageUrl={programme.imageUrl} title={programme.title} sportName={programme.sportName} />
           <CoachCard coach={programme.coach} />
           <ProgrammeDetailsCard programme={programme} />
 
@@ -193,6 +223,8 @@ export default async function ProgrammeDetailPage({
           )}
         </div>
       </main>
+
+      <PublicFooter variant="links" />
     </div>
   )
 }
