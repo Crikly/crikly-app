@@ -530,17 +530,7 @@ function GuestCheckoutForm({
       <span>
         Secured by{' '}
         <span className="font-semibold text-[#64748B]">Stripe</span>
-        <span className="hidden lg:inline">{". Your card details never touch Crikly's servers."}</span>
-      </span>
-    </div>
-  )
-
-  const summaryStripeNote = (
-    <div className="flex items-center justify-center gap-1.5 text-center text-[12px] text-neutral-400">
-      <Lock size={13} className="flex-shrink-0" aria-hidden="true" />
-      <span>
-        Secured by{' '}
-        <span className="font-semibold text-[#64748B]">Stripe</span> · free cancellation 24h before
+        <span className="hidden lg:inline">{" · Your card details never touch Crikly's servers."}</span>
       </span>
     </div>
   )
@@ -580,27 +570,7 @@ function GuestCheckoutForm({
 
         {/* ① Summary — DOM-first → mobile top; desktop col-2 row-1, sticky */}
         <div className="lg:col-start-2 lg:row-start-1 lg:sticky lg:top-24">
-          <BookingSummaryCard
-            summary={summary}
-            variant="checkout"
-            footer={
-              <div className="mt-5 hidden flex-col gap-3 lg:flex">
-                {errorBanner}
-                {payButton}
-                {summaryStripeNote}
-              </div>
-            }
-          />
-          <p className="mt-[14px] hidden px-1.5 text-center text-[12px] leading-[1.5] text-neutral-400 lg:block">
-            By booking you agree to our{' '}
-            <Link href="/terms" className="font-medium text-brand-600">
-              Terms
-            </Link>{' '}
-            and{' '}
-            <Link href="/privacy" className="font-medium text-brand-600">
-              Privacy Policy
-            </Link>
-          </p>
+          <BookingSummaryCard summary={summary} variant="checkout" />
         </div>
 
         {/* ② Form column — desktop col-1, spans both rows */}
@@ -838,16 +808,16 @@ function GuestCheckoutForm({
                 />
               </div>
 
-              {stripeNote}
             </div>
           </section>
-        </div>
 
-        {/* ③ Mobile pay block — DOM-last → mobile bottom; hidden on desktop */}
-        <div className="flex flex-col gap-[14px] lg:hidden">
-          {errorBanner}
-          {payButton}
-          {terms}
+          {/* Pay block — bottom of the left column on all screen sizes */}
+          <div className="flex flex-col gap-[14px]">
+            {errorBanner}
+            {payButton}
+            {stripeNote}
+            {terms}
+          </div>
         </div>
 
       </div>
