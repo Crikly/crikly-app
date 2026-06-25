@@ -25,6 +25,9 @@ export interface CoachLite {
 export interface SessionView {
   /** Stable key — `${dateISO}#${startTime}` (unique within a programme). */
   key: string
+  /** Real group_programme_sessions UUID — carried through to enrolment checkout
+   * (P-00c-ENROL). Camp slots from one row share this id (session-row granularity). */
+  sessionId: string
   dateISO: string
   dateLabel: string // "Sat 28 June"
   timeLabel: string // "9:00am – 10:00am"
@@ -107,6 +110,7 @@ interface ProgrammeRow {
 }
 
 interface SessionRow {
+  id: string
   session_date: string
   start_time: string
   end_time: string
@@ -278,7 +282,7 @@ export const fetchProgrammeDetail = cache(
     // Sessions — the canonical schedule.
     const { data: sessionData } = await supabase
       .from('group_programme_sessions')
-      .select('session_date, start_time, end_time, slots, status')
+      .select('id, session_date, start_time, end_time, slots, status')
       .eq('group_programme_id', programme.id)
       .order('session_date', { ascending: true })
       .order('start_time', { ascending: true })
@@ -301,6 +305,7 @@ export const fetchProgrammeDetail = cache(
         const selectable = !past && !cancelled
         sessions.push({
           key: `${row.session_date}#${block.start}`,
+          sessionId: row.id,
           dateISO: row.session_date,
           dateLabel: fmtDateLabel(row.session_date),
           timeLabel: fmtRange(block.start, block.end),

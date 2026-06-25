@@ -21,6 +21,7 @@ import type { SessionView, CampDay } from '@/app/coaches/[id]/programmes/[progra
 function makeSession(overrides: Partial<SessionView> = {}): SessionView {
   return {
     key: 'key-1',
+    sessionId: 'session-1',
     dateISO: '2099-07-05',
     dateLabel: 'Sat 5 July',
     timeLabel: '9:00am – 10:00am',
@@ -37,6 +38,7 @@ function makeSession(overrides: Partial<SessionView> = {}): SessionView {
 function makeSessions(count: number): SessionView[] {
   return Array.from({ length: count }, (_, i) => ({
     key: `key-${i + 1}`,
+    sessionId: `session-${i + 1}`,
     dateISO: `2099-07-${String(i + 1).padStart(2, '0')}`,
     dateLabel: `Day ${i + 1}`,
     timeLabel: '9:00am – 10:00am',
