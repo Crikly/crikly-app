@@ -176,6 +176,11 @@ describe('GuestBookingFlow — checkout view', () => {
     render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} checkout={CHECKOUT} />)
     expect(screen.getByTestId('payment-element')).toBeInTheDocument()
   })
+
+  it('renders the address field with data-testid="guest-address-input"', () => {
+    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} checkout={CHECKOUT} />)
+    expect(screen.getByTestId('guest-address-input')).toBeInTheDocument()
+  })
 })
 
 // ── slot_taken error ───────────────────────────────────────────────────────────
