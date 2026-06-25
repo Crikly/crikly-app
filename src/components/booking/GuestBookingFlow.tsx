@@ -25,6 +25,7 @@ import {
   X,
 } from 'lucide-react'
 import { Input } from '@/components/ui/Input'
+import { AddressAutocomplete } from '@/components/booking/AddressAutocomplete'
 import { getStripePromise } from '@/lib/stripe/browser'
 import {
   BookingSummaryCard,
@@ -607,12 +608,17 @@ function GuestCheckoutForm({
                   onChange={(e) => setField('phone', e.target.value)}
                 />
               </div>
-              <Input
+              <AddressAutocomplete
                 label="Address"
-                placeholder="Address line"
-                autoComplete="street-address"
+                placeholder="Start typing your address"
                 value={form.address}
-                onChange={(e) => setField('address', e.target.value)}
+                data-testid="guest-address-input"
+                onChange={(value) => setField('address', value)}
+                onSelect={({ addressLine, townCity, postcode }) => {
+                  setField('address', addressLine)
+                  if (townCity) setField('townCity', townCity)
+                  if (postcode) setField('postcode', postcode)
+                }}
               />
               <div className="grid grid-cols-[1fr_120px] gap-3 lg:grid-cols-[1fr_160px] lg:gap-4">
                 <Input
