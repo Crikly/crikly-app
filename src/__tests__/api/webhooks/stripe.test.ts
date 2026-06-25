@@ -24,8 +24,13 @@ jest.mock('@/lib/stripe/client', () => ({
   getStripe: jest.fn(),
 }))
 
+jest.mock('@/lib/resend/send-booking-confirmation', () => ({
+  sendBookingConfirmation: jest.fn(),
+}))
+
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getStripe } from '@/lib/stripe/client'
+import { sendBookingConfirmation } from '@/lib/resend/send-booking-confirmation'
 import { POST } from '@/app/api/webhooks/stripe/route'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -114,6 +119,10 @@ beforeEach(() => {
     },
   })
   ;(createAdminClient as jest.Mock).mockReturnValue({ from: jest.fn() })
+  // sendBookingConfirmation is a no-op by default — tests that care about it
+  // override this. Existing tests use intents without guest_email metadata so the
+  // route returns before ever calling this function.
+  ;(sendBookingConfirmation as jest.Mock).mockResolvedValue(true)
 })
 
 // ── Signature verification ────────────────────────────────────────────────────
@@ -372,5 +381,335 @@ describe('POST /api/webhooks/stripe — unknown event type', () => {
     expect(res.status).toBe(200)
     // No DB calls for an unrecognised event
     expect(mockFrom).not.toHaveBeenCalled()
+  })
+})
+
+// ── payment_intent.succeeded — email integration (P-00c-EMAIL) ────────────────
+//
+// The route calls sendBookingConfirmation after the pending_payment→confirmed
+// transition succeeds. It first looks up the coach name via coach_profiles, then
+// optionally user_profiles as a fallback. These tests verify:
+//   - sendBookingConfirmation is called with the right params + totalPence = intent.amount
+//   - Redelivery (already-confirmed, no rows updated) does NOT trigger a second email
+//   - Email failure (sendBookingConfirmation returns false) still yields a 200 response
+//   - Missing guest_email metadata skips the email but still returns 200
+
+describe('POST /api/webhooks/stripe — payment_intent.succeeded email (P-00c-EMAIL)', () => {
+  const BOOKING_WITH_EMAIL = {
+    id: BOOKING_ID,
+    booking_reference: 'CRK-2026-TEST01',
+    coach_profile_id: 'coach-profile-uuid-001',
+    session_date: '2026-08-15',
+    session_start_time: '10:00:00',
+    session_end_time: '11:00:00',
+    session_type: 'individual',
+  }
+
+  const INTENT_AMOUNT = 6600
+
+  function makeIntentWithGuestEmail(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 'pi_test_with_email',
+      status: 'succeeded',
+      amount: INTENT_AMOUNT,
+      metadata: {
+        booking_id: BOOKING_ID,
+        guest_email: 'sarah@example.com',
+        guest_name: 'Sarah Test',
+      },
+      last_payment_error: null,
+      ...overrides,
+    }
+  }
+
+  /**
+   * Builds the full chain of from() calls needed for a succeeded + email path:
+   *   1. payment_intents update (audit row → succeeded)
+   *   2. bookings update (pending_payment → confirmed) → returns BOOKING_WITH_EMAIL
+   *   3. coach_profiles maybySingle → returns display_name
+   *   [4. user_profiles maybySingle — only reached if display_name is null]
+   */
+  function setupEmailMocks(options: {
+    bookingUpdateData?: unknown[] | null
+    coachRow?: { display_name: string | null; user_profile_id: string | null } | null
+    userProfileRow?: { full_name: string } | null
+  } = {}) {
+    const {
+      bookingUpdateData = [BOOKING_WITH_EMAIL],
+      coachRow = { display_name: 'Coach Davies', user_profile_id: null },
+      userProfileRow = null,
+    } = options
+
+    const piChain: Record<string, MockFn> = {}
+    piChain.update = jest.fn().mockReturnValue({
+      eq: jest.fn().mockResolvedValue({ data: null, error: null }),
+    })
+
+    const bookingChain: Record<string, MockFn> = {}
+    bookingChain.update = jest.fn().mockReturnValue({
+      eq: jest.fn().mockReturnValue({
+        eq: jest.fn().mockReturnValue({
+          select: jest.fn().mockResolvedValue({
+            data: bookingUpdateData,
+            error: null,
+          }),
+        }),
+      }),
+    })
+
+    // coach_profiles lookup — uses .select().eq().maybySingle()
+    const coachChain: Record<string, MockFn> = {}
+    for (const m of ['select', 'eq']) {
+      coachChain[m] = jest.fn(() => coachChain)
+    }
+    coachChain.maybeSingle = jest.fn().mockResolvedValue({ data: coachRow, error: null })
+
+    const mockFrom = jest.fn()
+      .mockReturnValueOnce(piChain)      // 1. payment_intents update
+      .mockReturnValueOnce(bookingChain) // 2. bookings update
+
+    if (coachRow !== null && !coachRow.display_name && coachRow.user_profile_id) {
+      // user_profiles fallback is needed only when display_name is absent
+      const userChain: Record<string, MockFn> = {}
+      for (const m of ['select', 'eq']) {
+        userChain[m] = jest.fn(() => userChain)
+      }
+      userChain.maybeSingle = jest.fn().mockResolvedValue({ data: userProfileRow, error: null })
+
+      mockFrom
+        .mockReturnValueOnce(coachChain)  // 3. coach_profiles
+        .mockReturnValueOnce(userChain)   // 4. user_profiles
+    } else {
+      mockFrom.mockReturnValueOnce(coachChain) // 3. coach_profiles
+    }
+
+    ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom })
+
+    const intent = makeIntentWithGuestEmail()
+    const event = makeStripeEvent('payment_intent.succeeded', intent)
+    const stripeMock = {
+      webhooks: { constructEvent: jest.fn().mockReturnValue(event) },
+    }
+    ;(getStripe as MockFn).mockReturnValue(stripeMock)
+
+    return { mockFrom, bookingChain, piChain, coachChain, intent }
+  }
+
+  it('calls sendBookingConfirmation after a successful pending_payment→confirmed transition', async () => {
+    setupEmailMocks()
+
+    await callPost('{}')
+
+    expect(sendBookingConfirmation).toHaveBeenCalledTimes(1)
+  })
+
+  it('passes guestEmail from intent.metadata.guest_email to sendBookingConfirmation', async () => {
+    setupEmailMocks()
+
+    await callPost('{}')
+
+    const [params] = (sendBookingConfirmation as MockFn).mock.calls[0] as [Record<string, unknown>]
+    expect(params.guestEmail).toBe('sarah@example.com')
+  })
+
+  it('passes guestName from intent.metadata.guest_name to sendBookingConfirmation', async () => {
+    setupEmailMocks()
+
+    await callPost('{}')
+
+    const [params] = (sendBookingConfirmation as MockFn).mock.calls[0] as [Record<string, unknown>]
+    expect(params.guestName).toBe('Sarah Test')
+  })
+
+  it('passes totalPence = intent.amount (the canonical charged amount)', async () => {
+    setupEmailMocks()
+
+    await callPost('{}')
+
+    const [params] = (sendBookingConfirmation as MockFn).mock.calls[0] as [Record<string, unknown>]
+    expect(params.totalPence).toBe(INTENT_AMOUNT)
+  })
+
+  it('passes the booking reference from the confirmed booking row', async () => {
+    setupEmailMocks()
+
+    await callPost('{}')
+
+    const [params] = (sendBookingConfirmation as MockFn).mock.calls[0] as [Record<string, unknown>]
+    expect(params.bookingReference).toBe('CRK-2026-TEST01')
+  })
+
+  it('uses coach_profiles.display_name as coachName when present', async () => {
+    setupEmailMocks({ coachRow: { display_name: 'Coach Davies', user_profile_id: null } })
+
+    await callPost('{}')
+
+    const [params] = (sendBookingConfirmation as MockFn).mock.calls[0] as [Record<string, unknown>]
+    expect(params.coachName).toBe('Coach Davies')
+  })
+
+  it('falls back to user_profiles.full_name when display_name is null', async () => {
+    setupEmailMocks({
+      coachRow: { display_name: null, user_profile_id: 'user-profile-uuid-001' },
+      userProfileRow: { full_name: 'James Wilson' },
+    })
+
+    await callPost('{}')
+
+    const [params] = (sendBookingConfirmation as MockFn).mock.calls[0] as [Record<string, unknown>]
+    expect(params.coachName).toBe('James Wilson')
+  })
+
+  it('uses "your coach" as coachName fallback when coach_profiles row is null', async () => {
+    setupEmailMocks({ coachRow: null })
+
+    await callPost('{}')
+
+    const [params] = (sendBookingConfirmation as MockFn).mock.calls[0] as [Record<string, unknown>]
+    expect(params.coachName).toBe('your coach')
+  })
+
+  it('still returns 200 when sendBookingConfirmation returns false (email failed)', async () => {
+    ;(sendBookingConfirmation as MockFn).mockResolvedValue(false)
+    setupEmailMocks()
+
+    const res = await callPost('{}')
+
+    expect(res.status).toBe(200)
+    const data = await res.json() as Record<string, unknown>
+    expect(data.received).toBe(true)
+  })
+
+  it('still returns 200 when sendBookingConfirmation throws unexpectedly', async () => {
+    ;(sendBookingConfirmation as MockFn).mockRejectedValue(new Error('Unexpected crash'))
+    setupEmailMocks()
+
+    const res = await callPost('{}')
+
+    expect(res.status).toBe(200)
+  })
+
+  it('redelivery: does NOT call sendBookingConfirmation when booking already confirmed (empty update result)', async () => {
+    // Simulate redelivery: bookings update returns empty array (already confirmed)
+    const piChain: Record<string, MockFn> = {}
+    piChain.update = jest.fn().mockReturnValue({
+      eq: jest.fn().mockResolvedValue({ data: null, error: null }),
+    })
+
+    const bookingChain: Record<string, MockFn> = {}
+    bookingChain.update = jest.fn().mockReturnValue({
+      eq: jest.fn().mockReturnValue({
+        eq: jest.fn().mockReturnValue({
+          select: jest.fn().mockResolvedValue({ data: [], error: null }),
+        }),
+      }),
+    })
+
+    const mockFrom = jest.fn()
+      .mockReturnValueOnce(piChain)
+      .mockReturnValueOnce(bookingChain)
+    ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom })
+
+    const intent = makeIntentWithGuestEmail()
+    const event = makeStripeEvent('payment_intent.succeeded', intent)
+    const stripeMock = { webhooks: { constructEvent: jest.fn().mockReturnValue(event) } }
+    ;(getStripe as MockFn).mockReturnValue(stripeMock)
+
+    const res = await callPost('{}')
+
+    expect(res.status).toBe(200)
+    expect(sendBookingConfirmation).not.toHaveBeenCalled()
+  })
+
+  it('missing guest_email metadata: skips email but still returns 200', async () => {
+    const piChain: Record<string, MockFn> = {}
+    piChain.update = jest.fn().mockReturnValue({
+      eq: jest.fn().mockResolvedValue({ data: null, error: null }),
+    })
+
+    const bookingChain: Record<string, MockFn> = {}
+    bookingChain.update = jest.fn().mockReturnValue({
+      eq: jest.fn().mockReturnValue({
+        eq: jest.fn().mockReturnValue({
+          select: jest.fn().mockResolvedValue({
+            data: [BOOKING_WITH_EMAIL],
+            error: null,
+          }),
+        }),
+      }),
+    })
+
+    const mockFrom = jest.fn()
+      .mockReturnValueOnce(piChain)
+      .mockReturnValueOnce(bookingChain)
+    ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom })
+
+    // Intent with booking_id but NO guest_email
+    const intentNoEmail = {
+      id: 'pi_test_no_email',
+      status: 'succeeded',
+      amount: INTENT_AMOUNT,
+      metadata: { booking_id: BOOKING_ID },
+      last_payment_error: null,
+    }
+    const event = makeStripeEvent('payment_intent.succeeded', intentNoEmail)
+    const stripeMock = { webhooks: { constructEvent: jest.fn().mockReturnValue(event) } }
+    ;(getStripe as MockFn).mockReturnValue(stripeMock)
+
+    const res = await callPost('{}')
+
+    expect(res.status).toBe(200)
+    expect(sendBookingConfirmation).not.toHaveBeenCalled()
+  })
+
+  it('uses "there" as guestName fallback when guest_name metadata is absent', async () => {
+    const piChain: Record<string, MockFn> = {}
+    piChain.update = jest.fn().mockReturnValue({
+      eq: jest.fn().mockResolvedValue({ data: null, error: null }),
+    })
+
+    const bookingChain: Record<string, MockFn> = {}
+    bookingChain.update = jest.fn().mockReturnValue({
+      eq: jest.fn().mockReturnValue({
+        eq: jest.fn().mockReturnValue({
+          select: jest.fn().mockResolvedValue({
+            data: [BOOKING_WITH_EMAIL],
+            error: null,
+          }),
+        }),
+      }),
+    })
+
+    const coachChain: Record<string, MockFn> = {}
+    for (const m of ['select', 'eq']) {
+      coachChain[m] = jest.fn(() => coachChain)
+    }
+    coachChain.maybeSingle = jest.fn().mockResolvedValue({
+      data: { display_name: 'Coach Davies', user_profile_id: null },
+      error: null,
+    })
+
+    const mockFrom = jest.fn()
+      .mockReturnValueOnce(piChain)
+      .mockReturnValueOnce(bookingChain)
+      .mockReturnValueOnce(coachChain)
+    ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom })
+
+    // Intent has guest_email but no guest_name
+    const intentNoName = {
+      id: 'pi_test_no_name',
+      status: 'succeeded',
+      amount: INTENT_AMOUNT,
+      metadata: { booking_id: BOOKING_ID, guest_email: 'sarah@example.com' },
+      last_payment_error: null,
+    }
+    const event = makeStripeEvent('payment_intent.succeeded', intentNoName)
+    const stripeMock = { webhooks: { constructEvent: jest.fn().mockReturnValue(event) } }
+    ;(getStripe as MockFn).mockReturnValue(stripeMock)
+
+    await callPost('{}')
+
+    const [params] = (sendBookingConfirmation as MockFn).mock.calls[0] as [Record<string, unknown>]
+    expect(params.guestName).toBe('there')
   })
 })

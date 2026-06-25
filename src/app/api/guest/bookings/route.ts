@@ -325,6 +325,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           booking_id: booking.id,
           booking_reference: reference,
           coach_id: input.coachId,
+          // P-00c-EMAIL: the guest email/name live nowhere else (no email column
+          // on user_profiles, no auth user for a guest). Stash them on the intent
+          // so the payment_intent.succeeded webhook can send the confirmation.
+          guest_email: input.guest.email,
+          guest_name: input.guest.fullName,
         },
       },
       { idempotencyKey: piKey },

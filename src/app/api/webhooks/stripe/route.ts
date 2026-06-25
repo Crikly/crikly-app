@@ -25,9 +25,11 @@
 // updates are state-convergent. A `stripe_webhook_events` table keyed on event.id
 // is the next hardening step if we add non-idempotent side effects.
 //
+// Booking-confirmation email (P-00c-EMAIL) is sent inside the booking-confirm
+// transition — single-fire is guaranteed by the pending_payment guard, and email
+// failure never affects the 200 response (sendBookingConfirmation never throws).
+//
 // Follow-ups:
-//   - TODO(P-00c-EMAIL): send the Resend confirmation inside the booking-confirm
-//     transition (single-fire is already guaranteed by the pending_payment guard).
 //   - Add `account.application.deauthorized` so a revoked Connect account flips
 //     stripe_onboarding_complete back to false.
 
@@ -35,6 +37,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import type Stripe from 'stripe'
 import { getStripe } from '@/lib/stripe/client'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { sendBookingConfirmation } from '@/lib/resend/send-booking-confirmation'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -223,7 +226,9 @@ async function handlePaymentIntentSucceeded(intent: Stripe.PaymentIntent): Promi
     .update({ status: 'confirmed', messaging_unlocked: true })
     .eq('id', bookingId)
     .eq('status', 'pending_payment')
-    .select('id, booking_reference')
+    .select(
+      'id, booking_reference, coach_profile_id, session_date, session_start_time, session_end_time, session_type',
+    )
 
   if (bookingError) {
     console.error(`[Stripe Webhook] booking confirm failed for ${bookingId}:`, bookingError)
@@ -236,10 +241,94 @@ async function handlePaymentIntentSucceeded(intent: Stripe.PaymentIntent): Promi
     return
   }
 
-  // TODO(P-00c-EMAIL): trigger the Resend booking-confirmation email here, using
-  // confirmed[0].booking_reference. Guarded by the pending_payment transition
-  // above so it fires exactly once.
   console.info(`[Stripe Webhook] booking ${bookingId} confirmed via ${intent.id}`)
+
+  // Booking-confirmation email (P-00c-EMAIL). Fires exactly once — gated by the
+  // pending_payment transition above. The guest has no account and no stored
+  // email, so the address + name come from the intent metadata stashed at
+  // creation by /api/guest/bookings. Email failure NEVER affects the webhook
+  // response: sendBookingConfirmation swallows and returns a boolean.
+  const booking = confirmed[0]
+  const guestEmail = intent.metadata?.guest_email
+  const guestName = intent.metadata?.guest_name
+
+  if (!guestEmail) {
+    // No recipient (non-guest intent, or an older intent created before this
+    // metadata existed). Booking is confirmed; silently skip the email — this is
+    // a normal path, not an error worth logging.
+    return
+  }
+
+  // Coach display name: prefer coach_profiles.display_name, fall back to the
+  // coach's user_profiles.full_name.
+  let coachName = 'your coach'
+  const { data: coach } = await adminSupabase
+    .from('coach_profiles')
+    .select('display_name, user_profile_id')
+    .eq('id', booking.coach_profile_id)
+    .maybeSingle()
+
+  if (coach?.display_name) {
+    coachName = coach.display_name
+  } else if (coach?.user_profile_id) {
+    const { data: coachUser } = await adminSupabase
+      .from('user_profiles')
+      .select('full_name')
+      .eq('id', coach.user_profile_id)
+      .maybeSingle()
+    if (coachUser?.full_name) coachName = coachUser.full_name
+  }
+
+  const sent = await sendBookingConfirmation({
+    guestName: guestName || 'there',
+    guestEmail,
+    coachName,
+    bookingReference: booking.booking_reference,
+    sessionDate: formatSessionDate(booking.session_date),
+    sessionTime: formatSessionTime(booking.session_start_time, booking.session_end_time),
+    sessionType: formatSessionType(booking.session_type),
+    // intent.amount is the canonical amount actually charged, in pence.
+    totalPence: intent.amount,
+  })
+
+  if (!sent) {
+    console.error(`[Stripe Webhook] confirmation email failed for booking ${bookingId}`)
+  }
+}
+
+/** 'YYYY-MM-DD' → 'Tuesday, 1 July 2026'. Falls back to the raw value on parse failure. */
+function formatSessionDate(date: string): string {
+  const parsed = new Date(`${date}T00:00:00Z`)
+  if (Number.isNaN(parsed.getTime())) return date
+  return parsed.toLocaleDateString('en-GB', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  })
+}
+
+/** 'HH:MM:SS' start/end → '2:00pm – 3:00pm'. Falls back to raw 'start – end' on parse failure. */
+function formatSessionTime(start: string, end: string): string {
+  return `${to12Hour(start)} – ${to12Hour(end)}`
+}
+
+function to12Hour(time: string): string {
+  const [h, m] = time.split(':')
+  const hour = Number(h)
+  const minute = Number(m)
+  if (Number.isNaN(hour) || Number.isNaN(minute)) return time
+  const period = hour < 12 ? 'am' : 'pm'
+  const hour12 = hour % 12 === 0 ? 12 : hour % 12
+  return `${hour12}:${String(minute).padStart(2, '0')}${period}`
+}
+
+/** Booking session_type ('individual' | 'group') → display label. */
+function formatSessionType(type: string): string {
+  if (type === 'individual') return 'Individual session'
+  if (type === 'group') return 'Group session'
+  return type
 }
 
 /**
