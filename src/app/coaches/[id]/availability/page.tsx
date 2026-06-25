@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { ChevronLeft, MapPin, Star, ShieldCheck } from 'lucide-react'
 import { PublicHeader } from '@/components/nav/PublicHeader'
+import { PublicFooter } from '@/components/public/PublicFooter'
 import { AvailabilityClient } from './_components/AvailabilityClient'
 import { fetchProgrammeSchedule } from './_components/_data/programmeSchedule'
 import type { SlotTemplate } from './_components/_data/slots'
@@ -210,6 +211,8 @@ export default async function CoachAvailabilityPage({
           programmeDates={programmeSchedule.programmeDates}
         />
       </main>
+
+      <PublicFooter variant="links" />
     </div>
   )
 }
