@@ -254,6 +254,109 @@ export async function sendGuestBookingConfirmation(
   return { success: true }
 }
 
+// ─── Guest (Block 0) programme-enrolment confirmation ───────────────────────────
+//
+// P-00c-ENROL. Guest programme enrolment — same self-contained, no-account layout
+// as sendGuestBookingConfirmation (guestEmailWrapper, no CTA button). Differs only
+// in the details shown: programme title + schedule + sessions instead of a single
+// session's date/time.
+
+export interface GuestProgrammeConfirmationParams {
+  guestName: string
+  guestEmail: string
+  coachName: string
+  enrolmentReference: string
+  programmeTitle: string
+  scheduleSummary: string
+  sessionsSummary: string
+  totalPence: number
+}
+
+/**
+ * Sends the guest programme-enrolment confirmation email. Throws on Resend
+ * failure — the Stripe webhook wraps this in sendProgrammeConfirmation() which
+ * catches and returns a boolean so a failed email can never break the 200.
+ */
+export async function sendGuestProgrammeConfirmation(
+  params: GuestProgrammeConfirmationParams,
+): Promise<{ success: true }> {
+  const {
+    guestName, guestEmail, coachName, enrolmentReference,
+    programmeTitle, scheduleSummary, sessionsSummary, totalPence,
+  } = params
+
+  const safeName = escapeHtml(guestName)
+  const safeCoach = escapeHtml(coachName)
+  const safeRef = escapeHtml(enrolmentReference)
+  const safeTitle = escapeHtml(programmeTitle)
+  const safeSchedule = escapeHtml(scheduleSummary)
+  const safeSessions = escapeHtml(sessionsSummary)
+
+  const detailRows = [
+    { label: 'Programme', value: safeTitle },
+    { label: 'Coach', value: safeCoach },
+    { label: 'Schedule', value: safeSchedule },
+    { label: 'Sessions', value: safeSessions },
+    { label: 'Amount paid', value: formatGBP(totalPence) },
+  ]
+    .map(
+      ({ label, value }) => `
+    <tr>
+      <td style="padding:8px 0;font-size:13px;color:#64748B;width:42%;font-family:${GUEST_SANS};">${label}</td>
+      <td style="padding:8px 0;font-size:13px;color:#0F172A;font-weight:600;font-family:${GUEST_SANS};">${value}</td>
+    </tr>`,
+    )
+    .join('')
+
+  const body = `
+    <h1 style="margin:0 0 8px;font-size:24px;font-weight:700;color:#0F172A;letter-spacing:-0.5px;font-family:${GUEST_SANS};">
+      You&rsquo;re enrolled!
+    </h1>
+    <p style="margin:0 0 24px;font-size:15px;color:#334155;line-height:1.6;font-family:${GUEST_SANS};">
+      Hi ${safeName}, you&rsquo;re enrolled in ${safeTitle} with ${safeCoach}.
+    </p>
+
+    <!-- Enrolment reference card -->
+    <table width="100%" cellpadding="0" cellspacing="0"
+      style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:16px 20px;margin:0 0 24px;">
+      <tr><td>
+        <span style="font-size:11px;font-weight:700;color:#94A3B8;text-transform:uppercase;letter-spacing:0.8px;font-family:${GUEST_SANS};">Enrolment reference</span>
+        <div style="margin-top:6px;font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;font-size:18px;font-weight:700;color:#0077CC;">${safeRef}</div>
+      </td></tr>
+    </table>
+
+    <!-- Programme details -->
+    <table width="100%" cellpadding="0" cellspacing="0"
+      style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:20px 24px;margin:0 0 24px;">
+      <tr><td colspan="2" style="padding-bottom:12px;">
+        <span style="font-size:11px;font-weight:700;color:#94A3B8;text-transform:uppercase;letter-spacing:0.8px;font-family:${GUEST_SANS};">Programme details</span>
+      </td></tr>
+      ${detailRows}
+    </table>
+
+    <p style="margin:0 0 16px;font-size:14px;color:#334155;line-height:1.6;font-family:${GUEST_SANS};">
+      Keep this email as your record of enrolment.
+    </p>
+    <p style="margin:0;font-size:14px;color:#334155;line-height:1.6;font-family:${GUEST_SANS};">
+      Questions? Reply to this email or contact us at
+      <a href="mailto:hello@crikly.app" style="color:#0077CC;text-decoration:none;">hello@crikly.app</a>
+    </p>
+  `
+
+  const { error } = await getResend().emails.send({
+    from: GUEST_FROM,
+    to: guestEmail,
+    subject: `Your Crikly programme enrolment is confirmed — ${enrolmentReference}`,
+    html: guestEmailWrapper(body),
+  })
+
+  if (error) {
+    throw new Error(`[sendGuestProgrammeConfirmation] Resend error: ${error.message}`)
+  }
+
+  return { success: true }
+}
+
 // ─── sendBookingConfirmationToParent ─────────────────────────────────────────
 
 export interface BookingConfirmationParams {

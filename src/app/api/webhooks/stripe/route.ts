@@ -38,6 +38,8 @@ import type Stripe from 'stripe'
 import { getStripe } from '@/lib/stripe/client'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendBookingConfirmation } from '@/lib/resend/send-booking-confirmation'
+import { sendProgrammeConfirmation } from '@/lib/resend/send-programme-confirmation'
+import { addMinutesToTime } from '@/lib/booking/guest-checkout'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -200,6 +202,15 @@ async function handleAccountUpdated(account: Stripe.Account): Promise<void> {
  * 200 and Stripe stops retrying.
  */
 async function handlePaymentIntentSucceeded(intent: Stripe.PaymentIntent): Promise<void> {
+  // Programme enrolment (P-00c-ENROL) and 1-to-1 booking (P-00c-API) intents are
+  // distinguished purely by metadata. Enrolment intents carry enrolment_id;
+  // booking intents carry booking_id. Branch first, keep the two flows isolated.
+  const enrolmentId = intent.metadata?.enrolment_id
+  if (enrolmentId) {
+    await handleEnrolmentSucceeded(intent, enrolmentId)
+    return
+  }
+
   const bookingId = intent.metadata?.booking_id
   if (!bookingId) {
     // Not a Crikly-originated intent (or metadata missing). Nothing to do.
@@ -296,6 +307,151 @@ async function handlePaymentIntentSucceeded(intent: Stripe.PaymentIntent): Promi
   }
 }
 
+/**
+ * payment_intent.succeeded for a GUEST PROGRAMME ENROLMENT (P-00c-ENROL).
+ *
+ * Mirrors the booking confirm: flips payment_status 'pending' → 'succeeded'
+ * (idempotency guard scopes the UPDATE to 'pending'), then atomically claims a
+ * programme spot via increment_programme_spots(). If the programme filled between
+ * checkout and confirmation (RPC returns false), we log loudly for a manual
+ * refund (S0 decision 3) — the payment already cleared. Sends the enrolment
+ * confirmation email from the intent metadata. Never throws.
+ */
+async function handleEnrolmentSucceeded(intent: Stripe.PaymentIntent, enrolmentId: string): Promise<void> {
+  const adminSupabase = createAdminClient()
+
+  // Reconcile the audit row to terminal success.
+  const { error: piError } = await adminSupabase
+    .from('payment_intents')
+    .update({ status: 'succeeded', stripe_status: intent.status })
+    .eq('stripe_payment_intent_id', intent.id)
+  if (piError) {
+    console.error(`[Stripe Webhook] payment_intents update failed for ${intent.id}:`, piError)
+  }
+
+  // Confirm only while still pending — idempotency guard against redelivery.
+  const { data: confirmed, error: enrolError } = await adminSupabase
+    .from('group_programme_enrolments')
+    .update({ payment_status: 'succeeded', updated_at: new Date().toISOString() })
+    .eq('id', enrolmentId)
+    .eq('payment_status', 'pending')
+    .select('id, programme_id, enrolment_reference, payment_model, sessions_paid_for')
+
+  if (enrolError) {
+    console.error(`[Stripe Webhook] enrolment confirm failed for ${enrolmentId}:`, enrolError)
+    return
+  }
+  if (!confirmed || confirmed.length === 0) {
+    console.info(`[Stripe Webhook] enrolment ${enrolmentId} not in pending; skipping (idempotent)`)
+    return
+  }
+  const enrolment = confirmed[0]
+
+  // Atomic, capacity-guarded spot claim. false = programme filled in the race
+  // window → log for manual refund (S0 decision 3). The payment is already taken.
+  const { data: claimed, error: spotError } = await adminSupabase.rpc('increment_programme_spots', {
+    p_programme_id: enrolment.programme_id,
+  })
+  if (spotError) {
+    console.error(`[Stripe Webhook] increment_programme_spots failed for ${enrolment.programme_id}:`, spotError)
+  } else if (claimed === false) {
+    console.error(
+      `[Stripe Webhook] MANUAL REFUND NEEDED: enrolment ${enrolmentId} (${enrolment.enrolment_reference}) ` +
+        `paid via ${intent.id} but programme ${enrolment.programme_id} is full`,
+    )
+  }
+
+  console.info(`[Stripe Webhook] enrolment ${enrolmentId} confirmed via ${intent.id}`)
+
+  // Confirmation email — recipient + name from the intent metadata (guest has no
+  // stored email). Email failure never affects the 200.
+  const guestEmail = intent.metadata?.guest_email
+  const guestName = intent.metadata?.guest_name
+  if (!guestEmail) return
+
+  const { data: programme } = await adminSupabase
+    .from('group_programmes')
+    .select('title, day_of_week, days_of_week, start_time, duration_minutes, coach_profile_id')
+    .eq('id', enrolment.programme_id)
+    .maybeSingle()
+
+  let coachName = 'your coach'
+  if (programme?.coach_profile_id) {
+    const { data: coach } = await adminSupabase
+      .from('coach_profiles')
+      .select('display_name, user_profile_id')
+      .eq('id', programme.coach_profile_id)
+      .maybeSingle()
+    if (coach?.display_name) {
+      coachName = coach.display_name
+    } else if (coach?.user_profile_id) {
+      const { data: coachUser } = await adminSupabase
+        .from('user_profiles')
+        .select('full_name')
+        .eq('id', coach.user_profile_id)
+        .maybeSingle()
+      if (coachUser?.full_name) coachName = coachUser.full_name
+    }
+  }
+
+  const paid = enrolment.sessions_paid_for ?? 0
+  const sessionsSummary =
+    enrolment.payment_model === 'block'
+      ? `Whole programme${paid > 0 ? ` · ${paid} sessions` : ''}`
+      : `${paid} session${paid !== 1 ? 's' : ''}`
+
+  const sent = await sendProgrammeConfirmation({
+    guestName: guestName || 'there',
+    guestEmail,
+    coachName,
+    enrolmentReference: enrolment.enrolment_reference ?? 'your enrolment',
+    programmeTitle: programme?.title ?? 'your programme',
+    scheduleSummary: programme
+      ? formatProgrammeSchedule(
+          programme.day_of_week,
+          programme.days_of_week,
+          programme.start_time,
+          programme.duration_minutes,
+        )
+      : 'See your programme details',
+    sessionsSummary,
+    totalPence: intent.amount,
+  })
+
+  if (!sent) {
+    console.error(`[Stripe Webhook] programme confirmation email failed for enrolment ${enrolmentId}`)
+  }
+}
+
+const DAY_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+/** Builds "Every Saturday · 9:00am – 10:00am" from a programme's recurrence fields. */
+function formatProgrammeSchedule(
+  dayOfWeek: number | null,
+  daysOfWeek: number[] | null,
+  startTime: string | null,
+  durationMinutes: number | null,
+): string {
+  const days =
+    daysOfWeek && daysOfWeek.length > 0
+      ? daysOfWeek
+      : dayOfWeek !== null && dayOfWeek !== undefined
+        ? [dayOfWeek]
+        : []
+  let dayPart = ''
+  if (days.length === 1) dayPart = `Every ${DAY_LONG[days[0]] ?? ''}`.trim()
+  else if (days.length > 1) dayPart = days.map((d) => DAY_SHORT[d] ?? '').filter(Boolean).join(', ')
+
+  let timePart = ''
+  if (startTime) {
+    const start = to12Hour(startTime)
+    const end = durationMinutes ? addMinutesToTime(startTime, durationMinutes) : null
+    timePart = end ? `${start} – ${to12Hour(end)}` : start
+  }
+  return [dayPart, timePart].filter(Boolean).join(' · ') || 'Schedule TBC'
+}
+
 /** 'YYYY-MM-DD' → 'Tuesday, 1 July 2026'. Falls back to the raw value on parse failure. */
 function formatSessionDate(date: string): string {
   const parsed = new Date(`${date}T00:00:00Z`)
@@ -356,6 +512,20 @@ async function handlePaymentIntentFailed(intent: Stripe.PaymentIntent): Promise<
   if (error) {
     console.error(`[Stripe Webhook] payment_intents failure update failed for ${intent.id}:`, error)
     return
+  }
+
+  // For a programme enrolment, also mark the enrolment failed (only while still
+  // pending — never downgrade one a success event already confirmed).
+  const enrolmentId = intent.metadata?.enrolment_id
+  if (enrolmentId) {
+    const { error: enrolError } = await adminSupabase
+      .from('group_programme_enrolments')
+      .update({ payment_status: 'failed', updated_at: new Date().toISOString() })
+      .eq('id', enrolmentId)
+      .eq('payment_status', 'pending')
+    if (enrolError) {
+      console.error(`[Stripe Webhook] enrolment failure update failed for ${enrolmentId}:`, enrolError)
+    }
   }
 
   console.info(`[Stripe Webhook] payment_intent.payment_failed recorded for ${intent.id}`)

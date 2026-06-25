@@ -432,6 +432,64 @@ On a retry carrying the same `idempotencyToken`, the existing booking + PaymentI
 
 ---
 
+### POST /api/guest/programme-enrolments
+Guest (logged-out) group-programme enrolment checkout. Same shape as `/api/guest/bookings`: creates a provisional user, a `payment_status='pending'` enrolment, and a Stripe PaymentIntent, then returns the client secret. The `payment_intent.succeeded` webhook flips `payment_status` to `succeeded` and atomically claims a spot via `increment_programme_spots()` (BR-06).
+**Status: Implemented — P-00c-ENROL**
+**Auth: None (public). Uses the service-role client — provisional users have no Supabase Auth credentials.**
+
+**Request:**
+```json
+{
+  "coachId": "uuid",
+  "programmeId": "uuid",
+  "paymentType": "per_session",
+  "selectedSessionIds": ["uuid", "uuid"],
+  "idempotencyToken": "client-generated-uuid",
+  "guest": {
+    "fullName": "Alex Parent",
+    "email": "alex@example.com",
+    "phone": "07700 900000",
+    "address": "1 High St",
+    "townCity": "London",
+    "postcode": "SW1A 1AA"
+  }
+}
+```
+`selectedSessionIds` is required and non-empty for `paymentType: "per_session"`; ignored for `"block_upfront"`.
+
+**Response 200:**
+```json
+{
+  "clientSecret": "pi_..._secret_...",
+  "enrolmentReference": "CRK-2026-7F3A9K",
+  "enrolmentId": "uuid"
+}
+```
+On a retry carrying the same `idempotencyToken`, the existing enrolment + PaymentIntent are returned (no new rows created).
+
+**Error responses:**
+```
+400 invalid_body              malformed/missing fields (or empty session list for per_session)
+400 payment_type_mismatch     paymentType ≠ programme.payment_type
+400 session_price_unavailable per_session with no price_per_session_pence set
+400 block_price_unavailable   block_upfront with no block_price_pence set
+404 coach_unavailable         coach not found, not live, paused, or suspended
+404 programme_unavailable     programme not found, not active, or not owned by the coach
+409 invalid_sessions          a selected session is missing/not scheduled/past/not in this programme
+409 spots_taken               programme already full at create (soft check)
+502 payment_init_failed       Stripe PaymentIntent could not be created
+500 internal_error            DB failure (rolls back: enrolment soft-failed, provisional user soft-deleted)
+```
+
+**Business rules applied:**
+- BR-01: Commission read from `platform_config`, added on top of the re-derived coach price (per_session = `price_per_session_pence × n`; block = `block_price_pence`). Client amounts are never trusted.
+- BR-10: All amounts integer pence; Stripe charged `parent_total_pence`.
+- BR-12: `enrolment_reference` is `CRK-YYYY-XXXXXX` (random base32).
+- Capacity: soft-checked at create; the authoritative atomic guard runs at webhook confirm via `increment_programme_spots()`. A full-at-confirm race logs `MANUAL REFUND NEEDED` (P-00c-ENROL S0 decision 3).
+- Funds: same MVP shape as `/api/guest/bookings` — `payment_intents` audit row keyed on `enrolment_id` (not `booking_id`).
+
+---
+
 ### GET /api/bookings
 Get bookings for the authenticated user.
 
@@ -652,8 +710,8 @@ stripe-signature   required — verified against STRIPE_WEBHOOK_SECRET
 | `event.type` | Action |
 |---|---|
 | `account.updated` | Computes `isComplete = charges_enabled && payouts_enabled` from `event.data.object` (Stripe.Account) and `UPDATE coach_profiles SET stripe_onboarding_complete = isComplete WHERE stripe_account_id = account.id`. Both directions written, so a Stripe-side capability revocation flips the flag back to `false`. |
-| `payment_intent.succeeded` | Guest checkout (P-00c-API). Reads `metadata.booking_id`; sets `payment_intents.status = 'succeeded'`, and `UPDATE bookings SET status = 'confirmed', messaging_unlocked = true WHERE id = booking_id AND status = 'pending_payment'`. The status-scoped UPDATE is the idempotency guard — a redelivered event affects 0 rows and is a no-op (BR-06, BR-07). On the confirming delivery only, sends the guest booking-confirmation email via `sendBookingConfirmation` (P-00c-EMAIL): recipient from `metadata.guest_email`, coach name from `coach_profiles.display_name` (fallback `user_profiles.full_name`), amount from `intent.amount`. Email-send failure is swallowed (the helper returns a boolean) and never affects the 200 response. |
-| `payment_intent.payment_failed` | Sets `payment_intents.status = 'failed'` with `stripe_error_code` / `stripe_error_message`. The booking stays `pending_payment` (payer can retry; abandoned rows reaped by the provisional-user cleanup cron). |
+| `payment_intent.succeeded` | Branches on metadata. **Programme enrolment (P-00c-ENROL):** `metadata.enrolment_id` present → sets `payment_intents.status = 'succeeded'`, confirms the enrolment with `UPDATE group_programme_enrolments SET payment_status = 'succeeded' WHERE id = enrolment_id AND payment_status = 'pending'` (status-scoped idempotency guard), then atomically claims a spot via `increment_programme_spots()` (a `false` return ⇒ `console.error` MANUAL REFUND NEEDED, S0 decision 3), and sends `sendProgrammeConfirmation`. **1-to-1 booking (P-00c-API):** `metadata.booking_id` → `UPDATE bookings SET status = 'confirmed', messaging_unlocked = true WHERE id = booking_id AND status = 'pending_payment'` (BR-06, BR-07), then `sendBookingConfirmation`. Email failure is swallowed and never affects the 200. |
+| `payment_intent.payment_failed` | Sets `payment_intents.status = 'failed'` with `stripe_error_code` / `stripe_error_message`. A booking stays `pending_payment` (payer can retry); a programme enrolment is marked `payment_status = 'failed'` (only while still `pending`). Abandoned rows reaped by the provisional-user cleanup cron. |
 | any other | `console.info` log only, no DB writes, returns 200. |
 
 **Response 200:** `{ "received": true }` — sent for every event Stripe successfully signed, including unhandled types and post-error paths. Stripe retries on any non-2xx, so the route MUST NOT 5xx on DB errors.
