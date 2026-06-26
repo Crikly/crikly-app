@@ -207,6 +207,8 @@ export default async function ProgrammeDetailPage({
 
           {programme.paymentType === 'block_upfront' ? (
             <ProgrammeSchedule
+              coachId={programme.coach.id}
+              programmeId={programme.id}
               schedule={programme.schedule}
               sessionCount={programme.sessionCount}
               blockTotalPence={programme.blockTotalPence}
@@ -215,6 +217,8 @@ export default async function ProgrammeDetailPage({
             />
           ) : (
             <SessionPicker
+              coachId={programme.coach.id}
+              programmeId={programme.id}
               pricePerSessionPence={programme.pricePerSessionPence}
               campMode={programme.campMode}
               sessions={programme.sessions}

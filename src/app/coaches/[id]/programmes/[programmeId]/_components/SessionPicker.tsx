@@ -7,11 +7,14 @@
 // in; this component owns only the selection state and the collapse toggle.
 
 import { useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Check, ChevronDown } from 'lucide-react'
 import type { SessionView, CampDay } from './_data/programmeDetail'
+import { displayParentTotalPence } from '@/lib/booking/commission-display'
 
 const COLLAPSED_COUNT = 4
 
+/** Whole-pound format for per-session row prices (coach prices are whole). */
 function formatPence(pence: number): string {
   return new Intl.NumberFormat('en-GB', {
     style: 'currency',
@@ -21,7 +24,14 @@ function formatPence(pence: number): string {
   }).format(pence / 100)
 }
 
+/** 2-dp format for the total — commission on top introduces pence (e.g. £92.40). */
+function formatTotal(pence: number): string {
+  return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(pence / 100)
+}
+
 interface SessionPickerProps {
+  coachId: string
+  programmeId: string
   pricePerSessionPence: number | null
   campMode: boolean
   sessions: SessionView[]
@@ -111,7 +121,15 @@ function SessionRow({
 
 // ─── Picker ────────────────────────────────────────────────────────────────────
 
-export function SessionPicker({ pricePerSessionPence, campMode, sessions, campDays }: SessionPickerProps) {
+export function SessionPicker({
+  coachId,
+  programmeId,
+  pricePerSessionPence,
+  campMode,
+  sessions,
+  campDays,
+}: SessionPickerProps) {
+  const router = useRouter()
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [expanded, setExpanded] = useState(false)
 
@@ -124,23 +142,45 @@ export function SessionPicker({ pricePerSessionPence, campMode, sessions, campDa
     })
   }
 
-  // Per-session price is uniform across sessions (one price_per_session_pence on
-  // the programme), so the running total is count × price.
-  const count = selected.size
-  const total = count * (pricePerSessionPence ?? 0)
+  // Map every row key → its real session UUID (camp slots from one row share an
+  // id — session-row granularity, S0 decision 4).
+  const keyToSessionId = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const s of sessions) m.set(s.key, s.sessionId)
+    for (const d of campDays) for (const s of d.slots) m.set(s.key, s.sessionId)
+    return m
+  }, [sessions, campDays])
+
+  // The session UUIDs that will actually be paid for (deduped by row).
+  const selectedSessionIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const key of selected) {
+      const id = keyToSessionId.get(key)
+      if (id) ids.add(id)
+    }
+    return [...ids]
+  }, [selected, keyToSessionId])
+
+  // Count + total reflect the deduped sessions being charged. Coach price is
+  // uniform; commission is added ON TOP (BR-01) for the displayed total.
+  const payCount = selectedSessionIds.length
+  const coachSubtotal = payCount * (pricePerSessionPence ?? 0)
+  const total = displayParentTotalPence(coachSubtotal)
 
   const collapsible = !campMode && sessions.length > COLLAPSED_COUNT
   const visibleSessions = collapsible && !expanded ? sessions.slice(0, COLLAPSED_COUNT) : sessions
 
   const ctaLabel = useMemo(() => {
-    if (count === 0) return 'Select sessions to continue'
-    return `Pay for ${count} session${count !== 1 ? 's' : ''} — ${formatPence(total)}`
-  }, [count, total])
+    if (payCount === 0) return 'Select sessions to continue'
+    return `Pay for ${payCount} session${payCount !== 1 ? 's' : ''} — ${formatTotal(total)}`
+  }, [payCount, total])
 
-  // TODO(P-00c-ENROL): wire to programme enrolment checkout. Block 0 ships the
-  // picker UI only — the CTA is inert (no /book/[coachId] link; that route is
-  // for 1-to-1 sessions and uses a different API).
-  const disabled = count === 0
+  const disabled = payCount === 0
+
+  function handleCheckout(): void {
+    if (disabled) return
+    router.push(`/book/${coachId}/programmes/${programmeId}?sessions=${selectedSessionIds.join(',')}`)
+  }
 
   return (
     <>
@@ -201,19 +241,20 @@ export function SessionPicker({ pricePerSessionPence, campMode, sessions, campDa
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center justify-center min-w-6 h-6 px-1.5 rounded-full bg-brand-600 text-white text-sm font-bold tabular-nums">
-              {count}
+              {payCount}
             </span>
-            <span className="text-sm text-gray-600">session{count !== 1 ? 's' : ''} selected</span>
+            <span className="text-sm text-gray-600">session{payCount !== 1 ? 's' : ''} selected</span>
           </div>
           <div className="text-right">
             <div className="text-xs font-semibold uppercase tracking-wider text-gray-500">Total</div>
             <div className="text-xl font-bold text-gray-900 tracking-tight tabular-nums leading-tight">
-              {formatPence(total)}
+              {formatTotal(total)}
             </div>
           </div>
         </div>
         <button
           type="button"
+          onClick={handleCheckout}
           disabled={disabled}
           data-testid="pay-cta"
           className="w-full h-[52px] rounded-[10px] bg-brand-600 text-white text-base font-semibold transition-colors hover:bg-brand-700 active:scale-[0.99] disabled:bg-gray-200 disabled:text-gray-500 disabled:active:scale-100"
@@ -227,16 +268,17 @@ export function SessionPicker({ pricePerSessionPence, campMode, sessions, campDa
         <div className="flex items-center gap-5 bg-white border border-gray-200 rounded-2xl shadow-[0_4px_16px_rgba(0,0,0,0.08)] px-5 py-4">
           <div className="flex items-center gap-2.5">
             <span className="inline-flex items-center justify-center min-w-[26px] h-[26px] px-2 rounded-full bg-brand-600 text-white text-sm font-bold tabular-nums">
-              {count}
+              {payCount}
             </span>
-            <span className="text-base text-gray-600">session{count !== 1 ? 's' : ''} selected</span>
+            <span className="text-base text-gray-600">session{payCount !== 1 ? 's' : ''} selected</span>
           </div>
           <div className="flex items-baseline gap-2">
             <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">Total</span>
-            <span className="text-2xl font-bold text-gray-900 tracking-tight tabular-nums">{formatPence(total)}</span>
+            <span className="text-2xl font-bold text-gray-900 tracking-tight tabular-nums">{formatTotal(total)}</span>
           </div>
           <button
             type="button"
+            onClick={handleCheckout}
             disabled={disabled}
             data-testid="pay-cta-desktop"
             className="ml-auto h-[54px] px-7 rounded-[10px] bg-brand-600 text-white text-base font-semibold whitespace-nowrap transition-colors hover:bg-brand-700 active:scale-[0.99] disabled:bg-gray-200 disabled:text-gray-500 disabled:active:scale-100"

@@ -28,9 +28,14 @@ jest.mock('@/lib/resend/send-booking-confirmation', () => ({
   sendBookingConfirmation: jest.fn(),
 }))
 
+jest.mock('@/lib/resend/send-programme-confirmation', () => ({
+  sendProgrammeConfirmation: jest.fn(),
+}))
+
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getStripe } from '@/lib/stripe/client'
 import { sendBookingConfirmation } from '@/lib/resend/send-booking-confirmation'
+import { sendProgrammeConfirmation } from '@/lib/resend/send-programme-confirmation'
 import { POST } from '@/app/api/webhooks/stripe/route'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -123,6 +128,8 @@ beforeEach(() => {
   // override this. Existing tests use intents without guest_email metadata so the
   // route returns before ever calling this function.
   ;(sendBookingConfirmation as jest.Mock).mockResolvedValue(true)
+  // sendProgrammeConfirmation is a no-op by default — enrolment tests override this.
+  ;(sendProgrammeConfirmation as jest.Mock).mockResolvedValue(true)
 })
 
 // ── Signature verification ────────────────────────────────────────────────────
@@ -711,5 +718,426 @@ describe('POST /api/webhooks/stripe — payment_intent.succeeded email (P-00c-EM
 
     const [params] = (sendBookingConfirmation as MockFn).mock.calls[0] as [Record<string, unknown>]
     expect(params.guestName).toBe('there')
+  })
+})
+
+// ── payment_intent.succeeded — handleEnrolmentSucceeded (P-00c-ENROL) ─────────
+//
+// When a payment intent carries metadata.enrolment_id (not booking_id), the route
+// takes the enrolment path (handleEnrolmentSucceeded) instead of the booking path.
+//
+// DB call sequence for handleEnrolmentSucceeded:
+//   1. payment_intents update (status → succeeded)
+//   2. group_programme_enrolments update (pending → succeeded) + select
+//   3. adminSupabase.rpc('increment_programme_spots', { p_programme_id })
+//   4. group_programmes select (for email data)
+//   5. coach_profiles select (for coach name)
+//   6. sendProgrammeConfirmation
+
+const ENROLMENT_ID = 'enrolment-uuid-webhook-001'
+const PROGRAMME_ID_WH = 'programme-uuid-webhook-001'
+
+function makeEnrolmentSucceededIntent(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'pi_test_enrolment',
+    status: 'succeeded',
+    amount: 24640,
+    metadata: {
+      enrolment_id: ENROLMENT_ID,
+      guest_email: 'sarah@example.com',
+      guest_name: 'Sarah Test',
+    },
+    last_payment_error: null,
+    ...overrides,
+  }
+}
+
+const CONFIRMED_ENROLMENT = {
+  id: ENROLMENT_ID,
+  programme_id: PROGRAMME_ID_WH,
+  enrolment_reference: 'CRK-2026-ENROL1',
+  payment_model: 'block',
+  sessions_paid_for: 8,
+}
+
+const PROGRAMME_ROW_WH = {
+  title: 'Summer Cricket Academy',
+  day_of_week: 6,
+  days_of_week: null,
+  start_time: '09:00:00',
+  duration_minutes: 60,
+  coach_profile_id: 'coach-profile-uuid-webhook-001',
+}
+
+/**
+ * Build the full chain of from() and rpc() calls for a happy enrolment webhook.
+ *
+ * Supabase call order in handleEnrolmentSucceeded:
+ *   from(1) payment_intents update
+ *   from(2) group_programme_enrolments update + select
+ *   rpc()   increment_programme_spots
+ *   from(3) group_programmes select
+ *   from(4) coach_profiles select
+ */
+function setupEnrolmentMocks(options: {
+  enrolmentUpdateData?: unknown[] | null
+  rpcResult?: boolean
+  coachRow?: { display_name: string | null; user_profile_id: string | null } | null
+} = {}) {
+  const {
+    enrolmentUpdateData = [CONFIRMED_ENROLMENT],
+    rpcResult = true,
+    coachRow = { display_name: 'Coach Davies', user_profile_id: null },
+  } = options
+
+  // 1. payment_intents update
+  const piChain: Record<string, MockFn> = {}
+  piChain.update = jest.fn().mockReturnValue({
+    eq: jest.fn().mockResolvedValue({ data: null, error: null }),
+  })
+
+  // 2. group_programme_enrolments update
+  const enrolmentChain: Record<string, MockFn> = {}
+  enrolmentChain.update = jest.fn().mockReturnValue({
+    eq: jest.fn().mockReturnValue({
+      eq: jest.fn().mockReturnValue({
+        select: jest.fn().mockResolvedValue({
+          data: enrolmentUpdateData,
+          error: null,
+        }),
+      }),
+    }),
+  })
+
+  // 3. group_programmes select
+  const programmeChain: Record<string, MockFn> = {}
+  for (const m of ['select', 'eq']) {
+    programmeChain[m] = jest.fn(() => programmeChain)
+  }
+  programmeChain.maybeSingle = jest.fn().mockResolvedValue({ data: PROGRAMME_ROW_WH, error: null })
+
+  // 4. coach_profiles select
+  const coachChain: Record<string, MockFn> = {}
+  for (const m of ['select', 'eq']) {
+    coachChain[m] = jest.fn(() => coachChain)
+  }
+  coachChain.maybeSingle = jest.fn().mockResolvedValue({ data: coachRow, error: null })
+
+  const mockFrom = jest.fn()
+    .mockReturnValueOnce(piChain)         // 1. payment_intents
+    .mockReturnValueOnce(enrolmentChain)  // 2. group_programme_enrolments
+    .mockReturnValueOnce(programmeChain)  // 3. group_programmes
+    .mockReturnValueOnce(coachChain)      // 4. coach_profiles
+
+  const mockRpc = jest.fn().mockResolvedValue({ data: rpcResult, error: null })
+
+  ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom, rpc: mockRpc })
+
+  const intent = makeEnrolmentSucceededIntent()
+  const event = makeStripeEvent('payment_intent.succeeded', intent)
+  const stripeMock = { webhooks: { constructEvent: jest.fn().mockReturnValue(event) } }
+  ;(getStripe as MockFn).mockReturnValue(stripeMock)
+
+  return { mockFrom, mockRpc, piChain, enrolmentChain, programmeChain, coachChain, intent }
+}
+
+describe('POST /api/webhooks/stripe — handleEnrolmentSucceeded (P-00c-ENROL)', () => {
+  it('routes to enrolment path when metadata.enrolment_id is present', async () => {
+    setupEnrolmentMocks()
+    const res = await callPost('{}')
+    expect(res.status).toBe(200)
+    const data = await res.json() as Record<string, unknown>
+    expect(data.received).toBe(true)
+  })
+
+  it('updates payment_intents to status=succeeded', async () => {
+    const { piChain } = setupEnrolmentMocks()
+    await callPost('{}')
+
+    const updateArg = (piChain.update as MockFn).mock.calls[0][0] as Record<string, unknown>
+    expect(updateArg.status).toBe('succeeded')
+  })
+
+  it('updates group_programme_enrolments payment_status from pending to succeeded', async () => {
+    const { enrolmentChain } = setupEnrolmentMocks()
+    await callPost('{}')
+
+    const updateArg = (enrolmentChain.update as MockFn).mock.calls[0][0] as Record<string, unknown>
+    expect(updateArg.payment_status).toBe('succeeded')
+  })
+
+  it('enrolment update is scoped to payment_status=pending (idempotency guard)', async () => {
+    const { enrolmentChain } = setupEnrolmentMocks()
+    await callPost('{}')
+
+    // .update(...).eq('id', enrolmentId).eq('payment_status', 'pending')
+    const updateReturn = (enrolmentChain.update as MockFn).mock.results[0].value as Record<string, MockFn>
+    const firstEqCall = (updateReturn.eq as MockFn).mock.calls[0]
+    expect(firstEqCall[0]).toBe('id')
+    expect(firstEqCall[1]).toBe(ENROLMENT_ID)
+
+    const secondEqReturn = (updateReturn.eq as MockFn).mock.results[0].value as Record<string, MockFn>
+    const secondEqCall = (secondEqReturn.eq as MockFn).mock.calls[0]
+    expect(secondEqCall[0]).toBe('payment_status')
+    expect(secondEqCall[1]).toBe('pending')
+  })
+
+  it('idempotency: returns 200 when enrolment already confirmed (empty update result)', async () => {
+    setupEnrolmentMocks({ enrolmentUpdateData: [] })
+
+    // When enrolmentUpdateData is empty, the route returns early without calling rpc
+    // Rebuild mocks so the from() chain for empty result doesn't try to access
+    // programme/coach chains that aren't set up.
+    const piChain: Record<string, MockFn> = {}
+    piChain.update = jest.fn().mockReturnValue({
+      eq: jest.fn().mockResolvedValue({ data: null, error: null }),
+    })
+    const enrolmentChain: Record<string, MockFn> = {}
+    enrolmentChain.update = jest.fn().mockReturnValue({
+      eq: jest.fn().mockReturnValue({
+        eq: jest.fn().mockReturnValue({
+          select: jest.fn().mockResolvedValue({ data: [], error: null }),
+        }),
+      }),
+    })
+
+    const mockFrom = jest.fn()
+      .mockReturnValueOnce(piChain)
+      .mockReturnValueOnce(enrolmentChain)
+    const mockRpc = jest.fn()
+    ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom, rpc: mockRpc })
+
+    const intent = makeEnrolmentSucceededIntent()
+    const event = makeStripeEvent('payment_intent.succeeded', intent)
+    const stripeMock = { webhooks: { constructEvent: jest.fn().mockReturnValue(event) } }
+    ;(getStripe as MockFn).mockReturnValue(stripeMock)
+
+    const res = await callPost('{}')
+    expect(res.status).toBe(200)
+    expect(mockRpc).not.toHaveBeenCalled()
+    expect(sendProgrammeConfirmation).not.toHaveBeenCalled()
+  })
+
+  it('calls increment_programme_spots RPC with the correct programme_id', async () => {
+    const { mockRpc } = setupEnrolmentMocks()
+    await callPost('{}')
+
+    expect(mockRpc).toHaveBeenCalledWith('increment_programme_spots', {
+      p_programme_id: PROGRAMME_ID_WH,
+    })
+  })
+
+  it('logs MANUAL REFUND NEEDED and returns 200 when RPC returns false (programme filled)', async () => {
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
+
+    const piChain: Record<string, MockFn> = {}
+    piChain.update = jest.fn().mockReturnValue({
+      eq: jest.fn().mockResolvedValue({ data: null, error: null }),
+    })
+    const enrolmentChain: Record<string, MockFn> = {}
+    enrolmentChain.update = jest.fn().mockReturnValue({
+      eq: jest.fn().mockReturnValue({
+        eq: jest.fn().mockReturnValue({
+          select: jest.fn().mockResolvedValue({
+            data: [CONFIRMED_ENROLMENT],
+            error: null,
+          }),
+        }),
+      }),
+    })
+    const programmeChain: Record<string, MockFn> = {}
+    for (const m of ['select', 'eq']) {
+      programmeChain[m] = jest.fn(() => programmeChain)
+    }
+    programmeChain.maybeSingle = jest.fn().mockResolvedValue({ data: PROGRAMME_ROW_WH, error: null })
+
+    const coachChain: Record<string, MockFn> = {}
+    for (const m of ['select', 'eq']) {
+      coachChain[m] = jest.fn(() => coachChain)
+    }
+    coachChain.maybeSingle = jest.fn().mockResolvedValue({
+      data: { display_name: 'Coach Davies', user_profile_id: null },
+      error: null,
+    })
+
+    const mockFrom = jest.fn()
+      .mockReturnValueOnce(piChain)
+      .mockReturnValueOnce(enrolmentChain)
+      .mockReturnValueOnce(programmeChain)
+      .mockReturnValueOnce(coachChain)
+
+    // RPC returns false = programme is full
+    const mockRpc = jest.fn().mockResolvedValue({ data: false, error: null })
+    ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom, rpc: mockRpc })
+
+    const intent = makeEnrolmentSucceededIntent()
+    const event = makeStripeEvent('payment_intent.succeeded', intent)
+    const stripeMock = { webhooks: { constructEvent: jest.fn().mockReturnValue(event) } }
+    ;(getStripe as MockFn).mockReturnValue(stripeMock)
+
+    const res = await callPost('{}')
+    expect(res.status).toBe(200)
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('MANUAL REFUND NEEDED'))
+
+    consoleSpy.mockRestore()
+  })
+
+  it('calls sendProgrammeConfirmation (not sendBookingConfirmation)', async () => {
+    setupEnrolmentMocks()
+    await callPost('{}')
+
+    expect(sendProgrammeConfirmation).toHaveBeenCalledTimes(1)
+    expect(sendBookingConfirmation).not.toHaveBeenCalled()
+  })
+
+  it('passes guestEmail and guestName from intent metadata to sendProgrammeConfirmation', async () => {
+    setupEnrolmentMocks()
+    await callPost('{}')
+
+    const [params] = (sendProgrammeConfirmation as MockFn).mock.calls[0] as [Record<string, unknown>]
+    expect(params.guestEmail).toBe('sarah@example.com')
+    expect(params.guestName).toBe('Sarah Test')
+  })
+
+  it('passes enrolmentReference and totalPence = intent.amount to sendProgrammeConfirmation', async () => {
+    setupEnrolmentMocks()
+    await callPost('{}')
+
+    const [params] = (sendProgrammeConfirmation as MockFn).mock.calls[0] as [Record<string, unknown>]
+    expect(params.enrolmentReference).toBe('CRK-2026-ENROL1')
+    expect(params.totalPence).toBe(24640)
+  })
+
+  it('skips email when guest_email is absent from intent metadata', async () => {
+    const piChain: Record<string, MockFn> = {}
+    piChain.update = jest.fn().mockReturnValue({
+      eq: jest.fn().mockResolvedValue({ data: null, error: null }),
+    })
+    const enrolmentChain: Record<string, MockFn> = {}
+    enrolmentChain.update = jest.fn().mockReturnValue({
+      eq: jest.fn().mockReturnValue({
+        eq: jest.fn().mockReturnValue({
+          select: jest.fn().mockResolvedValue({ data: [CONFIRMED_ENROLMENT], error: null }),
+        }),
+      }),
+    })
+
+    const mockFrom = jest.fn()
+      .mockReturnValueOnce(piChain)
+      .mockReturnValueOnce(enrolmentChain)
+    const mockRpc = jest.fn().mockResolvedValue({ data: true, error: null })
+    ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom, rpc: mockRpc })
+
+    // No guest_email in metadata
+    const intent = makeEnrolmentSucceededIntent({ metadata: { enrolment_id: ENROLMENT_ID } })
+    const event = makeStripeEvent('payment_intent.succeeded', intent)
+    const stripeMock = { webhooks: { constructEvent: jest.fn().mockReturnValue(event) } }
+    ;(getStripe as MockFn).mockReturnValue(stripeMock)
+
+    const res = await callPost('{}')
+    expect(res.status).toBe(200)
+    expect(sendProgrammeConfirmation).not.toHaveBeenCalled()
+  })
+
+  it('does NOT invoke the booking path (sendBookingConfirmation) for enrolment intents', async () => {
+    setupEnrolmentMocks()
+    await callPost('{}')
+    expect(sendBookingConfirmation).not.toHaveBeenCalled()
+  })
+
+  it('still returns 200 when DB update throws (never causes Stripe retry loop)', async () => {
+    const piChain: Record<string, MockFn> = {}
+    piChain.update = jest.fn().mockReturnValue({
+      eq: jest.fn().mockRejectedValue(new Error('DB connection lost')),
+    })
+    ;(createAdminClient as MockFn).mockReturnValue({ from: jest.fn().mockReturnValue(piChain), rpc: jest.fn() })
+
+    const intent = makeEnrolmentSucceededIntent()
+    const event = makeStripeEvent('payment_intent.succeeded', intent)
+    const stripeMock = { webhooks: { constructEvent: jest.fn().mockReturnValue(event) } }
+    ;(getStripe as MockFn).mockReturnValue(stripeMock)
+
+    const res = await callPost('{}')
+    expect(res.status).toBe(200)
+  })
+})
+
+// ── payment_intent.payment_failed — enrolment failure path ────────────────────
+//
+// When a failed intent has metadata.enrolment_id, the route also marks the
+// group_programme_enrolments row failed (only while still pending). The payment_intents
+// row is always updated. This section tests the combined payment_failed + enrolment path.
+
+describe('POST /api/webhooks/stripe — payment_intent.payment_failed (enrolment path)', () => {
+  function makeFailedEnrolmentIntent() {
+    return {
+      id: 'pi_test_enrolment_failed',
+      status: 'requires_payment_method',
+      metadata: { enrolment_id: ENROLMENT_ID },
+      last_payment_error: { code: 'card_declined', message: 'Your card was declined.' },
+    }
+  }
+
+  it('updates payment_intents to status=failed for a failed enrolment intent', async () => {
+    const piChain: Record<string, MockFn> = {}
+    piChain.update = jest.fn().mockReturnValue({
+      eq: jest.fn().mockResolvedValue({ data: null, error: null }),
+    })
+    const enrolmentFailChain: Record<string, MockFn> = {}
+    enrolmentFailChain.update = jest.fn().mockReturnValue({
+      eq: jest.fn().mockReturnValue({
+        eq: jest.fn().mockResolvedValue({ data: null, error: null }),
+      }),
+    })
+
+    const mockFrom = jest.fn()
+      .mockReturnValueOnce(piChain)             // payment_intents update
+      .mockReturnValueOnce(enrolmentFailChain)  // group_programme_enrolments update
+
+    ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom, rpc: jest.fn() })
+
+    const event = makeStripeEvent('payment_intent.payment_failed', makeFailedEnrolmentIntent())
+    const stripeMock = { webhooks: { constructEvent: jest.fn().mockReturnValue(event) } }
+    ;(getStripe as MockFn).mockReturnValue(stripeMock)
+
+    const res = await callPost('{}')
+    expect(res.status).toBe(200)
+
+    const piUpdateArg = (piChain.update as MockFn).mock.calls[0][0] as Record<string, unknown>
+    expect(piUpdateArg.status).toBe('failed')
+  })
+
+  it('marks group_programme_enrolments payment_status=failed (scoped to pending)', async () => {
+    const piChain: Record<string, MockFn> = {}
+    piChain.update = jest.fn().mockReturnValue({
+      eq: jest.fn().mockResolvedValue({ data: null, error: null }),
+    })
+    const enrolmentFailChain: Record<string, MockFn> = {}
+    enrolmentFailChain.update = jest.fn().mockReturnValue({
+      eq: jest.fn().mockReturnValue({
+        eq: jest.fn().mockResolvedValue({ data: null, error: null }),
+      }),
+    })
+
+    const mockFrom = jest.fn()
+      .mockReturnValueOnce(piChain)
+      .mockReturnValueOnce(enrolmentFailChain)
+    ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom, rpc: jest.fn() })
+
+    const event = makeStripeEvent('payment_intent.payment_failed', makeFailedEnrolmentIntent())
+    const stripeMock = { webhooks: { constructEvent: jest.fn().mockReturnValue(event) } }
+    ;(getStripe as MockFn).mockReturnValue(stripeMock)
+
+    await callPost('{}')
+
+    const enrolmentUpdateArg = (enrolmentFailChain.update as MockFn).mock.calls[0][0] as Record<string, unknown>
+    expect(enrolmentUpdateArg.payment_status).toBe('failed')
+
+    // Idempotency guard — scoped to pending
+    const updateReturn = (enrolmentFailChain.update as MockFn).mock.results[0].value as Record<string, MockFn>
+    const firstEqReturn = (updateReturn.eq as MockFn).mock.results[0].value as Record<string, MockFn>
+    const secondEqCall = (firstEqReturn.eq as MockFn).mock.calls[0]
+    expect(secondEqCall[0]).toBe('payment_status')
+    expect(secondEqCall[1]).toBe('pending')
   })
 })
