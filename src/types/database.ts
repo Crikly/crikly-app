@@ -1321,11 +1321,18 @@ export type Database = {
           cancellation_reason: string | null
           cancelled_at: string | null
           child_profile_id: string | null
+          coach_amount_pence: number | null
+          commission_pence: number | null
+          commission_rate: number | null
           created_at: string
+          currency: string
+          enrolment_reference: string | null
           id: string
           joined_at_session_number: number
+          parent_total_pence: number | null
           participant_name: string | null
           payment_model: string
+          payment_status: string
           payment_type: string
           player_profile_id: string | null
           programme_id: string
@@ -1340,11 +1347,18 @@ export type Database = {
           cancellation_reason?: string | null
           cancelled_at?: string | null
           child_profile_id?: string | null
+          coach_amount_pence?: number | null
+          commission_pence?: number | null
+          commission_rate?: number | null
           created_at?: string
+          currency?: string
+          enrolment_reference?: string | null
           id?: string
           joined_at_session_number?: number
+          parent_total_pence?: number | null
           participant_name?: string | null
           payment_model: string
+          payment_status?: string
           payment_type: string
           player_profile_id?: string | null
           programme_id: string
@@ -1359,11 +1373,18 @@ export type Database = {
           cancellation_reason?: string | null
           cancelled_at?: string | null
           child_profile_id?: string | null
+          coach_amount_pence?: number | null
+          commission_pence?: number | null
+          commission_rate?: number | null
           created_at?: string
+          currency?: string
+          enrolment_reference?: string | null
           id?: string
           joined_at_session_number?: number
+          parent_total_pence?: number | null
           participant_name?: string | null
           payment_model?: string
+          payment_status?: string
           payment_type?: string
           player_profile_id?: string | null
           programme_id?: string
@@ -1399,6 +1420,45 @@ export type Database = {
             columns: ["player_profile_id"]
             isOneToOne: false
             referencedRelation: "player_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      group_programme_enrolment_sessions: {
+        Row: {
+          created_at: string
+          enrolment_id: string
+          group_programme_session_id: string
+          id: string
+          price_pence: number
+        }
+        Insert: {
+          created_at?: string
+          enrolment_id: string
+          group_programme_session_id: string
+          id?: string
+          price_pence: number
+        }
+        Update: {
+          created_at?: string
+          enrolment_id?: string
+          group_programme_session_id?: string
+          id?: string
+          price_pence?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_programme_enrolment_sessions_enrolment_id_fkey"
+            columns: ["enrolment_id"]
+            isOneToOne: false
+            referencedRelation: "group_programme_enrolments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_programme_enrolment_sessions_session_id_fkey"
+            columns: ["group_programme_session_id"]
+            isOneToOne: false
+            referencedRelation: "group_programme_sessions"
             referencedColumns: ["id"]
           },
         ]
@@ -1870,10 +1930,11 @@ export type Database = {
         Row: {
           amount_pence: number
           application_fee_pence: number
-          booking_id: string
+          booking_id: string | null
           coach_transfer_amount_pence: number
           created_at: string
           currency: string
+          enrolment_id: string | null
           id: string
           idempotency_key: string
           status: string
@@ -1886,10 +1947,11 @@ export type Database = {
         Insert: {
           amount_pence: number
           application_fee_pence: number
-          booking_id: string
+          booking_id?: string | null
           coach_transfer_amount_pence: number
           created_at?: string
           currency?: string
+          enrolment_id?: string | null
           id?: string
           idempotency_key: string
           status?: string
@@ -1902,10 +1964,11 @@ export type Database = {
         Update: {
           amount_pence?: number
           application_fee_pence?: number
-          booking_id?: string
+          booking_id?: string | null
           coach_transfer_amount_pence?: number
           created_at?: string
           currency?: string
+          enrolment_id?: string | null
           id?: string
           idempotency_key?: string
           status?: string
@@ -1921,6 +1984,13 @@ export type Database = {
             columns: ["booking_id"]
             isOneToOne: false
             referencedRelation: "bookings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_intents_enrolment_id_fkey"
+            columns: ["enrolment_id"]
+            isOneToOne: false
+            referencedRelation: "group_programme_enrolments"
             referencedColumns: ["id"]
           },
         ]
@@ -2702,6 +2772,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      increment_programme_spots: {
+        Args: { p_programme_id: string }
+        Returns: boolean
+      }
       user_profile_has_live_coach: {
         Args: { target_user_profile_id: string }
         Returns: boolean

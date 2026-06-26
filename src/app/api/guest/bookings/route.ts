@@ -134,11 +134,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       .eq('idempotency_key', idempotencyKey)
       .maybeSingle()
 
-    if (existingPi) {
+    // booking_id became nullable in migration 033 (enrolment intents set it null).
+    // A booking idempotency key only ever matches a booking intent, so guard the
+    // narrowing here.
+    if (existingPi?.booking_id) {
+      const bookingId = existingPi.booking_id
       const { data: existingBooking } = await supabase
         .from('bookings')
         .select('booking_reference')
-        .eq('id', existingPi.booking_id)
+        .eq('id', bookingId)
         .maybeSingle()
 
       try {
@@ -147,7 +151,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           return NextResponse.json({
             clientSecret: pi.client_secret,
             bookingReference: existingBooking.booking_reference,
-            bookingId: existingPi.booking_id,
+            bookingId,
           })
         }
       } catch (err) {

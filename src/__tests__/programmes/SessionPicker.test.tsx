@@ -6,6 +6,8 @@
 //   - Renders session-row buttons and session-row-closed divs correctly
 //   - Selecting / deselecting a row updates count + total
 //   - CTA is disabled at 0 selected; enabled + correctly labelled with selections
+//   - CTA label shows commission-inclusive 2-dp total (BR-01 add-on-top)
+//   - Clicking enabled CTA calls router.push with selected session ids
 //   - Closed rows (selectable=false) do not respond to click
 //   - Collapse toggle: 4 rows visible when collapsed, all rows when expanded
 //   - Camp mode: CampDay header labels render; slots are grouped per day
@@ -13,14 +15,25 @@
 import React from 'react'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+
+// next/navigation mock — must appear before any component import
+const mockPush = jest.fn()
+jest.mock('next/navigation', () => ({
+  useRouter: () => ({ push: mockPush }),
+}))
+
 import { SessionPicker } from '@/app/coaches/[id]/programmes/[programmeId]/_components/SessionPicker'
 import type { SessionView, CampDay } from '@/app/coaches/[id]/programmes/[programmeId]/_components/_data/programmeDetail'
 
 // ─── Fixtures ──────────────────────────────────────────────────────────────────
 
+const COACH_ID = 'coach-uuid-001'
+const PROGRAMME_ID = 'programme-uuid-001'
+
 function makeSession(overrides: Partial<SessionView> = {}): SessionView {
   return {
     key: 'key-1',
+    sessionId: 'session-1',
     dateISO: '2099-07-05',
     dateLabel: 'Sat 5 July',
     timeLabel: '9:00am – 10:00am',
@@ -37,6 +50,7 @@ function makeSession(overrides: Partial<SessionView> = {}): SessionView {
 function makeSessions(count: number): SessionView[] {
   return Array.from({ length: count }, (_, i) => ({
     key: `key-${i + 1}`,
+    sessionId: `session-${i + 1}`,
     dateISO: `2099-07-${String(i + 1).padStart(2, '0')}`,
     dateLabel: `Day ${i + 1}`,
     timeLabel: '9:00am – 10:00am',
@@ -50,12 +64,18 @@ function makeSessions(count: number): SessionView[] {
 
 const EMPTY_CAMP_DAYS: CampDay[] = []
 
+afterEach(() => {
+  jest.clearAllMocks()
+})
+
 // ─── Rendering ─────────────────────────────────────────────────────────────────
 
 describe('SessionPicker — rendering', () => {
   it('renders a session-row button for a selectable session', () => {
     render(
       <SessionPicker
+        coachId={COACH_ID}
+        programmeId={PROGRAMME_ID}
         pricePerSessionPence={2500}
         campMode={false}
         sessions={[makeSession()]}
@@ -68,6 +88,8 @@ describe('SessionPicker — rendering', () => {
   it('renders a session-row-closed div for a non-selectable session', () => {
     render(
       <SessionPicker
+        coachId={COACH_ID}
+        programmeId={PROGRAMME_ID}
         pricePerSessionPence={2500}
         campMode={false}
         sessions={[makeSession({ selectable: false, closedLabel: 'Closed' })]}
@@ -80,6 +102,8 @@ describe('SessionPicker — rendering', () => {
   it('renders the date label inside a selectable row', () => {
     render(
       <SessionPicker
+        coachId={COACH_ID}
+        programmeId={PROGRAMME_ID}
         pricePerSessionPence={2500}
         campMode={false}
         sessions={[makeSession({ dateLabel: 'Sat 5 July' })]}
@@ -92,6 +116,8 @@ describe('SessionPicker — rendering', () => {
   it('renders the time label inside a selectable row', () => {
     render(
       <SessionPicker
+        coachId={COACH_ID}
+        programmeId={PROGRAMME_ID}
         pricePerSessionPence={2500}
         campMode={false}
         sessions={[makeSession({ timeLabel: '9:00am – 10:00am' })]}
@@ -104,6 +130,8 @@ describe('SessionPicker — rendering', () => {
   it('renders the "Closed" label inside a closed row', () => {
     render(
       <SessionPicker
+        coachId={COACH_ID}
+        programmeId={PROGRAMME_ID}
         pricePerSessionPence={2500}
         campMode={false}
         sessions={[makeSession({ selectable: false, closedLabel: 'Closed' })]}
@@ -120,6 +148,8 @@ describe('SessionPicker — CTA at 0 selections', () => {
   it('mobile pay-cta is disabled when no sessions are selected', () => {
     render(
       <SessionPicker
+        coachId={COACH_ID}
+        programmeId={PROGRAMME_ID}
         pricePerSessionPence={2500}
         campMode={false}
         sessions={[makeSession()]}
@@ -133,6 +163,8 @@ describe('SessionPicker — CTA at 0 selections', () => {
   it('desktop pay-cta-desktop is disabled when no sessions are selected', () => {
     render(
       <SessionPicker
+        coachId={COACH_ID}
+        programmeId={PROGRAMME_ID}
         pricePerSessionPence={2500}
         campMode={false}
         sessions={[makeSession()]}
@@ -146,13 +178,14 @@ describe('SessionPicker — CTA at 0 selections', () => {
   it('shows "Select sessions to continue" when count=0', () => {
     render(
       <SessionPicker
+        coachId={COACH_ID}
+        programmeId={PROGRAMME_ID}
         pricePerSessionPence={2500}
         campMode={false}
         sessions={[makeSession()]}
         campDays={EMPTY_CAMP_DAYS}
       />,
     )
-    // Both mobile and desktop carry the same label string
     expect(screen.getAllByText('Select sessions to continue').length).toBeGreaterThanOrEqual(1)
   })
 })
@@ -164,6 +197,8 @@ describe('SessionPicker — selection toggles count + total', () => {
     const user = userEvent.setup()
     render(
       <SessionPicker
+        coachId={COACH_ID}
+        programmeId={PROGRAMME_ID}
         pricePerSessionPence={2500}
         campMode={false}
         sessions={[makeSession({ key: 'k1' })]}
@@ -174,10 +209,13 @@ describe('SessionPicker — selection toggles count + total', () => {
     expect(screen.getByTestId('pay-cta')).not.toBeDisabled()
   })
 
-  it('CTA label shows "Pay for 1 session — £25" after selecting one £25 session', async () => {
+  it('BR-01: CTA label shows commission-inclusive 2-dp total for 1 × £25 session (parent pays £27.50)', async () => {
+    // Coach price: 2500p (£25). Commission: 250p (10%). Parent total: 2750p → £27.50.
     const user = userEvent.setup()
     render(
       <SessionPicker
+        coachId={COACH_ID}
+        programmeId={PROGRAMME_ID}
         pricePerSessionPence={2500}
         campMode={false}
         sessions={[makeSession({ key: 'k1', pricePence: 2500 })]}
@@ -185,15 +223,17 @@ describe('SessionPicker — selection toggles count + total', () => {
       />,
     )
     await user.click(screen.getByTestId('session-row'))
-    // Both mobile and desktop share the ctaLabel
-    expect(screen.getAllByText('Pay for 1 session — £25').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByText('Pay for 1 session — £27.50').length).toBeGreaterThanOrEqual(1)
   })
 
-  it('CTA label pluralises: "Pay for 2 sessions — £50" after selecting two sessions', async () => {
+  it('BR-01: CTA label shows commission-inclusive 2-dp total for 2 × £25 sessions (parent pays £55.00)', async () => {
+    // Coach subtotal: 5000p. Commission: 500p. Parent total: 5500p → £55.00.
     const user = userEvent.setup()
     const sessions = makeSessions(2)
     render(
       <SessionPicker
+        coachId={COACH_ID}
+        programmeId={PROGRAMME_ID}
         pricePerSessionPence={2500}
         campMode={false}
         sessions={sessions}
@@ -203,13 +243,15 @@ describe('SessionPicker — selection toggles count + total', () => {
     const rows = screen.getAllByTestId('session-row')
     await user.click(rows[0])
     await user.click(rows[1])
-    expect(screen.getAllByText('Pay for 2 sessions — £50').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByText('Pay for 2 sessions — £55.00').length).toBeGreaterThanOrEqual(1)
   })
 
   it('deselecting a previously selected session decrements the count', async () => {
     const user = userEvent.setup()
     render(
       <SessionPicker
+        coachId={COACH_ID}
+        programmeId={PROGRAMME_ID}
         pricePerSessionPence={2500}
         campMode={false}
         sessions={[makeSession({ key: 'k1' })]}
@@ -223,12 +265,15 @@ describe('SessionPicker — selection toggles count + total', () => {
     expect(screen.getAllByText('Select sessions to continue').length).toBeGreaterThanOrEqual(1)
   })
 
-  it('running total = count × pricePerSessionPence (3 × £30 = £90)', async () => {
+  it('BR-01: running total = count × pricePerSessionPence + 10% commission (3 × £28 = £84 coach → £92.40 parent)', async () => {
+    // 3 × 2800p = 8400p coach subtotal. Commission 840p. Parent total 9240p → £92.40.
     const user = userEvent.setup()
-    const sessions = makeSessions(3).map((s) => ({ ...s, pricePence: 3000 }))
+    const sessions = makeSessions(3).map((s) => ({ ...s, pricePence: 2800 }))
     render(
       <SessionPicker
-        pricePerSessionPence={3000}
+        coachId={COACH_ID}
+        programmeId={PROGRAMME_ID}
+        pricePerSessionPence={2800}
         campMode={false}
         sessions={sessions}
         campDays={EMPTY_CAMP_DAYS}
@@ -238,7 +283,101 @@ describe('SessionPicker — selection toggles count + total', () => {
     await user.click(rows[0])
     await user.click(rows[1])
     await user.click(rows[2])
-    expect(screen.getAllByText('Pay for 3 sessions — £90').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByText('Pay for 3 sessions — £92.40').length).toBeGreaterThanOrEqual(1)
+  })
+})
+
+// ─── CTA navigation ────────────────────────────────────────────────────────────
+
+describe('SessionPicker — CTA navigation', () => {
+  it('clicking pay-cta calls router.push with ?sessions=<sessionId>', async () => {
+    const user = userEvent.setup()
+    render(
+      <SessionPicker
+        coachId={COACH_ID}
+        programmeId={PROGRAMME_ID}
+        pricePerSessionPence={2500}
+        campMode={false}
+        sessions={[makeSession({ key: 'k1', sessionId: 'session-uuid-1' })]}
+        campDays={EMPTY_CAMP_DAYS}
+      />,
+    )
+    await user.click(screen.getByTestId('session-row'))
+    await user.click(screen.getByTestId('pay-cta'))
+    expect(mockPush).toHaveBeenCalledWith(
+      `/book/${COACH_ID}/programmes/${PROGRAMME_ID}?sessions=session-uuid-1`,
+    )
+  })
+
+  it('URL includes all selected session ids comma-separated', async () => {
+    const user = userEvent.setup()
+    const sessions = [
+      makeSession({ key: 'k1', sessionId: 'session-uuid-1' }),
+      makeSession({ key: 'k2', sessionId: 'session-uuid-2', dateISO: '2099-07-06' }),
+    ]
+    render(
+      <SessionPicker
+        coachId={COACH_ID}
+        programmeId={PROGRAMME_ID}
+        pricePerSessionPence={2500}
+        campMode={false}
+        sessions={sessions}
+        campDays={EMPTY_CAMP_DAYS}
+      />,
+    )
+    const rows = screen.getAllByTestId('session-row')
+    await user.click(rows[0])
+    await user.click(rows[1])
+    await user.click(screen.getByTestId('pay-cta'))
+    // Both ids present in the URL (order may vary so assert both are included)
+    const pushArg = mockPush.mock.calls[0][0] as string
+    expect(pushArg).toContain('session-uuid-1')
+    expect(pushArg).toContain('session-uuid-2')
+    expect(pushArg).toContain(`/book/${COACH_ID}/programmes/${PROGRAMME_ID}?sessions=`)
+  })
+
+  it('URL deduplicates: two keys sharing a sessionId appear only once', async () => {
+    // Sessions where key differs but sessionId is identical (camp slot deduplication).
+    const user = userEvent.setup()
+    const sessions = [
+      makeSession({ key: 'k1', sessionId: 'shared-uuid' }),
+      makeSession({ key: 'k2', sessionId: 'shared-uuid', dateISO: '2099-07-06', dateLabel: 'Day 2' }),
+    ]
+    render(
+      <SessionPicker
+        coachId={COACH_ID}
+        programmeId={PROGRAMME_ID}
+        pricePerSessionPence={2500}
+        campMode={false}
+        sessions={sessions}
+        campDays={EMPTY_CAMP_DAYS}
+      />,
+    )
+    const rows = screen.getAllByTestId('session-row')
+    await user.click(rows[0])
+    await user.click(rows[1])
+    await user.click(screen.getByTestId('pay-cta'))
+    const pushArg = mockPush.mock.calls[0][0] as string
+    // 'shared-uuid' should appear exactly once in the URL
+    const occurrences = pushArg.split('shared-uuid').length - 1
+    expect(occurrences).toBe(1)
+  })
+
+  it('does NOT call router.push when CTA is disabled (no selection)', async () => {
+    const user = userEvent.setup()
+    render(
+      <SessionPicker
+        coachId={COACH_ID}
+        programmeId={PROGRAMME_ID}
+        pricePerSessionPence={2500}
+        campMode={false}
+        sessions={[makeSession({ key: 'k1' })]}
+        campDays={EMPTY_CAMP_DAYS}
+      />,
+    )
+    // CTA is disabled — click should be a no-op
+    await user.click(screen.getByTestId('pay-cta'))
+    expect(mockPush).not.toHaveBeenCalled()
   })
 })
 
@@ -249,13 +388,14 @@ describe('SessionPicker — closed rows are not interactive', () => {
     const user = userEvent.setup()
     render(
       <SessionPicker
+        coachId={COACH_ID}
+        programmeId={PROGRAMME_ID}
         pricePerSessionPence={2500}
         campMode={false}
         sessions={[makeSession({ selectable: false, closedLabel: 'Closed' })]}
         campDays={EMPTY_CAMP_DAYS}
       />,
     )
-    // The closed row is a div, not a button — userEvent.click is safe but should have no effect
     const closedRow = screen.getByTestId('session-row-closed')
     await user.click(closedRow)
     expect(screen.getByTestId('pay-cta')).toBeDisabled()
@@ -264,6 +404,8 @@ describe('SessionPicker — closed rows are not interactive', () => {
   it('closed row does not receive aria-pressed (it is not a button)', () => {
     render(
       <SessionPicker
+        coachId={COACH_ID}
+        programmeId={PROGRAMME_ID}
         pricePerSessionPence={2500}
         campMode={false}
         sessions={[makeSession({ selectable: false, closedLabel: 'Closed' })]}
@@ -282,6 +424,8 @@ describe('SessionPicker — collapse toggle', () => {
   it('shows only 4 session rows when there are more than 4 and toggle is collapsed', () => {
     render(
       <SessionPicker
+        coachId={COACH_ID}
+        programmeId={PROGRAMME_ID}
         pricePerSessionPence={2500}
         campMode={false}
         sessions={makeSessions(6)}
@@ -294,6 +438,8 @@ describe('SessionPicker — collapse toggle', () => {
   it('does NOT render the toggle-sessions button when there are exactly 4 sessions', () => {
     render(
       <SessionPicker
+        coachId={COACH_ID}
+        programmeId={PROGRAMME_ID}
         pricePerSessionPence={2500}
         campMode={false}
         sessions={makeSessions(4)}
@@ -306,6 +452,8 @@ describe('SessionPicker — collapse toggle', () => {
   it('renders the toggle-sessions button when there are more than 4 sessions', () => {
     render(
       <SessionPicker
+        coachId={COACH_ID}
+        programmeId={PROGRAMME_ID}
         pricePerSessionPence={2500}
         campMode={false}
         sessions={makeSessions(5)}
@@ -318,6 +466,8 @@ describe('SessionPicker — collapse toggle', () => {
   it('toggle label shows "Show all N sessions" when collapsed', () => {
     render(
       <SessionPicker
+        coachId={COACH_ID}
+        programmeId={PROGRAMME_ID}
         pricePerSessionPence={2500}
         campMode={false}
         sessions={makeSessions(7)}
@@ -331,6 +481,8 @@ describe('SessionPicker — collapse toggle', () => {
     const user = userEvent.setup()
     render(
       <SessionPicker
+        coachId={COACH_ID}
+        programmeId={PROGRAMME_ID}
         pricePerSessionPence={2500}
         campMode={false}
         sessions={makeSessions(6)}
@@ -345,6 +497,8 @@ describe('SessionPicker — collapse toggle', () => {
     const user = userEvent.setup()
     render(
       <SessionPicker
+        coachId={COACH_ID}
+        programmeId={PROGRAMME_ID}
         pricePerSessionPence={2500}
         campMode={false}
         sessions={makeSessions(5)}
@@ -359,6 +513,8 @@ describe('SessionPicker — collapse toggle', () => {
     const user = userEvent.setup()
     render(
       <SessionPicker
+        coachId={COACH_ID}
+        programmeId={PROGRAMME_ID}
         pricePerSessionPence={2500}
         campMode={false}
         sessions={makeSessions(6)}
@@ -374,6 +530,8 @@ describe('SessionPicker — collapse toggle', () => {
   it('toggle is aria-expanded=false when collapsed', () => {
     render(
       <SessionPicker
+        coachId={COACH_ID}
+        programmeId={PROGRAMME_ID}
         pricePerSessionPence={2500}
         campMode={false}
         sessions={makeSessions(5)}
@@ -387,6 +545,8 @@ describe('SessionPicker — collapse toggle', () => {
     const user = userEvent.setup()
     render(
       <SessionPicker
+        coachId={COACH_ID}
+        programmeId={PROGRAMME_ID}
         pricePerSessionPence={2500}
         campMode={false}
         sessions={makeSessions(5)}
@@ -398,7 +558,6 @@ describe('SessionPicker — collapse toggle', () => {
   })
 
   it('camp mode: toggle is NOT rendered even with >4 sessions (collapse is flat-list only)', () => {
-    // campMode=true — the component always renders all camp days without a toggle
     const campDays: CampDay[] = [
       {
         dateISO: '2099-07-01',
@@ -408,6 +567,8 @@ describe('SessionPicker — collapse toggle', () => {
     ]
     render(
       <SessionPicker
+        coachId={COACH_ID}
+        programmeId={PROGRAMME_ID}
         pricePerSessionPence={2500}
         campMode={true}
         sessions={[]}
@@ -431,6 +592,8 @@ describe('SessionPicker — camp mode', () => {
     ]
     render(
       <SessionPicker
+        coachId={COACH_ID}
+        programmeId={PROGRAMME_ID}
         pricePerSessionPence={2500}
         campMode={true}
         sessions={[]}
@@ -453,6 +616,8 @@ describe('SessionPicker — camp mode', () => {
     ]
     render(
       <SessionPicker
+        coachId={COACH_ID}
+        programmeId={PROGRAMME_ID}
         pricePerSessionPence={2500}
         campMode={true}
         sessions={[]}
@@ -462,17 +627,19 @@ describe('SessionPicker — camp mode', () => {
     expect(screen.getAllByTestId('session-row')).toHaveLength(2)
   })
 
-  it('selects a camp slot and updates total correctly', async () => {
+  it('BR-01: selects a camp slot and shows commission-inclusive total (1 × £30 coach → £33.00 parent)', async () => {
     const user = userEvent.setup()
     const campDays: CampDay[] = [
       {
         dateISO: '2099-07-01',
         dateLabel: 'Tue 1 July',
-        slots: [makeSession({ key: 'c1', pricePence: 3000, slotName: 'Morning' })],
+        slots: [makeSession({ key: 'c1', pricePence: 3000, slotName: 'Morning', sessionId: 'camp-session-1' })],
       },
     ]
     render(
       <SessionPicker
+        coachId={COACH_ID}
+        programmeId={PROGRAMME_ID}
         pricePerSessionPence={3000}
         campMode={true}
         sessions={[]}
@@ -480,7 +647,8 @@ describe('SessionPicker — camp mode', () => {
       />,
     )
     await user.click(screen.getByTestId('session-row'))
-    expect(screen.getAllByText('Pay for 1 session — £30').length).toBeGreaterThanOrEqual(1)
+    // 3000p × 1.1 = 3300p → £33.00
+    expect(screen.getAllByText('Pay for 1 session — £33.00').length).toBeGreaterThanOrEqual(1)
   })
 })
 
@@ -490,6 +658,8 @@ describe('SessionPicker — null price edge case', () => {
   it('renders without crashing when pricePerSessionPence is null', () => {
     render(
       <SessionPicker
+        coachId={COACH_ID}
+        programmeId={PROGRAMME_ID}
         pricePerSessionPence={null}
         campMode={false}
         sessions={[makeSession({ pricePence: 0 })]}
@@ -499,10 +669,12 @@ describe('SessionPicker — null price edge case', () => {
     expect(screen.getByTestId('session-picker')).toBeInTheDocument()
   })
 
-  it('total remains £0 when pricePerSessionPence is null even with a selection', async () => {
+  it('total remains £0.00 when pricePerSessionPence is null even with a selection', async () => {
     const user = userEvent.setup()
     render(
       <SessionPicker
+        coachId={COACH_ID}
+        programmeId={PROGRAMME_ID}
         pricePerSessionPence={null}
         campMode={false}
         sessions={[makeSession({ key: 'k1', pricePence: 0 })]}
@@ -510,7 +682,7 @@ describe('SessionPicker — null price edge case', () => {
       />,
     )
     await user.click(screen.getByTestId('session-row'))
-    // "Pay for 1 session — £0"
-    expect(screen.getAllByText('Pay for 1 session — £0').length).toBeGreaterThanOrEqual(1)
+    // 0p × 1.1 = 0p → £0.00 (Intl.NumberFormat with 2dp)
+    expect(screen.getAllByText('Pay for 1 session — £0.00').length).toBeGreaterThanOrEqual(1)
   })
 })

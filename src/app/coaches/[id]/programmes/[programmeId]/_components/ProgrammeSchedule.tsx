@@ -6,21 +6,21 @@
 // and passed in; this component owns only the collapse toggle.
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import type { ScheduleRow } from './_data/programmeDetail'
+import { displayParentTotalPence } from '@/lib/booking/commission-display'
 
 const COLLAPSED_COUNT = 4
 
-function formatPence(pence: number): string {
-  return new Intl.NumberFormat('en-GB', {
-    style: 'currency',
-    currency: 'GBP',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(pence / 100)
+/** 2-dp format for the total — commission on top introduces pence (e.g. £246.40). */
+function formatTotal(pence: number): string {
+  return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(pence / 100)
 }
 
 interface ProgrammeScheduleProps {
+  coachId: string
+  programmeId: string
   schedule: ScheduleRow[]
   sessionCount: number
   blockTotalPence: number | null
@@ -29,20 +29,26 @@ interface ProgrammeScheduleProps {
 }
 
 export function ProgrammeSchedule({
+  coachId,
+  programmeId,
   schedule,
   sessionCount,
   blockTotalPence,
   spanLabel,
   scheduleLabel,
 }: ProgrammeScheduleProps) {
+  const router = useRouter()
   const [expanded, setExpanded] = useState(false)
 
   const collapsible = schedule.length > COLLAPSED_COUNT
   const visible = collapsible && !expanded ? schedule.slice(0, COLLAPSED_COUNT) : schedule
 
-  // TODO(P-00c-ENROL): wire to programme enrolment checkout. Block 0 ships the
-  // enrol UI only — the CTA is inert (no /book/[coachId] link; that route is for
-  // 1-to-1 sessions and uses a different API).
+  // Parent total = coach block price + commission ON TOP (BR-01, display only).
+  const parentTotalPence = blockTotalPence !== null ? displayParentTotalPence(blockTotalPence) : null
+
+  function handleEnrol(): void {
+    router.push(`/book/${coachId}/programmes/${programmeId}?block=true`)
+  }
 
   return (
     <>
@@ -100,17 +106,18 @@ export function ProgrammeSchedule({
           <div className="text-right">
             <div className="text-xs font-semibold uppercase tracking-wider text-gray-500">Total</div>
             <div className="text-xl font-bold text-gray-900 tracking-tight tabular-nums leading-tight">
-              {blockTotalPence !== null ? formatPence(blockTotalPence) : '—'}
+              {parentTotalPence !== null ? formatTotal(parentTotalPence) : '—'}
             </div>
           </div>
         </div>
         <button
           type="button"
-          disabled
+          onClick={handleEnrol}
+          disabled={parentTotalPence === null}
           data-testid="enrol-cta"
-          className="w-full h-[52px] rounded-[10px] bg-gray-200 text-gray-500 text-base font-semibold"
+          className="w-full h-[52px] rounded-[10px] bg-brand-600 text-white text-base font-semibold transition-colors hover:bg-brand-700 active:scale-[0.99] disabled:bg-gray-200 disabled:text-gray-500 disabled:active:scale-100"
         >
-          {blockTotalPence !== null ? `Enrol for full programme — ${formatPence(blockTotalPence)}` : 'Enrol for full programme'}
+          {parentTotalPence !== null ? `Enrol for full programme — ${formatTotal(parentTotalPence)}` : 'Enrol for full programme'}
         </button>
       </div>
 
@@ -125,16 +132,17 @@ export function ProgrammeSchedule({
         <div className="flex items-baseline gap-2 ml-auto">
           <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">Total</span>
           <span className="text-2xl font-bold text-gray-900 tracking-tight tabular-nums">
-            {blockTotalPence !== null ? formatPence(blockTotalPence) : '—'}
+            {parentTotalPence !== null ? formatTotal(parentTotalPence) : '—'}
           </span>
         </div>
         <button
           type="button"
-          disabled
+          onClick={handleEnrol}
+          disabled={parentTotalPence === null}
           data-testid="enrol-cta-desktop"
-          className="h-[54px] px-7 rounded-[10px] bg-gray-200 text-gray-500 text-base font-semibold whitespace-nowrap"
+          className="h-[54px] px-7 rounded-[10px] bg-brand-600 text-white text-base font-semibold whitespace-nowrap transition-colors hover:bg-brand-700 active:scale-[0.99] disabled:bg-gray-200 disabled:text-gray-500 disabled:active:scale-100"
         >
-          {blockTotalPence !== null ? `Enrol for full programme — ${formatPence(blockTotalPence)}` : 'Enrol for full programme'}
+          {parentTotalPence !== null ? `Enrol for full programme — ${formatTotal(parentTotalPence)}` : 'Enrol for full programme'}
         </button>
       </div>
     </>

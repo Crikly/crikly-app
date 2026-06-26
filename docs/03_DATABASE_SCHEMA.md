@@ -813,23 +813,33 @@ Individual scheduled sessions within a `group_programmes` row. The session list 
 Tracks which children/players are enrolled in group programmes.
 
 **Purpose:** Links participants to recurring programmes, separate from one-off bookings.
-**Migration:** 015_coach_schema_gaps.sql
+**Migration:** 015_coach_schema_gaps.sql; 020 (participant_name); 033_programme_enrolment_payment.sql (guest paid-checkout lifecycle — P-00c-ENROL)
 
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
 | id | uuid | NO | gen_random_uuid() | Primary key |
-| programme_id | uuid | NO | — | FK → group_programmes(id) |
-| booked_by_user_id | uuid | NO | — | FK → user_profiles(id) — parent or player |
-| child_profile_id | uuid | YES | null | FK → child_profiles(id) — null if player |
-| player_profile_id | uuid | YES | null | FK → player_profiles(id) — null if child |
-| payment_type | text | NO | — | Snapshot of payment type at enrolment |
-| status | text | NO | 'active' | 'active' or 'cancelled' |
+| programme_id | uuid | NO | — | FK → group_programmes(id) (renamed from group_programme_id, migration 015) |
+| booked_by_user_id | uuid | NO | — | FK → user_profiles(id) — parent, player, or provisional guest |
+| child_profile_id | uuid | YES | null | FK → child_profiles(id) — null for guest/player |
+| player_profile_id | uuid | YES | null | FK → player_profiles(id) — null for guest/child |
+| payment_type | text | NO | — | 'platform' or 'offline' (platform = paid via Stripe; offline = coach cash) |
+| payment_model | text | NO | — | 'per_session' or 'block' (maps from programme payment_type 'block_upfront' → 'block') |
+| block_amount_pence | integer | YES | null | Block total in pence (block model only) |
+| sessions_paid_for | integer | YES | null | Count of sessions paid (per_session model) |
+| participant_name | text | YES | null | Display name for offline participants (migration 020) |
+| status | text | NO | 'active' | 'active', 'cancelled', 'completed' |
+| payment_status | text | NO | 'pending' | 'pending', 'succeeded', 'failed', 'refunded' (migration 033). Enrolment only holds a spot once 'succeeded'. |
+| enrolment_reference | text | YES | null | CRK-YYYY-XXXXXX human reference (migration 033). UNIQUE when present. |
+| coach_amount_pence | integer | YES | null | Coach fee snapshot in pence (migration 033, BR-01) |
+| commission_pence | integer | YES | null | Platform commission in pence (migration 033, BR-01) |
+| parent_total_pence | integer | YES | null | Total charged to the payer in pence (migration 033) |
+| commission_rate | numeric(5,4) | YES | null | Commission rate snapshot (migration 033) |
+| currency | text | NO | 'GBP' | ISO currency code (migration 033, BR-10) |
 | created_at | timestamptz | NO | now() | |
 | updated_at | timestamptz | NO | now() | |
 
 **Constraints:**
-- UNIQUE(programme_id, booked_by_user_id, child_profile_id)
-- CHECK: Must have either child_profile_id OR player_profile_id, not both
+- Partial UNIQUE (enrolment_reference) WHERE enrolment_reference IS NOT NULL (migration 033)
 
 **RLS Policies:**
 - SELECT: Own enrolments (parent/player who enrolled)
@@ -842,19 +852,55 @@ Tracks which children/players are enrolled in group programmes.
 
 ---
 
-## 7. Module 6 — Payments & Payouts
+### 6.6 group_programme_enrolment_sessions
 
-### 7.1 payment_intents
+Per-session record for a `per_session` programme enrolment — one row per session the enrolment paid for.
 
-Tracks Stripe payment intents for every booking.
-
-**Purpose:** Audit trail and reconciliation for all payment activity.
-**Migration:** 006_create_payments.sql
+**Purpose:** Records exactly which sessions a guest/parent paid for under the per-session model. References the session ROW (date-level); individual camp slots are not tracked separately (deferred — P-00c-ENROL S0 decision 4).
+**Migration:** 033_programme_enrolment_payment.sql
 
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
 | id | uuid | NO | gen_random_uuid() | Primary key |
-| booking_id | uuid | NO | — | FK → bookings(id) |
+| enrolment_id | uuid | NO | — | FK → group_programme_enrolments(id) ON DELETE CASCADE |
+| group_programme_session_id | uuid | NO | — | FK → group_programme_sessions(id) |
+| price_pence | integer | NO | — | Per-session price snapshot in pence (BR-10) |
+| created_at | timestamptz | NO | now() | |
+
+**Constraints:**
+- UNIQUE (enrolment_id, group_programme_session_id)
+- CHECK (price_pence >= 0)
+
+**RLS Policies:**
+- SELECT: Own enrolment (the user who booked) OR the coach who owns the programme
+- INSERT/UPDATE/DELETE: Service role only (no user policies — guest rows created server-side)
+
+**Indexes:**
+- (enrolment_id, group_programme_session_id) — implicit from the UNIQUE constraint
+- group_programme_session_id (reverse lookup)
+
+---
+
+### 6.7 increment_programme_spots() — function
+
+`increment_programme_spots(p_programme_id uuid) RETURNS boolean` (migration 033). Atomically increments `group_programmes.current_spots` by 1 **only while `current_spots < max_spots`**, and returns whether a spot was taken. Called from the Stripe webhook on programme-enrolment confirmation; a `false` return means the programme filled between checkout and payment confirmation (caller logs + flags for manual refund — P-00c-ENROL S0 decision 3). `SET search_path = public`; EXECUTE granted to `service_role`.
+
+---
+
+## 7. Module 6 — Payments & Payouts
+
+### 7.1 payment_intents
+
+Tracks Stripe payment intents for every booking **or programme enrolment**.
+
+**Purpose:** Audit trail and reconciliation for all payment activity.
+**Migration:** 006_create_payments.sql; 033_programme_enrolment_payment.sql (booking_id → nullable, enrolment_id added — P-00c-ENROL)
+
+| Column | Type | Nullable | Default | Notes |
+|---|---|---|---|---|
+| id | uuid | NO | gen_random_uuid() | Primary key |
+| booking_id | uuid | YES | null | FK → bookings(id) ON DELETE RESTRICT. Null for programme-enrolment intents (migration 033). |
+| enrolment_id | uuid | YES | null | FK → group_programme_enrolments(id) ON DELETE RESTRICT (migration 033). Null for 1-to-1 booking intents. |
 | stripe_payment_intent_id | text | NO | — | Stripe PI id e.g. 'pi_...' |
 | amount_pence | integer | NO | — | Total charged to parent |
 | currency | text | NO | 'GBP' | |
@@ -871,6 +917,7 @@ Tracks Stripe payment intents for every booking.
 **Constraints:**
 - UNIQUE(stripe_payment_intent_id)
 - UNIQUE(idempotency_key)
+- CHECK payment_intents_booking_xor_enrolment — exactly one of booking_id / enrolment_id is non-null (migration 033)
 
 **RLS Policies:**
 - SELECT: Parent who made payment, or coach receiving payment, or admin

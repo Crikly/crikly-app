@@ -4,15 +4,23 @@
 //
 // Covered:
 //   - Renders numbered schedule rows (data-testid="schedule-row")
-//   - Enrol CTA is ALWAYS disabled — both mobile (enrol-cta) and desktop (enrol-cta-desktop)
-//   - CTA label shows formatted price when blockTotalPence is set
+//   - Enrol CTA is ENABLED when blockTotalPence is set; DISABLED when null
+//   - CTA label includes commission-inclusive 2-dp total (BR-01 add-on-top)
 //   - CTA label falls back to "Enrol for full programme" when blockTotalPence is null
+//   - Clicking CTA calls router.push(`/book/${coachId}/programmes/${programmeId}?block=true`)
 //   - Collapse toggle: 4 rows visible when collapsed, all rows when expanded
 //   - spanLabel and scheduleLabel render in the intro text
 
 import React from 'react'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+
+// next/navigation mock — must appear before the component import
+const mockPush = jest.fn()
+jest.mock('next/navigation', () => ({
+  useRouter: () => ({ push: mockPush }),
+}))
+
 import { ProgrammeSchedule } from '@/app/coaches/[id]/programmes/[programmeId]/_components/ProgrammeSchedule'
 import type { ScheduleRow } from '@/app/coaches/[id]/programmes/[programmeId]/_components/_data/programmeDetail'
 
@@ -26,13 +34,23 @@ function makeRows(count: number): ScheduleRow[] {
   }))
 }
 
+const COACH_ID = 'coach-uuid-001'
+const PROGRAMME_ID = 'programme-uuid-001'
+
+// blockTotalPence = 22400 (£224) coach price → parent pays £246.40 (10% commission on top)
 const DEFAULT_PROPS = {
+  coachId: COACH_ID,
+  programmeId: PROGRAMME_ID,
   schedule: makeRows(3),
   sessionCount: 3,
-  blockTotalPence: 7500 as number | null,
+  blockTotalPence: 22400 as number | null,
   spanLabel: '1 Jul – 19 Jul 2026' as string | null,
   scheduleLabel: 'Every Saturday · 9:00am – 10:00am',
 }
+
+afterEach(() => {
+  jest.clearAllMocks()
+})
 
 // ─── Rendering ─────────────────────────────────────────────────────────────────
 
@@ -67,38 +85,68 @@ describe('ProgrammeSchedule — rendering', () => {
   })
 })
 
-// ─── Enrol CTA — always disabled (Block 0 placeholder) ────────────────────────
+// ─── Enrol CTA — enabled state (blockTotalPence is set) ───────────────────────
 
-describe('ProgrammeSchedule — enrol CTA is always disabled', () => {
-  it('mobile enrol-cta is disabled', () => {
-    render(<ProgrammeSchedule {...DEFAULT_PROPS} />)
+describe('ProgrammeSchedule — enrol CTA enabled when blockTotalPence is set', () => {
+  it('mobile enrol-cta is ENABLED when blockTotalPence is set', () => {
+    render(<ProgrammeSchedule {...DEFAULT_PROPS} blockTotalPence={22400} />)
+    expect(screen.getByTestId('enrol-cta')).not.toBeDisabled()
+  })
+
+  it('desktop enrol-cta-desktop is ENABLED when blockTotalPence is set', () => {
+    render(<ProgrammeSchedule {...DEFAULT_PROPS} blockTotalPence={22400} />)
+    expect(screen.getByTestId('enrol-cta-desktop')).not.toBeDisabled()
+  })
+
+  it('mobile enrol-cta is DISABLED when blockTotalPence is null', () => {
+    render(<ProgrammeSchedule {...DEFAULT_PROPS} blockTotalPence={null} />)
     expect(screen.getByTestId('enrol-cta')).toBeDisabled()
   })
 
-  it('desktop enrol-cta-desktop is disabled', () => {
-    render(<ProgrammeSchedule {...DEFAULT_PROPS} />)
-    expect(screen.getByTestId('enrol-cta-desktop')).toBeDisabled()
-  })
-
-  it('enrol-cta remains disabled even after user attempts to interact with the page', async () => {
-    const user = userEvent.setup()
-    render(<ProgrammeSchedule {...DEFAULT_PROPS} />)
-    // Clicking another element first should not change disabled state
-    const row = screen.getAllByTestId('schedule-row')[0]
-    await user.click(row)
-    expect(screen.getByTestId('enrol-cta')).toBeDisabled()
+  it('desktop enrol-cta-desktop is DISABLED when blockTotalPence is null', () => {
+    render(<ProgrammeSchedule {...DEFAULT_PROPS} blockTotalPence={null} />)
     expect(screen.getByTestId('enrol-cta-desktop')).toBeDisabled()
   })
 })
 
-// ─── CTA label formatting ──────────────────────────────────────────────────────
+// ─── CTA navigation ───────────────────────────────────────────────────────────
+
+describe('ProgrammeSchedule — CTA navigation', () => {
+  it('clicking mobile enrol-cta calls router.push with block=true URL', async () => {
+    const user = userEvent.setup()
+    render(<ProgrammeSchedule {...DEFAULT_PROPS} blockTotalPence={22400} />)
+    await user.click(screen.getByTestId('enrol-cta'))
+    expect(mockPush).toHaveBeenCalledWith(
+      `/book/${COACH_ID}/programmes/${PROGRAMME_ID}?block=true`,
+    )
+  })
+
+  it('clicking desktop enrol-cta-desktop calls router.push with block=true URL', async () => {
+    const user = userEvent.setup()
+    render(<ProgrammeSchedule {...DEFAULT_PROPS} blockTotalPence={22400} />)
+    await user.click(screen.getByTestId('enrol-cta-desktop'))
+    expect(mockPush).toHaveBeenCalledWith(
+      `/book/${COACH_ID}/programmes/${PROGRAMME_ID}?block=true`,
+    )
+  })
+
+  it('CTA does NOT call router.push when blockTotalPence is null (disabled)', async () => {
+    const user = userEvent.setup()
+    render(<ProgrammeSchedule {...DEFAULT_PROPS} blockTotalPence={null} />)
+    // disabled button — click should be a no-op
+    await user.click(screen.getByTestId('enrol-cta'))
+    expect(mockPush).not.toHaveBeenCalled()
+  })
+})
+
+// ─── CTA label formatting (BR-01 commission on top, 2-dp total) ───────────────
 
 describe('ProgrammeSchedule — CTA label', () => {
-  it('shows formatted price: "Enrol for full programme — £75" when blockTotalPence=7500', () => {
-    render(<ProgrammeSchedule {...DEFAULT_PROPS} blockTotalPence={7500} />)
-    // Both mobile and desktop buttons carry the same label
+  it('BR-01: shows commission-inclusive 2-dp total: "Enrol for full programme — £246.40" for £224 coach price (10% on top)', () => {
+    // Coach price = £224 (22400p). Commission = £22.40 (2240p) → parent pays £246.40.
+    render(<ProgrammeSchedule {...DEFAULT_PROPS} blockTotalPence={22400} />)
     expect(
-      screen.getAllByText('Enrol for full programme — £75').length,
+      screen.getAllByText('Enrol for full programme — £246.40').length,
     ).toBeGreaterThanOrEqual(1)
   })
 
@@ -109,17 +157,25 @@ describe('ProgrammeSchedule — CTA label', () => {
     ).toBeGreaterThanOrEqual(1)
   })
 
-  it('formats £100.00 as "£100" (no decimals for whole pounds — integer pence)', () => {
+  it('BR-01: formats £100 coach price as "£110.00" (10% commission = £10.00)', () => {
+    // 10000p coach → 11000p parent total → £110.00
     render(<ProgrammeSchedule {...DEFAULT_PROPS} blockTotalPence={10000} />)
     expect(
-      screen.getAllByText('Enrol for full programme — £100').length,
+      screen.getAllByText('Enrol for full programme — £110.00').length,
     ).toBeGreaterThanOrEqual(1)
   })
 
   it('blockTotalPence is always an integer (pence rule — BR-10 adjacent)', () => {
-    // This test verifies the consumer does not pass floats.
-    // 7500 is a valid integer.
+    // Verifies the test fixture itself is correct.
     expect(Number.isInteger(DEFAULT_PROPS.blockTotalPence)).toBe(true)
+  })
+
+  it('BR-10: commission-inclusive total is an integer pence before formatting', () => {
+    // 22400 × 1.1 = 24640 exactly — no floating-point residue.
+    const coachPence = 22400
+    const parentTotal = coachPence + Math.round(coachPence * 0.1)
+    expect(Number.isInteger(parentTotal)).toBe(true)
+    expect(parentTotal).toBe(24640)
   })
 })
 
@@ -181,12 +237,12 @@ describe('ProgrammeSchedule — collapse toggle', () => {
     expect(screen.getByTestId('toggle-schedule')).toHaveAttribute('aria-expanded', 'true')
   })
 
-  it('enrol CTA remains disabled after expanding the schedule', async () => {
+  it('enrol CTA remains enabled after expanding the schedule (blockTotalPence set)', async () => {
     const user = userEvent.setup()
     render(<ProgrammeSchedule {...DEFAULT_PROPS} schedule={makeRows(5)} sessionCount={5} />)
     await user.click(screen.getByTestId('toggle-schedule'))
-    expect(screen.getByTestId('enrol-cta')).toBeDisabled()
-    expect(screen.getByTestId('enrol-cta-desktop')).toBeDisabled()
+    expect(screen.getByTestId('enrol-cta')).not.toBeDisabled()
+    expect(screen.getByTestId('enrol-cta-desktop')).not.toBeDisabled()
   })
 })
 
@@ -195,7 +251,6 @@ describe('ProgrammeSchedule — collapse toggle', () => {
 describe('ProgrammeSchedule — intro text', () => {
   it('renders sessionCount in the intro', () => {
     render(<ProgrammeSchedule {...DEFAULT_PROPS} sessionCount={3} />)
-    // The component renders "3 sessions" in multiple places (intro p, CTA bar)
     expect(screen.getAllByText(/3 sessions/).length).toBeGreaterThanOrEqual(1)
   })
 
@@ -211,9 +266,7 @@ describe('ProgrammeSchedule — intro text', () => {
 
   it('renders "1 session" (singular, not "1 sessions") when sessionCount=1', () => {
     render(<ProgrammeSchedule {...DEFAULT_PROPS} sessionCount={1} schedule={makeRows(1)} />)
-    // The intro <p> is the most specific place — assert it does not say "1 sessions"
     expect(screen.queryByText(/1 sessions/)).not.toBeInTheDocument()
-    // At least one element contains "1 session" text
     expect(screen.getAllByText(/1 session/).length).toBeGreaterThanOrEqual(1)
   })
 })
@@ -224,6 +277,8 @@ describe('ProgrammeSchedule — empty schedule', () => {
   it('renders without crashing when schedule is empty', () => {
     render(
       <ProgrammeSchedule
+        coachId={COACH_ID}
+        programmeId={PROGRAMME_ID}
         schedule={[]}
         sessionCount={0}
         blockTotalPence={null}
@@ -237,6 +292,8 @@ describe('ProgrammeSchedule — empty schedule', () => {
   it('does not render the toggle button when schedule is empty', () => {
     render(
       <ProgrammeSchedule
+        coachId={COACH_ID}
+        programmeId={PROGRAMME_ID}
         schedule={[]}
         sessionCount={0}
         blockTotalPence={null}

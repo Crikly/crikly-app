@@ -130,7 +130,13 @@ function makeChain(data: unknown, error: unknown = null): MockChain {
 /** Sessions query uses `.order().order()` — first .order() must return an object
  *  with a second .order() that resolves to the rows array. */
 function makeSessionChain(rows: unknown[]): MockChain {
-  const secondOrder = jest.fn().mockResolvedValue({ data: rows, error: null })
+  // Inject a synthetic session id when a fixture omits one (P-00c-ENROL added a
+  // real `id` to the sessions SELECT → SessionView.sessionId). Keeps the per-row
+  // fixtures terse while giving the transform a non-null id to carry through.
+  const withIds = rows.map((r, i) =>
+    typeof r === 'object' && r !== null && !('id' in r) ? { id: `session-${i + 1}`, ...r } : r,
+  )
+  const secondOrder = jest.fn().mockResolvedValue({ data: withIds, error: null })
   const firstOrder = jest.fn().mockReturnValue({ order: secondOrder })
   return {
     select: jest.fn().mockReturnThis(),
