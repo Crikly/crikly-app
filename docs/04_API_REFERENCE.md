@@ -156,6 +156,7 @@ Get a single coach's full public profile. Accepts either a UUID or a human-reada
 ```json
 {
   "id": "uuid",
+  "slug": "james-wright",
   "full_name": "James Wright",
   "bio": "ECB Level 2 coach...",
   "years_experience": 8,

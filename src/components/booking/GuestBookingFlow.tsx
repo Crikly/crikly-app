@@ -76,6 +76,9 @@ const EMPTY_FORM: GuestForm = {
 
 interface GuestBookingFlowProps {
   coachId: string
+  /** Coach profile slug — used for the back link so it reads /coaches/[slug]
+      instead of /coaches/[UUID]. Falls back to coachId when absent. */
+  coachSlug?: string
   summary: BookingSummary
   checkout: GuestCheckoutParams
   initialError?: CheckoutError
@@ -93,12 +96,12 @@ const stripePromise = getStripePromise()
  * confirmation data lifted from the inner form. The checkout view is wrapped in
  * <Elements> (deferred-intent mode) so the inner form can use the Stripe hooks.
  */
-export function GuestBookingFlow({ coachId, summary, checkout, initialError }: GuestBookingFlowProps) {
+export function GuestBookingFlow({ coachId, coachSlug, summary, checkout, initialError }: GuestBookingFlowProps) {
   const [confirmed, setConfirmed] = useState<ConfirmedState | null>(null)
   const [copied, setCopied] = useState<boolean>(false)
 
   const totalPence = summary.sessionFeePence + summary.platformFeePence
-  const coachProfileHref = `/coaches/${coachId}`
+  const coachProfileHref = coachSlug ? `/coaches/${coachSlug}` : `/coaches/${coachId}`
 
   // Deferred-intent mode: Elements renders the Payment Element before any
   // PaymentIntent exists. We create the intent server-side on Pay, then confirm.
@@ -265,6 +268,7 @@ export function GuestBookingFlow({ coachId, summary, checkout, initialError }: G
     <Elements stripe={stripePromise} options={elementsOptions}>
       <GuestCheckoutForm
         coachId={coachId}
+        coachSlug={coachSlug}
         summary={summary}
         checkout={checkout}
         initialError={initialError}
@@ -278,6 +282,7 @@ export function GuestBookingFlow({ coachId, summary, checkout, initialError }: G
 
 interface GuestCheckoutFormProps {
   coachId: string
+  coachSlug?: string
   summary: BookingSummary
   checkout: GuestCheckoutParams
   initialError?: CheckoutError
@@ -286,6 +291,7 @@ interface GuestCheckoutFormProps {
 
 function GuestCheckoutForm({
   coachId,
+  coachSlug,
   summary,
   checkout,
   initialError,
@@ -315,7 +321,7 @@ function GuestCheckoutForm({
   }
 
   const totalPence = summary.sessionFeePence + summary.platformFeePence
-  const coachProfileHref = `/coaches/${coachId}`
+  const coachProfileHref = coachSlug ? `/coaches/${coachSlug}` : `/coaches/${coachId}`
   const availabilityHref = `/coaches/${coachId}/availability`
   const billingSummary =
     [form.address, form.townCity, form.postcode].filter(Boolean).join(', ') ||

@@ -22,6 +22,7 @@ interface ApiSport {
 
 interface ApiCoach {
   id: string
+  slug: string | null
   full_name: string
   sports: ApiSport[]
 }
@@ -157,6 +158,7 @@ export default async function GuestBookingPage({
       <div className="mx-auto w-full max-w-6xl px-5 py-5 lg:px-10 lg:pt-6 lg:pb-14">
         <GuestBookingFlow
           coachId={coachId}
+          coachSlug={coach?.slug ?? undefined}
           summary={summary}
           checkout={checkout}
           initialError={parseSimulatedError(firstParam(sp.simulateError))}
