@@ -98,7 +98,7 @@ export function GuestBookingFlow({ coachId, summary, checkout, initialError }: G
   const [copied, setCopied] = useState<boolean>(false)
 
   const totalPence = summary.sessionFeePence + summary.platformFeePence
-  const availabilityHref = `/coaches/${coachId}`
+  const coachProfileHref = `/coaches/${coachId}`
 
   // Deferred-intent mode: Elements renders the Payment Element before any
   // PaymentIntent exists. We create the intent server-side on Pay, then confirm.
@@ -141,7 +141,7 @@ export function GuestBookingFlow({ coachId, summary, checkout, initialError }: G
         await navigator.share({
           title: 'Crikly booking confirmed',
           text: `My Crikly session is booked — reference ${confirmed.bookingReference}.`,
-          url: availabilityHref,
+          url: coachProfileHref,
         })
       } else {
         await handleCopyReference()
@@ -249,7 +249,7 @@ export function GuestBookingFlow({ coachId, summary, checkout, initialError }: G
 
         {/* Back link */}
         <Link
-          href={availabilityHref}
+          href={coachProfileHref}
           className="mt-6 inline-flex items-center gap-1.5 text-[14px] font-medium text-neutral-600 transition-colors hover:text-neutral-900 lg:mt-7"
         >
           <ArrowLeft size={16} aria-hidden="true" />
@@ -315,7 +315,8 @@ function GuestCheckoutForm({
   }
 
   const totalPence = summary.sessionFeePence + summary.platformFeePence
-  const availabilityHref = `/coaches/${coachId}`
+  const coachProfileHref = `/coaches/${coachId}`
+  const availabilityHref = `/coaches/${coachId}/availability`
   const billingSummary =
     [form.address, form.townCity, form.postcode].filter(Boolean).join(', ') ||
     'Uses the address from your details above.'
@@ -488,7 +489,7 @@ function GuestCheckoutForm({
           <>
             <p className="font-medium">This time slot was just booked by someone else.</p>
             <Link
-              href={availabilityHref}
+              href={coachProfileHref}
               className="mt-1 inline-block font-medium underline"
             >
               Choose another time
@@ -553,11 +554,11 @@ function GuestCheckoutForm({
     <div>
       {/* Page header */}
       <Link
-        href={availabilityHref}
+        href={coachProfileHref}
         className="inline-flex items-center gap-1.5 text-[14px] font-medium text-[#64748B] transition-colors hover:text-neutral-900"
       >
         <ArrowLeft size={16} aria-hidden="true" />
-        Back to availability
+        Back to profile
       </Link>
       <h1 className="mt-[18px] text-2xl font-semibold tracking-[-0.02em] text-neutral-900 lg:text-[30px]">
         Complete your booking
@@ -571,7 +572,8 @@ function GuestCheckoutForm({
 
         {/* ① Summary — DOM-first → mobile top; desktop col-2 row-1, sticky */}
         <div className="lg:col-start-2 lg:row-start-1 lg:sticky lg:top-24">
-          <BookingSummaryCard summary={summary} variant="checkout" />
+          {/* changeHref lets the guest pick a different slot via the availability picker */}
+          <BookingSummaryCard summary={summary} variant="checkout" changeHref={availabilityHref} />
         </div>
 
         {/* ② Form column — desktop col-1, spans both rows */}

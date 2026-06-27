@@ -191,8 +191,12 @@ export function AvailabilityClient({
     }
     const q = new URLSearchParams()
     if (selectedSlot && selectedISO) {
-      q.set('slot', selectedSlot.time)
+      // Param names mirror what the checkout page reads (date + startTime) so the
+      // booking summary shows the slot the guest picked (BUG-02).
       q.set('date', selectedISO)
+      q.set('startTime', selectedSlot.time)
+      q.set('sessionType', 'individual')
+      if (pricePence != null) q.set('price', String(pricePence))
     } else if (selectedProgramme) {
       q.set('programme', selectedProgramme.id)
     }

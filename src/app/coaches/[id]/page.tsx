@@ -315,7 +315,7 @@ export default async function CoachProfilePage({
                   )}
                 </span>
                 <Link
-                  href={`/book/${coach.id}`}
+                  href={`/coaches/${id}/availability`}
                   data-testid="cta-book-1to1"
                   className="inline-flex items-center justify-center h-11 px-5 rounded-xl bg-brand-600 text-white font-semibold text-sm hover:bg-brand-700 active:scale-[0.99] transition-all"
                 >
@@ -560,7 +560,7 @@ export default async function CoachProfilePage({
           )}
         </div>
         <Link
-          href={`/book/${coach.id}`}
+          href={`/coaches/${id}/availability`}
           className="flex-shrink-0 inline-flex items-center justify-center h-12 px-7 rounded-xl bg-brand-600 text-white font-bold text-sm hover:bg-brand-700 active:scale-[0.98] transition-all shadow-sm"
           data-testid="mobile-book-cta"
         >
