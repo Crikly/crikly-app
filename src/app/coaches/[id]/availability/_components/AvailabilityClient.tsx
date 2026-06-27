@@ -289,29 +289,35 @@ export function AvailabilityClient({
                 type="button"
                 disabled={!tappable}
                 aria-pressed={selected}
+                // UX-07: dots are decorative (aria-hidden), so availability is
+                // announced here instead — keeps screen-reader parity now that the
+                // visible slot-count text is gone.
+                aria-label={
+                  tappable
+                    ? `${dayLabel(cell.iso)}${bookable ? ', sessions available' : ''}${hasProg ? ', programmes available' : ''}`
+                    : undefined
+                }
                 onClick={() => tappable && selectDay(cell)}
                 className={cls}
                 data-testid={`cal-day-${cell.iso}`}
               >
                 <span>{cell.day}</span>
-                {bookable && (
-                  <>
-                    {/* UI-CAL-01: availability is shown by a blue dot (matching the
-                        1-on-1 legend swatch), not a background fill. */}
-                    <span
-                      aria-hidden
-                      className={`mt-0.5 w-1.5 h-1.5 rounded-full ${selected ? 'bg-white' : 'bg-blue-500'}`}
-                    />
-                    <span className={`text-[11px] font-semibold leading-none mt-0.5 ${selected ? 'opacity-90' : 'opacity-80'}`}>
-                      {daySlots.length} slot{daySlots.length !== 1 ? 's' : ''}
-                    </span>
-                  </>
-                )}
-                {hasProg && (
-                  <span
-                    aria-hidden
-                    className={`mt-0.5 w-1.5 h-1.5 rounded-full ${selected ? 'bg-white' : 'bg-purple-600'}`}
-                  />
+                {/* UX-06/07/08: availability is shown by coloured dots only — no
+                    text count. When a day has more than one session type the dots
+                    sit side by side (flex-row). Each dot is conditional on that
+                    type having availability: blue = 1-on-1 slots, purple =
+                    programmes. Teal / ad-hoc is deferred (BUG-04 needs the backend
+                    fix first), so no teal dot is rendered yet. Colours mirror the
+                    legend below. */}
+                {(bookable || hasProg) && (
+                  <span aria-hidden className="flex flex-row items-center gap-0.5 mt-0.5">
+                    {bookable && (
+                      <span className={`w-1.5 h-1.5 rounded-full ${selected ? 'bg-white' : 'bg-blue-500'}`} />
+                    )}
+                    {hasProg && (
+                      <span className={`w-1.5 h-1.5 rounded-full ${selected ? 'bg-white' : 'bg-purple-600'}`} />
+                    )}
+                  </span>
                 )}
                 {isToday && (
                   <span
