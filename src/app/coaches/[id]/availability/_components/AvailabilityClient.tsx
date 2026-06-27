@@ -279,7 +279,7 @@ export function AvailabilityClient({
             // (Schedule.tsx): 1-on-1 = blue-500, programme = purple-600, ad hoc
             // = teal-500. "Selected" is the brand action state, not a type.
             if (selected) cls += 'bg-brand-600 text-white shadow-md'
-            else if (bookable) cls += 'bg-blue-50 text-blue-700 hover:bg-blue-100 cursor-pointer'
+            else if (bookable) cls += 'bg-white text-gray-900 border border-gray-200 hover:border-blue-500 cursor-pointer'
             else if (hasProg) cls += 'bg-white text-gray-900 border border-gray-200 hover:border-purple-600 cursor-pointer'
             else cls += 'text-gray-300 cursor-default'
 
@@ -295,9 +295,17 @@ export function AvailabilityClient({
               >
                 <span>{cell.day}</span>
                 {bookable && (
-                  <span className={`text-[11px] font-semibold leading-none mt-0.5 ${selected ? 'opacity-90' : 'opacity-80'}`}>
-                    {daySlots.length} free
-                  </span>
+                  <>
+                    {/* UI-CAL-01: availability is shown by a blue dot (matching the
+                        1-on-1 legend swatch), not a background fill. */}
+                    <span
+                      aria-hidden
+                      className={`mt-0.5 w-1.5 h-1.5 rounded-full ${selected ? 'bg-white' : 'bg-blue-500'}`}
+                    />
+                    <span className={`text-[11px] font-semibold leading-none mt-0.5 ${selected ? 'opacity-90' : 'opacity-80'}`}>
+                      {daySlots.length} slot{daySlots.length !== 1 ? 's' : ''}
+                    </span>
+                  </>
                 )}
                 {hasProg && (
                   <span
