@@ -1,6 +1,6 @@
 import { Suspense } from 'react'
 import type { Metadata } from 'next'
-import { notFound } from 'next/navigation'
+import { notFound, permanentRedirect } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
 import {
@@ -74,6 +74,7 @@ interface Review {
 
 interface CoachProfile {
   id: string
+  slug: string | null
   full_name: string
   bio: string | null
   years_experience: number | null
@@ -213,6 +214,13 @@ export default async function CoachProfilePage({
 
   const coach = await fetchCoachProfile(id)
   if (!coach) notFound()
+
+  // P-00c: when reached via the canonical UUID, permanently redirect (308) to the
+  // slug URL so all downstream navigation (availability, checkout, back links)
+  // inherits the slug, and crawlers attribute link equity to the slug URL.
+  if (UUID_RE.test(id) && coach.slug && coach.slug !== id) {
+    permanentRedirect(`/coaches/${coach.slug}`)
+  }
 
   const avail = await fetchAvailability(coach.id)
   // P-00b: bookable group programmes (Model A) — separate RLS-respecting fetch,
