@@ -91,6 +91,7 @@ interface AvailabilityTemplateRow {
 
 interface CoachDetailRow {
   id: string
+  slug: string | null
   user_profile_id: string
   bio: string | null
   years_experience: number | null
@@ -138,6 +139,7 @@ export async function GET(
       .from('coach_profiles')
       .select(`
         id,
+        slug,
         user_profile_id,
         bio,
         years_experience,
@@ -378,6 +380,7 @@ export async function GET(
     return NextResponse.json(
       {
         id: coach.id,
+        slug: coach.slug,
         full_name: profile.full_name,
         bio: coach.bio,
         years_experience: coach.years_experience,
