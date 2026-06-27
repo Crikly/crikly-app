@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
-import { Calendar, Clock, User, Check } from 'lucide-react'
+import Link from 'next/link'
+import { Calendar, Clock, User, Check, ArrowRight } from 'lucide-react'
 import { Avatar } from '@/components/ui/Avatar'
 
 export interface BookingSummary {
@@ -19,6 +20,8 @@ interface BookingSummaryCardProps {
   variant: 'checkout' | 'paid'
   /** Desktop only: Pay button and stripe note fused inside the card below Total. */
   footer?: ReactNode
+  /** Checkout only: when set, shows a "Change date/time" link to this href. */
+  changeHref?: string
 }
 
 /** Format integer pence as GBP — e.g. 4400 → "£44.00". */
@@ -31,7 +34,7 @@ export function formatPence(pence: number): string {
   }).format(pence / 100)
 }
 
-export function BookingSummaryCard({ summary, variant, footer }: BookingSummaryCardProps) {
+export function BookingSummaryCard({ summary, variant, footer, changeHref }: BookingSummaryCardProps) {
   const totalPence = summary.sessionFeePence + summary.platformFeePence
   const feePercent =
     summary.sessionFeePence > 0
@@ -83,6 +86,18 @@ export function BookingSummaryCard({ summary, variant, footer }: BookingSummaryC
           <span className="text-[14.5px] text-[#1E293B]">{summary.sessionType}</span>
         </div>
       </div>
+
+      {/* Change date/time — lets the guest jump back to the availability picker */}
+      {isCheckout && changeHref && (
+        <Link
+          href={changeHref}
+          data-testid="change-datetime-link"
+          className="mt-3 inline-flex items-center gap-1 text-[13px] font-semibold text-brand-600 transition-colors hover:text-brand-700"
+        >
+          Change date/time
+          <ArrowRight size={14} aria-hidden="true" />
+        </Link>
+      )}
 
       {/* Divider */}
       <div className={`h-px bg-neutral-100 ${isCheckout ? 'my-4 lg:my-[18px]' : 'my-4'}`} />

@@ -35,6 +35,8 @@ interface AvailabilityResponse {
 }
 
 interface NextSlot {
+  /** YYYY-MM-DD — passed to the checkout URL so the booking summary matches. */
+  dateISO: string
   dateLabel: string
   timeLabel: string
   nextLabel: string
@@ -63,7 +65,14 @@ const DAY_ABBREV = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const MONTH_ABBREV = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 function toDateStr(d: Date): string {
-  return d.toISOString().slice(0, 10)
+  // Local date parts (not toISOString) so a local-midnight date never shifts to
+  // the previous calendar day in UTC+ timezones (e.g. BST). This string is
+  // routed into the checkout URL and the booking server via NextSlot.dateISO,
+  // so the calendar day must be exact.
+  const y = d.getFullYear()
+  const mo = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${y}-${mo}-${dd}`
 }
 
 function formatDateLabel(d: Date): string {
@@ -115,6 +124,7 @@ function findNextSlot(data: AvailabilityResponse): NextSlot | null {
         }
 
         return {
+          dateISO: dateStr,
           dateLabel: formatDateLabel(date),
           timeLabel: slot.start_time,
           nextLabel,
@@ -141,7 +151,28 @@ function slotFromParams(dateParam: string, timeParam: string): NextSlot {
   else if (toDateStr(d) === toDateStr(tomorrow)) nextLabel = 'Tomorrow'
   else nextLabel = dateLabel
 
-  return { dateLabel, timeLabel: timeParam, nextLabel }
+  return { dateISO: dateParam, dateLabel, timeLabel: timeParam, nextLabel }
+}
+
+// Pre-fill the checkout URL with the slot the card is showing so the booking
+// summary matches (BUG-02). Without a slot (no availability) fall back to the
+// bare checkout — the summary's "Change date/time" link lets the guest pick one.
+function buildBookHref(
+  coachId: string,
+  slot: NextSlot | null,
+  sport: CoachSport | undefined,
+  priceFrom: number | null,
+): string {
+  if (!slot) return `/book/${coachId}`
+  const params = new URLSearchParams({
+    date: slot.dateISO,
+    startTime: slot.timeLabel,
+    sessionType: 'individual',
+  })
+  if (sport?.sport_id) params.set('sportId', sport.sport_id)
+  const pricePence = sport?.price_individual_pence ?? priceFrom
+  if (pricePence != null) params.set('price', String(pricePence))
+  return `/book/${coachId}?${params.toString()}`
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -175,6 +206,8 @@ export function BookingCard({ coachId, sports, priceFrom, ratingAvg, ratingCount
   const sessionLabel = firstSport
     ? `${firstSport.session_types[0] === 'group' ? 'Group' : '1-to-1'} · ${firstSport.session_duration_minutes} min`
     : '1-to-1 · 60 min'
+
+  const bookHref = buildBookHref(coachId, nextSlot, firstSport, priceFrom)
 
   return (
     <div
@@ -239,7 +272,7 @@ export function BookingCard({ coachId, sports, priceFrom, ratingAvg, ratingCount
 
       {/* CTA */}
       <Link
-        href={`/book/${coachId}`}
+        href={bookHref}
         className="flex items-center justify-center w-full h-12 rounded-xl bg-[#0077CC] text-white font-semibold hover:bg-[#005fa3] transition-colors"
         data-testid="desktop-book-cta"
       >
