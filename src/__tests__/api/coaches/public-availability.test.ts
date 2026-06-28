@@ -107,7 +107,7 @@ describe('GET /api/coaches/[id]/availability — success', () => {
           eqCount++
           if (eqCount >= 2) {
             return Promise.resolve({
-              data: [{ id: 'slot-uuid', sport_id: null, day_of_week: 1, start_time: '09:00:00', end_time: '17:00:00', is_active: true }],
+              data: [{ id: 'slot-uuid', sport_id: null, day_of_week: 1, start_time: '09:00:00', end_time: '17:00:00', is_active: true, price_override_pence: 7500 }],
               error: null,
             })
           }
@@ -129,5 +129,8 @@ describe('GET /api/coaches/[id]/availability — success', () => {
     expect(data).toHaveProperty('blocked_dates')
     expect(data).toHaveProperty('booking_policy')
     expect(data.booking_policy.cancellation_window_hours).toBe(24)
+    // BUG-08: the per-block price override must be surfaced so the time picker
+    // can price each slot rather than always using the sport default.
+    expect(data.availability[0].price_override_pence).toBe(7500)
   })
 })

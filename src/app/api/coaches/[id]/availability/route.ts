@@ -10,6 +10,9 @@ interface AvailabilityTemplateRow {
   start_time: string
   end_time: string
   is_active: boolean
+  // BUG-08: per-block price override. NULL = use the sport default; non-null =
+  // this block costs a different price (e.g. £75 Sunday vs £60 default).
+  price_override_pence: number | null
 }
 
 interface BlockedDateRow {
@@ -115,7 +118,7 @@ export async function GET(
 
     let templatesQuery = supabase
       .from('availability_templates')
-      .select('id, sport_id, day_of_week, start_time, end_time, is_active')
+      .select('id, sport_id, day_of_week, start_time, end_time, is_active, price_override_pence')
       .eq('coach_profile_id', id)
       .eq('is_active', true)
 
@@ -167,6 +170,11 @@ export async function GET(
       day_of_week: t.day_of_week,
       start_time: t.start_time.slice(0, 5), // HH:MM
       end_time: t.end_time.slice(0, 5),
+      // BUG-08: surface the per-block override so the time picker can price each
+      // slot. NULL is preserved (not coerced) so the client can fall back to the
+      // sport default. Authoritative price is still re-derived server-side at
+      // booking time (BUG-09) — this value is for display only.
+      price_override_pence: t.price_override_pence,
     }))
 
     const blocked_dates = expandBlockedDates(blocked)

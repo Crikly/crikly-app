@@ -243,7 +243,8 @@ sport_id    UUID (optional) — filters to templates for this sport or all-sport
       "sport_id": null,
       "day_of_week": 6,
       "start_time": "09:00",
-      "end_time": "12:00"
+      "end_time": "12:00",
+      "price_override_pence": 7500
     }
   ],
   "blocked_dates": ["2026-04-19", "2026-04-20"],
@@ -259,6 +260,7 @@ sport_id    UUID (optional) — filters to templates for this sport or all-sport
 - `availability` contains weekly recurring templates (active only)
 - `blocked_dates` are expanded from ranges to individual YYYY-MM-DD strings
 - `sport_id` filter matches templates for that sport OR templates with no sport (applies to all)
+- `price_override_pence` is the per-block price override in pence, or `null` to use the coach's sport default. Display only — the booking server re-derives the authoritative price (BUG-08 / BUG-09)
 
 **Error 400:** Validation failure — invalid date format or from_date > to_date
 **Error 404:** Coach not found or not live
