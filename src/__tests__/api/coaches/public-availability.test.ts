@@ -134,3 +134,168 @@ describe('GET /api/coaches/[id]/availability — success', () => {
     expect(data.availability[0].price_override_pence).toBe(7500)
   })
 })
+
+// ─── Venue resolution (UX-09) ───────────────────────────────────────────────
+
+describe('GET /api/coaches/[id]/availability — venue resolution (UX-09)', () => {
+  it('resolves coach_venue_id to the coach_venues name when venue_name is null', async () => {
+    mockFrom
+      .mockImplementationOnce(() => {
+        // coach_profiles — verify coach is live
+        const c = makeChain()
+        c.maybeSingle.mockResolvedValue({
+          data: { cancellation_window_hours: 24, min_advance_hours: 12, max_advance_days: 60 },
+          error: null,
+        })
+        return c
+      })
+      .mockImplementationOnce(() => {
+        // availability_templates — block carries only a coach_venue_id (picker path)
+        const c = makeChain()
+        let eqCount = 0
+        c.eq = jest.fn(() => {
+          eqCount++
+          if (eqCount >= 2) {
+            return Promise.resolve({
+              data: [{ id: 'slot-uuid', sport_id: null, day_of_week: 1, start_time: '09:00:00', end_time: '17:00:00', is_active: true, price_override_pence: null, venue_name: null, coach_venue_id: 'venue-1' }],
+              error: null,
+            })
+          }
+          return c
+        })
+        return c
+      })
+      .mockImplementationOnce(() => {
+        // coach_venues — .select('id, name').in('id', [...]) then awaited
+        const c = makeChain()
+        c.in = jest.fn(() => Promise.resolve({ data: [{ id: 'venue-1', name: 'Kingston Hospital' }], error: null }))
+        return c
+      })
+      .mockImplementationOnce(() => {
+        // blocked_dates — .select().eq('coach_profile_id') then awaited
+        const c = makeChain()
+        c.eq = jest.fn(() => Promise.resolve({ data: [], error: null }))
+        return c
+      })
+
+    const res = await callGet(COACH_UUID)
+    expect(res.status).toBe(200)
+    const data = await res.json()
+    expect(data.availability[0].venue_name).toBe('Kingston Hospital')
+    expect(mockFrom).toHaveBeenCalledWith('coach_venues')
+  })
+
+  it('uses the free-text venue_name and does not query coach_venues', async () => {
+    mockFrom
+      .mockImplementationOnce(() => {
+        const c = makeChain()
+        c.maybeSingle.mockResolvedValue({
+          data: { cancellation_window_hours: 24, min_advance_hours: 12, max_advance_days: 60 },
+          error: null,
+        })
+        return c
+      })
+      .mockImplementationOnce(() => {
+        // availability_templates — block carries a free-text venue_name
+        const c = makeChain()
+        let eqCount = 0
+        c.eq = jest.fn(() => {
+          eqCount++
+          if (eqCount >= 2) {
+            return Promise.resolve({
+              data: [{ id: 'slot-uuid', sport_id: null, day_of_week: 1, start_time: '09:00:00', end_time: '17:00:00', is_active: true, price_override_pence: null, venue_name: 'Lords Nets', coach_venue_id: null }],
+              error: null,
+            })
+          }
+          return c
+        })
+        return c
+      })
+      .mockImplementationOnce(() => {
+        // blocked_dates — no coach_venues fetch because venue_name is already set
+        const c = makeChain()
+        c.eq = jest.fn(() => Promise.resolve({ data: [], error: null }))
+        return c
+      })
+
+    const res = await callGet(COACH_UUID)
+    expect(res.status).toBe(200)
+    const data = await res.json()
+    expect(data.availability[0].venue_name).toBe('Lords Nets')
+    expect(mockFrom).not.toHaveBeenCalledWith('coach_venues')
+  })
+
+  it('returns venue_name null and skips coach_venues when a block has neither', async () => {
+    mockFrom
+      .mockImplementationOnce(() => {
+        const c = makeChain()
+        c.maybeSingle.mockResolvedValue({
+          data: { cancellation_window_hours: 24, min_advance_hours: 12, max_advance_days: 60 },
+          error: null,
+        })
+        return c
+      })
+      .mockImplementationOnce(() => {
+        const c = makeChain()
+        let eqCount = 0
+        c.eq = jest.fn(() => {
+          eqCount++
+          if (eqCount >= 2) {
+            return Promise.resolve({
+              data: [{ id: 'slot-uuid', sport_id: null, day_of_week: 1, start_time: '09:00:00', end_time: '17:00:00', is_active: true, price_override_pence: null, venue_name: null, coach_venue_id: null }],
+              error: null,
+            })
+          }
+          return c
+        })
+        return c
+      })
+      .mockImplementationOnce(() => {
+        const c = makeChain()
+        c.eq = jest.fn(() => Promise.resolve({ data: [], error: null }))
+        return c
+      })
+
+    const res = await callGet(COACH_UUID)
+    expect(res.status).toBe(200)
+    const data = await res.json()
+    expect(data.availability[0].venue_name).toBeNull()
+    expect(mockFrom).not.toHaveBeenCalledWith('coach_venues')
+  })
+
+  it('returns 500 when the coach_venues resolution query errors', async () => {
+    mockFrom
+      .mockImplementationOnce(() => {
+        const c = makeChain()
+        c.maybeSingle.mockResolvedValue({
+          data: { cancellation_window_hours: 24, min_advance_hours: 12, max_advance_days: 60 },
+          error: null,
+        })
+        return c
+      })
+      .mockImplementationOnce(() => {
+        const c = makeChain()
+        let eqCount = 0
+        c.eq = jest.fn(() => {
+          eqCount++
+          if (eqCount >= 2) {
+            return Promise.resolve({
+              data: [{ id: 'slot-uuid', sport_id: null, day_of_week: 1, start_time: '09:00:00', end_time: '17:00:00', is_active: true, price_override_pence: null, venue_name: null, coach_venue_id: 'venue-1' }],
+              error: null,
+            })
+          }
+          return c
+        })
+        return c
+      })
+      .mockImplementationOnce(() => {
+        // coach_venues — the resolution query itself errors
+        const c = makeChain()
+        c.in = jest.fn(() => Promise.resolve({ data: null, error: { message: 'db error' } }))
+        return c
+      })
+
+    const res = await callGet(COACH_UUID)
+    expect(res.status).toBe(500)
+  })
+})

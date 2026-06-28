@@ -552,7 +552,7 @@ Admin-controlled feature toggles. No deployment needed to enable/disable feature
 Weekly recurring availability pattern for a coach per sport.
 
 **Purpose:** Coach sets their schedule once — it repeats automatically.
-**Migration:** 004_create_availability.sql, 015_coach_schema_gaps.sql
+**Migration:** 004_create_availability.sql, 015_coach_schema_gaps.sql, coach_column_additions (coach_venue_id), 022_add_venue_to_availability_templates (venue_name, venue_address)
 
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
@@ -565,6 +565,9 @@ Weekly recurring availability pattern for a coach per sport.
 | is_active | boolean | NO | true | Coach can pause availability |
 | price_override_pence | integer | YES | null | NULL = use sport default, non-null = override price for this block |
 | session_type_id | uuid | YES | null | FK → coach_session_types(id) — links to specific pricing/duration |
+| venue_name | text | YES | null | Free-text venue label for this block (migration 022). NULL = no venue / resolve via coach_venue_id |
+| venue_address | text | YES | null | Full venue address from autocomplete (migration 022) |
+| coach_venue_id | uuid | YES | null | FK → coach_venues(id) (migration coach_column_additions) — venue-picker path; resolves to coach_venues.name when venue_name is null |
 | created_at | timestamptz | NO | now() | |
 | updated_at | timestamptz | NO | now() | |
 
