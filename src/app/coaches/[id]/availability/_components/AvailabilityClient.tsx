@@ -15,6 +15,7 @@ import {
   User,
   Users,
   Clock,
+  Calendar,
   Plus,
   Lock,
   ShieldCheck,
@@ -227,6 +228,14 @@ export function AvailabilityClient({
   const dayLabel = (iso: string): string => {
     const d = parseISO(iso)
     return `${DAY_S[d.getDay()]} ${d.getDate()} ${MON_S[d.getMonth()]}`
+  }
+
+  // UX-12: "Starting 28 June 2026" from a fixed programme's starts_at. Take the
+  // date portion only (slice to YYYY-MM-DD) to avoid a UTC-midnight day shift in
+  // BST. Rolling programmes (startsAt null) never call this.
+  const startingLabel = (startsAt: string): string => {
+    const [y, m, d] = startsAt.slice(0, 10).split('-').map(Number)
+    return `Starting ${d} ${MON_L[m - 1]} ${y}`
   }
 
   // BUG-08: a selected 1-to-1 slot is priced by its per-block override, falling
@@ -496,6 +505,20 @@ export function AvailabilityClient({
                           {p.ageGroups.length > 0 && (
                             <p className="text-[12px] text-gray-500 mt-0.5">{p.ageGroups.join(', ')}</p>
                           )}
+                          {/* UX-12: commencing date — fixed programmes only (rolling have null starts_at) */}
+                          {p.startsAt && (
+                            <p className="flex items-center gap-1 text-[12px] text-gray-500 mt-1">
+                              <Calendar className="w-3 h-3 shrink-0 text-gray-400" aria-hidden="true" />
+                              {startingLabel(p.startsAt)}
+                            </p>
+                          )}
+                          {/* UX-11: programme venue */}
+                          {p.venueName && (
+                            <p className="flex min-w-0 items-center gap-1 text-[12px] text-gray-500 mt-1">
+                              <MapPin className="w-3 h-3 shrink-0 text-gray-400" aria-hidden="true" />
+                              <span className="truncate" title={p.venueName}>{p.venueName}</span>
+                            </p>
+                          )}
                         </div>
                         <div className="text-right flex-shrink-0">
                           <p className="text-[15px] font-bold text-gray-900">{formatPence(p.pricePence)}</p>
@@ -610,6 +633,13 @@ export function AvailabilityClient({
                       <p className="text-[12px] text-gray-500 mt-0.5">
                         1-to-1 · {sessionDurationMinutes} min{childName.trim() ? ` · ${childName.trim()}` : ''}
                       </p>
+                      {/* UX-14: selected slot venue — same MapPin style as the time-picker buttons */}
+                      {selectedSlot.venueName && (
+                        <p className="flex min-w-0 items-center gap-0.5 text-xs font-medium text-gray-500 mt-0.5">
+                          <MapPin className="h-3 w-3 shrink-0" aria-hidden="true" />
+                          <span className="truncate" title={selectedSlot.venueName}>{selectedSlot.venueName}</span>
+                        </p>
+                      )}
                     </>
                   ) : selectedProgramme && selectedISO ? (
                     <>
