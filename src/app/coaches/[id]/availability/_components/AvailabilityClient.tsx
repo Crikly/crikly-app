@@ -17,7 +17,6 @@ import {
   Clock,
   Plus,
   Lock,
-  Repeat,
   ShieldCheck,
   MapPin,
 } from 'lucide-react'
@@ -626,26 +625,6 @@ export function AvailabilityClient({
               </div>
             ) : (
               <p className="text-[13px] text-gray-500 py-1">No time selected yet.</p>
-            )}
-
-            {/* Future hints — appear once a slot is picked */}
-            {selectedSlot && (
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  disabled
-                  className="flex items-center justify-center gap-1.5 h-9 rounded-lg border border-dashed border-gray-300 text-gray-400 text-[12.5px] font-medium cursor-not-allowed bg-white"
-                >
-                  <Repeat className="w-3.5 h-3.5" /> Repeat weekly
-                </button>
-                <button
-                  type="button"
-                  disabled
-                  className="flex items-center justify-center gap-1.5 h-9 rounded-lg border border-dashed border-gray-300 text-gray-400 text-[12.5px] font-medium cursor-not-allowed bg-white"
-                >
-                  <Plus className="w-3.5 h-3.5" /> Add a time
-                </button>
-              </div>
             )}
 
             <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-200">
