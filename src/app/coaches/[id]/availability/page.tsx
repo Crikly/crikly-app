@@ -184,7 +184,11 @@ export default async function CoachAvailabilityPage({
           </div>
           {minPrice !== null && (
             <div className="text-right flex-shrink-0 hidden sm:block">
-              <p className="text-2xl font-bold text-gray-900 leading-none">{formatPence(minPrice)}</p>
+              {/* UX-13: "From" signals minPrice is the lowest available rate, not a flat fee */}
+              <p className="text-2xl font-bold text-gray-900 leading-none">
+                <span className="text-xs font-medium text-gray-500">From </span>
+                {formatPence(minPrice)}
+              </p>
               <p className="text-xs text-gray-500 mt-1">per session · 1-to-1</p>
             </div>
           )}

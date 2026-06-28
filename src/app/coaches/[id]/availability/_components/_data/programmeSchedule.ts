@@ -20,6 +20,16 @@ export interface DayProgramme {
   ageGroups: string[]
   /** 'HH:MM' for this session, or null when unset. */
   startTime: string | null
+  /**
+   * UX-11: where this programme's sessions take place (group_programmes.venue_name),
+   * or null when the coach set no venue.
+   */
+  venueName: string | null
+  /**
+   * UX-12: the programme's commencing date (group_programmes.starts_at), or null
+   * for rolling programmes with no fixed start. Drives the "Starting …" label.
+   */
+  startsAt: string | null
   pricePence: number
   per: 'session' | 'total'
   spotsLeft: number
@@ -54,6 +64,7 @@ interface ProgrammeRow {
   start_time: string
   starts_at: string | null
   ends_at: string | null
+  venue_name: string | null
   group_programme_sessions: SessionRow[] | null
 }
 
@@ -111,7 +122,7 @@ export async function fetchProgrammeSchedule(coachProfileId: string): Promise<Pr
   const { data, error } = await supabase
     .from('group_programmes')
     .select(
-      'id, title, sport_id, age_groups, max_spots, current_spots, price_per_session_pence, block_price_pence, payment_type, day_of_week, days_of_week, start_time, starts_at, ends_at, group_programme_sessions(session_date, start_time, status)',
+      'id, title, sport_id, age_groups, max_spots, current_spots, price_per_session_pence, block_price_pence, payment_type, day_of_week, days_of_week, start_time, starts_at, ends_at, venue_name, group_programme_sessions(session_date, start_time, status)',
     )
     .eq('coach_profile_id', coachProfileId)
     .eq('model', 'programme')
@@ -151,6 +162,8 @@ export async function fetchProgrammeSchedule(coachProfileId: string): Promise<Pr
       title: r.title,
       sportName: sportNameById.get(r.sport_id) ?? 'Programme',
       ageGroups: r.age_groups ?? [],
+      venueName: r.venue_name,
+      startsAt: r.starts_at,
       pricePence:
         r.payment_type === 'block_upfront'
           ? r.block_price_pence ?? 0
