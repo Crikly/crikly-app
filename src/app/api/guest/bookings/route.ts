@@ -66,14 +66,23 @@ function badRequest(error: string): NextResponse {
   return NextResponse.json({ error }, { status: 400 })
 }
 
+// IDs must be UUIDs. Beyond correctness this is a security boundary: sportId is
+// interpolated into a PostgREST `.or()` filter string at the BUG-09 template
+// lookup, and supabase-js does NOT escape `.or()` arguments. A UUID cannot
+// contain a comma or whitespace, so validating here makes filter injection
+// (e.g. pulling another sport's cheaper override to undercut the charge)
+// impossible. coachId is validated for the same hygiene though its uses are
+// all parameterised `.eq()`.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 /** Narrow the untrusted JSON body to GuestBookingInput. No `any`. */
 function parseBody(raw: unknown): GuestBookingInput | null {
   if (typeof raw !== 'object' || raw === null) return null
   const b = raw as Record<string, unknown>
   const g = b.guest as Record<string, unknown> | undefined
 
-  if (typeof b.coachId !== 'string' || b.coachId.length === 0) return null
-  if (typeof b.sportId !== 'string' || b.sportId.length === 0) return null
+  if (typeof b.coachId !== 'string' || !UUID_RE.test(b.coachId)) return null
+  if (typeof b.sportId !== 'string' || !UUID_RE.test(b.sportId)) return null
   if (b.sessionType !== 'individual' && b.sessionType !== 'group') return null
   if (!isValidDate(b.date)) return null
   if (!isValidTime(b.startTime)) return null
@@ -177,7 +186,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'coach_unavailable' }, { status: 404 })
   }
 
-  // 3. Re-derive the canonical price from coach_sports (anti-tampering, BR-01).
+  // 3. Re-derive the canonical price from coach_sports — the sport default — and,
+  //    for individual sessions, the matching availability block's override (3b).
+  //    Anti-tampering, BR-01.
   const { data: coachSport, error: sportError } = await supabase
     .from('coach_sports')
     .select('price_individual_pence, price_group_pence, session_duration_minutes, currency, is_active')
@@ -193,14 +204,68 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return badRequest('sport_unavailable')
   }
 
-  const canonicalPrice =
+  const sportDefault =
     input.sessionType === 'individual'
       ? coachSport.price_individual_pence
       : coachSport.price_group_pence
 
-  if (canonicalPrice === null || canonicalPrice <= 0) {
+  if (sportDefault === null || sportDefault <= 0) {
     return badRequest('session_type_unavailable')
   }
+
+  // 3b. BUG-09: a coach can set a per-block price override on an availability
+  //     template (e.g. £75 for Sunday mornings vs a £60 sport default). The guest
+  //     was shown — and the anti-tamper check below must accept — that overridden
+  //     figure, so the canonical price must honour it too. Overrides are only
+  //     surfaced on the 1-on-1 slot picker, so they apply to individual sessions
+  //     only; group bookings flow through the programme/enrolment path and always
+  //     use the sport default.
+  //
+  //     We mirror the public availability query exactly (GET
+  //     /api/coaches/[id]/availability): active templates for this coach, matching
+  //     the sport or sport-agnostic (sport_id IS NULL), on the booking's weekday.
+  //     Separate query, no nested joins (Fix-16d safe). The matching block is the
+  //     one whose window CONTAINS the start time (start_time <= startTime <
+  //     end_time) — one block spans several stride-length start slots, so an exact
+  //     start_time match would miss every slot but the first.
+  let canonicalPrice = sportDefault
+
+  if (input.sessionType === 'individual') {
+    // Weekday from the YYYY-MM-DD string, computed in UTC so BST/GMT never shifts
+    // it — matches the client, which derives the same weekday from the same string.
+    const [year, month, day] = input.date.split('-').map(Number)
+    const dayOfWeek = new Date(Date.UTC(year, month - 1, day)).getUTCDay()
+
+    const { data: templates, error: templateError } = await supabase
+      .from('availability_templates')
+      .select('start_time, end_time, price_override_pence')
+      .eq('coach_profile_id', input.coachId)
+      .eq('is_active', true)
+      .eq('day_of_week', dayOfWeek)
+      .or(`sport_id.eq.${input.sportId},sport_id.is.null`)
+
+    if (templateError) {
+      console.error('[POST /api/guest/bookings] availability_templates lookup failed:', templateError)
+      return NextResponse.json({ error: 'internal_error' }, { status: 500 })
+    }
+
+    // Compare on HH:MM (DB time is HH:MM:SS, client sends HH:MM). The no-overlap
+    // business rule means at most one block matches; if a misconfiguration yields
+    // several, the first with a usable override wins (deterministic, conservative).
+    // No matching block, or a null/zero override, falls through to the sport
+    // default — never a 500 (BUG-09 graceful fallback).
+    const startHHMM = input.startTime.slice(0, 5)
+    const match = (templates ?? []).find((t) => {
+      const blockStart = t.start_time.slice(0, 5)
+      const blockEnd = t.end_time.slice(0, 5)
+      return blockStart <= startHHMM && startHHMM < blockEnd
+    })
+
+    if (match?.price_override_pence != null && match.price_override_pence > 0) {
+      canonicalPrice = match.price_override_pence
+    }
+  }
+
   // The client-supplied price MUST match the DB. Mismatch = stale page or tamper.
   if (input.pricePence !== canonicalPrice) {
     return NextResponse.json({ error: 'price_mismatch' }, { status: 409 })

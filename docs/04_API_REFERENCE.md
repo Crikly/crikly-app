@@ -421,14 +421,14 @@ On a retry carrying the same `idempotencyToken`, the existing booking + PaymentI
 400 session_type_unavailable  no price set for the requested session type
 400 invalid_session_time      start time + duration is malformed / crosses midnight
 404 coach_unavailable         coach not found, not live, paused, or suspended
-409 price_mismatch            client pricePence ≠ coach_sports canonical price (tamper/stale)
+409 price_mismatch            client pricePence ≠ server canonical price (tamper/stale)
 409 slot_taken                slot already booked (unique slot constraint)
 502 payment_init_failed       Stripe PaymentIntent could not be created
 500 internal_error            DB failure (rolls back via soft-delete — no orphan rows)
 ```
 
 **Business rules applied:**
-- BR-01: Commission read from `platform_config`, added on top of the coach price. The client `pricePence` is re-verified server-side against `coach_sports` — never trusted for the charge.
+- BR-01: Commission read from `platform_config`, added on top of the coach price. The client `pricePence` is re-verified server-side and never trusted for the charge. The canonical coach price is the `coach_sports` sport default, except for `individual` sessions where the matching `availability_templates` block (the one whose window contains `startTime`) supplies a `price_override_pence` — overrides apply to 1-on-1 bookings only; group bookings always use the sport default (BUG-09).
 - BR-10: All amounts integer pence; Stripe charged `parent_total_pence`.
 - BR-12: `booking_reference` is `CRK-YYYY-XXXXXX` (random base32).
 - Funds (P-00c-API MVP): plain PaymentIntent captured by the platform for the full total; the coach/commission split is recorded on `payment_intents` for the payout system. No Connect destination charge — coaches need not have completed Stripe onboarding.
