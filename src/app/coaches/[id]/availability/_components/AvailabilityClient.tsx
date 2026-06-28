@@ -159,6 +159,19 @@ export function AvailabilityClient({
     }
   }
 
+  // UX-10: jump the view back to the current month and select today if it has
+  // any availability (1-to-1 slots or programmes) — otherwise just reset the view.
+  const goToday = () => {
+    setViewYear(today.getFullYear())
+    setViewMonth(today.getMonth())
+    const iso = localISODate(today)
+    const bookable = slotsFor(today).length > 0
+    const hasProg = programmeDateSet.has(iso)
+    if (bookable || hasProg) {
+      selectDay({ day: today.getDate(), iso, date: today })
+    }
+  }
+
   const selectDay = (cell: MonthCell) => {
     setSelectedISO(cell.iso)
     setSelectedSlot(null)
@@ -244,6 +257,14 @@ export function AvailabilityClient({
             {MON_L[viewMonth]} {viewYear}
           </h3>
           <div className="flex items-center gap-1.5">
+            {/* UX-10: jump back to the current month and select today */}
+            <button
+              type="button"
+              onClick={goToday}
+              className="inline-flex items-center h-8 px-3 rounded-full border border-gray-300 text-gray-700 text-[13px] font-medium hover:border-brand-600 hover:text-brand-600 transition-colors"
+            >
+              Today
+            </button>
             <button
               type="button"
               onClick={goPrev}
