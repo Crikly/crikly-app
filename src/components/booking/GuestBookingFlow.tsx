@@ -331,12 +331,22 @@ function GuestCheckoutForm({
     setForm((prev) => ({ ...prev, [key]: value }))
   }
 
-  function buildBillingAddress(): { line1: string; city: string; postal_code: string; country: string } {
+  function buildBillingAddress(): {
+    line1: string
+    city: string
+    state: string
+    postal_code: string
+    country: string
+  } {
+    // state is '' because the Payment Element opts out of address collection
+    // (fields.billing_details.address: 'never'); UK addresses have no state,
+    // but Stripe still requires the key to be present in confirmParams.
     return billingSame
-      ? { line1: form.address, city: form.townCity, postal_code: form.postcode, country: 'GB' }
+      ? { line1: form.address, city: form.townCity, state: '', postal_code: form.postcode, country: 'GB' }
       : {
           line1: form.billingAddress,
           city: form.billingTownCity,
+          state: '',
           postal_code: form.billingPostcode,
           country: 'GB',
         }
