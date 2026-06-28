@@ -9,6 +9,11 @@ export interface SlotTemplate {
   start_time: string
   /** 'HH:MM' (24h). */
   end_time: string
+  /**
+   * BUG-08: per-block price override in pence, or null to use the coach's sport
+   * default. Mirrors availability_templates.price_override_pence.
+   */
+  price_override_pence?: number | null
 }
 
 export interface GeneratedSlot {
@@ -26,6 +31,12 @@ export interface GeneratedSlot {
    * visual state; it is simply never produced here yet.
    */
   available: boolean
+  /**
+   * BUG-08: this slot's price override in pence, inherited from its source
+   * template, or null when the template has no override (caller falls back to
+   * the coach's sport default).
+   */
+  pricePence: number | null
 }
 
 // Fallback session length when a coach's sport carries no duration.
@@ -95,24 +106,36 @@ export function bookableSlots(
   // inside the template window (start + duration <= end). e.g. 09:00–10:00 with
   // a 60-min session yields exactly one slot (09:00), not two. Overlapping
   // template ranges are deduped into a single sorted set of start times.
+  //
+  // BUG-08: each start time also carries its source template's price override so
+  // the picker can price the slot. Business rule forbids overlapping blocks on
+  // the same day, so a given start minute maps to exactly one template; if two
+  // ever collide, the first-seen template's price wins (Map keeps the earlier).
   const stride = sessionDurationMinutes > 0 ? sessionDurationMinutes : DEFAULT_SESSION_MINUTES
-  const minutesSet = new Set<number>()
+  const minutesPrice = new Map<number, number | null>()
   for (const t of templates) {
     if (t.day_of_week !== dow) continue
     const start = toMinutes(t.start_time)
     const end = toMinutes(t.end_time)
+    const price = t.price_override_pence ?? null
     for (let mins = start; mins + stride <= end; mins += stride) {
-      minutesSet.add(mins)
+      if (!minutesPrice.has(mins)) minutesPrice.set(mins, price)
     }
   }
 
-  const sorted = Array.from(minutesSet).sort((a, b) => a - b)
+  const sorted = Array.from(minutesPrice.keys()).sort((a, b) => a - b)
   const out: GeneratedSlot[] = []
   for (const minutes of sorted) {
     const slotTime = new Date(date)
     slotTime.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0)
     if (slotTime.getTime() - now.getTime() < minAdvanceMs) continue
-    out.push({ minutes, time: toHHMM(minutes), label: formatSlotLabel(minutes), available: true })
+    out.push({
+      minutes,
+      time: toHHMM(minutes),
+      label: formatSlotLabel(minutes),
+      available: true,
+      pricePence: minutesPrice.get(minutes) ?? null,
+    })
   }
   return out
 }

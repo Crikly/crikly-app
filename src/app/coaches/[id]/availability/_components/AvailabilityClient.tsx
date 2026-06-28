@@ -196,7 +196,11 @@ export function AvailabilityClient({
       q.set('date', selectedISO)
       q.set('startTime', selectedSlot.time)
       q.set('sessionType', 'individual')
-      if (pricePence != null) q.set('price', String(pricePence))
+      // BUG-08: prefer the slot's per-block override, fall back to the sport
+      // default. Display-only — the booking server re-derives the authoritative
+      // price from the template (BUG-09).
+      const effectivePrice = selectedSlot.pricePence ?? pricePence
+      if (effectivePrice != null) q.set('price', String(effectivePrice))
     } else if (selectedProgramme) {
       q.set('programme', selectedProgramme.id)
     }
@@ -212,7 +216,13 @@ export function AvailabilityClient({
     return `${DAY_S[d.getDay()]} ${d.getDate()} ${MON_S[d.getMonth()]}`
   }
 
-  const totalPence = selectedSlot ? pricePence ?? 0 : selectedProgramme ? selectedProgramme.pricePence : 0
+  // BUG-08: a selected 1-to-1 slot is priced by its per-block override, falling
+  // back to the coach's sport default (pricePence) when the block has none.
+  const totalPence = selectedSlot
+    ? selectedSlot.pricePence ?? pricePence ?? 0
+    : selectedProgramme
+      ? selectedProgramme.pricePence
+      : 0
   const ctaLabel = selectedProgramme ? 'Enrol' : 'Book this slot'
 
   const activeChip =
