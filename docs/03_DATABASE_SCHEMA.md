@@ -676,7 +676,9 @@ The core transaction record. Created on successful payment.
 - session_date_idx
 - status_idx
 - payout_eligible_at_idx (for payout cron job)
-- (coach_profile_id, session_date, session_start_time) unique constraint
+- (coach_profile_id, session_date, session_start_time) partial unique index
+  WHERE deleted_at IS NULL AND status NOT IN ('cancelled_parent','cancelled_coach','no_show')
+  (replaces plain UNIQUE constraint — migration 034, BUG-13: freed/cancelled/soft-deleted slots no longer block re-booking)
 
 ---
 
