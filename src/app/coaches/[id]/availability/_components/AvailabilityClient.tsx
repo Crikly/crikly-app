@@ -19,6 +19,7 @@ import {
   Lock,
   Repeat,
   ShieldCheck,
+  MapPin,
 } from 'lucide-react'
 import {
   bookableSlots,
@@ -416,16 +417,27 @@ export function AvailabilityClient({
                         key={slot.minutes}
                         type="button"
                         onClick={() => toggleSlot(slot)}
-                        aria-label={`Book ${slot.label} slot`}
+                        aria-label={`Book ${slot.label} slot${slot.venueName ? ` at ${slot.venueName}` : ''}`}
                         aria-pressed={isSel}
-                        className={`h-[46px] rounded-xl border-[1.5px] text-[15px] font-semibold tabular-nums transition-all ${
+                        className={`flex min-h-touch min-w-0 flex-col items-center justify-center rounded-xl border-[1.5px] px-1.5 py-1.5 transition-all ${
                           isSel
                             ? 'bg-brand-600 border-brand-600 text-white shadow-sm'
                             : 'bg-white border-gray-300 text-gray-900 hover:border-brand-600 hover:bg-brand-50'
                         }`}
                         data-testid={`slot-${slot.time}`}
                       >
-                        {slot.label}
+                        <span className="text-base font-semibold tabular-nums leading-none">{slot.label}</span>
+                        {slot.venueName && (
+                          <span
+                            className={`mt-1 flex min-w-0 max-w-full items-center gap-0.5 text-xs font-medium ${
+                              isSel ? 'text-white/80' : 'text-gray-500'
+                            }`}
+                            data-testid={`slot-venue-${slot.time}`}
+                          >
+                            <MapPin className="h-3 w-3 shrink-0" aria-hidden="true" />
+                            <span className="truncate" title={slot.venueName}>{slot.venueName}</span>
+                          </span>
+                        )}
                       </button>
                     )
                   })}

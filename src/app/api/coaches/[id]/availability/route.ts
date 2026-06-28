@@ -13,6 +13,10 @@ interface AvailabilityTemplateRow {
   // BUG-08: per-block price override. NULL = use the sport default; non-null =
   // this block costs a different price (e.g. £75 Sunday vs £60 default).
   price_override_pence: number | null
+  // UX-09: where the session happens. Either a free-text venue_name on the block,
+  // or a coach_venue_id pointing at a coach_venues row (the venue-picker path).
+  venue_name: string | null
+  coach_venue_id: string | null
 }
 
 interface BlockedDateRow {
@@ -118,7 +122,7 @@ export async function GET(
 
     let templatesQuery = supabase
       .from('availability_templates')
-      .select('id, sport_id, day_of_week, start_time, end_time, is_active, price_override_pence')
+      .select('id, sport_id, day_of_week, start_time, end_time, is_active, price_override_pence, venue_name, coach_venue_id')
       .eq('coach_profile_id', id)
       .eq('is_active', true)
 
@@ -132,6 +136,39 @@ export async function GET(
     if (templateError) {
       console.error('[GET /api/coaches/[id]/availability] templates error:', templateError)
       return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    }
+
+    // ── Resolve venue labels (UX-09) ──────────────────────────────────────────
+    // A block's venue is either its free-text venue_name or a coach_venues row
+    // referenced by coach_venue_id (the venue-picker path). Mirror the coach-facing
+    // route (POST /api/coaches/availability) and resolve the FK to a name so every
+    // coach's venue surfaces, not just free-text ones. coach_venues has a
+    // public-SELECT policy for live coaches, so this read is RLS-safe.
+    const templateRowsTyped = (templateRows ?? []) as AvailabilityTemplateRow[]
+    const venueIds = Array.from(
+      new Set(
+        templateRowsTyped
+          .filter(t => !t.venue_name && t.coach_venue_id)
+          .map(t => t.coach_venue_id as string),
+      ),
+    )
+
+    let venueMap: Record<string, string> = {}
+    if (venueIds.length > 0) {
+      const { data: venueRows, error: venueError } = await supabase
+        .from('coach_venues')
+        .select('id, name')
+        .eq('coach_profile_id', id)
+        .in('id', venueIds)
+
+      if (venueError) {
+        console.error('[GET /api/coaches/[id]/availability] coach_venues error:', venueError)
+        return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+      }
+
+      venueMap = Object.fromEntries(
+        ((venueRows ?? []) as { id: string; name: string }[]).map(v => [v.id, v.name]),
+      )
     }
 
     // ── Fetch blocked dates ───────────────────────────────────────────────────
@@ -161,10 +198,9 @@ export async function GET(
 
     // ── Transform ─────────────────────────────────────────────────────────────
 
-    const templates = (templateRows ?? []) as AvailabilityTemplateRow[]
     const blocked = (blockedRows ?? []) as BlockedDateRow[]
 
-    const availability = templates.map(t => ({
+    const availability = templateRowsTyped.map(t => ({
       id: t.id,
       sport_id: t.sport_id,
       day_of_week: t.day_of_week,
@@ -175,6 +211,9 @@ export async function GET(
       // sport default. Authoritative price is still re-derived server-side at
       // booking time (BUG-09) — this value is for display only.
       price_override_pence: t.price_override_pence,
+      // UX-09: the block's venue label — free-text venue_name, else the resolved
+      // coach_venues name, else null (the client shows nothing when null).
+      venue_name: t.venue_name ?? (t.coach_venue_id ? venueMap[t.coach_venue_id] ?? null : null),
     }))
 
     const blocked_dates = expandBlockedDates(blocked)

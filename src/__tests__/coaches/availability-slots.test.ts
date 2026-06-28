@@ -49,3 +49,40 @@ describe('bookableSlots — per-slot price (BUG-08)', () => {
     expect(byTime['14:00']).toBe(6000)
   })
 })
+
+describe('bookableSlots — per-slot venue (UX-09)', () => {
+  it('carries the template venue_name onto each generated slot', () => {
+    const slots = bookableSlots(SUNDAY, [sunday({ venue_name: 'Kingston Hospital' })], new Set(), 0, 60, NOW, 60)
+    expect(slots).toHaveLength(1)
+    expect(slots[0].venueName).toBe('Kingston Hospital')
+  })
+
+  it('yields null venueName when the template has no venue', () => {
+    const slots = bookableSlots(SUNDAY, [sunday({ venue_name: null })], new Set(), 0, 60, NOW, 60)
+    expect(slots).toHaveLength(1)
+    expect(slots[0].venueName).toBeNull()
+  })
+
+  it('treats a missing venue_name field as null', () => {
+    const slots = bookableSlots(SUNDAY, [sunday({})], new Set(), 0, 60, NOW, 60)
+    expect(slots[0].venueName).toBeNull()
+  })
+
+  it('attaches each start time its own block venue', () => {
+    const slots = bookableSlots(
+      SUNDAY,
+      [
+        sunday({ start_time: '09:00', end_time: '10:00', venue_name: 'Kingston Hospital' }),
+        sunday({ start_time: '14:00', end_time: '15:00', venue_name: 'Lords Nets' }),
+      ],
+      new Set(),
+      0,
+      60,
+      NOW,
+      60,
+    )
+    const byTime = Object.fromEntries(slots.map(s => [s.time, s.venueName]))
+    expect(byTime['09:00']).toBe('Kingston Hospital')
+    expect(byTime['14:00']).toBe('Lords Nets')
+  })
+})
