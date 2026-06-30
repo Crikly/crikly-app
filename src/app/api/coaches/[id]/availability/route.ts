@@ -17,6 +17,10 @@ interface AvailabilityTemplateRow {
   // or a coach_venue_id pointing at a coach_venues row (the venue-picker path).
   venue_name: string | null
   coach_venue_id: string | null
+  // BUG-04: recurrence shape. is_recurring=false (⟺ specific_date set) marks an
+  // ad-hoc one-off slot, which the public calendar renders with a teal dot.
+  is_recurring: boolean
+  specific_date: string | null
 }
 
 interface BlockedDateRow {
@@ -122,7 +126,7 @@ export async function GET(
 
     let templatesQuery = supabase
       .from('availability_templates')
-      .select('id, sport_id, day_of_week, start_time, end_time, is_active, price_override_pence, venue_name, coach_venue_id')
+      .select('id, sport_id, day_of_week, start_time, end_time, is_active, price_override_pence, venue_name, coach_venue_id, is_recurring, specific_date')
       .eq('coach_profile_id', id)
       .eq('is_active', true)
 
@@ -214,6 +218,11 @@ export async function GET(
       // UX-09: the block's venue label — free-text venue_name, else the resolved
       // coach_venues name, else null (the client shows nothing when null).
       venue_name: t.venue_name ?? (t.coach_venue_id ? venueMap[t.coach_venue_id] ?? null : null),
+      // BUG-04: surface recurrence so the public calendar can render the teal
+      // ad-hoc dot. specific_date tells the frontend which date the dot belongs
+      // to (a bare boolean wouldn't). Mirrors the coach-facing availability route.
+      is_recurring: t.is_recurring,
+      specific_date: t.specific_date,
     }))
 
     const blocked_dates = expandBlockedDates(blocked)
