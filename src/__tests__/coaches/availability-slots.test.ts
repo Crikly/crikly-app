@@ -86,3 +86,59 @@ describe('bookableSlots — per-slot venue (UX-09)', () => {
     expect(byTime['14:00']).toBe('Lords Nets')
   })
 })
+
+describe('bookableSlots — ad-hoc placement + isAdHoc flag (BUG-04)', () => {
+  // SUNDAY is 2026-01-04; NEXT_SUNDAY shares the same weekday (day_of_week 0).
+  const NEXT_SUNDAY = new Date('2026-01-11T00:00:00')
+
+  it('places an ad-hoc block on its specific_date only', () => {
+    const adHoc = sunday({ is_recurring: false, specific_date: '2026-01-04' })
+    const slots = bookableSlots(SUNDAY, [adHoc], new Set(), 0, 60, NOW, 60)
+    expect(slots).toHaveLength(1)
+    expect(slots[0].time).toBe('09:00')
+  })
+
+  it('does NOT repeat an ad-hoc block on other matching weekdays', () => {
+    // Same weekday as its specific_date, but a different date — must be empty.
+    const adHoc = sunday({ is_recurring: false, specific_date: '2026-01-04' })
+    const slots = bookableSlots(NEXT_SUNDAY, [adHoc], new Set(), 0, 60, NOW, 60)
+    expect(slots).toHaveLength(0)
+  })
+
+  it('marks ad-hoc slots isAdHoc=true', () => {
+    const adHoc = sunday({ is_recurring: false, specific_date: '2026-01-04' })
+    const slots = bookableSlots(SUNDAY, [adHoc], new Set(), 0, 60, NOW, 60)
+    expect(slots[0].isAdHoc).toBe(true)
+  })
+
+  it('keeps recurring blocks placing weekly and marks them isAdHoc=false', () => {
+    // Default helper omits is_recurring (recurring). Appears on every matching
+    // weekday (both SUNDAY and NEXT_SUNDAY) and is never flagged ad-hoc.
+    const recurring = sunday({})
+    expect(bookableSlots(SUNDAY, [recurring], new Set(), 0, 60, NOW, 60)[0].isAdHoc).toBe(false)
+    expect(bookableSlots(NEXT_SUNDAY, [recurring], new Set(), 0, 60, NOW, 60)).toHaveLength(1)
+  })
+
+  it('explicit is_recurring=true also places weekly', () => {
+    const recurring = sunday({ is_recurring: true, specific_date: null })
+    expect(bookableSlots(NEXT_SUNDAY, [recurring], new Set(), 0, 60, NOW, 60)).toHaveLength(1)
+  })
+
+  it('surfaces both a recurring and an ad-hoc block on the same date with correct flags', () => {
+    const slots = bookableSlots(
+      SUNDAY,
+      [
+        sunday({ start_time: '09:00', end_time: '10:00' }), // recurring
+        sunday({ start_time: '14:00', end_time: '15:00', is_recurring: false, specific_date: '2026-01-04' }), // ad-hoc
+      ],
+      new Set(),
+      0,
+      60,
+      NOW,
+      60,
+    )
+    const byTime = Object.fromEntries(slots.map(s => [s.time, s.isAdHoc]))
+    expect(byTime['09:00']).toBe(false)
+    expect(byTime['14:00']).toBe(true)
+  })
+})

@@ -308,6 +308,10 @@ export function AvailabilityClient({
             const past = cell.date < today
             const daySlots = past ? [] : slotsFor(cell.date)
             const bookable = daySlots.length > 0
+            // BUG-04: split 1-on-1 availability by recurrence so the dots match
+            // the legend — recurring slots are blue, ad-hoc (one-off) slots are teal.
+            const hasRecurring = daySlots.some(s => !s.isAdHoc)
+            const hasAdHoc = daySlots.some(s => s.isAdHoc)
             const hasProg = programmeDateSet.has(cell.iso)
             const selected = cell.iso === selectedISO
             const isToday = cell.iso === localISODate(today)
@@ -342,17 +346,19 @@ export function AvailabilityClient({
                 data-testid={`cal-day-${cell.iso}`}
               >
                 <span>{cell.day}</span>
-                {/* UX-06/07/08: availability is shown by coloured dots only — no
-                    text count. When a day has more than one session type the dots
-                    sit side by side (flex-row). Each dot is conditional on that
-                    type having availability: blue = 1-on-1 slots, purple =
-                    programmes. Teal / ad-hoc is deferred (BUG-04 needs the backend
-                    fix first), so no teal dot is rendered yet. Colours mirror the
-                    legend below. */}
+                {/* UX-06/07/08 + BUG-04: availability is shown by coloured dots
+                    only — no text count. When a day has more than one session type
+                    the dots sit side by side (flex-row). Each dot is conditional on
+                    that type having availability: blue = recurring 1-on-1 slots,
+                    teal = ad-hoc one-off slots, purple = programmes. Colours mirror
+                    the legend below. */}
                 {(bookable || hasProg) && (
                   <span aria-hidden className="flex flex-row items-center gap-0.5 mt-0.5">
-                    {bookable && (
+                    {hasRecurring && (
                       <span className={`w-1.5 h-1.5 rounded-full ${selected ? 'bg-white' : 'bg-blue-500'}`} />
+                    )}
+                    {hasAdHoc && (
+                      <span className={`w-1.5 h-1.5 rounded-full ${selected ? 'bg-white' : 'bg-teal-500'}`} />
                     )}
                     {hasProg && (
                       <span className={`w-1.5 h-1.5 rounded-full ${selected ? 'bg-white' : 'bg-purple-600'}`} />
@@ -464,7 +470,10 @@ export function AvailabilityClient({
                             data-testid={`slot-venue-${slot.time}`}
                           >
                             <MapPin className="h-3 w-3 shrink-0" aria-hidden="true" />
-                            <span className="truncate" title={slot.venueName}>{slot.venueName}</span>
+                            {/* UX-15: min-w-0 lets the truncate engage inside the
+                                flex row so the venue ellipsises instead of
+                                overflowing/cramping the slot button. */}
+                            <span className="min-w-0 truncate" title={slot.venueName}>{slot.venueName}</span>
                           </span>
                         )}
                       </button>

@@ -20,6 +20,17 @@ export interface SlotTemplate {
    * availability_templates.venue_name.
    */
   venue_name?: string | null
+  /**
+   * BUG-04: false = an ad-hoc one-off block, placed on specific_date only.
+   * Absent/true = a weekly-recurring block, placed by day_of_week. Mirrors
+   * availability_templates.is_recurring (DB default is true).
+   */
+  is_recurring?: boolean
+  /**
+   * BUG-04: 'YYYY-MM-DD' for an ad-hoc block (the single date it applies to);
+   * null/absent for a recurring block. Mirrors availability_templates.specific_date.
+   */
+  specific_date?: string | null
 }
 
 export interface GeneratedSlot {
@@ -48,6 +59,11 @@ export interface GeneratedSlot {
    * when the coach set no venue for that block (the picker shows nothing).
    */
   venueName: string | null
+  /**
+   * BUG-04: true when this slot came from an ad-hoc (is_recurring === false)
+   * template — drives the teal "ad hoc" calendar dot. false for recurring slots.
+   */
+  isAdHoc: boolean
 }
 
 // Fallback session length when a coach's sport carries no duration.
@@ -123,16 +139,27 @@ export function bookableSlots(
   // forbids overlapping blocks on the same day, so a given start minute maps to
   // exactly one template; if two ever collide, the first-seen template wins (Map
   // keeps the earlier).
+  //
+  // BUG-04: a recurring block (is_recurring absent/true) places on every matching
+  // weekday; an ad-hoc block (is_recurring === false) places on its specific_date
+  // ONLY — never repeated across weekdays. Each minute also records whether it
+  // came from an ad-hoc block so the calendar can render the teal ad-hoc dot.
+  const iso = localISODate(date)
   const stride = sessionDurationMinutes > 0 ? sessionDurationMinutes : DEFAULT_SESSION_MINUTES
-  const minutesMeta = new Map<number, { price: number | null; venue: string | null }>()
+  const minutesMeta = new Map<number, { price: number | null; venue: string | null; isAdHoc: boolean }>()
   for (const t of templates) {
-    if (t.day_of_week !== dow) continue
+    const adHoc = t.is_recurring === false
+    if (adHoc) {
+      if (t.specific_date !== iso) continue
+    } else {
+      if (t.day_of_week !== dow) continue
+    }
     const start = toMinutes(t.start_time)
     const end = toMinutes(t.end_time)
     const price = t.price_override_pence ?? null
     const venue = t.venue_name ?? null
     for (let mins = start; mins + stride <= end; mins += stride) {
-      if (!minutesMeta.has(mins)) minutesMeta.set(mins, { price, venue })
+      if (!minutesMeta.has(mins)) minutesMeta.set(mins, { price, venue, isAdHoc: adHoc })
     }
   }
 
@@ -150,6 +177,7 @@ export function bookableSlots(
       available: true,
       pricePence: meta?.price ?? null,
       venueName: meta?.venue ?? null,
+      isAdHoc: meta?.isAdHoc ?? false,
     })
   }
   return out
