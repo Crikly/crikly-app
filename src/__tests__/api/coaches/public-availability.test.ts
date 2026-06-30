@@ -107,7 +107,7 @@ describe('GET /api/coaches/[id]/availability — success', () => {
           eqCount++
           if (eqCount >= 2) {
             return Promise.resolve({
-              data: [{ id: 'slot-uuid', sport_id: null, day_of_week: 1, start_time: '09:00:00', end_time: '17:00:00', is_active: true, price_override_pence: 7500 }],
+              data: [{ id: 'slot-uuid', sport_id: null, day_of_week: 1, start_time: '09:00:00', end_time: '17:00:00', is_active: true, price_override_pence: 7500, venue_name: null, coach_venue_id: null, is_recurring: true, specific_date: null }],
               error: null,
             })
           }
@@ -132,6 +132,48 @@ describe('GET /api/coaches/[id]/availability — success', () => {
     // BUG-08: the per-block price override must be surfaced so the time picker
     // can price each slot rather than always using the sport default.
     expect(data.availability[0].price_override_pence).toBe(7500)
+  })
+
+  // BUG-04: the public response previously dropped is_recurring + specific_date,
+  // so the frontend had no way to tell an ad-hoc slot from a weekly one and could
+  // not render the teal ad-hoc dot. Both must now surface on every slot.
+  it('surfaces is_recurring and specific_date for an ad-hoc slot', async () => {
+    mockFrom
+      .mockImplementationOnce(() => {
+        const c = makeChain()
+        c.maybeSingle.mockResolvedValue({
+          data: { cancellation_window_hours: 24, min_advance_hours: 12, max_advance_days: 60 },
+          error: null,
+        })
+        return c
+      })
+      .mockImplementationOnce(() => {
+        // availability_templates — an ad-hoc one-off slot (is_recurring=false)
+        const c = makeChain()
+        let eqCount = 0
+        c.eq = jest.fn(() => {
+          eqCount++
+          if (eqCount >= 2) {
+            return Promise.resolve({
+              data: [{ id: 'slot-uuid', sport_id: null, day_of_week: 1, start_time: '09:00:00', end_time: '17:00:00', is_active: true, price_override_pence: null, venue_name: null, coach_venue_id: null, is_recurring: false, specific_date: '2026-07-04' }],
+              error: null,
+            })
+          }
+          return c
+        })
+        return c
+      })
+      .mockImplementationOnce(() => {
+        const c = makeChain()
+        c.eq = jest.fn(() => Promise.resolve({ data: [], error: null }))
+        return c
+      })
+
+    const res = await callGet(COACH_UUID)
+    expect(res.status).toBe(200)
+    const data = await res.json()
+    expect(data.availability[0].is_recurring).toBe(false)
+    expect(data.availability[0].specific_date).toBe('2026-07-04')
   })
 })
 
