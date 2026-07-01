@@ -29,6 +29,7 @@ import {
   type GeneratedSlot,
 } from './_data/slots'
 import type { DayProgramme } from './_data/programmeSchedule'
+import { hhmmToMinutes, type Interval } from '@/lib/availability/overlap'
 
 interface Props {
   coachId: string
@@ -109,10 +110,32 @@ export function AvailabilityClient({
 
   const selectedDate = useMemo(() => (selectedISO ? parseISO(selectedISO) : null), [selectedISO])
 
+  // BUG-16: a date's committed programme sessions as minute-intervals, so a
+  // colliding 1-on-1 slot can be suppressed (the Programme always wins).
+  const programmeIntervalsFor = useMemo(
+    () => (iso: string): Interval[] =>
+      (programmesByDate[iso] ?? []).reduce<Interval[]>((acc, p) => {
+        if (p.startTime && p.endTime) {
+          acc.push({ startMinutes: hhmmToMinutes(p.startTime), endMinutes: hhmmToMinutes(p.endTime) })
+        }
+        return acc
+      }, []),
+    [programmesByDate],
+  )
+
   const slotsFor = useMemo(
     () => (date: Date): GeneratedSlot[] =>
-      bookableSlots(date, templates, blockedSet, minAdvanceHours, maxAdvanceDays, now, sessionDurationMinutes),
-    [templates, blockedSet, minAdvanceHours, maxAdvanceDays, now, sessionDurationMinutes],
+      bookableSlots(
+        date,
+        templates,
+        blockedSet,
+        minAdvanceHours,
+        maxAdvanceDays,
+        now,
+        sessionDurationMinutes,
+        programmeIntervalsFor(localISODate(date)),
+      ),
+    [templates, blockedSet, minAdvanceHours, maxAdvanceDays, now, sessionDurationMinutes, programmeIntervalsFor],
   )
 
   const slots = useMemo<GeneratedSlot[]>(

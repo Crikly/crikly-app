@@ -4,6 +4,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { requireCoachContext } from '@/lib/auth/require-coach'
 import { PROGRAMME_AGE_GROUPS } from '@/components/coach/programmeConstants'
 import { generateProgrammeSessionDates } from '@/lib/programme-sessions'
+import { getCoachCommitments, findFirstConflict } from '@/lib/availability/commitments'
+import { hhmmToMinutes } from '@/lib/availability/overlap'
 import type { Json } from '@/types/database'
 
 // MIRROR OF programmeConstants.SessionEntry — kept inline so this API route
@@ -220,7 +222,7 @@ export async function GET(
  */
 export async function POST(
   request: NextRequest
-): Promise<NextResponse<ProgrammeResponse | { error: string; details?: unknown }>> {
+): Promise<NextResponse<ProgrammeResponse | { error: string; details?: unknown; message?: string }>> {
   try {
     const supabase = await createClient()
     
@@ -588,6 +590,29 @@ export async function POST(
     // coach ownership verified above. Bypasses RLS to avoid auth_user_id mapping
     // mismatch on dev DB (same root cause as Fix-19).
     const adminSupabase = createAdminClient()
+
+    // BUG-18: block any session that overlaps something already committed for this
+    // coach on that date — recurring availability, ad-hoc slots, other programme
+    // sessions, or confirmed 1-on-1 bookings. Runs BEFORE the programme insert so a
+    // conflict never leaves an orphan row (no rollback needed).
+    if (sessionDatesBody && sessionDatesBody.length > 0) {
+      for (const entry of sessionDatesBody as SessionEntry[]) {
+        const startMin = hhmmToMinutes(entry.startTime)
+        const endMin = hhmmToMinutes(entry.endTime)
+        const commitments = await getCoachCommitments(adminSupabase, coachProfile.id, entry.date)
+        const conflict = findFirstConflict(startMin, endMin, commitments)
+        if (conflict) {
+          return NextResponse.json(
+            {
+              error: 'Conflict detected',
+              message: `The session on ${entry.date} (${entry.startTime}–${entry.endTime}) overlaps ${conflict.label} already scheduled for you. Adjust the programme times or dates.`,
+            },
+            { status: 409 },
+          )
+        }
+      }
+    }
+
     const { data: newProgramme, error: insertError } = await adminSupabase
       .from('group_programmes')
       .insert(insertData)

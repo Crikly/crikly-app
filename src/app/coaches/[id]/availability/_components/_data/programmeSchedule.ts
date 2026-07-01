@@ -21,6 +21,13 @@ export interface DayProgramme {
   /** 'HH:MM' for this session, or null when unset. */
   startTime: string | null
   /**
+   * BUG-16: 'HH:MM' end of this session — the persisted session's end_time, or
+   * (for recurring-pattern programmes with no session rows) start_time +
+   * duration_minutes. Drives the overlap test that suppresses a colliding 1-on-1
+   * slot on the public calendar. Null only when startTime is also null.
+   */
+  endTime: string | null
+  /**
    * UX-11: where this programme's sessions take place (group_programmes.venue_name),
    * or null when the coach set no venue.
    */
@@ -46,6 +53,7 @@ export interface ProgrammeSchedule {
 interface SessionRow {
   session_date: string
   start_time: string | null
+  end_time: string | null
   status: string
 }
 
@@ -62,6 +70,7 @@ interface ProgrammeRow {
   day_of_week: number
   days_of_week: number[] | null
   start_time: string
+  duration_minutes: number
   starts_at: string | null
   ends_at: string | null
   venue_name: string | null
@@ -83,6 +92,19 @@ function dateAnchor(ts: string | null): Date | null {
   if (!ts) return null
   const [y, m, d] = ts.slice(0, 10).split('-').map(Number)
   return new Date(y, m - 1, d)
+}
+
+/**
+ * BUG-16: 'HH:MM' (or 'HH:MM:SS') + N minutes → 'HH:MM', clamped to 23:59 so a
+ * late session can't wrap past midnight. Used to derive a recurring-pattern
+ * programme's end time from start_time + duration_minutes.
+ */
+function addMinutesToHHMM(hhmm: string, minutes: number): string {
+  const [h, m] = hhmm.split(':').map(Number)
+  const total = Math.min(h * 60 + m + minutes, 23 * 60 + 59)
+  const hh = Math.floor(total / 60)
+  const mm = total % 60
+  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`
 }
 
 function recurringDates(row: ProgrammeRow, windowStart: Date, windowEnd: Date): string[] {
@@ -122,7 +144,7 @@ export async function fetchProgrammeSchedule(coachProfileId: string): Promise<Pr
   const { data, error } = await supabase
     .from('group_programmes')
     .select(
-      'id, title, sport_id, age_groups, max_spots, current_spots, price_per_session_pence, block_price_pence, payment_type, day_of_week, days_of_week, start_time, starts_at, ends_at, venue_name, group_programme_sessions(session_date, start_time, status)',
+      'id, title, sport_id, age_groups, max_spots, current_spots, price_per_session_pence, block_price_pence, payment_type, day_of_week, days_of_week, start_time, duration_minutes, starts_at, ends_at, venue_name, group_programme_sessions(session_date, start_time, end_time, status)',
     )
     .eq('coach_profile_id', coachProfileId)
     .eq('model', 'programme')
@@ -179,19 +201,25 @@ export async function fetchProgrammeSchedule(coachProfileId: string): Promise<Pr
       s => s.status === 'scheduled' && s.session_date.slice(0, 10) >= cutoff,
     )
 
-    const dated: { date: string; startTime: string | null }[] =
+    // BUG-16: each dated entry now carries an end time too. Persisted rows use
+    // their own end_time; recurring-pattern rows derive it from the programme's
+    // start_time + duration_minutes.
+    const recurringEnd = r.start_time ? addMinutesToHHMM(r.start_time, r.duration_minutes) : null
+    const dated: { date: string; startTime: string | null; endTime: string | null }[] =
       persisted.length > 0
         ? persisted.map(s => ({
             date: s.session_date.slice(0, 10),
             startTime: s.start_time ? s.start_time.slice(0, 5) : null,
+            endTime: s.end_time ? s.end_time.slice(0, 5) : null,
           }))
         : recurringDates(r, windowStart, windowEnd).map(date => ({
             date,
             startTime: r.start_time ? r.start_time.slice(0, 5) : null,
+            endTime: recurringEnd,
           }))
 
-    for (const { date, startTime } of dated) {
-      ;(byDate[date] ??= []).push({ ...base, startTime })
+    for (const { date, startTime, endTime } of dated) {
+      ;(byDate[date] ??= []).push({ ...base, startTime, endTime })
     }
   }
 
