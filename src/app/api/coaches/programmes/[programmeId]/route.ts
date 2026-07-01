@@ -4,6 +4,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { requireCoachContext } from '@/lib/auth/require-coach'
 import { PROGRAMME_AGE_GROUPS } from '@/components/coach/programmeConstants'
 import { generateProgrammeSessionDates } from '@/lib/programme-sessions'
+import { getCoachCommitments, findFirstConflict } from '@/lib/availability/commitments'
+import { hhmmToMinutes } from '@/lib/availability/overlap'
 import type { Json } from '@/types/database'
 
 // MIRROR OF programmeConstants.SessionEntry — kept inline so this API route
@@ -255,7 +257,7 @@ export async function GET(
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ programmeId: string }> }
-): Promise<NextResponse<ProgrammeResponse | { error: string; details?: unknown }>> {
+): Promise<NextResponse<ProgrammeResponse | { error: string; details?: unknown; message?: string }>> {
   try {
     const { programmeId } = await params
     const supabase = await createClient()
@@ -661,6 +663,32 @@ export async function PATCH(
       updateData.ends_at = nextEndsAt ? new Date(nextEndsAt + 'T00:00:00').toISOString() : null
     }
 
+    // BUG-18: block session conflicts BEFORE mutating anything (programme row or
+    // session rows), so a conflict leaves the programme fully unchanged. Only runs
+    // when the programme is unlocked (current_spots === 0) and the form carried a
+    // session list — mirrors the reconciliation guard below. excludeProgrammeId
+    // stops the programme's own existing sessions from self-conflicting.
+    const patchConflictLocked = (existingProgramme.current_spots as number) > 0
+    if (!patchConflictLocked && sessionDatesBody && sessionDatesBody.length > 0) {
+      for (const entry of sessionDatesBody as SessionEntry[]) {
+        const startMin = hhmmToMinutes(entry.startTime)
+        const endMin = hhmmToMinutes(entry.endTime)
+        const commitments = await getCoachCommitments(adminSupabase, coachProfile.id, entry.date, {
+          excludeProgrammeId: programmeId,
+        })
+        const conflict = findFirstConflict(startMin, endMin, commitments)
+        if (conflict) {
+          return NextResponse.json(
+            {
+              error: 'Conflict detected',
+              message: `The session on ${entry.date} (${entry.startTime}–${entry.endTime}) overlaps ${conflict.label} already scheduled for you. Adjust the programme times or dates.`,
+            },
+            { status: 409 },
+          )
+        }
+      }
+    }
+
     // 7. Update programme (adminSupabase already created in step 4)
     const { data: updatedProgramme, error: updateError } = await adminSupabase
       .from('group_programmes')
@@ -679,8 +707,7 @@ export async function PATCH(
     // is not locked (current_spots === 0) AND the body carried a non-empty
     // session_dates array. When current_spots > 0 we silently skip — the UI
     // already hides the SessionCalendar so this is just defence-in-depth.
-    const patchIsLocked = (existingProgramme.current_spots as number) > 0
-    if (!patchIsLocked && sessionDatesBody && sessionDatesBody.length > 0) {
+    if (!patchConflictLocked && sessionDatesBody && sessionDatesBody.length > 0) {
       // Effective camp_mode for slot-write decisions: merged body ∪ existing.
       const effectiveCampMode =
         updateData.camp_mode !== undefined
@@ -737,9 +764,6 @@ export async function PATCH(
         console.error('[PATCH /api/coaches/programmes/[programmeId]] session upsert failed:', sessionUpsertError)
         return NextResponse.json({ error: 'Failed to update programme sessions' }, { status: 500 })
       }
-    } else if (patchIsLocked && body.session_dates !== undefined) {
-      // Audit-only log: a locked programme's incoming session_dates was ignored.
-      console.info(`[PATCH /api/coaches/programmes/${programmeId}] session reconciliation skipped — programme locked (current_spots > 0)`)
     }
 
     // 8. Fetch sport name separately (Fix-65-1 pattern — no nested join)

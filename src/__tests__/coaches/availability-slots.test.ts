@@ -142,3 +142,45 @@ describe('bookableSlots — ad-hoc placement + isAdHoc flag (BUG-04)', () => {
     expect(byTime['14:00']).toBe(true)
   })
 })
+
+describe('bookableSlots — programme collision suppression (BUG-16)', () => {
+  // A whole-day 09:00–15:00 recurring template → hourly slots at 09,10,11,12,13,14.
+  const wholeDay = () => sunday({ start_time: '09:00', end_time: '15:00' })
+
+  it('is unchanged when no busy intervals are passed (default [])', () => {
+    const slots = bookableSlots(SUNDAY, [wholeDay()], new Set(), 0, 60, NOW, 60)
+    expect(slots.map(s => s.time)).toEqual(['09:00', '10:00', '11:00', '12:00', '13:00', '14:00'])
+  })
+
+  it('suppresses the exact slot a programme session overlaps', () => {
+    // Programme 11:00–12:00 removes only the 11:00 slot.
+    const slots = bookableSlots(SUNDAY, [wholeDay()], new Set(), 0, 60, NOW, 60, [
+      { startMinutes: 11 * 60, endMinutes: 12 * 60 },
+    ])
+    expect(slots.map(s => s.time)).toEqual(['09:00', '10:00', '12:00', '13:00', '14:00'])
+  })
+
+  it('suppresses every slot a longer programme session straddles', () => {
+    // Programme 10:30–12:30 overlaps the 10:00, 11:00 and 12:00 slots.
+    const slots = bookableSlots(SUNDAY, [wholeDay()], new Set(), 0, 60, NOW, 60, [
+      { startMinutes: 10 * 60 + 30, endMinutes: 12 * 60 + 30 },
+    ])
+    expect(slots.map(s => s.time)).toEqual(['09:00', '13:00', '14:00'])
+  })
+
+  it('does NOT suppress an adjacent (touching) session — half-open overlap', () => {
+    // Programme 10:00–11:00 abuts the 09:00 slot's end and the 11:00 slot's start;
+    // only the 10:00 slot itself is removed.
+    const slots = bookableSlots(SUNDAY, [wholeDay()], new Set(), 0, 60, NOW, 60, [
+      { startMinutes: 10 * 60, endMinutes: 11 * 60 },
+    ])
+    expect(slots.map(s => s.time)).toEqual(['09:00', '11:00', '12:00', '13:00', '14:00'])
+  })
+
+  it('can empty the day entirely when a session spans all slots', () => {
+    const slots = bookableSlots(SUNDAY, [wholeDay()], new Set(), 0, 60, NOW, 60, [
+      { startMinutes: 9 * 60, endMinutes: 15 * 60 },
+    ])
+    expect(slots).toHaveLength(0)
+  })
+})

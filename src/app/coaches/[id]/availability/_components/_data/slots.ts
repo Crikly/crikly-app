@@ -2,6 +2,8 @@
 // Kept separate from the React component so the slot / blocked / booking-window
 // logic is unit-testable in isolation (no DOM, no Supabase, no React).
 
+import { overlapsAny, type Interval } from '@/lib/availability/overlap'
+
 export interface SlotTemplate {
   /** 0 = Sunday … 6 = Saturday (matches availability_templates.day_of_week). */
   day_of_week: number
@@ -106,6 +108,13 @@ export function formatTimeLabel(hhmm: string): string {
  * The bookable 1-on-1 start slots for a given day, or [] when the day is in the
  * past, blocked, beyond the coach's max-advance window, or has no template that
  * weekday. Slots that fall inside the min-advance window are filtered out.
+ *
+ * BUG-16: `busyIntervals` are minute-ranges (from midnight) already committed on
+ * this date by group-programme sessions. A generated 1-on-1 start slot whose
+ * [start, start+duration) overlaps any busy interval is suppressed entirely — the
+ * Programme always wins, so the colliding slot disappears from the calendar (not
+ * just de-emphasised). Defaults to [] → identical behaviour when no programmes
+ * run that day.
  */
 export function bookableSlots(
   date: Date,
@@ -115,6 +124,7 @@ export function bookableSlots(
   maxAdvanceDays: number,
   now: Date,
   sessionDurationMinutes: number,
+  busyIntervals: readonly Interval[] = [],
 ): GeneratedSlot[] {
   const startOfToday = new Date(now)
   startOfToday.setHours(0, 0, 0, 0)
@@ -169,6 +179,8 @@ export function bookableSlots(
     const slotTime = new Date(date)
     slotTime.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0)
     if (slotTime.getTime() - now.getTime() < minAdvanceMs) continue
+    // BUG-16: drop any slot that collides with a committed programme session.
+    if (overlapsAny(minutes, minutes + stride, busyIntervals)) continue
     const meta = minutesMeta.get(minutes)
     out.push({
       minutes,
