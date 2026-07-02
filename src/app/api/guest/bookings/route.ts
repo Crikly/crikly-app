@@ -57,6 +57,10 @@ interface GuestBookingInput {
   date: string
   startTime: string
   pricePence: number
+  /** Who the session is for — a parent's child or the player themselves (UX-16). */
+  participantName: string
+  /** Age in years. Optional — children have it, adult players may not. */
+  participantAge: number | null
   /** Client-stable token so a retried submit reuses the same booking + intent. */
   idempotencyToken: string | null
   guest: GuestDetails
@@ -93,6 +97,31 @@ function parseBody(raw: unknown): GuestBookingInput | null {
   if (typeof g.fullName !== 'string' || g.fullName.trim().length === 0) return null
   if (!isValidEmail(g.email)) return null
 
+  // UX-16: participant name is REQUIRED for every guest booking — it is what
+  // the coach sees ("who am I coaching?"). Length-bounded like other free text.
+  if (
+    typeof b.participantName !== 'string' ||
+    b.participantName.trim().length === 0 ||
+    b.participantName.trim().length > 100
+  ) {
+    return null
+  }
+
+  // UX-16: age is optional (adult players may omit it) but must be a sane
+  // integer when present — mirrors the DB CHECK (1–99).
+  let participantAge: number | null = null
+  if (b.participantAge !== undefined && b.participantAge !== null) {
+    if (
+      typeof b.participantAge !== 'number' ||
+      !Number.isInteger(b.participantAge) ||
+      b.participantAge < 1 ||
+      b.participantAge > 99
+    ) {
+      return null
+    }
+    participantAge = b.participantAge
+  }
+
   // Optional but length-bounded so it can't be abused as an unbounded key.
   const token =
     typeof b.idempotencyToken === 'string' &&
@@ -108,6 +137,8 @@ function parseBody(raw: unknown): GuestBookingInput | null {
     date: b.date,
     startTime: b.startTime,
     pricePence: b.pricePence,
+    participantName: b.participantName.trim(),
+    participantAge,
     idempotencyToken: token,
     guest: {
       fullName: g.fullName.trim(),
@@ -349,6 +380,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       status: 'pending_payment',
       messaging_unlocked: false,
       cancellation_window_hours: coach.cancellation_window_hours,
+      // UX-16: snapshot of who the session is for — guests have no
+      // child_profiles row, so this is the coach's only source of the name.
+      participant_name: input.participantName,
+      participant_age: input.participantAge,
     })
     .select('id')
     .single()
@@ -399,6 +434,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           // so the payment_intent.succeeded webhook can send the confirmation.
           guest_email: input.guest.email,
           guest_name: input.guest.fullName,
+          // UX-16: the confirmation email must say who the session is for.
+          // Stripe metadata values are strings; age omitted when not given.
+          participant_name: input.participantName,
+          ...(input.participantAge !== null
+            ? { participant_age: String(input.participantAge) }
+            : {}),
         },
       },
       { idempotencyKey: piKey },

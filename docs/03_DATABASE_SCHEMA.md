@@ -653,6 +653,8 @@ The core transaction record. Created on successful payment.
 | review_requested_at | timestamptz | YES | null | When review reminder was sent to parent/player |
 | group_booking_id | uuid | YES | null | FK → group_bookings(id) if group session |
 | notes_for_coach | text | YES | null | Snapshot from child/player profile at time of booking |
+| participant_name | text | YES | null | Who the session is for, as entered at guest checkout — snapshot, no FK (migration 035, UX-16). Null on pre-UX-16 rows and on logged-in bookings that link child_profile_id. Required for new guest bookings at the API layer. |
+| participant_age | integer | YES | null | Participant age in years at booking time (migration 035, UX-16). CHECK 1–99. Optional — adult players may omit it. |
 | deleted_at | timestamptz | YES | null | Soft delete |
 | created_at | timestamptz | NO | now() | |
 | updated_at | timestamptz | NO | now() | |

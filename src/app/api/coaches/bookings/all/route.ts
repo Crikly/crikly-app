@@ -38,7 +38,7 @@ function getSupabaseAdmin() {
 }
 
 const SELECT =
-  'id, booking_reference, session_date, session_start_time, session_end_time, session_type, status, sport_id, coach_price_pence, parent_total_pence, currency, booked_by_user_id, child_profile_id, messaging_unlocked, created_at, venue_name'
+  'id, booking_reference, session_date, session_start_time, session_end_time, session_type, status, sport_id, coach_price_pence, parent_total_pence, currency, booked_by_user_id, child_profile_id, participant_name, messaging_unlocked, created_at, venue_name'
 
 export async function GET() {
   const supabase = await createClient()
@@ -143,7 +143,11 @@ export async function GET() {
     booked_by_user_profile_id: b.booked_by_user_id,
     booked_by_name: bookerNameMap[b.booked_by_user_id] ?? null,
     child_profile_id: b.child_profile_id,
-    child_name: b.child_profile_id ? (childNameMap[b.child_profile_id] ?? null) : null,
+    // Linked child profile first, then the guest participant snapshot (UX-16) —
+    // mirrors ../route.ts so consumers see identical objects.
+    child_name: b.child_profile_id
+      ? (childNameMap[b.child_profile_id] ?? null)
+      : (b.participant_name ?? null),
     messaging_unlocked: b.messaging_unlocked,
     venue_name: b.venue_name ?? null,
     created_at: b.created_at,

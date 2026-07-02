@@ -280,6 +280,8 @@ export type Database = {
           messaging_unlocked: boolean
           notes_for_coach: string | null
           parent_total_pence: number
+          participant_age: number | null
+          participant_name: string | null
           payout_eligible_at: string | null
           player_profile_id: string | null
           promo_code_id: string | null
@@ -318,6 +320,8 @@ export type Database = {
           messaging_unlocked?: boolean
           notes_for_coach?: string | null
           parent_total_pence: number
+          participant_age?: number | null
+          participant_name?: string | null
           payout_eligible_at?: string | null
           player_profile_id?: string | null
           promo_code_id?: string | null
@@ -356,6 +360,8 @@ export type Database = {
           messaging_unlocked?: boolean
           notes_for_coach?: string | null
           parent_total_pence?: number
+          participant_age?: number | null
+          participant_name?: string | null
           payout_eligible_at?: string | null
           player_profile_id?: string | null
           promo_code_id?: string | null

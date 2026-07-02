@@ -97,6 +97,8 @@ const VALID_BODY = {
   date: '2026-08-15',
   startTime: '10:00',
   pricePence: 6000,
+  participantName: 'Yuwin',
+  participantAge: 10,
   idempotencyToken: 'idem-token-abc',
   guest: {
     fullName: 'Sarah Test',
@@ -617,6 +619,87 @@ describe('POST /api/guest/bookings — invalid body', () => {
     ;(getStripe as MockFn).mockReturnValue(makeStripeMock())
     const res = await callPost({ ...VALID_BODY, sessionType: 'private' })
     expect(res.status).toBe(400)
+  })
+})
+
+// ── UX-16 participant name/age ────────────────────────────────────────────────
+
+describe('POST /api/guest/bookings — UX-16 participant', () => {
+  it('returns 400 when participantName is missing', async () => {
+    ;(createAdminClient as MockFn).mockReturnValue({ from: jest.fn() })
+    ;(getStripe as MockFn).mockReturnValue(makeStripeMock())
+    const { participantName: _dropped, ...withoutName } = VALID_BODY
+    const res = await callPost(withoutName)
+    expect(res.status).toBe(400)
+  })
+
+  it('returns 400 when participantName is whitespace only', async () => {
+    ;(createAdminClient as MockFn).mockReturnValue({ from: jest.fn() })
+    ;(getStripe as MockFn).mockReturnValue(makeStripeMock())
+    const res = await callPost({ ...VALID_BODY, participantName: '   ' })
+    expect(res.status).toBe(400)
+  })
+
+  it('returns 400 when participantName exceeds 100 characters', async () => {
+    ;(createAdminClient as MockFn).mockReturnValue({ from: jest.fn() })
+    ;(getStripe as MockFn).mockReturnValue(makeStripeMock())
+    const res = await callPost({ ...VALID_BODY, participantName: 'x'.repeat(101) })
+    expect(res.status).toBe(400)
+  })
+
+  it('returns 400 when participantAge is a float', async () => {
+    ;(createAdminClient as MockFn).mockReturnValue({ from: jest.fn() })
+    ;(getStripe as MockFn).mockReturnValue(makeStripeMock())
+    const res = await callPost({ ...VALID_BODY, participantAge: 10.5 })
+    expect(res.status).toBe(400)
+  })
+
+  it('returns 400 when participantAge is out of range', async () => {
+    ;(createAdminClient as MockFn).mockReturnValue({ from: jest.fn() })
+    ;(getStripe as MockFn).mockReturnValue(makeStripeMock())
+    expect((await callPost({ ...VALID_BODY, participantAge: 0 })).status).toBe(400)
+    expect((await callPost({ ...VALID_BODY, participantAge: 100 })).status).toBe(400)
+  })
+
+  it('accepts a booking with no participantAge (adult player)', async () => {
+    setupHappyPath()
+    const res = await callPost({ ...VALID_BODY, participantAge: null })
+    expect(res.status).toBe(200)
+  })
+
+  it('persists participant_name and participant_age on the booking insert', async () => {
+    const { bookingChain } = setupHappyPath()
+    await callPost(VALID_BODY)
+    const insertArg = (bookingChain.insert as MockFn).mock.calls[0][0] as Record<string, unknown>
+    expect(insertArg.participant_name).toBe('Yuwin')
+    expect(insertArg.participant_age).toBe(10)
+  })
+
+  it('trims participant_name before persisting', async () => {
+    const { bookingChain } = setupHappyPath()
+    await callPost({ ...VALID_BODY, participantName: '  Yuwin  ' })
+    const insertArg = (bookingChain.insert as MockFn).mock.calls[0][0] as Record<string, unknown>
+    expect(insertArg.participant_name).toBe('Yuwin')
+  })
+
+  it('stashes participant_name and participant_age (as a string) in PI metadata', async () => {
+    const { stripeMock } = setupHappyPath()
+    await callPost(VALID_BODY)
+    const createArgs = (stripeMock.paymentIntents.create as MockFn).mock.calls[0][0] as {
+      metadata: Record<string, string>
+    }
+    expect(createArgs.metadata.participant_name).toBe('Yuwin')
+    expect(createArgs.metadata.participant_age).toBe('10')
+  })
+
+  it('omits participant_age from PI metadata when no age was given', async () => {
+    const { stripeMock } = setupHappyPath()
+    await callPost({ ...VALID_BODY, participantAge: null })
+    const createArgs = (stripeMock.paymentIntents.create as MockFn).mock.calls[0][0] as {
+      metadata: Record<string, string>
+    }
+    expect(createArgs.metadata.participant_name).toBe('Yuwin')
+    expect('participant_age' in createArgs.metadata).toBe(false)
   })
 })
 
