@@ -1,9 +1,16 @@
 # Crikly — Working Ethics & Collaboration Standards
 
-**Version:** 1.10
-**Last Updated:** 12 May 2026
-**Changed:** L-07-RM-NEXT-BAN — `rm -rf .next` permanently banned
-  from all Claude Code workflows. Two tasks on 11 May 2026
+**Version:** 1.11
+**Last Updated:** 2 July 2026
+**Changed:** DOCS-01 — environment discipline. Migration flow Steps 7–9
+  rewritten: task migrations are LOCAL ONLY; hosted `supabase db push`
+  is Lasith-only, and any Lasith-instructed hosted push requires
+  stating the linked project ref + full migration list first. "Hosted
+  dev" terminology replaced with staging (`gzehxfnlfogkhadejowo`). New
+  "Environment Ownership" section added (canonical rules in CLAUDE.md →
+  Environment & Deployment Discipline).
+  v1.10 (12 May 2026): L-07-RM-NEXT-BAN — `rm -rf .next` permanently
+  banned from all Claude Code workflows. Two tasks on 11 May 2026
   destroyed Turbopack's RocksDB cache (Next.js 16.2.1) and
   required a full `npm install` (3–5 min downtime) to recover.
   New "Banned Commands" section added; L-07 added to Process
@@ -99,22 +106,28 @@ Step 3 → Run: supabase start (or supabase db reset to wipe + reapply)
 Step 4 → Run: supabase migration up
 Step 5 → Verify the schema change with docker exec or Supabase Studio
 Step 6 → Run any related app code locally — confirm no errors
-Step 7 → ONLY THEN: supabase db push (to hosted dev) or commit + push to develop
+Step 7 → ONLY THEN: commit the migration file to the task branch
 Step 8 → Stop containers: supabase stop
-Step 9 → Verify hosted dev got it: supabase migration list — confirm
-         local and remote columns match for every migration. If they
-         don't match, STOP and reconcile before continuing.
 ```
+
+Task migrations are LOCAL ONLY. Claude Code never runs `supabase db push`
+against a hosted project (staging or production) — hosted pushes are
+Lasith-only operations. When Lasith explicitly instructs a hosted push,
+Claude Code must FIRST verify and state the linked project ref
+(`supabase projects list` / `supabase/.temp/project-ref`) and list every
+migration the push would apply (`supabase migration list`), then wait
+for confirmation. After any hosted push, confirm local and remote
+columns match for every migration — if they don't, STOP and reconcile.
 
 ### Why this matters
 
-- Hosted dev is shared. A broken migration breaks every preview deployment.
+- Staging (`gzehxfnlfogkhadejowo`) is shared. A broken migration breaks every preview deployment.
 - Local Postgres is disposable. You can wipe and rebuild it without consequences.
 - The fastest path to "shipped" is the path that catches problems early.
 
 ### Anti-patterns
 
-- Pushing migration SQL straight to hosted dev with `supabase db push` as a primary flow.
+- Running `supabase db push` against any hosted project (staging or production) without explicit Lasith instruction — ever.
 - Skipping `supabase migration up` because "it'll be fine."
 - Running migrations against production directly. Never.
 
@@ -957,6 +970,24 @@ Rules:
 
 ---
 
+## Environment Ownership
+
+Canonical rules live in CLAUDE.md → "Environment & Deployment
+Discipline". Summary — these are absolute:
+
+- Promotion path is LOCAL → STAGING → PRODUCTION. No skipping.
+- Lasith is the sole owner of: all pushes, merges to staging/main,
+  hosted `supabase db push`, `supabase link` changes, Vercel
+  deployments, and hosted environment variables.
+- Task migrations are LOCAL ONLY (`supabase db push --local` /
+  `supabase migration up`).
+- Before any Lasith-instructed hosted DB operation: verify and state
+  the linked project ref and list every migration the push would apply.
+- The Supabase CLI stays linked to staging (`gzehxfnlfogkhadejowo`)
+  by default. Never relink without Lasith's instruction.
+
+---
+
 ## Quality Gate — Before Any Commit
 
 ```
@@ -1515,6 +1546,6 @@ SHA-logging applies to bug fixes exactly as it does to feature tasks.
 
 ---
 
-*Crikly Working Ethics v1.10 — 12 May 2026 — L-07-RM-NEXT-BAN*
+*Crikly Working Ethics v1.11 — 2 July 2026 — DOCS-01 environment discipline*
 *Review after each phase completion.*
 *Any process change must be agreed with Lasith first.*
