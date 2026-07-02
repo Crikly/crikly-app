@@ -63,6 +63,20 @@ function parsePricePence(value: string | string[] | undefined, fallback: number)
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
 }
 
+// UX-16: participant name from the availability page. Trimmed and length-capped
+// to mirror the POST /api/guest/bookings validation (required there — an empty
+// name here still renders the page; the API rejects at submit).
+function parseParticipantName(value: string | string[] | undefined): string {
+  return (firstParam(value) ?? '').trim().slice(0, 100)
+}
+
+// UX-16: optional age — integer 1–99 or null, mirroring the API + DB CHECK.
+function parseParticipantAge(value: string | string[] | undefined): number | null {
+  const raw = firstParam(value)
+  const parsed = raw ? Number.parseInt(raw, 10) : NaN
+  return Number.isInteger(parsed) && parsed >= 1 && parsed <= 99 ? parsed : null
+}
+
 // ─── Display formatting ──────────────────────────────────────────────────────────
 
 // Parse a YYYY-MM-DD slot date at local noon so the weekday/day never shift
@@ -133,12 +147,22 @@ export default async function GuestBookingPage({
   const date = firstParam(sp.date)
   const startTime = firstParam(sp.startTime)
 
+  // UX-16: who the session is for — entered on the availability page, shown on
+  // the summary/confirmation, and persisted server-side at booking creation.
+  const participantName = parseParticipantName(sp.participant)
+  const participantAge = parseParticipantAge(sp.age)
+
   const summary: BookingSummary = {
     coachName: coach?.full_name ?? 'Your coach',
     sportLabel: sport?.sport_name ?? 'Coaching',
     sessionDate: formatSessionDate(date),
     sessionTime: formatSessionTime(startTime, durationMinutes),
     sessionType: sessionType === 'group' ? 'Group session' : '1-to-1 session',
+    participant: participantName
+      ? participantAge !== null
+        ? `${participantName} (age ${participantAge})`
+        : participantName
+      : undefined,
     sessionFeePence: pricePence,
     platformFeePence,
   }
@@ -150,6 +174,8 @@ export default async function GuestBookingPage({
     date: date ?? '',
     startTime: startTime ?? '',
     pricePence,
+    participantName,
+    participantAge,
   }
 
   return (

@@ -99,6 +99,8 @@ const CHECKOUT: GuestCheckoutParams = {
   date: '2026-06-27',
   startTime: '10:00',
   pricePence: 4000,
+  participantName: 'Yuwin',
+  participantAge: 10,
 }
 
 const COACH_ID = 'coach-abc-123'
@@ -285,6 +287,79 @@ describe('GuestBookingFlow — handlePay success', () => {
 
     await waitFor(() => {
       expect(screen.getByText("You're all booked!")).toBeInTheDocument()
+    })
+  })
+
+  it('sends participantName and participantAge in the booking POST body — UX-16', async () => {
+    const user = userEvent.setup()
+    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} checkout={CHECKOUT} />)
+
+    await user.click(screen.getAllByTestId('pay-button')[0])
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalled()
+    })
+    const [, init] = (global.fetch as jest.Mock).mock.calls[0] as [string, { body: string }]
+    const body = JSON.parse(init.body) as Record<string, unknown>
+    expect(body.participantName).toBe('Yuwin')
+    expect(body.participantAge).toBe(10)
+  })
+
+  // UX-16: the coach-profile "Book a session" card links to checkout WITHOUT
+  // participant params — the form must collect the name itself.
+  describe('participant fallback field (no participant in URL)', () => {
+    const NO_PARTICIPANT = { ...CHECKOUT, participantName: '', participantAge: null }
+
+    it('does NOT render the participant field when the URL supplied a name', () => {
+      render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} checkout={CHECKOUT} />)
+      expect(screen.queryByTestId('participant-name-input')).not.toBeInTheDocument()
+    })
+
+    it('renders the participant field when the URL did not supply a name', () => {
+      render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} checkout={NO_PARTICIPANT} />)
+      expect(screen.getByTestId('participant-name-input')).toBeInTheDocument()
+    })
+
+    it('blocks Pay with a field error (and no API call) when the name is empty', async () => {
+      const user = userEvent.setup()
+      render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} checkout={NO_PARTICIPANT} />)
+
+      await user.click(screen.getAllByTestId('pay-button')[0])
+
+      expect(screen.getByText("Add the player's name to continue.")).toBeInTheDocument()
+      expect(global.fetch).not.toHaveBeenCalled()
+    })
+
+    it('sends the typed name and age in the POST body', async () => {
+      const user = userEvent.setup()
+      render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} checkout={NO_PARTICIPANT} />)
+
+      await user.type(screen.getByTestId('participant-name-input'), 'Mia')
+      await user.type(screen.getByTestId('participant-age-input'), '9')
+      await user.click(screen.getAllByTestId('pay-button')[0])
+
+      await waitFor(() => {
+        expect(global.fetch).toHaveBeenCalled()
+      })
+      const [, init] = (global.fetch as jest.Mock).mock.calls[0] as [string, { body: string }]
+      const body = JSON.parse(init.body) as Record<string, unknown>
+      expect(body.participantName).toBe('Mia')
+      expect(body.participantAge).toBe(9)
+    })
+
+    it('sends participantAge null when the age is left blank', async () => {
+      const user = userEvent.setup()
+      render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} checkout={NO_PARTICIPANT} />)
+
+      await user.type(screen.getByTestId('participant-name-input'), 'Mia')
+      await user.click(screen.getAllByTestId('pay-button')[0])
+
+      await waitFor(() => {
+        expect(global.fetch).toHaveBeenCalled()
+      })
+      const [, init] = (global.fetch as jest.Mock).mock.calls[0] as [string, { body: string }]
+      const body = JSON.parse(init.body) as Record<string, unknown>
+      expect(body.participantAge).toBeNull()
     })
   })
 

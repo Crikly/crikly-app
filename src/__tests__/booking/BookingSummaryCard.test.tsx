@@ -62,6 +62,24 @@ describe('BookingSummaryCard — checkout variant', () => {
     expect(screen.getByText('1-to-1 technical session')).toBeInTheDocument()
   })
 
+  // UX-16: who the session is for
+  it('renders the participant row when participant is set', () => {
+    render(
+      <BookingSummaryCard summary={{ ...STUB, participant: 'Yuwin (age 10)' }} variant="checkout" />,
+    )
+    expect(screen.getByTestId('summary-participant')).toHaveTextContent('For Yuwin (age 10)')
+  })
+
+  it('omits the participant row when participant is not set', () => {
+    render(<BookingSummaryCard summary={STUB} variant="checkout" />)
+    expect(screen.queryByTestId('summary-participant')).not.toBeInTheDocument()
+  })
+
+  it('renders the participant row on the paid (confirmation) variant too', () => {
+    render(<BookingSummaryCard summary={{ ...STUB, participant: 'Yuwin (age 10)' }} variant="paid" />)
+    expect(screen.getByTestId('summary-participant')).toHaveTextContent('For Yuwin (age 10)')
+  })
+
   it('renders the session fee', () => {
     render(<BookingSummaryCard summary={STUB} variant="checkout" />)
     expect(screen.getByText('£40.00')).toBeInTheDocument()
