@@ -59,9 +59,9 @@ function EventBlock({ top, height, type, title, subtitle, sessionId, onCardClick
   // CHANGE 3: Left border accent by status
   switch (type) {
     case 'confirmed':
-      bgClass = 'bg-teal-50'
-      textClass = 'text-teal-800'
-      leftBorderClass = 'border-l-[3px] border-l-teal-600'
+      bgClass = 'bg-blue-50'
+      textClass = 'text-blue-800'
+      leftBorderClass = 'border-l-[3px] border-l-blue-500'
       break
     case 'programme':
       bgClass = 'bg-purple-100'
