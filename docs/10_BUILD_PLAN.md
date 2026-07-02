@@ -87,7 +87,7 @@ Everything needed before writing a single line of application code.
 | F-21 | Update docs/11_UX_PRINCIPLES.md — coach nav 6 tabs | Manual | 🟢 | ✅ |
 | F-22 | Update CLAUDE.md — fix stale refs, add coach requirements, branch rule | Manual | 🟢 | ✅ |
 | F-24 | Proper merge of feature/migrations into develop | Manual | 🟢 | ✅ |
-| F-25 | Create docs/16_DESIGN_WORKFLOW.md — Figma/v0/Windsurf workflow + colour tokens | Manual | 🟢 | ✅ |
+| F-25 | Create docs/19_DESIGN_WORKFLOW.md (was 16_ — renumbered in DOCS-01) — Figma/v0/Windsurf workflow + colour tokens | Manual | 🟢 | ✅ |
 
 **F-16 commit message:**
 ```
