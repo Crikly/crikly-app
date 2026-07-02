@@ -167,6 +167,13 @@ export interface GuestBookingConfirmationParams {
   sessionTime: string
   sessionType: string
   totalPence: number
+  /**
+   * UX-16: who the session is for (child, or the player themselves). Optional
+   * only because intents created before UX-16 carry no participant metadata —
+   * new bookings always have it.
+   */
+  participantName?: string
+  participantAge?: number
 }
 
 /**
@@ -180,6 +187,7 @@ export async function sendGuestBookingConfirmation(
   const {
     guestName, guestEmail, coachName, bookingReference,
     sessionDate, sessionTime, sessionType, totalPence,
+    participantName, participantAge,
   } = params
 
   const safeName = escapeHtml(guestName)
@@ -189,7 +197,15 @@ export async function sendGuestBookingConfirmation(
   const safeTime = escapeHtml(sessionTime)
   const safeType = escapeHtml(sessionType)
 
+  // UX-16: "Yuwin (age 10)" or just the name when no age was given.
+  const safeParticipant = participantName
+    ? escapeHtml(
+        participantAge ? `${participantName} (age ${participantAge})` : participantName,
+      )
+    : null
+
   const detailRows = [
+    ...(safeParticipant ? [{ label: 'Booking for', value: safeParticipant }] : []),
     { label: 'Coach', value: safeCoach },
     { label: 'Date', value: safeDate },
     { label: 'Time', value: safeTime },

@@ -133,6 +133,41 @@ describe('sendGuestBookingConfirmation — HTML content', () => {
     expect(html).not.toMatch(/View coach profile/i)
     expect(html).not.toMatch(/View in dashboard/i)
   })
+
+  // UX-16: the email must say who the session is for, not just who paid.
+  it('shows a "Booking for" row with name and age when both are given', async () => {
+    await sendGuestBookingConfirmation({
+      ...BASE_PARAMS,
+      participantName: 'Yuwin',
+      participantAge: 10,
+    })
+    const html = getHtml()
+    expect(html).toContain('Booking for')
+    expect(html).toContain('Yuwin (age 10)')
+  })
+
+  it('shows the "Booking for" row with name only when no age was given', async () => {
+    await sendGuestBookingConfirmation({ ...BASE_PARAMS, participantName: 'Yuwin' })
+    const html = getHtml()
+    expect(html).toContain('Booking for')
+    expect(html).toContain('Yuwin')
+    expect(html).not.toContain('(age')
+  })
+
+  it('omits the "Booking for" row for pre-UX-16 sends without a participant', async () => {
+    await sendGuestBookingConfirmation(BASE_PARAMS)
+    expect(getHtml()).not.toContain('Booking for')
+  })
+
+  it('escapes < > characters in participant name', async () => {
+    await sendGuestBookingConfirmation({
+      ...BASE_PARAMS,
+      participantName: '<script>alert(1)</script>',
+    })
+    const html = getHtml()
+    expect(html).not.toContain('<script>alert(1)</script>')
+    expect(html).toContain('&lt;script&gt;')
+  })
 })
 
 // ── XSS escaping ──────────────────────────────────────────────────────────────

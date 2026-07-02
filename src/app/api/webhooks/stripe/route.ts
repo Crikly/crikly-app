@@ -262,6 +262,11 @@ async function handlePaymentIntentSucceeded(intent: Stripe.PaymentIntent): Promi
   const booking = confirmed[0]
   const guestEmail = intent.metadata?.guest_email
   const guestName = intent.metadata?.guest_name
+  // UX-16: who the session is for, stashed at intent creation. Absent on
+  // intents created before UX-16 — the email then omits its "Booking for" row.
+  const participantName = intent.metadata?.participant_name || undefined
+  const participantAgeRaw = Number.parseInt(intent.metadata?.participant_age ?? '', 10)
+  const participantAge = Number.isInteger(participantAgeRaw) ? participantAgeRaw : undefined
 
   if (!guestEmail) {
     // No recipient (non-guest intent, or an older intent created before this
@@ -294,6 +299,8 @@ async function handlePaymentIntentSucceeded(intent: Stripe.PaymentIntent): Promi
     guestName: guestName || 'there',
     guestEmail,
     coachName,
+    participantName,
+    participantAge,
     bookingReference: booking.booking_reference,
     sessionDate: formatSessionDate(booking.session_date),
     sessionTime: formatSessionTime(booking.session_start_time, booking.session_end_time),

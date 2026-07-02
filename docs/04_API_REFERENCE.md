@@ -394,6 +394,8 @@ Guest (logged-out) checkout. Creates a provisional user, a `pending_payment` boo
   "date": "2026-06-27",
   "startTime": "10:00",
   "pricePence": 4000,
+  "participantName": "Yuwin",
+  "participantAge": 10,
   "idempotencyToken": "client-generated-uuid",
   "guest": {
     "fullName": "Alex Parent",
@@ -415,6 +417,8 @@ Guest (logged-out) checkout. Creates a provisional user, a `pending_payment` boo
 }
 ```
 On a retry carrying the same `idempotencyToken`, the existing booking + PaymentIntent are returned (no new rows created).
+
+**Participant (UX-16):** `participantName` is REQUIRED (trimmed, ≤100 chars) — who the session is for (a parent's child, or an adult player booking for themselves). `participantAge` is optional (integer 1–99). Both are persisted on `bookings.participant_name`/`participant_age` and stashed in the PaymentIntent metadata (`participant_name`, `participant_age` as a string) so the confirmation email can show a "Booking for" row.
 
 **Error responses:**
 ```

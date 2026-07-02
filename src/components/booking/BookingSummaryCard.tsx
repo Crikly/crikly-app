@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import Link from 'next/link'
-import { Calendar, Clock, User, Check, ArrowRight } from 'lucide-react'
+import { Calendar, Clock, User, UserRound, Check, ArrowRight } from 'lucide-react'
 import { Avatar } from '@/components/ui/Avatar'
 
 export interface BookingSummary {
@@ -9,6 +9,8 @@ export interface BookingSummary {
   sessionDate: string
   sessionTime: string
   sessionType: string
+  /** UX-16: who the session is for, pre-formatted — e.g. "Yuwin (age 10)". */
+  participant?: string
   /** Coach's fee in pence (BR-10). */
   sessionFeePence: number
   /** Platform commission in pence, added on top of coach fee (BR-01). */
@@ -85,6 +87,13 @@ export function BookingSummaryCard({ summary, variant, footer, changeHref }: Boo
           <User size={18} className="flex-shrink-0 text-neutral-400" aria-hidden="true" />
           <span className="text-[14.5px] text-[#1E293B]">{summary.sessionType}</span>
         </div>
+        {/* UX-16: who the session is for — shown on checkout AND confirmation */}
+        {summary.participant && (
+          <div className="flex items-center gap-2.5" data-testid="summary-participant">
+            <UserRound size={18} className="flex-shrink-0 text-neutral-400" aria-hidden="true" />
+            <span className="text-[14.5px] text-[#1E293B]">For {summary.participant}</span>
+          </div>
+        )}
       </div>
 
       {/* Change date/time — lets the guest jump back to the availability picker */}

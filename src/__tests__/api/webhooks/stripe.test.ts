@@ -423,6 +423,9 @@ describe('POST /api/webhooks/stripe — payment_intent.succeeded email (P-00c-EM
         booking_id: BOOKING_ID,
         guest_email: 'sarah@example.com',
         guest_name: 'Sarah Test',
+        // UX-16: who the session is for — stashed as strings at PI creation.
+        participant_name: 'Yuwin',
+        participant_age: '10',
       },
       last_payment_error: null,
       ...overrides,
@@ -440,11 +443,13 @@ describe('POST /api/webhooks/stripe — payment_intent.succeeded email (P-00c-EM
     bookingUpdateData?: unknown[] | null
     coachRow?: { display_name: string | null; user_profile_id: string | null } | null
     userProfileRow?: { full_name: string } | null
+    intentOverrides?: Record<string, unknown>
   } = {}) {
     const {
       bookingUpdateData = [BOOKING_WITH_EMAIL],
       coachRow = { display_name: 'Coach Davies', user_profile_id: null },
       userProfileRow = null,
+      intentOverrides = {},
     } = options
 
     const piChain: Record<string, MockFn> = {}
@@ -492,7 +497,7 @@ describe('POST /api/webhooks/stripe — payment_intent.succeeded email (P-00c-EM
 
     ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom })
 
-    const intent = makeIntentWithGuestEmail()
+    const intent = makeIntentWithGuestEmail(intentOverrides)
     const event = makeStripeEvent('payment_intent.succeeded', intent)
     const stripeMock = {
       webhooks: { constructEvent: jest.fn().mockReturnValue(event) },
@@ -517,6 +522,34 @@ describe('POST /api/webhooks/stripe — payment_intent.succeeded email (P-00c-EM
 
     const [params] = (sendBookingConfirmation as MockFn).mock.calls[0] as [Record<string, unknown>]
     expect(params.guestEmail).toBe('sarah@example.com')
+  })
+
+  it('passes participantName and participantAge (parsed to a number) from intent metadata — UX-16', async () => {
+    setupEmailMocks()
+
+    await callPost('{}')
+
+    const [params] = (sendBookingConfirmation as MockFn).mock.calls[0] as [Record<string, unknown>]
+    expect(params.participantName).toBe('Yuwin')
+    expect(params.participantAge).toBe(10)
+  })
+
+  it('passes undefined participant fields for pre-UX-16 intents without participant metadata', async () => {
+    setupEmailMocks({
+      intentOverrides: {
+        metadata: {
+          booking_id: BOOKING_ID,
+          guest_email: 'sarah@example.com',
+          guest_name: 'Sarah Test',
+        },
+      },
+    })
+
+    await callPost('{}')
+
+    const [params] = (sendBookingConfirmation as MockFn).mock.calls[0] as [Record<string, unknown>]
+    expect(params.participantName).toBeUndefined()
+    expect(params.participantAge).toBeUndefined()
   })
 
   it('passes guestName from intent.metadata.guest_name to sendBookingConfirmation', async () => {

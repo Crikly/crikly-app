@@ -44,6 +44,9 @@ interface BookingDetailData {
     full_name: string
     date_of_birth: string
   } | null
+  /** UX-16: guest-checkout snapshot of who the session is for (no profile row). */
+  participant_name: string | null
+  participant_age: number | null
   session_note: {
     id: string
     notes: string
@@ -393,7 +396,11 @@ export function BookingDetail() {
                   <div className="text-[13px] text-gray-500 font-medium mt-1 leading-snug">
                     {booking.child
                       ? `Parent · Booking for: ${booking.child.full_name} (age ${calculateAge(booking.child.date_of_birth)})`
-                      : 'Player booking'}
+                      : booking.participant_name
+                        ? `Booking for: ${booking.participant_name}${
+                            booking.participant_age !== null ? ` (age ${booking.participant_age})` : ''
+                          }`
+                        : 'Player booking'}
                   </div>
                 </div>
               </div>

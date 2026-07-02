@@ -4,8 +4,9 @@
 // Claude Design mock `availability-page.js` to React state). Two-column on
 // desktop (calendar left, booking panel right), single column + sticky bottom
 // bar on mobile. Surfaces BOTH 1-on-1 slots and group-programme sessions on one
-// calendar. Guest state only — multi-child, recurring booking and a multi-slot
-// basket are future features hinted at but disabled.
+// calendar. Guest state only — single participant per booking (UX-16);
+// multi-participant, recurring booking and a multi-slot basket are out of
+// scope for Block 0.
 
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -16,8 +17,6 @@ import {
   Users,
   Clock,
   Calendar,
-  Plus,
-  Lock,
   ShieldCheck,
   MapPin,
 } from 'lucide-react'
@@ -104,8 +103,8 @@ export function AvailabilityClient({
   const [selectedSlot, setSelectedSlot] = useState<GeneratedSlot | null>(null)
   const [selectedProgrammeId, setSelectedProgrammeId] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>('1to1')
-  const [childName, setChildName] = useState('')
-  const [childAge, setChildAge] = useState('')
+  const [participantName, setParticipantName] = useState('')
+  const [participantAge, setParticipantAge] = useState('')
   const [showError, setShowError] = useState(false)
 
   const selectedDate = useMemo(() => (selectedISO ? parseISO(selectedISO) : null), [selectedISO])
@@ -222,7 +221,8 @@ export function AvailabilityClient({
 
   const handleBook = () => {
     if (!hasSelection) return
-    if (!childName.trim() || !childAge) {
+    // UX-16: name is required; age is optional (adult players may omit it).
+    if (!participantName.trim()) {
       setShowError(true)
       return
     }
@@ -241,8 +241,9 @@ export function AvailabilityClient({
     } else if (selectedProgramme) {
       q.set('programme', selectedProgramme.id)
     }
-    q.set('child', childName.trim())
-    q.set('age', childAge)
+    // Param names mirror what the checkout page reads (UX-16).
+    q.set('participant', participantName.trim())
+    if (participantAge) q.set('age', participantAge)
     router.push(`/book/${coachId}?${q.toString()}`)
   }
 
@@ -579,74 +580,53 @@ export function AvailabilityClient({
             <h3 className="text-[16px] font-bold text-gray-900">Who is this for?</h3>
             <p className="text-[13px] text-gray-500 mt-1 mb-4">Tell us about the player. Used for this booking only.</p>
 
-            <div className="grid gap-3">
-              <div className="rounded-xl border border-gray-200 p-4">
-                <div className="grid grid-cols-[1fr_84px] gap-3">
-                  <div>
-                    <label htmlFor="child-name" className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-1.5">
-                      Child&apos;s name
-                    </label>
-                    <input
-                      id="child-name"
-                      type="text"
-                      autoComplete="off"
-                      placeholder="e.g. Sam"
-                      value={childName}
-                      onChange={e => {
-                        setChildName(e.target.value)
-                        setShowError(false)
-                      }}
-                      className={`w-full h-11 px-3.5 rounded-xl bg-gray-50 border text-[15px] text-gray-900 placeholder:text-gray-400 outline-none focus:bg-white focus:border-brand-600 transition-all ${
-                        showError && !childName.trim() ? 'border-danger' : 'border-gray-200'
-                      }`}
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="child-age" className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-1.5">
-                      Age
-                    </label>
-                    <select
-                      id="child-age"
-                      value={childAge}
-                      onChange={e => {
-                        setChildAge(e.target.value)
-                        setShowError(false)
-                      }}
-                      className={`w-full h-11 px-3 rounded-xl bg-gray-50 border text-[15px] text-gray-900 outline-none focus:bg-white focus:border-brand-600 transition-all ${
-                        showError && !childAge ? 'border-danger' : 'border-gray-200'
-                      }`}
-                    >
-                      <option value="" disabled>–</option>
-                      {Array.from({ length: 16 }, (_, i) => i + 3).map(age => (
-                        <option key={age} value={age}>{age}</option>
-                      ))}
-                    </select>
-                  </div>
+            <div className="rounded-xl border border-gray-200 p-4">
+              <div className="grid grid-cols-[1fr_84px] gap-3">
+                <div>
+                  <label htmlFor="participant-name" className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-1.5">
+                    Player&apos;s name
+                  </label>
+                  <input
+                    id="participant-name"
+                    type="text"
+                    autoComplete="off"
+                    placeholder="e.g. Sam"
+                    value={participantName}
+                    onChange={e => {
+                      setParticipantName(e.target.value)
+                      setShowError(false)
+                    }}
+                    className={`w-full h-11 px-3.5 rounded-xl bg-gray-50 border text-[15px] text-gray-900 placeholder:text-gray-400 outline-none focus:bg-white focus:border-brand-600 transition-all ${
+                      showError && !participantName.trim() ? 'border-danger' : 'border-gray-200'
+                    }`}
+                  />
                 </div>
-                {showError && (
-                  <p className="text-[12px] text-danger mt-2.5" role="alert">
-                    Add the player&apos;s name and age to continue.
-                  </p>
-                )}
+                <div>
+                  <label htmlFor="participant-age" className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-1.5">
+                    Age
+                  </label>
+                  <select
+                    id="participant-age"
+                    value={participantAge}
+                    onChange={e => {
+                      setParticipantAge(e.target.value)
+                      setShowError(false)
+                    }}
+                    className="w-full h-11 px-3 rounded-xl bg-gray-50 border border-gray-200 text-[15px] text-gray-900 outline-none focus:bg-white focus:border-brand-600 transition-all"
+                  >
+                    {/* UX-16: optional — adults booking for themselves may skip it */}
+                    <option value="">–</option>
+                    {Array.from({ length: 16 }, (_, i) => i + 3).map(age => (
+                      <option key={age} value={age}>{age}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
-
-              {/* Future hint — multi-child is a logged-in feature */}
-              <button
-                type="button"
-                disabled
-                aria-disabled="true"
-                className="w-full flex items-center gap-3 rounded-xl border border-dashed border-gray-300 px-4 py-3 text-left cursor-not-allowed bg-gray-50"
-              >
-                <span className="w-9 h-9 rounded-full bg-white border border-gray-200 flex items-center justify-center flex-shrink-0 text-gray-400">
-                  <Plus className="w-[18px] h-[18px]" />
-                </span>
-                <span className="min-w-0">
-                  <span className="block text-[13px] font-semibold text-gray-500">Add another child</span>
-                  <span className="flex items-center gap-1 text-[12px] text-gray-400 mt-0.5">
-                    <Lock className="w-3 h-3" /> Log in to book for multiple children
-                  </span>
-                </span>
-              </button>
+              {showError && (
+                <p className="text-[12px] text-danger mt-2.5" role="alert">
+                  Add the player&apos;s name to continue.
+                </p>
+              )}
             </div>
           </div>
 
@@ -663,7 +643,7 @@ export function AvailabilityClient({
                         {dayLabel(selectedISO)} · {selectedSlot.label}
                       </p>
                       <p className="text-[12px] text-gray-500 mt-0.5">
-                        1-to-1 · {sessionDurationMinutes} min{childName.trim() ? ` · ${childName.trim()}` : ''}
+                        1-to-1 · {sessionDurationMinutes} min{participantName.trim() ? ` · ${participantName.trim()}` : ''}
                       </p>
                       {/* UX-14: selected slot venue — same MapPin style as the time-picker buttons */}
                       {selectedSlot.venueName && (
@@ -678,7 +658,7 @@ export function AvailabilityClient({
                       <p className="text-[14px] font-semibold text-gray-900 leading-tight">{selectedProgramme.title}</p>
                       <p className="text-[12px] text-gray-500 mt-0.5">
                         {dayLabel(selectedISO)}{selectedProgramme.startTime ? ` · ${formatTimeLabel(selectedProgramme.startTime)}` : ''}
-                        {childName.trim() ? ` · ${childName.trim()}` : ''}
+                        {participantName.trim() ? ` · ${participantName.trim()}` : ''}
                       </p>
                     </>
                   ) : null}

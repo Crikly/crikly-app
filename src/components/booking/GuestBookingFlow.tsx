@@ -46,6 +46,10 @@ export interface GuestCheckoutParams {
   startTime: string
   /** Coach price in pence (re-verified server-side against coach_sports). */
   pricePence: number
+  /** UX-16: who the session is for — required by POST /api/guest/bookings. */
+  participantName: string
+  /** UX-16: optional age — children have it, adult players may not. */
+  participantAge: number | null
 }
 
 interface GuestForm {
@@ -87,6 +91,8 @@ interface GuestBookingFlowProps {
 interface ConfirmedState {
   bookingReference: string
   email: string
+  /** UX-16: formatted participant label — e.g. "Yuwin (age 10)". */
+  participant?: string
 }
 
 const stripePromise = getStripePromise()
@@ -224,7 +230,12 @@ export function GuestBookingFlow({ coachId, coachSlug, summary, checkout, initia
 
         {/* Paid summary */}
         <div className="mt-4 w-full text-left">
-          <BookingSummaryCard summary={summary} variant="paid" />
+          <BookingSummaryCard
+            summary={
+              confirmed.participant ? { ...summary, participant: confirmed.participant } : summary
+            }
+            variant="paid"
+          />
         </div>
 
         {/* Account nudge — mobile: stacked; desktop: single row with inline button */}
@@ -272,7 +283,9 @@ export function GuestBookingFlow({ coachId, coachSlug, summary, checkout, initia
         summary={summary}
         checkout={checkout}
         initialError={initialError}
-        onConfirmed={(bookingReference, email) => setConfirmed({ bookingReference, email })}
+        onConfirmed={(bookingReference, email, participant) =>
+          setConfirmed({ bookingReference, email, participant })
+        }
       />
     </Elements>
   )
@@ -286,7 +299,7 @@ interface GuestCheckoutFormProps {
   summary: BookingSummary
   checkout: GuestCheckoutParams
   initialError?: CheckoutError
-  onConfirmed: (bookingReference: string, email: string) => void
+  onConfirmed: (bookingReference: string, email: string, participant?: string) => void
 }
 
 function GuestCheckoutForm({
@@ -304,6 +317,33 @@ function GuestCheckoutForm({
   const [billingSame, setBillingSame] = useState<boolean>(true)
   const [error, setError] = useState<CheckoutError | null>(initialError ?? null)
   const [submitting, setSubmitting] = useState<boolean>(false)
+
+  // UX-16: the participant normally arrives via the availability page's URL
+  // params, but the coach-profile "Book a session" card links here directly
+  // without them. When that happens the form collects the name itself —
+  // POST /api/guest/bookings hard-requires it.
+  const needsParticipant = checkout.participantName.trim().length === 0
+  const [participantName, setParticipantName] = useState<string>(checkout.participantName)
+  const [participantAge, setParticipantAge] = useState<string>(
+    checkout.participantAge !== null ? String(checkout.participantAge) : '',
+  )
+  const [participantError, setParticipantError] = useState<boolean>(false)
+
+  /** Participant fields as the API expects them (age null unless a valid 1–99 int). */
+  function participantPayload(): { participantName: string; participantAge: number | null } {
+    const age = Number.parseInt(participantAge, 10)
+    return {
+      participantName: participantName.trim(),
+      participantAge: Number.isInteger(age) && age >= 1 && age <= 99 ? age : null,
+    }
+  }
+
+  /** "Yuwin (age 10)" for the summary card + confirmation view; undefined when unset. */
+  function participantLabel(): string | undefined {
+    const { participantName: name, participantAge: age } = participantPayload()
+    if (!name) return undefined
+    return age !== null ? `${name} (age ${age})` : name
+  }
 
   // Stable per-checkout idempotency token. A retried submit (poor signal, double
   // tap, card-path + wallet-path race) reuses this token so the server returns
@@ -371,6 +411,7 @@ function GuestCheckoutForm({
           date: checkout.date,
           startTime: checkout.startTime,
           pricePence: checkout.pricePence,
+          ...participantPayload(),
           idempotencyToken,
           guest,
         }),
@@ -401,6 +442,12 @@ function GuestCheckoutForm({
   // Card payment via the Payment Element.
   async function handlePay(): Promise<void> {
     if (!stripe || !elements || submitting) return
+    // UX-16: the API rejects a missing participant name — catch it here with a
+    // field-level message instead of a misleading generic payment error.
+    if (!participantName.trim()) {
+      setParticipantError(true)
+      return
+    }
     setError(null)
     setSubmitting(true)
 
@@ -452,12 +499,19 @@ function GuestCheckoutForm({
       return
     }
 
-    onConfirmed(created.bookingReference, form.email)
+    onConfirmed(created.bookingReference, form.email, participantLabel())
   }
 
   // Wallet payment (Apple Pay / Google Pay) via the Express Checkout Element.
   async function handleExpressConfirm(event: StripeExpressCheckoutElementConfirmEvent): Promise<void> {
     if (!stripe || !elements || submitting) {
+      event.paymentFailed({ reason: 'fail' })
+      return
+    }
+    // UX-16: same guard as handlePay — the wallet sheet can be tapped before
+    // the participant field is filled.
+    if (!participantName.trim()) {
+      setParticipantError(true)
       event.paymentFailed({ reason: 'fail' })
       return
     }
@@ -492,7 +546,7 @@ function GuestCheckoutForm({
       return
     }
 
-    onConfirmed(created.bookingReference, billing?.email || form.email)
+    onConfirmed(created.bookingReference, billing?.email || form.email, participantLabel())
   }
 
   // ── Shared UI fragments ────────────────────────────────────────────────────
@@ -588,12 +642,59 @@ function GuestCheckoutForm({
 
         {/* ① Summary — DOM-first → mobile top; desktop col-2 row-1, sticky */}
         <div className="lg:col-start-2 lg:row-start-1 lg:sticky lg:top-24">
-          {/* changeHref lets the guest pick a different slot via the availability picker */}
-          <BookingSummaryCard summary={summary} variant="checkout" changeHref={availabilityHref} />
+          {/* changeHref lets the guest pick a different slot via the availability picker.
+              Participant merged live so a name typed below shows in the summary (UX-16). */}
+          <BookingSummaryCard
+            summary={
+              participantLabel() ? { ...summary, participant: participantLabel() } : summary
+            }
+            variant="checkout"
+            changeHref={availabilityHref}
+          />
         </div>
 
         {/* ② Form column — desktop col-1, spans both rows */}
         <div className="flex flex-col gap-6 lg:col-start-1 lg:row-start-1 lg:row-span-2 lg:gap-5">
+
+          {/* Who is this for? — only when the availability page didn't supply it (UX-16) */}
+          {needsParticipant && (
+            <section className="flex flex-col">
+              <div className="flex flex-col gap-[14px] lg:gap-4 lg:rounded-[12px] lg:border lg:border-neutral-100 lg:bg-white lg:p-6">
+                <div>
+                  <h2 className="text-base font-semibold tracking-[-0.01em] text-neutral-900 lg:text-lg">
+                    Who is this for?
+                  </h2>
+                  <p className="mt-1 text-[13px] text-neutral-600">
+                    Tell us about the player. Used for this booking only.
+                  </p>
+                </div>
+                <div className="grid grid-cols-[1fr_120px] gap-3 lg:gap-4">
+                  <Input
+                    label="Player's name"
+                    placeholder="e.g. Sam"
+                    autoComplete="off"
+                    data-testid="participant-name-input"
+                    value={participantName}
+                    error={participantError ? "Add the player's name to continue." : undefined}
+                    onChange={(e) => {
+                      setParticipantName(e.target.value)
+                      setParticipantError(false)
+                    }}
+                  />
+                  <Input
+                    label="Age"
+                    placeholder="Optional"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    maxLength={2}
+                    data-testid="participant-age-input"
+                    value={participantAge}
+                    onChange={(e) => setParticipantAge(e.target.value.replace(/\D/g, ''))}
+                  />
+                </div>
+              </div>
+            </section>
+          )}
 
           {/* Your details */}
           <section className="flex flex-col">
