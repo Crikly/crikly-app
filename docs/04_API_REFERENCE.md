@@ -1,7 +1,8 @@
 # Crikly — API Reference
 
-**Version:** 1.0
-**Last Updated:** March 2026
+**Version:** 1.1
+**Last Updated:** July 2026
+**Changed:** BUG-19 Phase 1 — `booked_slots` added to GET /api/coaches/[id]/availability; slot-validation 409s (`date_blocked`, `outside_booking_window`, `slot_not_available`, expanded `slot_taken`) added to POST /api/guest/bookings
 
 This document is the single source of truth for all API routes.
 Update this file in the same commit as every new or modified route.
@@ -249,6 +250,9 @@ sport_id    UUID (optional) — filters to templates for this sport or all-sport
     }
   ],
   "blocked_dates": ["2026-04-19", "2026-04-20"],
+  "booked_slots": [
+    { "date": "2026-07-20", "start_time": "10:00", "end_time": "11:00" }
+  ],
   "booking_policy": {
     "cancellation_window_hours": 24,
     "min_advance_hours": 24,
@@ -260,6 +264,7 @@ sport_id    UUID (optional) — filters to templates for this sport or all-sport
 **Notes:**
 - `availability` contains weekly recurring templates (active only)
 - `blocked_dates` are expanded from ranges to individual YYYY-MM-DD strings
+- `booked_slots` (BUG-14 / BUG-19 Phase 1) are the coach's live bookings as busy intervals so the calendar suppresses booked slots. Statuses `pending_payment`/`confirmed`/`completed` hold a slot; cancelled/no-show/soft-deleted rows are excluded (mirrors migration 034's slot-holding predicate). Window: today → the coach's max-advance horizon, intersected with `from_date`/`to_date`. Privacy: intervals ONLY — no booking id, participant data, or status is ever returned. Read server-side via the admin client (`bookings` has no public SELECT policy) — a deliberate, Lasith-approved exception (BUG-19 Phase 1 Step 0)
 - `sport_id` filter matches templates for that sport OR templates with no sport (applies to all)
 - `price_override_pence` is the per-block price override in pence, or `null` to use the coach's sport default. Display only — the booking server re-derives the authoritative price (BUG-08 / BUG-09)
 - `venue_name` is the block's resolved venue label — the free-text `venue_name`, else the `coach_venues.name` referenced by `coach_venue_id`, else `null`. Display only (UX-09)
@@ -428,10 +433,17 @@ On a retry carrying the same `idempotencyToken`, the existing booking + PaymentI
 400 invalid_session_time      start time + duration is malformed / crosses midnight
 404 coach_unavailable         coach not found, not live, paused, or suspended
 409 price_mismatch            client pricePence ≠ server canonical price (tamper/stale)
-409 slot_taken                slot already booked (unique slot constraint)
+409 date_blocked              the coach blocked this date (blocked_dates)
+409 outside_booking_window    past date, beyond max_advance_days, or inside min_advance_hours
+409 slot_taken                slot held by a live booking or programme session (`reason`
+                              names the conflict); also the migration-034 unique-index
+                              race backstop at insert time
+409 slot_not_available        time is not inside any active availability block that date
 502 payment_init_failed       Stripe PaymentIntent could not be created
 500 internal_error            DB failure (rolls back via soft-delete — no orphan rows)
 ```
+
+**Slot validation (BUG-19 Phase 1 / BUG-21):** before any money object is created, the requested slot must be one the public calendar would offer — computed with the same `bookableSlots()` function (`src/lib/availability/slots.ts`): inside an active availability block (recurring or ad-hoc; deliberately sport-unfiltered, matching the calendar), not on a blocked date, inside the coach's advance windows, and not overlapping a programme session (persisted or legacy recurring pattern) or a live booking — including overlapping-but-unequal start times, which the unique index alone cannot catch. All four slot 409s fire before the provisional user, booking row, and PaymentIntent exist.
 
 **Business rules applied:**
 - BR-01: Commission read from `platform_config`, added on top of the coach price. The client `pricePence` is re-verified server-side and never trusted for the charge. The canonical coach price is the `coach_sports` sport default, except for `individual` sessions where the matching `availability_templates` block (the one whose window contains `startTime`) supplies a `price_override_pence` — overrides apply to 1-on-1 bookings only; group bookings always use the sport default (BUG-09).

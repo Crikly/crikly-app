@@ -30,12 +30,28 @@ import {
 import type { DayProgramme } from './_data/programmeSchedule'
 import { hhmmToMinutes, type Interval } from '@/lib/availability/overlap'
 
+/**
+ * BUG-14: a live booking's occupied interval, as shaped by the availability
+ * API's booked_slots field — intervals only, never booking identity. Statuses
+ * pending_payment / confirmed / completed hold the slot (migration 034's
+ * slot-holding predicate); cancelled and soft-deleted rows are never sent.
+ */
+export interface BookedSlot {
+  /** 'YYYY-MM-DD' */
+  date: string
+  /** 'HH:MM' (24h) */
+  start_time: string
+  /** 'HH:MM' (24h) */
+  end_time: string
+}
+
 interface Props {
   coachId: string
   pricePence: number | null
   sessionDurationMinutes: number
   templates: SlotTemplate[]
   blockedDates: string[]
+  bookedSlots: BookedSlot[]
   minAdvanceHours: number
   maxAdvanceDays: number
   cancellationWindowHours: number
@@ -77,6 +93,7 @@ export function AvailabilityClient({
   sessionDurationMinutes,
   templates,
   blockedDates,
+  bookedSlots,
   minAdvanceHours,
   maxAdvanceDays,
   cancellationWindowHours,
@@ -122,6 +139,31 @@ export function AvailabilityClient({
     [programmesByDate],
   )
 
+  // BUG-14: live bookings as minute-intervals per date. Merged with programme
+  // sessions below so a booked slot disappears from the picker exactly like a
+  // programme collision — and reappears on the next page load once the booking
+  // is cancelled (the API stops sending its interval).
+  const bookedIntervalsByDate = useMemo(() => {
+    const map: Record<string, Interval[]> = {}
+    for (const b of bookedSlots) {
+      ;(map[b.date] ??= []).push({
+        startMinutes: hhmmToMinutes(b.start_time),
+        endMinutes: hhmmToMinutes(b.end_time),
+      })
+    }
+    return map
+  }, [bookedSlots])
+
+  // The single busy-interval feed for bookableSlots: programme sessions
+  // (BUG-16) + live bookings (BUG-14).
+  const busyIntervalsFor = useMemo(
+    () => (iso: string): Interval[] => [
+      ...programmeIntervalsFor(iso),
+      ...(bookedIntervalsByDate[iso] ?? []),
+    ],
+    [programmeIntervalsFor, bookedIntervalsByDate],
+  )
+
   const slotsFor = useMemo(
     () => (date: Date): GeneratedSlot[] =>
       bookableSlots(
@@ -132,9 +174,9 @@ export function AvailabilityClient({
         maxAdvanceDays,
         now,
         sessionDurationMinutes,
-        programmeIntervalsFor(localISODate(date)),
+        busyIntervalsFor(localISODate(date)),
       ),
-    [templates, blockedSet, minAdvanceHours, maxAdvanceDays, now, sessionDurationMinutes, programmeIntervalsFor],
+    [templates, blockedSet, minAdvanceHours, maxAdvanceDays, now, sessionDurationMinutes, busyIntervalsFor],
   )
 
   const slots = useMemo<GeneratedSlot[]>(

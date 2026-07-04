@@ -100,19 +100,32 @@ function recurringMatches(prog: ProgrammeRow, isoDate: string): boolean {
  *
  * @param opts.excludeAvailabilityBlockId omit a template row (PATCH self-exclusion)
  * @param opts.excludeProgrammeId omit a programme's sessions (PATCH self-exclusion)
+ * @param opts.sources restrict which surfaces count as busy. Omitted = all
+ *   (the coach-side BUG-16/17/18 guards, unchanged). The guest bookings route
+ *   (BUG-19 Phase 1) passes ['programme', 'booking']: for a 1-on-1 booking an
+ *   availability template is the VALID zone, not a conflict, so template
+ *   sources must be excluded there.
  */
 export async function getCoachCommitments(
   supabase: Client,
   coachProfileId: string,
   isoDate: string,
-  opts: { excludeAvailabilityBlockId?: string; excludeProgrammeId?: string } = {},
+  opts: {
+    excludeAvailabilityBlockId?: string
+    excludeProgrammeId?: string
+    sources?: readonly CommitmentSource[]
+  } = {},
 ): Promise<Commitment[]> {
   const dow = weekdayOf(isoDate)
   const commitments: Commitment[] = []
+  const include = (s: CommitmentSource): boolean => !opts.sources || opts.sources.includes(s)
 
   // ── 1. availability_templates (recurring by weekday + ad-hoc by specific_date) ──
   // Sport-agnostic by design: a busy slot occupies the coach regardless of sport.
-  const { data: templates } = await supabase
+  // Skipped entirely when neither template source is requested (no wasted query).
+  const { data: templates } = !include('recurring') && !include('ad_hoc')
+    ? { data: [] }
+    : await supabase
     .from('availability_templates')
     .select('id, day_of_week, start_time, end_time, is_recurring, specific_date')
     .eq('coach_profile_id', coachProfileId)
@@ -121,6 +134,7 @@ export async function getCoachCommitments(
   for (const t of (templates ?? []) as AvailabilityRow[]) {
     if (opts.excludeAvailabilityBlockId && t.id === opts.excludeAvailabilityBlockId) continue
     const isAdHoc = t.is_recurring === false
+    if (!include(isAdHoc ? 'ad_hoc' : 'recurring')) continue
     if (isAdHoc) {
       if (t.specific_date !== isoDate) continue
     } else {
@@ -138,7 +152,9 @@ export async function getCoachCommitments(
   // Include draft/active/full (the coach's real intended schedule); exclude
   // completed/cancelled and soft-deleted. Mirrors the calendar's persisted-else-
   // recurring resolution per programme (Decision A).
-  const { data: programmes } = await supabase
+  const { data: programmes } = !include('programme')
+    ? { data: [] }
+    : await supabase
     .from('group_programmes')
     .select('id, day_of_week, days_of_week, start_time, duration_minutes, starts_at, ends_at')
     .eq('coach_profile_id', coachProfileId)
@@ -192,7 +208,9 @@ export async function getCoachCommitments(
   // ── 3. confirmed 1-on-1 bookings on isoDate ──
   // Non-cancelled, non-no-show, not soft-deleted (mirrors the migration-034
   // partial-unique-index philosophy: freed/cancelled slots don't occupy time).
-  const { data: bookings } = await supabase
+  const { data: bookings } = !include('booking')
+    ? { data: [] }
+    : await supabase
     .from('bookings')
     .select('session_start_time, session_end_time')
     .eq('coach_profile_id', coachProfileId)
