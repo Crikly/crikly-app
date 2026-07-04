@@ -2,7 +2,9 @@
 // override (price_override_pence) so the availability time picker can price a
 // slot instead of always falling back to the coach's sport default.
 
-import { bookableSlots, type SlotTemplate } from '@/app/coaches/[id]/availability/_components/_data/slots'
+// BUG-19 Phase 1: canonical home is src/lib/availability/slots.ts (the old
+// _components/_data path is a re-export shim kept for existing UI imports).
+import { bookableSlots, type SlotTemplate } from '@/lib/availability/slots'
 
 // A fixed "now" well before the slots so the min-advance window never filters
 // them out, and a target date on the matching weekday.
@@ -182,5 +184,45 @@ describe('bookableSlots — programme collision suppression (BUG-16)', () => {
       { startMinutes: 9 * 60, endMinutes: 15 * 60 },
     ])
     expect(slots).toHaveLength(0)
+  })
+})
+
+describe('bookableSlots — booked-slot suppression (BUG-14)', () => {
+  // Busy intervals are source-agnostic: live bookings (pending_payment /
+  // confirmed / completed — migration 034's slot-holding predicate) flow through
+  // the same suppression as programme sessions. These cases document the BUG-14
+  // read-side semantics specifically.
+  const wholeDay = () => sunday({ start_time: '09:00', end_time: '15:00' })
+
+  it('suppresses a slot held by a live booking at the same start time', () => {
+    // A confirmed 10:00–11:00 booking removes exactly the 10:00 slot.
+    const slots = bookableSlots(SUNDAY, [wholeDay()], new Set(), 0, 60, NOW, 60, [
+      { startMinutes: 10 * 60, endMinutes: 11 * 60 },
+    ])
+    expect(slots.map(s => s.time)).toEqual(['09:00', '11:00', '12:00', '13:00', '14:00'])
+  })
+
+  it('suppresses overlapping slots even when the booking start is UNEQUAL (034 index gap)', () => {
+    // A 09:30–10:30 booking (e.g. from another sport's 90-min grid) must kill
+    // both the 09:00 and 10:00 slots — exact-start matching would miss it.
+    const slots = bookableSlots(SUNDAY, [wholeDay()], new Set(), 0, 60, NOW, 60, [
+      { startMinutes: 9 * 60 + 30, endMinutes: 10 * 60 + 30 },
+    ])
+    expect(slots.map(s => s.time)).toEqual(['11:00', '12:00', '13:00', '14:00'])
+  })
+
+  it('frees the slot again when the booking is cancelled (interval no longer passed)', () => {
+    // Cancellation removes the row from the 034 predicate, so the caller stops
+    // passing its interval — the slot reappears with no special-casing here.
+    const slots = bookableSlots(SUNDAY, [wholeDay()], new Set(), 0, 60, NOW, 60, [])
+    expect(slots.map(s => s.time)).toContain('10:00')
+  })
+
+  it('merges booking and programme intervals from mixed sources', () => {
+    const slots = bookableSlots(SUNDAY, [wholeDay()], new Set(), 0, 60, NOW, 60, [
+      { startMinutes: 10 * 60, endMinutes: 11 * 60 }, // booking
+      { startMinutes: 13 * 60, endMinutes: 14 * 60 }, // programme session
+    ])
+    expect(slots.map(s => s.time)).toEqual(['09:00', '11:00', '12:00', '14:00'])
   })
 })

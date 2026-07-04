@@ -13,7 +13,14 @@ jest.mock('next/headers', () => ({
   })),
 }))
 
+// BUG-19 Phase 1 (BUG-14): the route reads live booked slots via the admin
+// client (bookings has no public SELECT policy — Lasith-approved exception).
+jest.mock('@/lib/supabase/admin', () => ({
+  createAdminClient: jest.fn(),
+}))
+
 import { createServerClient } from '@supabase/ssr'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 // ─── Mock helpers ─────────────────────────────────────────────────────────────
 
@@ -27,12 +34,27 @@ function makeChain() {
   return c
 }
 
+// The bookings read chains .select().eq().gte().lte().is().not() and is awaited
+// directly, so the chain must be thenable.
+function makeBookingsChain(result: { data: unknown; error: unknown }) {
+  const c: Record<string, unknown> = {}
+  for (const m of ['select', 'eq', 'neq', 'is', 'in', 'not', 'gte', 'lte', 'or', 'order', 'limit']) {
+    c[m] = jest.fn(() => c)
+  }
+  c.then = (resolve: (r: unknown) => void) => resolve(result)
+  return c
+}
+
 const mockFrom = jest.fn()
 const mockSupabase = { from: mockFrom }
+const mockAdminFrom = jest.fn()
 
 beforeEach(() => {
   jest.clearAllMocks()
   ;(createServerClient as jest.Mock).mockReturnValue(mockSupabase)
+  ;(createAdminClient as jest.Mock).mockReturnValue({ from: mockAdminFrom })
+  // Default: no live bookings. Tests override with their own rows.
+  mockAdminFrom.mockImplementation(() => makeBookingsChain({ data: [], error: null }))
 })
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -127,6 +149,7 @@ describe('GET /api/coaches/[id]/availability — success', () => {
     const data = await res.json()
     expect(data).toHaveProperty('availability')
     expect(data).toHaveProperty('blocked_dates')
+    expect(data).toHaveProperty('booked_slots')
     expect(data).toHaveProperty('booking_policy')
     expect(data.booking_policy.cancellation_window_hours).toBe(24)
     // BUG-08: the per-block price override must be surfaced so the time picker
@@ -336,6 +359,87 @@ describe('GET /api/coaches/[id]/availability — venue resolution (UX-09)', () =
         c.in = jest.fn(() => Promise.resolve({ data: null, error: { message: 'db error' } }))
         return c
       })
+
+    const res = await callGet(COACH_UUID)
+    expect(res.status).toBe(500)
+  })
+})
+
+// ─── Booked slots (BUG-14 / BUG-19 Phase 1) ───────────────────────────────────
+//
+// Live bookings must surface as busy intervals so the public calendar stops
+// rendering booked slots as bookable. Privacy: intervals ONLY — no booking ids,
+// participant data, or status may leave the server.
+
+describe('GET /api/coaches/[id]/availability — booked_slots (BUG-14)', () => {
+  // Queues the three RLS-client reads (coach → templates → blocked_dates).
+  function mockBaseReads() {
+    mockFrom
+      .mockImplementationOnce(() => {
+        const c = makeChain()
+        c.maybeSingle.mockResolvedValue({
+          data: { cancellation_window_hours: 24, min_advance_hours: 12, max_advance_days: 60 },
+          error: null,
+        })
+        return c
+      })
+      .mockImplementationOnce(() => {
+        const c = makeChain()
+        let eqCount = 0
+        c.eq = jest.fn(() => {
+          eqCount++
+          if (eqCount >= 2) return Promise.resolve({ data: [], error: null })
+          return c
+        })
+        return c
+      })
+      .mockImplementationOnce(() => {
+        const c = makeChain()
+        c.eq = jest.fn(() => Promise.resolve({ data: [], error: null }))
+        return c
+      })
+  }
+
+  it('returns booked slots as HH:MM intervals with ONLY date/start/end fields', async () => {
+    mockBaseReads()
+    mockAdminFrom.mockImplementationOnce(() =>
+      makeBookingsChain({
+        data: [
+          { session_date: '2026-07-20', session_start_time: '10:00:00', session_end_time: '11:00:00' },
+        ],
+        error: null,
+      }),
+    )
+
+    const res = await callGet(COACH_UUID)
+    expect(res.status).toBe(200)
+    const data = await res.json()
+    expect(data.booked_slots).toEqual([
+      { date: '2026-07-20', start_time: '10:00', end_time: '11:00' },
+    ])
+    // Privacy shape: exactly these three keys, nothing else (no id, no
+    // participant_name, no status).
+    expect(Object.keys(data.booked_slots[0]).sort()).toEqual(['date', 'end_time', 'start_time'])
+    // The read went through the admin client, against bookings.
+    expect(mockAdminFrom).toHaveBeenCalledWith('bookings')
+  })
+
+  it('applies the migration-034 slot-holding predicate (soft-deletes and cancellations excluded)', async () => {
+    mockBaseReads()
+    const chain = makeBookingsChain({ data: [], error: null })
+    mockAdminFrom.mockImplementationOnce(() => chain)
+
+    const res = await callGet(COACH_UUID)
+    expect(res.status).toBe(200)
+    expect(chain.is).toHaveBeenCalledWith('deleted_at', null)
+    expect(chain.not).toHaveBeenCalledWith('status', 'in', '(cancelled_parent,cancelled_coach,no_show)')
+  })
+
+  it('returns 500 when the booked-slots query errors', async () => {
+    mockBaseReads()
+    mockAdminFrom.mockImplementationOnce(() =>
+      makeBookingsChain({ data: null, error: { message: 'db error' } }),
+    )
 
     const res = await callGet(COACH_UUID)
     expect(res.status).toBe(500)

@@ -15,6 +15,10 @@
 //   - Slot conflict → provisional user soft-deleted before return.
 //   - Stripe failure → booking + provisional user soft-deleted.
 //   - Idempotency: existing payment_intents row → returns same booking/PI.
+//   - BUG-19 Phase 1 / BUG-21: the requested slot must be one the public
+//     calendar would render (template membership, blocked dates, advance
+//     windows, programme sessions, existing bookings) — specific 409s BEFORE
+//     any provisional user, booking row, or Stripe PaymentIntent is created.
 
 // ── Module mocks (must appear before any imports) ─────────────────────────────
 
@@ -59,7 +63,7 @@ function makeChain(defaults: { data?: unknown; error?: unknown } = {}) {
 function makeListChain(defaults: { data?: unknown; error?: unknown } = {}) {
   const result = { data: defaults.data ?? [], error: defaults.error ?? null }
   const chain: Record<string, MockFn> & { then?: unknown } = {}
-  for (const m of ['select', 'eq', 'is', 'or', 'order', 'limit', 'gte', 'lte']) {
+  for (const m of ['select', 'eq', 'neq', 'is', 'in', 'not', 'or', 'order', 'limit', 'gte', 'lte']) {
     chain[m] = jest.fn(() => chain)
   }
   chain.then = (resolve: (v: unknown) => unknown) => resolve(result)
@@ -71,6 +75,68 @@ function makeListChain(defaults: { data?: unknown; error?: unknown } = {}) {
 // these rows exercise: VALID_BODY.startTime '10:00' falls inside 09:00–12:00.
 function templateRow(over: Record<string, unknown> = {}) {
   return { start_time: '09:00:00', end_time: '12:00:00', price_override_pence: 7500, ...over }
+}
+
+// ── BUG-19 Phase 1 fixtures — slot validation ─────────────────────────────────
+//
+// The route now validates the requested slot against real availability, so the
+// fixture date must be genuinely bookable at test runtime: N days ahead (inside
+// COACH_ROW.max_advance_days, clear of min_advance_hours), with a recurring
+// membership template on that date's weekday. Dynamic — never a hardcoded date
+// that silently slides into the past.
+
+function futureDateISO(daysAhead: number): string {
+  const d = new Date()
+  d.setDate(d.getDate() + daysAhead)
+  const y = d.getFullYear()
+  const mo = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${y}-${mo}-${dd}`
+}
+
+function weekdayOf(iso: string): number {
+  const [y, m, d] = iso.split('-').map(Number)
+  return new Date(y, m - 1, d).getDay()
+}
+
+const BOOKING_DATE = futureDateISO(21)
+const BOOKING_DOW = weekdayOf(BOOKING_DATE)
+
+// The 3c membership read: a recurring 09:00–12:00 block on the booking's
+// weekday. With a 60-min session this generates slots 09:00 / 10:00 / 11:00 —
+// VALID_BODY.startTime '10:00' is bookable.
+const MEMBERSHIP_TEMPLATE = {
+  day_of_week: BOOKING_DOW,
+  start_time: '09:00:00',
+  end_time: '12:00:00',
+  is_recurring: true,
+  specific_date: null,
+}
+
+// The reads the 3c validation block performs after the price check, in route
+// order: availability_templates (membership) → blocked_dates → then
+// getCoachCommitments with sources ['programme','booking'] reads
+// group_programmes, group_programme_sessions (only when programmes is
+// non-empty), and bookings. Its availability_templates read is skipped by the
+// sources filter.
+function makeValidationChains(over: {
+  membership?: unknown[]
+  blocked?: unknown[]
+  programmes?: unknown[]
+  sessions?: unknown[]
+  bookings?: unknown[]
+} = {}) {
+  const programmes = over.programmes ?? []
+  const chains = [
+    makeListChain({ data: over.membership ?? [MEMBERSHIP_TEMPLATE] }), // availability_templates (3c membership)
+    makeListChain({ data: over.blocked ?? [] }),                       // blocked_dates
+    makeListChain({ data: programmes }),                               // group_programmes (commitments)
+  ]
+  if (programmes.length > 0) {
+    chains.push(makeListChain({ data: over.sessions ?? [] }))          // group_programme_sessions (commitments)
+  }
+  chains.push(makeListChain({ data: over.bookings ?? [] }))            // bookings (commitments busy read)
+  return chains
 }
 
 // ── Stripe mock builder ───────────────────────────────────────────────────────
@@ -94,7 +160,7 @@ const VALID_BODY = {
   coachId: '11111111-1111-4111-8111-111111111111',
   sportId: '22222222-2222-4222-8222-222222222222',
   sessionType: 'individual',
-  date: '2026-08-15',
+  date: BOOKING_DATE,
   startTime: '10:00',
   pricePence: 6000,
   participantName: 'Yuwin',
@@ -113,6 +179,11 @@ const VALID_BODY = {
 const COACH_ROW = {
   id: '11111111-1111-4111-8111-111111111111',
   cancellation_window_hours: 24,
+  // BUG-19 Phase 1: the slot validation reads the coach's advance window.
+  // 90 days comfortably contains BOOKING_DATE (21 days out); 12 hours never
+  // filters a 3-week-ahead slot.
+  min_advance_hours: 12,
+  max_advance_days: 90,
   is_profile_live: true,
   is_paused: false,
   is_suspended: false,
@@ -160,13 +231,17 @@ function setupHappyPath() {
   //   2. coach_profiles         — coach lookup → returns COACH_ROW
   //   3. coach_sports           — sport lookup → returns COACH_SPORT_ROW
   //   4. availability_templates — BUG-09 override lookup (individual only) → []
-  //   5. platform_config        — commission rate → returns PLATFORM_CONFIG_ROW
-  //   6. user_profiles          — insert provisional user → returns PROFILE_ROW
-  //   7. bookings               — insert booking → returns BOOKING_ROW
-  //   8. payment_intents        — insert PI audit row → no error
+  //   5. availability_templates — 3c slot-validation membership (BUG-19 Ph 1)
+  //   6. blocked_dates          — 3c
+  //   7. group_programmes       — 3c (getCoachCommitments) → [] (no sessions read)
+  //   8. bookings               — 3c (getCoachCommitments busy read) → []
+  //   9. platform_config        — commission rate → returns PLATFORM_CONFIG_ROW
+  //  10. user_profiles          — insert provisional user → returns PROFILE_ROW
+  //  11. bookings               — insert booking → returns BOOKING_ROW
+  //  12. payment_intents        — insert PI audit row → no error
   //
-  // The default availability_templates result is empty, so canonicalPrice falls
-  // back to the sport default — keeping the £60 happy-path figures intact.
+  // The default BUG-09 availability_templates result is empty, so canonicalPrice
+  // falls back to the sport default — keeping the £60 happy-path figures intact.
 
   const piIdempotentChain = makeChain({ data: null, error: null })
   const coachChain = makeChain({ data: COACH_ROW, error: null })
@@ -182,10 +257,12 @@ function setupHappyPath() {
     .mockReturnValueOnce(coachChain)          // 2. coach_profiles
     .mockReturnValueOnce(sportChain)          // 3. coach_sports
     .mockReturnValueOnce(availTemplatesChain) // 4. availability_templates (BUG-09)
-    .mockReturnValueOnce(configChain)         // 5. platform_config
-    .mockReturnValueOnce(profileChain)        // 6. user_profiles insert
-    .mockReturnValueOnce(bookingChain)        // 7. bookings insert
-    .mockReturnValueOnce(piInsertChain)       // 8. payment_intents insert
+  for (const c of makeValidationChains()) mockFrom.mockReturnValueOnce(c) // 5–8
+  mockFrom
+    .mockReturnValueOnce(configChain)         // 9. platform_config
+    .mockReturnValueOnce(profileChain)        // 10. user_profiles insert
+    .mockReturnValueOnce(bookingChain)        // 11. bookings insert
+    .mockReturnValueOnce(piInsertChain)       // 12. payment_intents insert
 
   ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom })
 
@@ -276,9 +353,9 @@ describe('POST /api/guest/bookings — happy path', () => {
 
     await callPost(VALID_BODY)
 
-    // The 8th from() call is the payment_intents insert (0-indexed = 7) —
-    // shifted by the BUG-09 availability_templates lookup at index 3.
-    const piInsertChain = (mockFrom as MockFn).mock.results[7].value as Record<string, MockFn>
+    // The 12th from() call is the payment_intents insert (0-indexed = 11) —
+    // shifted by BUG-09 (index 3) and the four BUG-19 validation reads (4–7).
+    const piInsertChain = (mockFrom as MockFn).mock.results[11].value as Record<string, MockFn>
     const piInsertArg = (piInsertChain.insert as MockFn).mock.calls[0][0] as Record<string, unknown>
     expect(piInsertArg.application_fee_pence).toBe(600)
     expect(piInsertArg.coach_transfer_amount_pence).toBe(6000)
@@ -292,7 +369,7 @@ describe('POST /api/guest/bookings — happy path', () => {
 
     await callPost(VALID_BODY)
 
-    const piInsertChain = (mockFrom as MockFn).mock.results[7].value as Record<string, MockFn>
+    const piInsertChain = (mockFrom as MockFn).mock.results[11].value as Record<string, MockFn>
     const piInsertArg = (piInsertChain.insert as MockFn).mock.calls[0][0] as Record<string, unknown>
     expect(typeof piInsertArg.currency).toBe('string')
     expect((piInsertArg.currency as string).length).toBeGreaterThan(0)
@@ -377,7 +454,9 @@ describe('POST /api/guest/bookings — BUG-09 per-block price override', () => {
       .mockReturnValueOnce(piIdempotentChain)
       .mockReturnValueOnce(coachChain)
       .mockReturnValueOnce(sportChain)
-      .mockReturnValueOnce(availTemplatesChain)
+      .mockReturnValueOnce(availTemplatesChain) // BUG-09 override lookup
+    for (const c of makeValidationChains()) mockFrom.mockReturnValueOnce(c) // BUG-19 3c reads
+    mockFrom
       .mockReturnValueOnce(configChain)
       .mockReturnValueOnce(profileChain)
       .mockReturnValueOnce(bookingChain)
@@ -454,11 +533,15 @@ describe('POST /api/guest/bookings — BUG-09 per-block price override', () => {
     expect(stripeMock.paymentIntents.create).not.toHaveBeenCalled()
   })
 
-  it('does NOT consult availability_templates for group sessions (override is individual-only)', async () => {
+  it('ignores block price overrides for group sessions (override is individual-only)', async () => {
     const stripeMock = makeStripeMock()
     ;(getStripe as MockFn).mockReturnValue(stripeMock)
 
-    // No availability_templates chain is provided — a group booking must skip it.
+    // No BUG-09 override chain is provided — a group booking must skip that
+    // lookup. The 3c slot-validation membership read (BUG-19 Phase 1) still
+    // consults availability_templates for EVERY session type, so exactly one
+    // availability_templates from() call is expected; its row carries a 7500
+    // override which must NOT affect the group price.
     const piIdempotentChain = makeChain({ data: null })
     const coachChain = makeChain({ data: COACH_ROW })
     const sportChain = makeChain({ data: COACH_SPORT_ROW }) // group default = 4000
@@ -471,6 +554,12 @@ describe('POST /api/guest/bookings — BUG-09 per-block price override', () => {
       .mockReturnValueOnce(piIdempotentChain)
       .mockReturnValueOnce(coachChain)
       .mockReturnValueOnce(sportChain)
+    for (const c of makeValidationChains({
+      membership: [{ ...MEMBERSHIP_TEMPLATE, price_override_pence: 7500 }],
+    })) {
+      mockFrom.mockReturnValueOnce(c)
+    }
+    mockFrom
       .mockReturnValueOnce(configChain)
       .mockReturnValueOnce(profileChain)
       .mockReturnValueOnce(bookingChain)
@@ -481,9 +570,10 @@ describe('POST /api/guest/bookings — BUG-09 per-block price override', () => {
     expect(res.status).toBe(200)
 
     const fromArgs = (mockFrom as MockFn).mock.calls.map((c) => c[0])
-    expect(fromArgs).not.toContain('availability_templates')
+    const templateReads = fromArgs.filter((a) => a === 'availability_templates')
+    expect(templateReads).toHaveLength(1) // 3c membership only — no BUG-09 read
     const insertArg = (bookingChain.insert as MockFn).mock.calls[0][0] as Record<string, number>
-    expect(insertArg.coach_price_pence).toBe(4000)
+    expect(insertArg.coach_price_pence).toBe(4000) // group default, override ignored
   })
 })
 
@@ -500,7 +590,8 @@ describe('POST /api/guest/bookings — slot taken', () => {
     const availTemplatesChain = makeListChain({ data: [] })
     const configChain = makeChain({ data: PLATFORM_CONFIG_ROW })
     const profileChain = makeChain({ data: PROFILE_ROW })
-    // Booking insert simulates PG unique_violation
+    // Booking insert simulates PG unique_violation — the 3c validation read saw
+    // no conflicting booking (race window), so the 034 index is the backstop.
     const bookingChain = makeChain({ data: null, error: { code: '23505', message: 'duplicate key' } })
     // Soft-delete of provisional user (called after slot_taken)
     const profileUpdateChain = makeChain({ data: null, error: null })
@@ -510,6 +601,8 @@ describe('POST /api/guest/bookings — slot taken', () => {
       .mockReturnValueOnce(coachChain)
       .mockReturnValueOnce(sportChain)
       .mockReturnValueOnce(availTemplatesChain)
+    for (const c of makeValidationChains()) mockFrom.mockReturnValueOnce(c)
+    mockFrom
       .mockReturnValueOnce(configChain)
       .mockReturnValueOnce(profileChain)
       .mockReturnValueOnce(bookingChain)
@@ -541,6 +634,8 @@ describe('POST /api/guest/bookings — slot taken', () => {
       .mockReturnValueOnce(coachChain)
       .mockReturnValueOnce(sportChain)
       .mockReturnValueOnce(availTemplatesChain)
+    for (const c of makeValidationChains()) mockFrom.mockReturnValueOnce(c)
+    mockFrom
       .mockReturnValueOnce(configChain)
       .mockReturnValueOnce(profileChain)
       .mockReturnValueOnce(bookingChain)
@@ -549,9 +644,9 @@ describe('POST /api/guest/bookings — slot taken', () => {
 
     await callPost(VALID_BODY)
 
-    // The 8th from() call (index 7) should be the profile soft-delete update —
-    // shifted by the BUG-09 availability_templates lookup at index 3.
-    const updateChain = (mockFrom as MockFn).mock.results[7].value as Record<string, MockFn>
+    // The 12th from() call (index 11) should be the profile soft-delete update —
+    // shifted by BUG-09 (index 3) and the four BUG-19 validation reads (4–7).
+    const updateChain = (mockFrom as MockFn).mock.results[11].value as Record<string, MockFn>
     expect(updateChain.update).toHaveBeenCalledWith(
       expect.objectContaining({ deleted_at: expect.any(String) })
     )
@@ -815,6 +910,8 @@ describe('POST /api/guest/bookings — Stripe failure', () => {
       .mockReturnValueOnce(coachChain)
       .mockReturnValueOnce(sportChain)
       .mockReturnValueOnce(availTemplatesChain)
+    for (const c of makeValidationChains()) mockFrom.mockReturnValueOnce(c)
+    mockFrom
       .mockReturnValueOnce(configChain)
       .mockReturnValueOnce(profileChain)
       .mockReturnValueOnce(bookingChain)
@@ -848,6 +945,8 @@ describe('POST /api/guest/bookings — Stripe failure', () => {
       .mockReturnValueOnce(coachChain)
       .mockReturnValueOnce(sportChain)
       .mockReturnValueOnce(availTemplatesChain)
+    for (const c of makeValidationChains()) mockFrom.mockReturnValueOnce(c)
+    mockFrom
       .mockReturnValueOnce(configChain)
       .mockReturnValueOnce(profileChain)
       .mockReturnValueOnce(bookingChain)
@@ -857,15 +956,217 @@ describe('POST /api/guest/bookings — Stripe failure', () => {
 
     await callPost(VALID_BODY)
 
-    // Shifted by the BUG-09 availability_templates lookup at index 3:
-    // index 7 = booking soft-delete, index 8 = profile soft-delete.
-    const bookingUpdate = (mockFrom as MockFn).mock.results[7].value as Record<string, MockFn>
+    // Shifted by BUG-09 (index 3) and the four BUG-19 validation reads (4–7):
+    // index 11 = booking soft-delete, index 12 = profile soft-delete.
+    const bookingUpdate = (mockFrom as MockFn).mock.results[11].value as Record<string, MockFn>
     expect(bookingUpdate.update).toHaveBeenCalledWith(
       expect.objectContaining({ deleted_at: expect.any(String) })
     )
-    const profileUpdate = (mockFrom as MockFn).mock.results[8].value as Record<string, MockFn>
+    const profileUpdate = (mockFrom as MockFn).mock.results[12].value as Record<string, MockFn>
     expect(profileUpdate.update).toHaveBeenCalledWith(
       expect.objectContaining({ deleted_at: expect.any(String) })
     )
+  })
+})
+
+// ── BUG-19 Phase 1 / BUG-21: slot validation rejection matrix ─────────────────
+//
+// The route must reject a crafted POST for any time the public calendar would
+// not offer — with a SPECIFIC 409 and with zero writes and zero Stripe calls.
+// Every rejection fires before the provisional user, the booking row, and the
+// PaymentIntent are created.
+
+describe('POST /api/guest/bookings — BUG-19/BUG-21 slot validation', () => {
+  // Mocks the reads up to and including the 3c validation block. Rejection paths
+  // return inside 3c, so no config/profile/booking chains are queued — a leak
+  // past validation would throw on an undefined chain and fail the test loudly.
+  function setupRejection(over: Parameters<typeof makeValidationChains>[0] = {}, coachRow = COACH_ROW) {
+    const stripeMock = makeStripeMock()
+    ;(getStripe as MockFn).mockReturnValue(stripeMock)
+
+    const mockFrom = jest.fn()
+      .mockReturnValueOnce(makeChain({ data: null }))       // payment_intents (idempotency)
+      .mockReturnValueOnce(makeChain({ data: coachRow }))   // coach_profiles
+      .mockReturnValueOnce(makeChain({ data: COACH_SPORT_ROW })) // coach_sports
+      .mockReturnValueOnce(makeListChain({ data: [] }))     // availability_templates (BUG-09)
+    for (const c of makeValidationChains(over)) mockFrom.mockReturnValueOnce(c)
+    ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom })
+
+    return { mockFrom, stripeMock }
+  }
+
+  function expectNoMoneyObjects(mockFrom: MockFn, stripeMock: ReturnType<typeof makeStripeMock>) {
+    const fromArgs = mockFrom.mock.calls.map((c) => c[0] as string)
+    expect(fromArgs).not.toContain('user_profiles')  // no provisional user
+    expect(fromArgs).not.toContain('platform_config') // rejected before step 4
+    expect(stripeMock.paymentIntents.create).not.toHaveBeenCalled()
+  }
+
+  it('409 slot_not_available when the time is outside every availability block', async () => {
+    // Membership block is 09:00–12:00; 13:00 is outside it.
+    const { mockFrom, stripeMock } = setupRejection()
+    const res = await callPost({ ...VALID_BODY, startTime: '13:00' })
+    expect(res.status).toBe(409)
+    const data = await res.json() as Record<string, unknown>
+    expect(data.error).toBe('slot_not_available')
+    expectNoMoneyObjects(mockFrom, stripeMock)
+  })
+
+  it('409 slot_not_available when the coach has no availability blocks at all', async () => {
+    const { mockFrom, stripeMock } = setupRejection({ membership: [] })
+    const res = await callPost(VALID_BODY)
+    expect(res.status).toBe(409)
+    const data = await res.json() as Record<string, unknown>
+    expect(data.error).toBe('slot_not_available')
+    expectNoMoneyObjects(mockFrom, stripeMock)
+  })
+
+  it('409 date_blocked when the date is a blocked single day', async () => {
+    const { mockFrom, stripeMock } = setupRejection({
+      blocked: [{ blocked_date: BOOKING_DATE, blocked_date_end: null }],
+    })
+    const res = await callPost(VALID_BODY)
+    expect(res.status).toBe(409)
+    const data = await res.json() as Record<string, unknown>
+    expect(data.error).toBe('date_blocked')
+    expectNoMoneyObjects(mockFrom, stripeMock)
+  })
+
+  it('409 date_blocked when the date falls inside a blocked range', async () => {
+    const { mockFrom, stripeMock } = setupRejection({
+      blocked: [{ blocked_date: futureDateISO(20), blocked_date_end: futureDateISO(22) }],
+    })
+    const res = await callPost(VALID_BODY) // BOOKING_DATE is 21 days out
+    expect(res.status).toBe(409)
+    const data = await res.json() as Record<string, unknown>
+    expect(data.error).toBe('date_blocked')
+    expectNoMoneyObjects(mockFrom, stripeMock)
+  })
+
+  it('409 outside_booking_window when the date is beyond the coach max-advance horizon', async () => {
+    // BOOKING_DATE is 21 days out; this coach only accepts 7 days ahead.
+    const { mockFrom, stripeMock } = setupRejection({}, { ...COACH_ROW, max_advance_days: 7 })
+    const res = await callPost(VALID_BODY)
+    expect(res.status).toBe(409)
+    const data = await res.json() as Record<string, unknown>
+    expect(data.error).toBe('outside_booking_window')
+    expectNoMoneyObjects(mockFrom, stripeMock)
+  })
+
+  it('409 outside_booking_window when the date is in the past', async () => {
+    const pastDate = futureDateISO(-1)
+    const { mockFrom, stripeMock } = setupRejection({
+      membership: [{ ...MEMBERSHIP_TEMPLATE, day_of_week: weekdayOf(pastDate) }],
+    })
+    const res = await callPost({ ...VALID_BODY, date: pastDate })
+    expect(res.status).toBe(409)
+    const data = await res.json() as Record<string, unknown>
+    expect(data.error).toBe('outside_booking_window')
+    expectNoMoneyObjects(mockFrom, stripeMock)
+  })
+
+  it('409 slot_taken when the slot overlaps a persisted programme session', async () => {
+    const { mockFrom, stripeMock } = setupRejection({
+      programmes: [{
+        id: 'prog-1', day_of_week: BOOKING_DOW, days_of_week: null,
+        start_time: '10:00', duration_minutes: 60, starts_at: null, ends_at: null,
+      }],
+      sessions: [{
+        group_programme_id: 'prog-1', session_date: BOOKING_DATE,
+        start_time: '10:00:00', end_time: '11:00:00',
+      }],
+    })
+    const res = await callPost(VALID_BODY) // 10:00–11:00 collides head-on
+    expect(res.status).toBe(409)
+    const data = await res.json() as Record<string, unknown>
+    expect(data.error).toBe('slot_taken')
+    expect(data.reason).toContain('a programme session')
+    expectNoMoneyObjects(mockFrom, stripeMock)
+  })
+
+  it('409 slot_taken when the slot overlaps a legacy recurring programme with no session rows', async () => {
+    const { mockFrom, stripeMock } = setupRejection({
+      programmes: [{
+        id: 'prog-1', day_of_week: BOOKING_DOW, days_of_week: null,
+        start_time: '09:30', duration_minutes: 90, starts_at: null, ends_at: null,
+      }],
+      sessions: [], // no persisted rows → recurring fallback places 09:30–11:00
+    })
+    const res = await callPost(VALID_BODY) // 10:00–11:00 overlaps the pattern
+    expect(res.status).toBe(409)
+    const data = await res.json() as Record<string, unknown>
+    expect(data.error).toBe('slot_taken')
+    expect(data.reason).toContain('a programme session')
+    expectNoMoneyObjects(mockFrom, stripeMock)
+  })
+
+  it('409 slot_not_available (not a phantom slot_taken) when the time is outside every block AND overlaps a commitment', async () => {
+    // 13:00 was never inside the 09:00–12:00 availability block; a programme
+    // session also runs 13:00–14:00. The honest reason is "no such slot", not
+    // "slot taken" — a conflict can only consume a slot that was offered.
+    const { mockFrom, stripeMock } = setupRejection({
+      programmes: [{
+        id: 'prog-1', day_of_week: BOOKING_DOW, days_of_week: null,
+        start_time: '13:00', duration_minutes: 60, starts_at: null, ends_at: null,
+      }],
+      sessions: [{
+        group_programme_id: 'prog-1', session_date: BOOKING_DATE,
+        start_time: '13:00:00', end_time: '14:00:00',
+      }],
+    })
+    const res = await callPost({ ...VALID_BODY, startTime: '13:00' })
+    expect(res.status).toBe(409)
+    const data = await res.json() as Record<string, unknown>
+    expect(data.error).toBe('slot_not_available')
+    expectNoMoneyObjects(mockFrom, stripeMock)
+  })
+
+  it('409 slot_taken when an existing booking overlaps with an UNEQUAL start time (the 034 index gap)', async () => {
+    // 09:30–10:30 vs the requested 10:00–11:00: different start_time, so the
+    // migration-034 unique index would NOT fire — interval validation must.
+    const { mockFrom, stripeMock } = setupRejection({
+      bookings: [{ session_start_time: '09:30:00', session_end_time: '10:30:00' }],
+    })
+    const res = await callPost(VALID_BODY)
+    expect(res.status).toBe(409)
+    const data = await res.json() as Record<string, unknown>
+    expect(data.error).toBe('slot_taken')
+    expect(data.reason).toContain('a confirmed booking')
+    expectNoMoneyObjects(mockFrom, stripeMock)
+  })
+
+  it('accepts a slot from an ad-hoc (one-off) block on its specific date', async () => {
+    const stripeMock = makeStripeMock()
+    ;(getStripe as MockFn).mockReturnValue(stripeMock)
+
+    const bookingChain = makeChain({ data: BOOKING_ROW })
+    const mockFrom = jest.fn()
+      .mockReturnValueOnce(makeChain({ data: null }))
+      .mockReturnValueOnce(makeChain({ data: COACH_ROW }))
+      .mockReturnValueOnce(makeChain({ data: COACH_SPORT_ROW }))
+      .mockReturnValueOnce(makeListChain({ data: [] })) // BUG-09
+    // The only availability is an ad-hoc block ON the booking date whose
+    // day_of_week deliberately does NOT match — membership must come from
+    // specific_date, not the weekday.
+    for (const c of makeValidationChains({
+      membership: [{
+        day_of_week: (BOOKING_DOW + 1) % 7,
+        start_time: '09:00:00',
+        end_time: '12:00:00',
+        is_recurring: false,
+        specific_date: BOOKING_DATE,
+      }],
+    })) {
+      mockFrom.mockReturnValueOnce(c)
+    }
+    mockFrom
+      .mockReturnValueOnce(makeChain({ data: PLATFORM_CONFIG_ROW }))
+      .mockReturnValueOnce(makeChain({ data: PROFILE_ROW }))
+      .mockReturnValueOnce(bookingChain)
+      .mockReturnValueOnce(makeChain({ data: null, error: null }))
+    ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom })
+
+    const res = await callPost(VALID_BODY)
+    expect(res.status).toBe(200)
   })
 })

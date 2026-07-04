@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { ChevronLeft, MapPin, Star, ShieldCheck } from 'lucide-react'
 import { PublicHeader } from '@/components/nav/PublicHeader'
 import { PublicFooter } from '@/components/public/PublicFooter'
-import { AvailabilityClient } from './_components/AvailabilityClient'
+import { AvailabilityClient, type BookedSlot } from './_components/AvailabilityClient'
 import { fetchProgrammeSchedule } from './_components/_data/programmeSchedule'
 import type { SlotTemplate } from './_components/_data/slots'
 
@@ -33,6 +33,10 @@ interface ApiCoach {
 interface ApiAvailability {
   availability: SlotTemplate[]
   blocked_dates: string[]
+  // BUG-14: live bookings as busy intervals (pending_payment / confirmed /
+  // completed — migration 034's slot-holding predicate), so booked slots stop
+  // rendering as bookable.
+  booked_slots: BookedSlot[]
   booking_policy: {
     cancellation_window_hours: number
     min_advance_hours: number
@@ -208,6 +212,7 @@ export default async function CoachAvailabilityPage({
           sessionDurationMinutes={sport?.session_duration_minutes ?? 60}
           templates={avail?.availability ?? []}
           blockedDates={avail?.blocked_dates ?? []}
+          bookedSlots={avail?.booked_slots ?? []}
           minAdvanceHours={policy.min_advance_hours}
           maxAdvanceDays={policy.max_advance_days}
           cancellationWindowHours={policy.cancellation_window_hours}

@@ -33,6 +33,14 @@ import {
   isValidTime,
   isValidEmail,
 } from '@/lib/booking/guest-checkout'
+import {
+  bookableSlots,
+  isDateWithinBookingWindow,
+  clearsMinAdvance,
+  type SlotTemplate,
+} from '@/lib/availability/slots'
+import { getCoachCommitments, findFirstConflict } from '@/lib/availability/commitments'
+import { hhmmToMinutes } from '@/lib/availability/overlap'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -204,7 +212,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // 2. Confirm the coach is real and bookable, and snapshot the cancellation window.
   const { data: coach, error: coachError } = await supabase
     .from('coach_profiles')
-    .select('id, cancellation_window_hours, is_profile_live, is_paused, is_suspended, deleted_at')
+    .select(
+      'id, cancellation_window_hours, min_advance_hours, max_advance_days, is_profile_live, is_paused, is_suspended, deleted_at',
+    )
     .eq('id', input.coachId)
     .is('deleted_at', null)
     .maybeSingle()
@@ -304,6 +314,142 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const endTime = addMinutesToTime(input.startTime, coachSport.session_duration_minutes)
   if (!endTime) return badRequest('invalid_session_time')
+
+  // 3c. BUG-19 Phase 1 (closes BUG-21): validate the requested slot against the
+  //     coach's REAL availability before any money object exists. Until now this
+  //     route accepted ANY date/time. The slot must be one that bookableSlots()
+  //     — the exact function the public calendar renders from
+  //     (src/lib/availability/slots.ts) — would emit for this date: inside an
+  //     active availability block (recurring or ad-hoc), not on a blocked date,
+  //     inside the coach's min/max advance window, and not overlapping a
+  //     committed programme session (persisted or legacy recurring pattern) or a
+  //     live 1-on-1 booking — including overlapping-but-UNEQUAL start times,
+  //     which the migration-034 unique index (23505 → slot_taken at insert,
+  //     kept below as the same-slot race backstop) cannot catch.
+  //
+  //     Template membership deliberately ignores sport, matching the calendar
+  //     (its availability fetch passes no sport filter) — approved in BUG-19
+  //     Phase 1 Step 0. Do not tighten to sport-matched templates here.
+  const { data: allTemplates, error: allTemplatesError } = await supabase
+    .from('availability_templates')
+    .select('day_of_week, start_time, end_time, is_recurring, specific_date')
+    .eq('coach_profile_id', input.coachId)
+    .eq('is_active', true)
+
+  if (allTemplatesError) {
+    console.error('[POST /api/guest/bookings] slot-validation template lookup failed:', allTemplatesError)
+    return NextResponse.json({ error: 'internal_error' }, { status: 500 })
+  }
+
+  const { data: blockedRows, error: blockedError } = await supabase
+    .from('blocked_dates')
+    .select('blocked_date, blocked_date_end')
+    .eq('coach_profile_id', input.coachId)
+
+  if (blockedError) {
+    console.error('[POST /api/guest/bookings] blocked_dates lookup failed:', blockedError)
+    return NextResponse.json({ error: 'internal_error' }, { status: 500 })
+  }
+
+  // A date is blocked when it falls inside any blocked range (single-day rows
+  // have no end). ISO-string comparison is safe for YYYY-MM-DD.
+  const isBlocked = ((blockedRows ?? []) as { blocked_date: string; blocked_date_end: string | null }[]).some(
+    (r) => {
+      const rangeStart = r.blocked_date.slice(0, 10)
+      const rangeEnd = (r.blocked_date_end ?? r.blocked_date).slice(0, 10)
+      return rangeStart <= input.date && input.date <= rangeEnd
+    },
+  )
+
+  // Busy intervals from the shared aggregator (BUG-16/17/18 guards): programme
+  // sessions + live bookings ONLY — for a 1-on-1 booking, availability templates
+  // are the valid zone, not a conflict.
+  const busy = await getCoachCommitments(supabase, input.coachId, input.date, {
+    sources: ['programme', 'booking'],
+  })
+
+  interface TemplateMembershipRow {
+    day_of_week: number
+    start_time: string
+    end_time: string
+    is_recurring: boolean | null
+    specific_date: string | null
+  }
+
+  const slotTemplates: SlotTemplate[] = ((allTemplates ?? []) as TemplateMembershipRow[]).map((t) => ({
+    day_of_week: t.day_of_week,
+    start_time: t.start_time,
+    end_time: t.end_time,
+    is_recurring: t.is_recurring ?? true,
+    specific_date: t.specific_date ? t.specific_date.slice(0, 10) : null,
+  }))
+
+  // Server-local midnight for the session date; bookableSlots does all its
+  // boundary maths off this + `now` exactly as the calendar client does.
+  const [bookYear, bookMonth, bookDay] = input.date.split('-').map(Number)
+  const sessionDate = new Date(bookYear, bookMonth - 1, bookDay)
+  const now = new Date()
+
+  const daySlots = bookableSlots(
+    sessionDate,
+    slotTemplates,
+    isBlocked ? new Set([input.date]) : new Set<string>(),
+    coach.min_advance_hours,
+    coach.max_advance_days,
+    now,
+    coachSport.session_duration_minutes,
+    busy,
+  )
+
+  const requestedHHMM = input.startTime.slice(0, 5)
+  if (!daySlots.some((s) => s.time === requestedHHMM)) {
+    // Diagnose WHY for a specific, friendly 409 — all before the provisional
+    // user, the booking row, and the Stripe PaymentIntent are created.
+    if (isBlocked) {
+      return NextResponse.json({ error: 'date_blocked' }, { status: 409 })
+    }
+
+    const startMinutes = hhmmToMinutes(input.startTime)
+    if (
+      !isDateWithinBookingWindow(sessionDate, now, coach.max_advance_days) ||
+      !clearsMinAdvance(sessionDate, startMinutes, coach.min_advance_hours, now)
+    ) {
+      return NextResponse.json({ error: 'outside_booking_window' }, { status: 409 })
+    }
+
+    // slot_taken is only the honest reason when the slot WOULD exist absent
+    // the busy intervals — i.e. a commitment consumed a genuinely offered
+    // slot. A time that overlaps, say, an evening programme but was never
+    // inside any availability block must report slot_not_available, not a
+    // phantom conflict.
+    const slotsIgnoringBusy = bookableSlots(
+      sessionDate,
+      slotTemplates,
+      new Set<string>(),
+      coach.min_advance_hours,
+      coach.max_advance_days,
+      now,
+      coachSport.session_duration_minutes,
+      [],
+    )
+    if (slotsIgnoringBusy.some((s) => s.time === requestedHHMM)) {
+      const conflict = findFirstConflict(
+        startMinutes,
+        startMinutes + coachSport.session_duration_minutes,
+        busy,
+      )
+      return NextResponse.json(
+        {
+          error: 'slot_taken',
+          ...(conflict ? { reason: `This time overlaps ${conflict.label}.` } : {}),
+        },
+        { status: 409 },
+      )
+    }
+
+    // Not inside any active availability block for this date.
+    return NextResponse.json({ error: 'slot_not_available' }, { status: 409 })
+  }
 
   // 4. Commission + total (BR-01/BR-02) — rate from platform_config, never hardcoded.
   const { data: config, error: configError } = await supabase

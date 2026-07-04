@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -34,7 +35,21 @@ interface CoachPolicyRow {
   max_advance_days: number
 }
 
+interface BookedSlotRow {
+  session_date: string
+  session_start_time: string
+  session_end_time: string
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/** Local-timezone YYYY-MM-DD (mirrors slots.localISODate). */
+function localISODate(d: Date): string {
+  const y = d.getFullYear()
+  const mo = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${y}-${mo}-${dd}`
+}
 
 function expandBlockedDates(rows: BlockedDateRow[]): string[] {
   const dates = new Set<string>()
@@ -200,6 +215,56 @@ export async function GET(
       return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
     }
 
+    // ── Fetch booked slots (BUG-14 / BUG-19 Phase 1) ──────────────────────────
+    // Live bookings must reach the public calendar so booked slots stop
+    // rendering as bookable. `bookings` has no public SELECT policy (booker/
+    // coach only), so this single read uses the admin client — a deliberate,
+    // Lasith-approved exception (BUG-19 Phase 1 Step 0 approval, 4 Jul 2026)
+    // to this route's RLS-respecting rule. It is read-only and the response is
+    // shaped to busy INTERVALS only ({date, start_time, end_time}) — no ids,
+    // no participant data, no status ever leaves the server.
+    //
+    // Predicate mirrors migration 034's slot-holding partial unique index
+    // EXACTLY: pending_payment holds the slot (a parent mid-checkout must not
+    // lose it), cancelled/no-show/soft-deleted rows free it. Window: today
+    // through the coach's max-advance horizon (the only bookable range),
+    // intersected with any from_date/to_date the caller passed.
+    const today = new Date()
+    const horizon = new Date(today)
+    horizon.setDate(horizon.getDate() + policy.max_advance_days)
+
+    let bookedWindowStart = localISODate(today)
+    if (from_date && from_date > bookedWindowStart) bookedWindowStart = from_date
+    let bookedWindowEnd = localISODate(horizon)
+    if (to_date && to_date < bookedWindowEnd) bookedWindowEnd = to_date
+
+    let bookedRows: BookedSlotRow[] = []
+    if (bookedWindowStart <= bookedWindowEnd) {
+      const adminSupabase = createAdminClient()
+      const { data: bookingData, error: bookingsError } = await adminSupabase
+        .from('bookings')
+        .select('session_date, session_start_time, session_end_time')
+        .eq('coach_profile_id', id)
+        .gte('session_date', bookedWindowStart)
+        .lte('session_date', bookedWindowEnd)
+        .is('deleted_at', null)
+        // Unquoted PostgREST in-list — matches lib/availability/commitments.ts;
+        // quoted values silently no-match.
+        .not('status', 'in', '(cancelled_parent,cancelled_coach,no_show)')
+
+      if (bookingsError) {
+        console.error('[GET /api/coaches/[id]/availability] booked slots error:', bookingsError)
+        return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+      }
+      bookedRows = (bookingData ?? []) as BookedSlotRow[]
+    }
+
+    const booked_slots = bookedRows.map(b => ({
+      date: b.session_date.slice(0, 10),
+      start_time: b.session_start_time.slice(0, 5), // HH:MM
+      end_time: b.session_end_time.slice(0, 5),
+    }))
+
     // ── Transform ─────────────────────────────────────────────────────────────
 
     const blocked = (blockedRows ?? []) as BlockedDateRow[]
@@ -231,6 +296,7 @@ export async function GET(
       {
         availability,
         blocked_dates,
+        booked_slots,
         booking_policy: {
           cancellation_window_hours: policy.cancellation_window_hours,
           min_advance_hours: policy.min_advance_hours,

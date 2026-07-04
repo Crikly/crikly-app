@@ -182,6 +182,50 @@ describe('getCoachCommitments — combined', () => {
   })
 })
 
+// ── BUG-19 Phase 1: sources filter ────────────────────────────────────────────
+//
+// The guest bookings route consumes the aggregator with sources
+// ['programme','booking'] — for a 1-on-1 booking an availability template is
+// the VALID zone, not a conflict. Omitting sources must keep the coach-side
+// BUG-16/17/18 behaviour byte-for-byte.
+
+describe('getCoachCommitments — sources filter (BUG-19 Phase 1)', () => {
+  const seeded = {
+    availability_templates: [
+      { id: 'a1', day_of_week: 0, start_time: '09:00', end_time: '10:00', is_recurring: true, specific_date: null },
+      { id: 'a2', day_of_week: 0, start_time: '13:00', end_time: '14:00', is_recurring: false, specific_date: DATE },
+    ],
+    group_programmes: [
+      { id: 'p1', day_of_week: 0, days_of_week: null, start_time: '11:00', duration_minutes: 60, starts_at: null, ends_at: null },
+    ],
+    group_programme_sessions: [],
+    bookings: [{ session_start_time: '15:00', session_end_time: '16:00' }],
+  }
+
+  it("['programme','booking'] excludes both template kinds", async () => {
+    const c = await getCoachCommitments(makeClient(seeded), COACH, DATE, {
+      sources: ['programme', 'booking'],
+    })
+    expect(c.map(x => x.source).sort()).toEqual(['booking', 'programme'])
+  })
+
+  it("['booking'] returns bookings only", async () => {
+    const c = await getCoachCommitments(makeClient(seeded), COACH, DATE, { sources: ['booking'] })
+    expect(c).toHaveLength(1)
+    expect(c[0].source).toBe('booking')
+  })
+
+  it("['recurring'] includes the recurring template but not the ad-hoc one", async () => {
+    const c = await getCoachCommitments(makeClient(seeded), COACH, DATE, { sources: ['recurring'] })
+    expect(c.map(x => x.source)).toEqual(['recurring'])
+  })
+
+  it('omitting sources returns every surface (coach-side callers unchanged)', async () => {
+    const c = await getCoachCommitments(makeClient(seeded), COACH, DATE)
+    expect(c.map(x => x.source).sort()).toEqual(['ad_hoc', 'booking', 'programme', 'recurring'])
+  })
+})
+
 describe('findFirstConflict', () => {
   const busy: Commitment[] = [
     { startMinutes: 600, endMinutes: 660, source: 'programme', label: 'a programme session' },
