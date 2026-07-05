@@ -894,6 +894,53 @@ Per-session record for a `per_session` programme enrolment — one row per sessi
 
 ---
 
+### 6.8 coach_time_claims
+
+Canonical ledger of committed coach time — the DB-level double-sell guarantee (BUG-19 Phase 2). One row per way a coach's time is committed: a live 1-on-1 booking (including a `pending_payment` hold) or a scheduled programme-session time block (camp-mode sessions produce one row **per** `slots[]` block via `slot_index`). Two overlapping ACTIVE claims for one coach cannot coexist — enforced by a partial GiST exclusion constraint, not application code.
+
+**Purpose:** Make coach double-selling structurally impossible at the database layer, beneath the BUG-19 Phase 1 app-level guards.
+**Migrations:** 036_coach_time_claims.sql (table, `timerange` type, btree_gist, RLS); 037_coach_time_claims_backfill.sql (backfill + legacy-overlap sweep); 038_coach_time_claims_constraint_triggers.sql (exclusion constraint, sync triggers, cron reconciler).
+
+| Column | Type | Nullable | Default | Notes |
+|---|---|---|---|---|
+| id | uuid | NO | gen_random_uuid() | Primary key |
+| coach_profile_id | uuid | NO | — | FK → coach_profiles(id) ON DELETE CASCADE |
+| claim_date | date | NO | — | Calendar date of the committed time. |
+| start_time | time | NO | — | Block start (wall-clock UK, mirrors the source row). |
+| end_time | time | NO | — | Block end. CHECK end_time > start_time — no midnight crossing. |
+| source_type | text | NO | — | 'booking' \| 'programme_session'. |
+| source_id | uuid | NO | — | Polymorphic pointer to bookings.id or group_programme_sessions.id. **Deliberately no FK** — programme PATCH hard-deletes session rows and a released claim must survive as audit history. |
+| slot_index | integer | NO | 0 | Camp-mode block ordinal within the source session's `slots` array; 0 otherwise. |
+| state | text | NO | 'active' | 'active' (holds time, participates in the exclusion constraint) \| 'released' (audit history — never blocks). |
+| released_at | timestamptz | YES | null | Set exactly when state = 'released' (CHECK release_consistent). |
+| release_reason | text | YES | null | Why the claim stopped holding: source lifecycle reason (e.g. `expired_pending_payment`, `payment_intent_cancelled`, `session_deleted`, `programme_cancelled`, `slot_removed`), `legacy_overlap_backfill` (migration 037 sweep), or `sweep_reconciled` (cron drift reconciler). |
+| created_at | timestamptz | NO | now() | |
+| updated_at | timestamptz | NO | now() | Bump trigger (update_updated_at_column). |
+
+**Custom type:** `timerange` — `CREATE TYPE timerange AS RANGE (subtype = time)` (migration 036). Chosen over tstzrange because every source stores wall-clock date + time, no session crosses midnight, and a Europe/London conversion is not IMMUTABLE. Do not redefine `timerange` in future migrations.
+
+**Constraints:**
+- `uniq_claim_source` UNIQUE (source_type, source_id, slot_index) — the triggers' upsert anchor.
+- `no_overlapping_active_claims` EXCLUDE USING gist (coach_profile_id WITH =, claim_date WITH =, timerange(start_time, end_time) WITH &&) WHERE (state = 'active') — migration 038, requires btree_gist. **Partial**: released claims never block re-claiming freed time (the BUG-13/034 lesson at claim level).
+- CHECKs: valid_source_type, valid_state, valid_time_range, valid_slot_index, release_consistent.
+
+**Sync model (triggers, migration 038 — all SECURITY DEFINER, `SET search_path = ''`):**
+- `sync_booking_claim()` on bookings AFTER INSERT/UPDATE — holding predicate mirrors the migration-034 partial index (`deleted_at IS NULL AND status IN ('pending_payment','confirmed','completed')`). The BUG-13b release write (soft delete) releases the claim in the same transaction; new claims are only created for `session_date >= CURRENT_DATE` so legacy past overlaps can never resurface.
+- `sync_programme_session_claims()` on group_programme_sessions AFTER INSERT/UPDATE/DELETE + shared `reconcile_session_claims(uuid)` — holding predicate mirrors commitments.ts (session 'scheduled', programme in draft/active/full, not soft-deleted); expands camp `slots[]` one claim per block.
+- `sync_programme_claims()` on group_programmes AFTER UPDATE (status / deleted_at changes) — cascades activate/release across the programme's session claims.
+- An overlapping write fails with SQLSTATE **23P01** and rolls back the source write. Handled as 409 in `/api/guest/bookings` (slot_taken) and programmes POST/PATCH ("Conflict detected"); the Stripe webhook's restore-after-release path routes it to the MANUAL REFUND NEEDED log.
+- `reconcile_coach_time_claims() RETURNS integer` — drift reconciler called by GET `/api/cron/release-expired-bookings` each run; releases active claims whose source no longer holds (`sweep_reconciled`). Expected result 0; EXECUTE granted to `service_role` only.
+
+**RLS Policies:**
+- SELECT: owning coach only (join coach_profiles → user_profiles → auth.uid()).
+- INSERT / UPDATE / DELETE: **no policies for any role** — writes happen only via the SECURITY DEFINER triggers and the service-role client (both bypass RLS). Documented-exception per migration 036.
+
+**Indexes:**
+- (coach_profile_id, claim_date) WHERE state = 'active' — coach schedule + reconciler scans.
+- GiST index implicit from the exclusion constraint; BTREE implicit from uniq_claim_source.
+
+---
+
 ## 7. Module 6 — Payments & Payouts
 
 ### 7.1 payment_intents
@@ -1614,6 +1661,16 @@ Migrations must run in this exact order:
 009_create_notifications.sql          → notification_preferences, notifications
 010_create_admin.sql                  → dbs_verifications, disputes,
                                         promo_codes, audit_logs
+...
+036_coach_time_claims.sql             → coach_time_claims, timerange type,
+                                        btree_gist extension (BUG-19 Phase 2)
+037_coach_time_claims_backfill.sql    → backfill + legacy-overlap sweep
+                                        (must run BEFORE 038's constraint)
+038_coach_time_claims_constraint_triggers.sql
+                                      → no_overlapping_active_claims exclusion
+                                        constraint, sync triggers on bookings /
+                                        group_programme_sessions /
+                                        group_programmes, cron reconciler
 ```
 
 ---
