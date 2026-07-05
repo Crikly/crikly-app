@@ -560,9 +560,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     .single()
 
   if (bookingError || !booking) {
-    // 23505 = unique_violation. On this table the only user-reachable unique key
-    // is the slot constraint → surface as slot_taken.
-    if (bookingError?.code === '23505') {
+    // 23505 = unique_violation: the migration-034 partial unique index (exact
+    // same-slot race). 23P01 = exclusion_violation: the coach_time_claims
+    // trigger (BUG-19 Phase 2) rejecting ANY overlap — including
+    // overlapping-but-unequal start times and camp-mode blocks. Both mean the
+    // requested time is committed → slot_taken.
+    if (bookingError?.code === '23505' || bookingError?.code === '23P01') {
       await softDeleteProfile()
       return NextResponse.json({ error: 'slot_taken' }, { status: 409 })
     }

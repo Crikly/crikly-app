@@ -700,6 +700,20 @@ export async function PATCH(
 
     if (updateError) {
       console.error('[PATCH /api/coaches/programmes/[programmeId]] update error:', updateError)
+      // 23P01 = exclusion_violation from the coach_time_claims trigger
+      // (BUG-19 Phase 2). A status change here (e.g. reactivating a cancelled
+      // programme) cascades claim reactivation, which the DB rejects when the
+      // time is now committed elsewhere — a clean conflict, not a failure.
+      if (updateError.code === '23P01') {
+        return NextResponse.json(
+          {
+            error: 'Conflict detected',
+            message:
+              'This programme\'s sessions now overlap a booking or another programme scheduled for you. Adjust the times or dates first.',
+          },
+          { status: 409 },
+        )
+      }
       return NextResponse.json({ error: 'Failed to update programme' }, { status: 500 })
     }
 
@@ -762,6 +776,19 @@ export async function PATCH(
         .upsert(sessionRows, { onConflict: 'group_programme_id,session_date' })
       if (sessionUpsertError) {
         console.error('[PATCH /api/coaches/programmes/[programmeId]] session upsert failed:', sessionUpsertError)
+        // 23P01 = exclusion_violation from the coach_time_claims trigger
+        // (BUG-19 Phase 2): an edited session overlaps time already committed
+        // (the app-level guard above races; the DB backstop is authoritative).
+        if (sessionUpsertError.code === '23P01') {
+          return NextResponse.json(
+            {
+              error: 'Conflict detected',
+              message:
+                'One of these sessions overlaps a booking or programme session already scheduled for you. Adjust the programme times or dates.',
+            },
+            { status: 409 },
+          )
+        }
         return NextResponse.json({ error: 'Failed to update programme sessions' }, { status: 500 })
       }
     }

@@ -43,8 +43,12 @@
 // and the write-side guard, and the provisional guest profile is soft-deleted
 // alongside, mirroring the guest route's rollback paths.
 //
-// Phase 2 (BUG-19): coach_time_claims expiry joins THIS route as a second
-// sweep — same cadence, same cancel-first arbitration for money-bearing holds.
+// Phase 2 (BUG-19): the coach_time_claims drift reconciler runs at the end of
+// THIS route (same cadence, same secret — no second cron). Claims are
+// trigger-maintained (migration 038), so releasing a booking above releases
+// its claim in the same transaction; the reconciler only catches drift (e.g. a
+// manual Studio edit that dodged a trigger) and a non-zero count is logged
+// loudly as an anomaly, never a working path.
 
 import { NextRequest, NextResponse } from 'next/server'
 import type Stripe from 'stripe'
@@ -116,9 +120,17 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
 
   const rows = (candidates ?? []) as CandidateRow[]
-  const counts = { checked: rows.length, released: 0, skipped_active: 0, skipped_stripe: 0, errors: 0 }
+  const counts = {
+    checked: rows.length,
+    released: 0,
+    skipped_active: 0,
+    skipped_stripe: 0,
+    errors: 0,
+    claims_reconciled: 0,
+  }
 
   if (rows.length === 0) {
+    counts.claims_reconciled = await reconcileClaims(supabase)
     return NextResponse.json(counts)
   }
 
@@ -259,9 +271,35 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     console.info(`[Reaper] released expired pending_payment booking ${booking.id}`)
   }
 
+  counts.claims_reconciled = await reconcileClaims(supabase)
+
   console.info(
     `[Reaper] run complete: checked=${counts.checked} released=${counts.released} ` +
-      `active=${counts.skipped_active} stripe_skip=${counts.skipped_stripe} errors=${counts.errors}`,
+      `active=${counts.skipped_active} stripe_skip=${counts.skipped_stripe} errors=${counts.errors} ` +
+      `claims_reconciled=${counts.claims_reconciled}`,
   )
   return NextResponse.json(counts)
+}
+
+/**
+ * BUG-19 Phase 2: release any active coach_time_claims row whose source no
+ * longer holds its slot (reconcile_coach_time_claims(), migration 038).
+ * Triggers are the only claim writer, so the expected result is 0 — anything
+ * else is drift and is logged loudly for investigation. Never throws; a
+ * failed sweep must not break the reaper (they are independent safety nets).
+ */
+async function reconcileClaims(supabase: ReturnType<typeof createAdminClient>): Promise<number> {
+  const { data, error } = await supabase.rpc('reconcile_coach_time_claims')
+  if (error) {
+    console.error('[Reaper] coach_time_claims reconcile failed:', error)
+    return 0
+  }
+  const released = typeof data === 'number' ? data : 0
+  if (released > 0) {
+    console.error(
+      `[Reaper] coach_time_claims DRIFT: reconciler released ${released} claim(s) whose source no ` +
+        `longer holds — triggers should make this impossible; investigate recent manual edits`,
+    )
+  }
+  return released
 }

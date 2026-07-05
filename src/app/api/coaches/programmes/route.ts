@@ -657,6 +657,20 @@ export async function POST(
           .from('group_programmes')
           .update({ deleted_at: new Date().toISOString() })
           .eq('id', newProgramme.id)
+        // 23P01 = exclusion_violation from the coach_time_claims trigger
+        // (BUG-19 Phase 2): a session overlaps time already committed. The
+        // app-level guard above catches most of these first; the DB backstop
+        // closes the race window — surface it as the same clean 409.
+        if (sessionsError.code === '23P01') {
+          return NextResponse.json(
+            {
+              error: 'Conflict detected',
+              message:
+                'One of these sessions overlaps a booking or programme session already scheduled for you. Adjust the programme times or dates.',
+            },
+            { status: 409 },
+          )
+        }
         return NextResponse.json(
           { error: 'Failed to save programme sessions. Please try again.' },
           { status: 500 },

@@ -923,6 +923,62 @@ export type Database = {
           },
         ]
       }
+      coach_time_claims: {
+        Row: {
+          claim_date: string
+          coach_profile_id: string
+          created_at: string
+          end_time: string
+          id: string
+          release_reason: string | null
+          released_at: string | null
+          slot_index: number
+          source_id: string
+          source_type: string
+          start_time: string
+          state: string
+          updated_at: string
+        }
+        Insert: {
+          claim_date: string
+          coach_profile_id: string
+          created_at?: string
+          end_time: string
+          id?: string
+          release_reason?: string | null
+          released_at?: string | null
+          slot_index?: number
+          source_id: string
+          source_type: string
+          start_time: string
+          state?: string
+          updated_at?: string
+        }
+        Update: {
+          claim_date?: string
+          coach_profile_id?: string
+          created_at?: string
+          end_time?: string
+          id?: string
+          release_reason?: string | null
+          released_at?: string | null
+          slot_index?: number
+          source_id?: string
+          source_type?: string
+          start_time?: string
+          state?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coach_time_claims_coach_profile_id_fkey"
+            columns: ["coach_profile_id"]
+            isOneToOne: false
+            referencedRelation: "coach_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       coach_venues: {
         Row: {
           address: string | null
@@ -1320,6 +1376,45 @@ export type Database = {
           },
         ]
       }
+      group_programme_enrolment_sessions: {
+        Row: {
+          created_at: string
+          enrolment_id: string
+          group_programme_session_id: string
+          id: string
+          price_pence: number
+        }
+        Insert: {
+          created_at?: string
+          enrolment_id: string
+          group_programme_session_id: string
+          id?: string
+          price_pence: number
+        }
+        Update: {
+          created_at?: string
+          enrolment_id?: string
+          group_programme_session_id?: string
+          id?: string
+          price_pence?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_programme_enrolment_sessi_group_programme_session_id_fkey"
+            columns: ["group_programme_session_id"]
+            isOneToOne: false
+            referencedRelation: "group_programme_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_programme_enrolment_sessions_enrolment_id_fkey"
+            columns: ["enrolment_id"]
+            isOneToOne: false
+            referencedRelation: "group_programme_enrolments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       group_programme_enrolments: {
         Row: {
           block_amount_pence: number | null
@@ -1426,45 +1521,6 @@ export type Database = {
             columns: ["player_profile_id"]
             isOneToOne: false
             referencedRelation: "player_profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      group_programme_enrolment_sessions: {
-        Row: {
-          created_at: string
-          enrolment_id: string
-          group_programme_session_id: string
-          id: string
-          price_pence: number
-        }
-        Insert: {
-          created_at?: string
-          enrolment_id: string
-          group_programme_session_id: string
-          id?: string
-          price_pence: number
-        }
-        Update: {
-          created_at?: string
-          enrolment_id?: string
-          group_programme_session_id?: string
-          id?: string
-          price_pence?: number
-        }
-        Relationships: [
-          {
-            foreignKeyName: "group_programme_enrolment_sessions_enrolment_id_fkey"
-            columns: ["enrolment_id"]
-            isOneToOne: false
-            referencedRelation: "group_programme_enrolments"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "group_programme_enrolment_sessions_session_id_fkey"
-            columns: ["group_programme_session_id"]
-            isOneToOne: false
-            referencedRelation: "group_programme_sessions"
             referencedColumns: ["id"]
           },
         ]
@@ -2782,6 +2838,12 @@ export type Database = {
         Args: { p_programme_id: string }
         Returns: boolean
       }
+      reconcile_coach_time_claims: { Args: never; Returns: number }
+      reconcile_session_claims: {
+        Args: { p_session_id: string }
+        Returns: undefined
+      }
+      timemultirange: { Args: never; Returns: unknown }
       user_profile_has_live_coach: {
         Args: { target_user_profile_id: string }
         Returns: boolean

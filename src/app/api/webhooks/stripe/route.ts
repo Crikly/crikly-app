@@ -414,12 +414,14 @@ async function restoreReleasedBookingIfPaid(
     .select('id, booking_reference, coach_profile_id, session_date, session_start_time, session_end_time, session_type')
 
   if (restoreError) {
-    // 23505 = the slot was re-booked after release. Either way money was taken
-    // for a booking we cannot restore — this MUST reach a human.
+    // 23505 (unique_violation, migration-034 index) or 23P01
+    // (exclusion_violation, coach_time_claims trigger — BUG-19 Phase 2) both
+    // mean the slot's time was re-committed after release. Either way money
+    // was taken for a booking we cannot restore — this MUST reach a human.
     console.error(
       `[Stripe Webhook] MANUAL REFUND NEEDED: booking ${bookingId} (${row.booking_reference}) ` +
         `paid via ${intent.id} AFTER release and restore failed ` +
-        `(23505 = slot re-booked). Refund the payer and reconcile:`,
+        `(23505/23P01 = slot re-taken). Refund the payer and reconcile:`,
       restoreError,
     )
     return
