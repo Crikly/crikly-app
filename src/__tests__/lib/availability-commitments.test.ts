@@ -140,6 +140,33 @@ describe('getCoachCommitments — programmes', () => {
     expect(await getCoachCommitments(client, COACH, DATE)).toHaveLength(1)
   })
 
+  it('expands a camp-mode session into one commitment per slots block (BUG-19 Phase 2)', async () => {
+    const client = makeClient({
+      group_programmes: [
+        { id: 'p1', day_of_week: 0, days_of_week: null, start_time: '09:00', duration_minutes: 180, starts_at: null, ends_at: null },
+      ],
+      group_programme_sessions: [
+        {
+          group_programme_id: 'p1',
+          session_date: DATE,
+          start_time: '09:00',
+          end_time: '12:00',
+          slots: [
+            { startTime: '09:00', endTime: '12:00' },
+            { startTime: '13:00', endTime: '17:00' },
+          ],
+        },
+      ],
+    })
+    const c = await getCoachCommitments(client, COACH, DATE)
+    // Before Phase 2 only the first block guarded — the 13:00–17:00 afternoon
+    // was silently bookable for a 1-on-1.
+    expect(c).toEqual<Commitment[]>([
+      { startMinutes: 540, endMinutes: 720, source: 'programme', label: 'a programme session' },
+      { startMinutes: 780, endMinutes: 1020, source: 'programme', label: 'a programme session' },
+    ])
+  })
+
   it('honours excludeProgrammeId', async () => {
     const client = makeClient({
       group_programmes: [

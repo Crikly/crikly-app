@@ -11,6 +11,7 @@
 //      itself. We expand that pattern across the visible calendar window.
 
 import { createClient } from '@/lib/supabase/server'
+import { expandSessionBlocks } from '@/lib/availability/campSlots'
 import { localISODate } from './slots'
 
 export interface DayProgramme {
@@ -55,6 +56,8 @@ interface SessionRow {
   start_time: string | null
   end_time: string | null
   status: string
+  /** Camp-mode blocks (jsonb) — expanded via expandSessionBlocks (BUG-19 Phase 2). */
+  slots: unknown
 }
 
 interface ProgrammeRow {
@@ -144,7 +147,7 @@ export async function fetchProgrammeSchedule(coachProfileId: string): Promise<Pr
   const { data, error } = await supabase
     .from('group_programmes')
     .select(
-      'id, title, sport_id, age_groups, max_spots, current_spots, price_per_session_pence, block_price_pence, payment_type, day_of_week, days_of_week, start_time, duration_minutes, starts_at, ends_at, venue_name, group_programme_sessions(session_date, start_time, end_time, status)',
+      'id, title, sport_id, age_groups, max_spots, current_spots, price_per_session_pence, block_price_pence, payment_type, day_of_week, days_of_week, start_time, duration_minutes, starts_at, ends_at, venue_name, group_programme_sessions(session_date, start_time, end_time, status, slots)',
     )
     .eq('coach_profile_id', coachProfileId)
     .eq('model', 'programme')
@@ -204,14 +207,21 @@ export async function fetchProgrammeSchedule(coachProfileId: string): Promise<Pr
     // BUG-16: each dated entry now carries an end time too. Persisted rows use
     // their own end_time; recurring-pattern rows derive it from the programme's
     // start_time + duration_minutes.
+    //
+    // BUG-19 Phase 2 (Option B): a camp-mode session expands to one entry PER
+    // slots-array block, so a camp's afternoon block suppresses colliding
+    // 1-on-1 slots (and renders on the calendar) exactly like its first block.
+    // A session with no usable times still yields a single null-times entry —
+    // the pre-existing "programme chip without a time" behaviour.
     const recurringEnd = r.start_time ? addMinutesToHHMM(r.start_time, r.duration_minutes) : null
     const dated: { date: string; startTime: string | null; endTime: string | null }[] =
       persisted.length > 0
-        ? persisted.map(s => ({
-            date: s.session_date.slice(0, 10),
-            startTime: s.start_time ? s.start_time.slice(0, 5) : null,
-            endTime: s.end_time ? s.end_time.slice(0, 5) : null,
-          }))
+        ? persisted.flatMap((s): { date: string; startTime: string | null; endTime: string | null }[] => {
+            const date = s.session_date.slice(0, 10)
+            const blocks = expandSessionBlocks(s)
+            if (blocks.length === 0) return [{ date, startTime: null, endTime: null }]
+            return blocks.map(block => ({ date, startTime: block.startTime, endTime: block.endTime }))
+          })
         : recurringDates(r, windowStart, windowEnd).map(date => ({
             date,
             startTime: r.start_time ? r.start_time.slice(0, 5) : null,
