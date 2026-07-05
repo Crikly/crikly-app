@@ -177,6 +177,10 @@ NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY= # Public — safe in browser
 STRIPE_SECRET_KEY=                  # SECRET — server only
 STRIPE_WEBHOOK_SECRET=              # SECRET — server only
 
+# Cron (BUG-13b)
+CRON_SECRET=                        # SECRET — server only. Guards /api/cron/*;
+                                    # Vercel sends it as a Bearer token on cron runs
+
 # Email
 RESEND_API_KEY=                     # SECRET — server only
 

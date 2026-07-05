@@ -884,6 +884,118 @@ describe('POST /api/guest/bookings — idempotency', () => {
     expect((mockFrom as MockFn).mock.calls.length).toBe(2)
     expect(stripeMock.paymentIntents.create).not.toHaveBeenCalled()
   })
+
+  // ── BUG-13b: prior attempt released/cancelled → replay must NOT dead-end ──
+  //
+  // A released booking's intent is cancelled and can never be confirmed, so
+  // replaying its client_secret would strand the guest. The route must fall
+  // through to a fresh booking AND burn the token-based idempotency key
+  // (Stripe would replay the cancelled intent; unique_idempotency_key would
+  // reject the audit row) in favour of per-booking keys.
+
+  function setupBurnedReplay(
+    existingBookingRow: Record<string, unknown>,
+    retrieveResult?: Record<string, unknown>,
+  ) {
+    const stripeMock = makeStripeMock()
+    if (retrieveResult) {
+      stripeMock.paymentIntents.retrieve.mockResolvedValue(retrieveResult)
+    }
+    ;(getStripe as MockFn).mockReturnValue(stripeMock)
+
+    const piIdempotentChain = makeChain({
+      data: { stripe_payment_intent_id: 'pi_old', booking_id: 'booking-old-uuid' },
+    })
+    const bookingLookupChain = makeChain({ data: existingBookingRow })
+    const coachChain = makeChain({ data: COACH_ROW })
+    const sportChain = makeChain({ data: COACH_SPORT_ROW })
+    const availTemplatesChain = makeListChain({ data: [] })
+    const configChain = makeChain({ data: PLATFORM_CONFIG_ROW })
+    const profileChain = makeChain({ data: PROFILE_ROW })
+    const bookingInsertChain = makeChain({ data: BOOKING_ROW })
+    const piInsertChain = makeChain({ data: null })
+
+    const mockFrom = jest.fn()
+      .mockReturnValueOnce(piIdempotentChain)   // 1. payment_intents (idempotency)
+      .mockReturnValueOnce(bookingLookupChain)  // 2. bookings (replay status lookup)
+      .mockReturnValueOnce(coachChain)          // 3. coach_profiles
+      .mockReturnValueOnce(sportChain)          // 4. coach_sports
+      .mockReturnValueOnce(availTemplatesChain) // 5. availability_templates (BUG-09)
+    for (const c of makeValidationChains()) mockFrom.mockReturnValueOnce(c) // 6–9
+    mockFrom
+      .mockReturnValueOnce(configChain)         // 10. platform_config
+      .mockReturnValueOnce(profileChain)        // 11. user_profiles insert
+      .mockReturnValueOnce(bookingInsertChain)  // 12. bookings insert
+      .mockReturnValueOnce(piInsertChain)       // 13. payment_intents insert
+    ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom })
+
+    return { stripeMock, bookingInsertChain, piInsertChain }
+  }
+
+  it('BUG-13b: released (soft-deleted) prior booking → fresh booking with per-booking keys', async () => {
+    const { stripeMock, bookingInsertChain, piInsertChain } = setupBurnedReplay({
+      booking_reference: 'CRK-2026-OLDREF',
+      status: 'pending_payment',
+      deleted_at: '2026-07-05T10:00:00.000Z',
+    })
+
+    const res = await callPost(VALID_BODY)
+    expect(res.status).toBe(200)
+    const data = await res.json() as Record<string, unknown>
+    expect(data.bookingId).toBe(BOOKING_ROW.id)
+    expect(data.bookingReference).not.toBe('CRK-2026-OLDREF')
+
+    // The released intent must never be replayed to the client.
+    expect(stripeMock.paymentIntents.retrieve).not.toHaveBeenCalled()
+    expect(bookingInsertChain.insert).toHaveBeenCalled()
+
+    // Burned token key: Stripe + DB keys are per-booking, not token-based.
+    const createOpts = stripeMock.paymentIntents.create.mock.calls[0][1] as Record<string, unknown>
+    expect(createOpts.idempotencyKey).toBe(`guest-booking-${BOOKING_ROW.id}`)
+    const piInsertArg = (piInsertChain.insert as MockFn).mock.calls[0][0] as Record<string, unknown>
+    expect(piInsertArg.idempotency_key).toBe(`guest-booking-${BOOKING_ROW.id}`)
+  })
+
+  it('BUG-13b: PI retrieve fails (status unknown) → fresh booking with burned keys, never a key reuse', async () => {
+    const { stripeMock, bookingInsertChain } = setupBurnedReplay({
+      booking_reference: 'CRK-2026-OLDREF',
+      status: 'pending_payment',
+      deleted_at: null,
+    })
+    stripeMock.paymentIntents.retrieve.mockRejectedValue(new Error('Stripe unavailable'))
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    try {
+      const res = await callPost(VALID_BODY)
+      expect(res.status).toBe(200)
+      expect(bookingInsertChain.insert).toHaveBeenCalled()
+
+      // Unknown intent status → the token key must be burned, not reused with
+      // the new booking's metadata (Stripe idempotency mismatch → 502).
+      const createOpts = stripeMock.paymentIntents.create.mock.calls[0][1] as Record<string, unknown>
+      expect(createOpts.idempotencyKey).toBe(`guest-booking-${BOOKING_ROW.id}`)
+    } finally {
+      errorSpy.mockRestore()
+    }
+  })
+
+  it('BUG-13b: live booking but CANCELLED intent (webhook lag) → fresh booking, burned keys', async () => {
+    const { stripeMock, bookingInsertChain } = setupBurnedReplay(
+      { booking_reference: 'CRK-2026-OLDREF', status: 'pending_payment', deleted_at: null },
+      { id: 'pi_old', client_secret: 'pi_old_secret', status: 'canceled' },
+    )
+
+    const res = await callPost(VALID_BODY)
+    expect(res.status).toBe(200)
+    const data = await res.json() as Record<string, unknown>
+
+    // The cancelled intent's secret must not be returned.
+    expect(data.clientSecret).not.toBe('pi_old_secret')
+    expect(bookingInsertChain.insert).toHaveBeenCalled()
+
+    const createOpts = stripeMock.paymentIntents.create.mock.calls[0][1] as Record<string, unknown>
+    expect(createOpts.idempotencyKey).toBe(`guest-booking-${BOOKING_ROW.id}`)
+  })
 })
 
 // ── Stripe failure + rollback ─────────────────────────────────────────────────
