@@ -128,11 +128,16 @@ export function AvailabilityClient({
 
   // BUG-16: a date's committed programme sessions as minute-intervals, so a
   // colliding 1-on-1 slot can be suppressed (the Programme always wins).
+  //
+  // BUG-19 P2.6: read `blocks`, never startTime/endTime — those are the first
+  // block only (display). A camp day is one entry with several blocks, and
+  // EVERY block must suppress (Option B: the afternoon block stays dead for
+  // 1-on-1s even though the day renders as a single enrolment card).
   const programmeIntervalsFor = useMemo(
     () => (iso: string): Interval[] =>
       (programmesByDate[iso] ?? []).reduce<Interval[]>((acc, p) => {
-        if (p.startTime && p.endTime) {
-          acc.push({ startMinutes: hhmmToMinutes(p.startTime), endMinutes: hhmmToMinutes(p.endTime) })
+        for (const b of p.blocks) {
+          acc.push({ startMinutes: hhmmToMinutes(b.startTime), endMinutes: hhmmToMinutes(b.endTime) })
         }
         return acc
       }, []),
