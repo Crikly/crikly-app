@@ -127,6 +127,14 @@ async function callGet(auth?: string | null) {
   return GET(makeCronRequest(auth) as Parameters<typeof GET>[0])
 }
 
+// BUG-19 Phase 2: every authorised run ends with
+// rpc('reconcile_coach_time_claims') — the claims drift sweep. Default mock:
+// clean sweep (0 released). Tests pass their own rpc mock to exercise the
+// drift / failure paths.
+function adminClient(from: unknown, rpc?: MockFn) {
+  return { from, rpc: rpc ?? jest.fn().mockResolvedValue({ data: 0, error: null }) }
+}
+
 // ── Setup ─────────────────────────────────────────────────────────────────────
 
 process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://localhost:54321'
@@ -136,7 +144,7 @@ process.env.STRIPE_SECRET_KEY = 'sk_test_placeholder'
 beforeEach(() => {
   jest.clearAllMocks()
   process.env.CRON_SECRET = CRON_SECRET
-  ;(createAdminClient as MockFn).mockReturnValue({ from: jest.fn() })
+  ;(createAdminClient as MockFn).mockReturnValue(adminClient(jest.fn()))
   ;(getStripe as MockFn).mockReturnValue(makeStripeMock())
 })
 
@@ -145,7 +153,7 @@ beforeEach(() => {
 describe('GET /api/cron/release-expired-bookings — auth', () => {
   it('returns 401 without the Authorization header and touches no data', async () => {
     const mockFrom = jest.fn()
-    ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom })
+    ;(createAdminClient as MockFn).mockReturnValue(adminClient(mockFrom))
 
     const res = await callGet(null)
     expect(res.status).toBe(401)
@@ -169,9 +177,9 @@ describe('GET /api/cron/release-expired-bookings — auth', () => {
 describe('GET /api/cron/release-expired-bookings — reaping', () => {
   it('returns zero counts when there are no candidates', async () => {
     const candidatesChain = makeThenableChain({ data: [] })
-    ;(createAdminClient as MockFn).mockReturnValue({
-      from: mockFromTables({ bookings: [candidatesChain] }),
-    })
+    ;(createAdminClient as MockFn).mockReturnValue(
+      adminClient(mockFromTables({ bookings: [candidatesChain] })),
+    )
 
     const res = await callGet()
     expect(res.status).toBe(200)
@@ -190,13 +198,13 @@ describe('GET /api/cron/release-expired-bookings — reaping', () => {
     const piUpdateChain = makeThenableChain({ data: null })
     const profileChain = makeThenableChain({ data: null })
 
-    ;(createAdminClient as MockFn).mockReturnValue({
-      from: mockFromTables({
+    ;(createAdminClient as MockFn).mockReturnValue(
+      adminClient(mockFromTables({
         bookings: [candidatesChain, releaseChain],
         payment_intents: [piLookupChain, piUpdateChain],
         user_profiles: [profileChain],
-      }),
-    })
+      })),
+    )
 
     const res = await callGet()
     expect(res.status).toBe(200)
@@ -233,12 +241,12 @@ describe('GET /api/cron/release-expired-bookings — reaping', () => {
     const releaseChain = makeThenableChain({ data: [] })
     const piLookupChain = makeThenableChain({ data: [piRow({ updated_at: minutesAgo(5) })] })
 
-    ;(createAdminClient as MockFn).mockReturnValue({
-      from: mockFromTables({
+    ;(createAdminClient as MockFn).mockReturnValue(
+      adminClient(mockFromTables({
         bookings: [candidatesChain, releaseChain],
         payment_intents: [piLookupChain],
-      }),
-    })
+      })),
+    )
 
     const res = await callGet()
     const data = await res.json() as Record<string, unknown>
@@ -256,12 +264,12 @@ describe('GET /api/cron/release-expired-bookings — reaping', () => {
     const releaseChain = makeThenableChain({ data: [] })
     const piLookupChain = makeThenableChain({ data: [piRow({ status: 'succeeded' })] })
 
-    ;(createAdminClient as MockFn).mockReturnValue({
-      from: mockFromTables({
+    ;(createAdminClient as MockFn).mockReturnValue(
+      adminClient(mockFromTables({
         bookings: [candidatesChain, releaseChain],
         payment_intents: [piLookupChain],
-      }),
-    })
+      })),
+    )
 
     const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined)
     try {
@@ -284,12 +292,12 @@ describe('GET /api/cron/release-expired-bookings — reaping', () => {
     const releaseChain = makeThenableChain({ data: [] })
     const piLookupChain = makeThenableChain({ data: [piRow()] })
 
-    ;(createAdminClient as MockFn).mockReturnValue({
-      from: mockFromTables({
+    ;(createAdminClient as MockFn).mockReturnValue(
+      adminClient(mockFromTables({
         bookings: [candidatesChain, releaseChain],
         payment_intents: [piLookupChain],
-      }),
-    })
+      })),
+    )
 
     const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined)
     try {
@@ -311,12 +319,12 @@ describe('GET /api/cron/release-expired-bookings — reaping', () => {
     const releaseChain = makeThenableChain({ data: [] })
     const piLookupChain = makeThenableChain({ data: [piRow()] })
 
-    ;(createAdminClient as MockFn).mockReturnValue({
-      from: mockFromTables({
+    ;(createAdminClient as MockFn).mockReturnValue(
+      adminClient(mockFromTables({
         bookings: [candidatesChain, releaseChain],
         payment_intents: [piLookupChain],
-      }),
-    })
+      })),
+    )
 
     const res = await callGet()
     const data = await res.json() as Record<string, unknown>
@@ -335,13 +343,13 @@ describe('GET /api/cron/release-expired-bookings — reaping', () => {
     const piUpdateChain = makeThenableChain({ data: null })
     const profileChain = makeThenableChain({ data: null })
 
-    ;(createAdminClient as MockFn).mockReturnValue({
-      from: mockFromTables({
+    ;(createAdminClient as MockFn).mockReturnValue(
+      adminClient(mockFromTables({
         bookings: [candidatesChain, releaseChain],
         payment_intents: [piLookupChain, piUpdateChain],
         user_profiles: [profileChain],
-      }),
-    })
+      })),
+    )
 
     const res = await callGet()
     const data = await res.json() as Record<string, unknown>
@@ -357,12 +365,12 @@ describe('GET /api/cron/release-expired-bookings — reaping', () => {
     const releaseChain = makeThenableChain({ data: [] })
     const piLookupChain = makeThenableChain({ data: [piRow()] })
 
-    ;(createAdminClient as MockFn).mockReturnValue({
-      from: mockFromTables({
+    ;(createAdminClient as MockFn).mockReturnValue(
+      adminClient(mockFromTables({
         bookings: [candidatesChain, releaseChain],
         payment_intents: [piLookupChain],
-      }),
-    })
+      })),
+    )
 
     const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined)
     try {
@@ -385,18 +393,78 @@ describe('GET /api/cron/release-expired-bookings — reaping', () => {
     const piLookupChain = makeThenableChain({ data: [] })
     const profileChain = makeThenableChain({ data: null })
 
-    ;(createAdminClient as MockFn).mockReturnValue({
-      from: mockFromTables({
+    ;(createAdminClient as MockFn).mockReturnValue(
+      adminClient(mockFromTables({
         bookings: [candidatesChain, releaseChain],
         payment_intents: [piLookupChain],
         user_profiles: [profileChain],
-      }),
-    })
+      })),
+    )
 
     const res = await callGet()
     const data = await res.json() as Record<string, unknown>
     expect(data.released).toBe(1)
     expect(stripeMock.paymentIntents.retrieve).not.toHaveBeenCalled()
     expect(stripeMock.paymentIntents.cancel).not.toHaveBeenCalled()
+  })
+})
+
+// ── Claims drift sweep (BUG-19 Phase 2) ───────────────────────────────────────
+//
+// Same cron route, same cadence: after the reaper pass, the route calls
+// rpc('reconcile_coach_time_claims') to release any active coach_time_claims
+// row whose source no longer holds. Triggers make claims transactionally
+// consistent, so a non-zero count is DRIFT and must be logged loudly — and a
+// sweep failure must never break the reaper (independent safety nets).
+
+describe('GET /api/cron/release-expired-bookings — claims drift sweep', () => {
+  it('runs the sweep every run and reports claims_reconciled', async () => {
+    const candidatesChain = makeThenableChain({ data: [] })
+    const rpc = jest.fn().mockResolvedValue({ data: 0, error: null })
+    ;(createAdminClient as MockFn).mockReturnValue(
+      adminClient(mockFromTables({ bookings: [candidatesChain] }), rpc),
+    )
+
+    const res = await callGet()
+    expect(res.status).toBe(200)
+    const data = await res.json() as Record<string, unknown>
+    expect(rpc).toHaveBeenCalledWith('reconcile_coach_time_claims')
+    expect(data.claims_reconciled).toBe(0)
+  })
+
+  it('logs loudly when the sweep releases drifted claims', async () => {
+    const candidatesChain = makeThenableChain({ data: [] })
+    const rpc = jest.fn().mockResolvedValue({ data: 2, error: null })
+    ;(createAdminClient as MockFn).mockReturnValue(
+      adminClient(mockFromTables({ bookings: [candidatesChain] }), rpc),
+    )
+
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      const res = await callGet()
+      const data = await res.json() as Record<string, unknown>
+      expect(data.claims_reconciled).toBe(2)
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('coach_time_claims DRIFT'))
+    } finally {
+      errorSpy.mockRestore()
+    }
+  })
+
+  it('a failed sweep never breaks the reaper response', async () => {
+    const candidatesChain = makeThenableChain({ data: [] })
+    const rpc = jest.fn().mockResolvedValue({ data: null, error: { message: 'boom' } })
+    ;(createAdminClient as MockFn).mockReturnValue(
+      adminClient(mockFromTables({ bookings: [candidatesChain] }), rpc),
+    )
+
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      const res = await callGet()
+      expect(res.status).toBe(200)
+      const data = await res.json() as Record<string, unknown>
+      expect(data.claims_reconciled).toBe(0)
+    } finally {
+      errorSpy.mockRestore()
+    }
   })
 })

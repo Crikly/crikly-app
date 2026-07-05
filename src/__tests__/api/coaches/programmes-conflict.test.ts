@@ -206,6 +206,44 @@ describe('POST /api/coaches/programmes — session conflict guard (BUG-18)', () 
     const data = await res.json()
     expect(data.id).toBe('prog-1')
   })
+
+  it('returns a clean 409 when the DB exclusion constraint rejects the session insert (23P01, BUG-19 Phase 2)', async () => {
+    mockAuthAndSport()
+    // App-level guard saw no conflict (race window) — the coach_time_claims
+    // trigger is the backstop and rejects the insert with 23P01.
+    ;(getCoachCommitments as jest.Mock).mockResolvedValue([])
+
+    const newProgramme = { id: 'prog-1', sport_id: 'sport-1' }
+
+    const adminChain: Record<string, unknown> = {}
+    for (const m of ['insert', 'select', 'eq', 'is', 'in', 'update', 'upsert', 'delete']) {
+      adminChain[m] = jest.fn(() => adminChain)
+    }
+    adminChain.single = jest.fn().mockResolvedValue({ data: newProgramme, error: null })
+    // The awaited sessions insert resolves with the exclusion violation; the
+    // rollback soft-delete reuses the same thenable (its result is unchecked).
+    adminChain.then = (resolve: (r: unknown) => void) =>
+      resolve({
+        data: null,
+        error: { code: '23P01', message: 'conflicting key value violates exclusion constraint "no_overlapping_active_claims"' },
+      })
+    ;(createAdminClient as jest.Mock).mockReturnValue({ from: jest.fn(() => adminChain) })
+
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      const res = await callPost({
+        ...baseBody,
+        session_dates: [{ date: '2026-07-05', startTime: '10:00', endTime: '11:00' }],
+      })
+
+      expect(res.status).toBe(409)
+      const data = await res.json()
+      expect(data.error).toBe('Conflict detected')
+      expect(String(data.message)).toContain('overlaps')
+    } finally {
+      errorSpy.mockRestore()
+    }
+  })
 })
 
 // ─── PATCH conflict guard (BUG-18) ──────────────────────────────────────────────
@@ -366,5 +404,84 @@ describe('PATCH /api/coaches/programmes/[programmeId] — session conflict guard
       '2026-07-12',
       { excludeProgrammeId: 'prog-1' },
     )
+  })
+
+  // ── DB exclusion backstop (BUG-19 Phase 2) ─────────────────────────────────
+  //
+  // The coach_time_claims trigger (migration 038) can reject a PATCH with
+  // SQLSTATE 23P01 at two points: the programme UPDATE (a status change
+  // cascades claim reactivation) and the session UPSERT (an edited time now
+  // overlaps another commitment). Both must surface as the same clean 409 the
+  // app-level guard produces — never a raw 500.
+
+  it('returns 409 Conflict detected when the programme UPDATE is rejected with 23P01', async () => {
+    mockPatchAuth()
+    const chain: Record<string, unknown> = {}
+    for (const m of ['select', 'insert', 'update', 'upsert', 'delete', 'eq', 'is', 'in', 'order', 'gte', 'lte', 'not']) {
+      chain[m] = jest.fn(() => chain)
+    }
+    const single = jest.fn()
+    // 1st single: existing-programme ownership check (draft → active is a
+    // valid transition); 2nd: the UPDATE fails — the status-change trigger's
+    // claim cascade hit the exclusion constraint.
+    single.mockResolvedValueOnce({
+      data: { id: 'prog-1', status: 'draft', current_spots: 0, schedule_type: 'fixed', days_of_week: [0], day_of_week: 0, session_count: 1, starts_at: null, ends_at: null, camp_mode: false },
+      error: null,
+    })
+    single.mockResolvedValueOnce({
+      data: null,
+      error: { code: '23P01', message: 'conflicting key value violates exclusion constraint "no_overlapping_active_claims"' },
+    })
+    chain.single = single
+    chain.then = (resolve: (r: unknown) => void) => resolve({ data: [], error: null })
+    ;(createAdminClient as jest.Mock).mockReturnValue({ from: jest.fn(() => chain) })
+
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      const res = await callPatch('prog-1', { status: 'active' })
+      expect(res.status).toBe(409)
+      const data = await res.json()
+      expect(data.error).toBe('Conflict detected')
+    } finally {
+      errorSpy.mockRestore()
+    }
+  })
+
+  it('returns 409 Conflict detected when the session UPSERT is rejected with 23P01', async () => {
+    mockPatchAuth()
+    ;(getCoachCommitments as jest.Mock).mockResolvedValue([]) // app guard saw no conflict (race window)
+
+    const chain: Record<string, unknown> = {}
+    for (const m of ['select', 'insert', 'update', 'upsert', 'delete', 'eq', 'is', 'in', 'order', 'gte', 'lte', 'not']) {
+      chain[m] = jest.fn(() => chain)
+    }
+    const single = jest.fn()
+    single.mockResolvedValueOnce({
+      data: { id: 'prog-1', status: 'draft', current_spots: 0, schedule_type: 'fixed', days_of_week: [0], day_of_week: 0, session_count: 1, starts_at: null, ends_at: null, camp_mode: false },
+      error: null,
+    })
+    single.mockResolvedValueOnce({ data: fullProgramme, error: null })
+    chain.single = single
+    // Thenables in call order after the update: existing-sessions fetch (ok),
+    // then the UPSERT — rejected by the exclusion constraint.
+    const thenResults = [
+      { data: [], error: null },
+      { data: null, error: { code: '23P01', message: 'conflicting key value violates exclusion constraint "no_overlapping_active_claims"' } },
+    ]
+    chain.then = (resolve: (r: unknown) => void) =>
+      resolve(thenResults.length > 1 ? thenResults.shift() : thenResults[0])
+    ;(createAdminClient as jest.Mock).mockReturnValue({ from: jest.fn(() => chain) })
+
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      const res = await callPatch('prog-1', {
+        session_dates: [{ date: '2026-07-05', startTime: '10:00', endTime: '11:00' }],
+      })
+      expect(res.status).toBe(409)
+      const data = await res.json()
+      expect(data.error).toBe('Conflict detected')
+    } finally {
+      errorSpy.mockRestore()
+    }
   })
 })

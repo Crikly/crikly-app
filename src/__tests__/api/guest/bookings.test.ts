@@ -616,6 +616,46 @@ describe('POST /api/guest/bookings — slot taken', () => {
     expect(data.error).toBe('slot_taken')
   })
 
+  it('returns 409 slot_taken when booking insert returns PG error code 23P01 (BUG-19 Phase 2)', async () => {
+    const stripeMock = makeStripeMock()
+    ;(getStripe as MockFn).mockReturnValue(stripeMock)
+
+    const piIdempotentChain = makeChain({ data: null })
+    const coachChain = makeChain({ data: COACH_ROW })
+    const sportChain = makeChain({ data: COACH_SPORT_ROW })
+    const availTemplatesChain = makeListChain({ data: [] })
+    const configChain = makeChain({ data: PLATFORM_CONFIG_ROW })
+    const profileChain = makeChain({ data: PROFILE_ROW })
+    // Booking insert simulates the coach_time_claims exclusion constraint
+    // (raised by the sync_booking_claim trigger, migration 038): an OVERLAPPING
+    // but unequal slot — or a camp-mode block — that the 034 unique index
+    // cannot catch. Must surface exactly like 23505: slot_taken, not a 500.
+    const bookingChain = makeChain({
+      data: null,
+      error: { code: '23P01', message: 'conflicting key value violates exclusion constraint "no_overlapping_active_claims"' },
+    })
+    const profileUpdateChain = makeChain({ data: null, error: null })
+
+    const mockFrom = jest.fn()
+      .mockReturnValueOnce(piIdempotentChain)
+      .mockReturnValueOnce(coachChain)
+      .mockReturnValueOnce(sportChain)
+      .mockReturnValueOnce(availTemplatesChain)
+    for (const c of makeValidationChains()) mockFrom.mockReturnValueOnce(c)
+    mockFrom
+      .mockReturnValueOnce(configChain)
+      .mockReturnValueOnce(profileChain)
+      .mockReturnValueOnce(bookingChain)
+      .mockReturnValueOnce(profileUpdateChain)  // soft-delete rollback
+    ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom })
+
+    const res = await callPost(VALID_BODY)
+
+    expect(res.status).toBe(409)
+    const data = await res.json() as Record<string, unknown>
+    expect(data.error).toBe('slot_taken')
+  })
+
   it('soft-deletes the provisional user on slot_taken (rollback)', async () => {
     const stripeMock = makeStripeMock()
     ;(getStripe as MockFn).mockReturnValue(stripeMock)

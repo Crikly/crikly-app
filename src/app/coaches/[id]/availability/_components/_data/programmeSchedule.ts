@@ -11,6 +11,7 @@
 //      itself. We expand that pattern across the visible calendar window.
 
 import { createClient } from '@/lib/supabase/server'
+import { expandSessionBlocks, type SessionBlock } from '@/lib/availability/campSlots'
 import { localISODate } from './slots'
 
 export interface DayProgramme {
@@ -23,10 +24,21 @@ export interface DayProgramme {
   /**
    * BUG-16: 'HH:MM' end of this session — the persisted session's end_time, or
    * (for recurring-pattern programmes with no session rows) start_time +
-   * duration_minutes. Drives the overlap test that suppresses a colliding 1-on-1
-   * slot on the public calendar. Null only when startTime is also null.
+   * duration_minutes. Null only when startTime is also null.
+   *
+   * BUG-19 P2.6: startTime/endTime are the FIRST block only and exist for
+   * display (the card's time chip, the booking summary). Overlap suppression
+   * must read `blocks` — a camp day's afternoon block is invisible here.
    */
   endTime: string | null
+  /**
+   * BUG-19 P2.6: every time block this day's session occupies (camp-mode
+   * sessions have several; blocks[0] mirrors startTime/endTime). This is the
+   * ONLY field busy-suppression may read — one card per day, every block
+   * still suppresses colliding 1-on-1 slots (Option B). Empty only when the
+   * session carries no usable times.
+   */
+  blocks: SessionBlock[]
   /**
    * UX-11: where this programme's sessions take place (group_programmes.venue_name),
    * or null when the coach set no venue.
@@ -55,6 +67,8 @@ interface SessionRow {
   start_time: string | null
   end_time: string | null
   status: string
+  /** Camp-mode blocks (jsonb) — expanded via expandSessionBlocks (BUG-19 Phase 2). */
+  slots: unknown
 }
 
 interface ProgrammeRow {
@@ -144,7 +158,7 @@ export async function fetchProgrammeSchedule(coachProfileId: string): Promise<Pr
   const { data, error } = await supabase
     .from('group_programmes')
     .select(
-      'id, title, sport_id, age_groups, max_spots, current_spots, price_per_session_pence, block_price_pence, payment_type, day_of_week, days_of_week, start_time, duration_minutes, starts_at, ends_at, venue_name, group_programme_sessions(session_date, start_time, end_time, status)',
+      'id, title, sport_id, age_groups, max_spots, current_spots, price_per_session_pence, block_price_pence, payment_type, day_of_week, days_of_week, start_time, duration_minutes, starts_at, ends_at, venue_name, group_programme_sessions(session_date, start_time, end_time, status, slots)',
     )
     .eq('coach_profile_id', coachProfileId)
     .eq('model', 'programme')
@@ -201,25 +215,42 @@ export async function fetchProgrammeSchedule(coachProfileId: string): Promise<Pr
       s => s.status === 'scheduled' && s.session_date.slice(0, 10) >= cutoff,
     )
 
-    // BUG-16: each dated entry now carries an end time too. Persisted rows use
+    // BUG-16: each dated entry carries an end time too. Persisted rows use
     // their own end_time; recurring-pattern rows derive it from the programme's
     // start_time + duration_minutes.
+    //
+    // BUG-19 P2.6 (regression fix over P2.4): ONE entry per (programme, date) —
+    // a camp day is a single enrollable unit, so it renders as a single card
+    // with a naturally unique {programmeId}-{date} React key. The camp-mode
+    // expansion (Option B) now lives in `blocks`: startTime/endTime stay the
+    // first block for display (byte-identical to pre-P2.4), while suppression
+    // consumers iterate blocks so the afternoon block still kills colliding
+    // 1-on-1 slots. A session with no usable times yields blocks: [] and null
+    // times — the pre-existing "programme chip without a time" behaviour.
     const recurringEnd = r.start_time ? addMinutesToHHMM(r.start_time, r.duration_minutes) : null
-    const dated: { date: string; startTime: string | null; endTime: string | null }[] =
+    const dated: { date: string; startTime: string | null; endTime: string | null; blocks: SessionBlock[] }[] =
       persisted.length > 0
-        ? persisted.map(s => ({
-            date: s.session_date.slice(0, 10),
-            startTime: s.start_time ? s.start_time.slice(0, 5) : null,
-            endTime: s.end_time ? s.end_time.slice(0, 5) : null,
-          }))
-        : recurringDates(r, windowStart, windowEnd).map(date => ({
-            date,
-            startTime: r.start_time ? r.start_time.slice(0, 5) : null,
-            endTime: recurringEnd,
-          }))
+        ? persisted.map(s => {
+            const blocks = expandSessionBlocks(s)
+            return {
+              date: s.session_date.slice(0, 10),
+              startTime: blocks[0]?.startTime ?? null,
+              endTime: blocks[0]?.endTime ?? null,
+              blocks,
+            }
+          })
+        : recurringDates(r, windowStart, windowEnd).map(date => {
+            const startTime = r.start_time ? r.start_time.slice(0, 5) : null
+            return {
+              date,
+              startTime,
+              endTime: recurringEnd,
+              blocks: startTime && recurringEnd ? [{ startTime, endTime: recurringEnd }] : [],
+            }
+          })
 
-    for (const { date, startTime, endTime } of dated) {
-      ;(byDate[date] ??= []).push({ ...base, startTime, endTime })
+    for (const { date, startTime, endTime, blocks } of dated) {
+      ;(byDate[date] ??= []).push({ ...base, startTime, endTime, blocks })
     }
   }
 

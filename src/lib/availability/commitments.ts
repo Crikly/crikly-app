@@ -18,6 +18,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database'
 import { hhmmToMinutes, type Interval } from './overlap'
+import { expandSessionBlocks } from './campSlots'
 
 type Client = SupabaseClient<Database>
 
@@ -73,6 +74,8 @@ interface SessionRow {
   session_date: string
   start_time: string
   end_time: string
+  /** Camp-mode blocks (jsonb) — expanded via expandSessionBlocks (BUG-19 Phase 2). */
+  slots: unknown
 }
 
 interface BookingRow {
@@ -172,7 +175,7 @@ export async function getCoachCommitments(
     const cutoff = isoDate < todayISO() ? isoDate : todayISO()
     const { data: sessions } = await supabase
       .from('group_programme_sessions')
-      .select('group_programme_id, session_date, start_time, end_time')
+      .select('group_programme_id, session_date, start_time, end_time, slots')
       .in('group_programme_id', programmeIds)
       .eq('status', 'scheduled')
       .gte('session_date', cutoff)
@@ -180,15 +183,20 @@ export async function getCoachCommitments(
     const sessionRows = (sessions ?? []) as SessionRow[]
     const programmesWithSessions = new Set(sessionRows.map((s) => s.group_programme_id))
 
-    // 2a. persisted sessions landing on isoDate
+    // 2a. persisted sessions landing on isoDate. Camp-mode sessions expand to
+    // one interval PER slots-array block (BUG-19 Phase 2 Option B) — before
+    // this, only the row's first block guarded, leaving camp afternoons
+    // silently bookable.
     for (const s of sessionRows) {
       if (datePart(s.session_date) !== isoDate) continue
-      commitments.push({
-        startMinutes: hhmmToMinutes(s.start_time),
-        endMinutes: hhmmToMinutes(s.end_time),
-        source: 'programme',
-        label: 'a programme session',
-      })
+      for (const block of expandSessionBlocks(s)) {
+        commitments.push({
+          startMinutes: hhmmToMinutes(block.startTime),
+          endMinutes: hhmmToMinutes(block.endTime),
+          source: 'programme',
+          label: 'a programme session',
+        })
+      }
     }
 
     // 2b. recurring fallback for programmes with NO persisted sessions
