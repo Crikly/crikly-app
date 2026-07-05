@@ -18,6 +18,14 @@
 //   - account.updated                 → coach Connect onboarding status
 //   - payment_intent.succeeded        → confirm guest booking (P-00c-API)
 //   - payment_intent.payment_failed   → record payment failure (P-00c-API)
+//   - payment_intent.canceled         → release the held slot (BUG-13b)
+//
+// Event semantics for our card-only, auto-capture PaymentIntents (BUG-13b):
+//   payment_failed is a PER-ATTEMPT signal — the intent drops back to
+//   requires_payment_method and stays retryable, so it must NEVER release the
+//   booking. canceled is DEFINITIVE — a cancelled intent can never be charged
+//   — so it releases immediately. Time-based abandonment (no signal at all) is
+//   handled by the reaper: GET /api/cron/release-expired-bookings.
 //
 // Idempotency: each handler is self-guarding rather than relying on a shared
 // audit table. account.updated writes an idempotent boolean; the booking confirm
@@ -40,6 +48,9 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { sendBookingConfirmation } from '@/lib/resend/send-booking-confirmation'
 import { sendProgrammeConfirmation } from '@/lib/resend/send-programme-confirmation'
 import { addMinutesToTime } from '@/lib/booking/guest-checkout'
+import { RELEASE_REASON_PI_CANCELLED, isReleaseReason } from '@/lib/booking/release'
+
+type SupabaseAdminClient = ReturnType<typeof createAdminClient>
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -120,9 +131,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
       case 'payment_intent.payment_failed':
         // Mark the payment_intents row failed so we don't leave it stuck at
-        // 'pending'. The booking stays 'pending_payment' and is reaped by the
-        // provisional-user cleanup cron (guest) or retried by the payer.
+        // 'pending'. The booking stays 'pending_payment' — a failed attempt is
+        // retryable, never definitive (BUG-13b). Truly abandoned rows are
+        // released by GET /api/cron/release-expired-bookings.
         await handlePaymentIntentFailed(event.data.object as Stripe.PaymentIntent)
+        break
+
+      case 'payment_intent.canceled':
+        // BUG-13b: a cancelled intent can never be charged — definitive.
+        // Release the held slot immediately. Sources: the reaper, the guest
+        // route's rollback path, or a manual cancel in the Stripe Dashboard.
+        await handlePaymentIntentCanceled(event.data.object as Stripe.PaymentIntent)
         break
 
       default:
@@ -247,19 +266,47 @@ async function handlePaymentIntentSucceeded(intent: Stripe.PaymentIntent): Promi
   }
 
   if (!confirmed || confirmed.length === 0) {
-    // Already confirmed by a prior delivery (or cancelled). No-op — correct.
-    console.info(`[Stripe Webhook] booking ${bookingId} not in pending_payment; skipping (idempotent)`)
+    // Usually: already confirmed by a prior delivery — idempotent no-op.
+    // BUG-13b backstop: if the row was RELEASED (reaper / canceled path) and
+    // the payment still somehow succeeded, restore it or scream for a refund
+    // rather than silently keeping the money. Unreachable by design — the
+    // reaper only releases AFTER Stripe confirms the cancel — so this is
+    // defence-in-depth, not a working code path.
+    await restoreReleasedBookingIfPaid(adminSupabase, intent, bookingId)
     return
   }
 
   console.info(`[Stripe Webhook] booking ${bookingId} confirmed via ${intent.id}`)
 
-  // Booking-confirmation email (P-00c-EMAIL). Fires exactly once — gated by the
-  // pending_payment transition above. The guest has no account and no stored
-  // email, so the address + name come from the intent metadata stashed at
-  // creation by /api/guest/bookings. Email failure NEVER affects the webhook
-  // response: sendBookingConfirmation swallows and returns a boolean.
-  const booking = confirmed[0]
+  await sendGuestBookingConfirmationEmail(adminSupabase, confirmed[0], intent)
+}
+
+/** Booking row shape needed to build the confirmation email. */
+interface ConfirmedBookingRow {
+  id: string
+  booking_reference: string
+  coach_profile_id: string
+  session_date: string
+  session_start_time: string
+  session_end_time: string
+  session_type: string
+}
+
+/**
+ * Booking-confirmation email (P-00c-EMAIL). Fires exactly once — gated by the
+ * pending_payment transition in the caller. The guest has no account and no
+ * stored email, so the address + name come from the intent metadata stashed at
+ * creation by /api/guest/bookings. Email failure NEVER affects the webhook
+ * response: sendBookingConfirmation swallows and returns a boolean.
+ *
+ * Extracted verbatim from handlePaymentIntentSucceeded (BUG-13b) so the
+ * succeeded-after-release restore path can send the same email. No logic change.
+ */
+async function sendGuestBookingConfirmationEmail(
+  adminSupabase: SupabaseAdminClient,
+  booking: ConfirmedBookingRow,
+  intent: Stripe.PaymentIntent,
+): Promise<void> {
   const guestEmail = intent.metadata?.guest_email
   const guestName = intent.metadata?.guest_name
   // UX-16: who the session is for, stashed at intent creation. Absent on
@@ -310,8 +357,95 @@ async function handlePaymentIntentSucceeded(intent: Stripe.PaymentIntent): Promi
   })
 
   if (!sent) {
-    console.error(`[Stripe Webhook] confirmation email failed for booking ${bookingId}`)
+    console.error(`[Stripe Webhook] confirmation email failed for booking ${booking.id}`)
   }
+}
+
+/**
+ * BUG-13b defence-in-depth: payment_intent.succeeded arrived for a booking the
+ * release path already freed (soft-deleted, status still 'pending_payment',
+ * cancellation_reason holding a release marker). By design this cannot happen —
+ * the reaper releases only AFTER Stripe confirms the intent is cancelled, and a
+ * cancelled intent can never succeed — so this backstop exists for the
+ * unknown-unknowns. Behaviour (approved in BUG-13b Step 0, 5 Jul 2026):
+ *   - Slot still free → restore: undelete + confirm + messaging unlock, restore
+ *     the provisional guest profile, send the confirmation email. Clearing
+ *     deleted_at re-enters the migration-034 partial unique index, so Postgres
+ *     itself arbitrates "still free" (23505 = it is not).
+ *   - Slot re-booked → log MANUAL REFUND NEEDED loudly. No auto-refund in this
+ *     task (Phase 2 hardening candidate, per Step 0 decision).
+ * Never throws.
+ */
+async function restoreReleasedBookingIfPaid(
+  adminSupabase: SupabaseAdminClient,
+  intent: Stripe.PaymentIntent,
+  bookingId: string,
+): Promise<void> {
+  const { data: row, error: rowError } = await adminSupabase
+    .from('bookings')
+    .select('id, status, deleted_at, cancellation_reason, booked_by_user_id, booking_reference')
+    .eq('id', bookingId)
+    .maybeSingle()
+
+  if (rowError) {
+    console.error(`[Stripe Webhook] released-booking lookup failed for ${bookingId}:`, rowError)
+    return
+  }
+
+  if (!row || row.status !== 'pending_payment' || !row.deleted_at || !isReleaseReason(row.cancellation_reason)) {
+    // The normal idempotent no-op: already confirmed by a prior delivery, or a
+    // non-release soft delete (guest-route rollback). Nothing to restore.
+    console.info(`[Stripe Webhook] booking ${bookingId} not in pending_payment; skipping (idempotent)`)
+    return
+  }
+
+  const { data: restored, error: restoreError } = await adminSupabase
+    .from('bookings')
+    .update({
+      deleted_at: null,
+      cancelled_at: null,
+      cancellation_reason: null,
+      status: 'confirmed',
+      messaging_unlocked: true,
+    })
+    .eq('id', bookingId)
+    .eq('status', 'pending_payment')
+    .not('deleted_at', 'is', null)
+    .select('id, booking_reference, coach_profile_id, session_date, session_start_time, session_end_time, session_type')
+
+  if (restoreError) {
+    // 23505 = the slot was re-booked after release. Either way money was taken
+    // for a booking we cannot restore — this MUST reach a human.
+    console.error(
+      `[Stripe Webhook] MANUAL REFUND NEEDED: booking ${bookingId} (${row.booking_reference}) ` +
+        `paid via ${intent.id} AFTER release and restore failed ` +
+        `(23505 = slot re-booked). Refund the payer and reconcile:`,
+      restoreError,
+    )
+    return
+  }
+
+  if (!restored || restored.length === 0) {
+    // A concurrent delivery restored it first — idempotent no-op.
+    console.info(`[Stripe Webhook] booking ${bookingId} already restored; skipping (idempotent)`)
+    return
+  }
+
+  // Restore the provisional guest profile the release path soft-deleted.
+  const { error: profileError } = await adminSupabase
+    .from('user_profiles')
+    .update({ deleted_at: null })
+    .eq('id', row.booked_by_user_id)
+    .eq('is_provisional', true)
+  if (profileError) {
+    console.error(`[Stripe Webhook] provisional profile restore failed for ${row.booked_by_user_id}:`, profileError)
+  }
+
+  console.info(
+    `[Stripe Webhook] booking ${bookingId} RESTORED after release via ${intent.id} (succeeded-after-release backstop)`,
+  )
+
+  await sendGuestBookingConfirmationEmail(adminSupabase, restored[0], intent)
 }
 
 /**
@@ -499,8 +633,11 @@ function formatSessionType(type: string): string {
  *
  * Records the failure on the payment_intents audit row (including Stripe's error
  * code/message for support). The booking is intentionally left 'pending_payment'
- * so the payer can retry against the same intent; abandoned rows are reaped by
- * the provisional-user cleanup cron. Never throws.
+ * so the payer can retry against the same intent — for our card-only intents a
+ * failed attempt is never definitive (BUG-13b). The update also bumps the audit
+ * row's updated_at, which the reaper reads as "recent activity" so an actively
+ * retrying payer never loses their slot. Truly abandoned rows are released by
+ * GET /api/cron/release-expired-bookings. Never throws.
  */
 async function handlePaymentIntentFailed(intent: Stripe.PaymentIntent): Promise<void> {
   const lastError = intent.last_payment_error
@@ -536,4 +673,106 @@ async function handlePaymentIntentFailed(intent: Stripe.PaymentIntent): Promise<
   }
 
   console.info(`[Stripe Webhook] payment_intent.payment_failed recorded for ${intent.id}`)
+}
+
+/**
+ * payment_intent.canceled — the intent was cancelled via the Stripe API (BUG-13b).
+ *
+ * For our card-only, auto-capture intents this event has exactly three sources:
+ * the reaper (GET /api/cron/release-expired-bookings), the guest route's
+ * rollback path, and a manual cancel in the Stripe Dashboard. All are
+ * DEFINITIVE — a cancelled intent can never be charged — so the booking's held
+ * slot is released immediately rather than waiting out the TTL.
+ *
+ * Release semantics (approved BUG-13b Step 0): soft delete. Setting deleted_at
+ * frees the slot atomically across the migration-034 partial unique index, the
+ * public calendar read, and the write-side commitments guard; status stays
+ * 'pending_payment' and cancellation_reason records why. The provisional guest
+ * profile is soft-deleted alongside, mirroring the guest route's rollbacks.
+ *
+ * Idempotent: the release UPDATE is scoped to live pending_payment rows, so a
+ * redelivery — or a cancel for a booking the guest route already rolled back,
+ * or the reaper already released — is a no-op.
+ *
+ * Programme enrolments get the audit mark only (payment_status='failed' while
+ * still pending, mirroring handlePaymentIntentFailed): a pending enrolment
+ * holds no spot, so there is nothing to release (BUG-13b Step 0 scope call).
+ *
+ * Never throws — DB errors are logged and swallowed so the outer handler
+ * returns 200.
+ */
+async function handlePaymentIntentCanceled(intent: Stripe.PaymentIntent): Promise<void> {
+  const adminSupabase = createAdminClient()
+
+  // Audit row → terminal. 'cancelled' is not in the migration-006 status CHECK;
+  // status='failed' + stripe_status='canceled' records the precise truth
+  // without a migration. Never downgrade a row a success event confirmed.
+  const { error: piError } = await adminSupabase
+    .from('payment_intents')
+    .update({ status: 'failed', stripe_status: intent.status })
+    .eq('stripe_payment_intent_id', intent.id)
+    .neq('status', 'succeeded')
+
+  if (piError) {
+    console.error(`[Stripe Webhook] payment_intents cancel update failed for ${intent.id}:`, piError)
+  }
+
+  const enrolmentId = intent.metadata?.enrolment_id
+  if (enrolmentId) {
+    const { error: enrolError } = await adminSupabase
+      .from('group_programme_enrolments')
+      .update({ payment_status: 'failed', updated_at: new Date().toISOString() })
+      .eq('id', enrolmentId)
+      .eq('payment_status', 'pending')
+    if (enrolError) {
+      console.error(`[Stripe Webhook] enrolment cancel update failed for ${enrolmentId}:`, enrolError)
+    }
+    return
+  }
+
+  const bookingId = intent.metadata?.booking_id
+  if (!bookingId) {
+    console.info(`[Stripe Webhook] payment_intent.canceled ${intent.id} has no booking_id metadata`)
+    return
+  }
+
+  // Release the slot — scoped so only a live, still-unpaid booking transitions.
+  const now = new Date().toISOString()
+  const { data: released, error: releaseError } = await adminSupabase
+    .from('bookings')
+    .update({
+      deleted_at: now,
+      cancelled_at: now,
+      cancellation_reason: RELEASE_REASON_PI_CANCELLED,
+    })
+    .eq('id', bookingId)
+    .eq('status', 'pending_payment')
+    .is('deleted_at', null)
+    .select('id, booked_by_user_id')
+
+  if (releaseError) {
+    console.error(`[Stripe Webhook] booking release failed for ${bookingId}:`, releaseError)
+    return
+  }
+
+  if (!released || released.length === 0) {
+    // Already released / rolled back / confirmed — idempotent no-op.
+    console.info(`[Stripe Webhook] booking ${bookingId} not releasable; skipping (idempotent)`)
+    return
+  }
+
+  // Soft-delete the provisional guest profile (strictly 1:1 with the booking).
+  // The is_provisional guard means a real account is never touched.
+  const bookerId = released[0].booked_by_user_id
+  const { error: profileError } = await adminSupabase
+    .from('user_profiles')
+    .update({ deleted_at: now })
+    .eq('id', bookerId)
+    .eq('is_provisional', true)
+    .is('deleted_at', null)
+  if (profileError) {
+    console.error(`[Stripe Webhook] provisional profile release failed for ${bookerId}:`, profileError)
+  }
+
+  console.info(`[Stripe Webhook] booking ${bookingId} released via payment_intent.canceled ${intent.id}`)
 }

@@ -715,8 +715,8 @@ Sends a dummy email via Resend to verify delivery. Uses fixed stub data (coach "
 ## Webhook Routes
 
 ### POST /api/webhooks/stripe
-Receive and process Stripe webhook events. Handles `account.updated`, `payment_intent.succeeded`, and `payment_intent.payment_failed`; every other event type is acknowledged with 200 and ignored.
-**Status: Implemented — BUG-STRIPE-ONBOARDING-COMPLETE-WIRING + P-00c-API**
+Receive and process Stripe webhook events. Handles `account.updated`, `payment_intent.succeeded`, `payment_intent.payment_failed`, and `payment_intent.canceled`; every other event type is acknowledged with 200 and ignored.
+**Status: Implemented — BUG-STRIPE-ONBOARDING-COMPLETE-WIRING + P-00c-API + BUG-13b**
 **Auth: Stripe signature (no Crikly auth — `STRIPE_WEBHOOK_SECRET` is the trust root)**
 
 **Headers:**
@@ -732,8 +732,11 @@ stripe-signature   required — verified against STRIPE_WEBHOOK_SECRET
 |---|---|
 | `account.updated` | Computes `isComplete = charges_enabled && payouts_enabled` from `event.data.object` (Stripe.Account) and `UPDATE coach_profiles SET stripe_onboarding_complete = isComplete WHERE stripe_account_id = account.id`. Both directions written, so a Stripe-side capability revocation flips the flag back to `false`. |
 | `payment_intent.succeeded` | Branches on metadata. **Programme enrolment (P-00c-ENROL):** `metadata.enrolment_id` present → sets `payment_intents.status = 'succeeded'`, confirms the enrolment with `UPDATE group_programme_enrolments SET payment_status = 'succeeded' WHERE id = enrolment_id AND payment_status = 'pending'` (status-scoped idempotency guard), then atomically claims a spot via `increment_programme_spots()` (a `false` return ⇒ `console.error` MANUAL REFUND NEEDED, S0 decision 3), and sends `sendProgrammeConfirmation`. **1-to-1 booking (P-00c-API):** `metadata.booking_id` → `UPDATE bookings SET status = 'confirmed', messaging_unlocked = true WHERE id = booking_id AND status = 'pending_payment'` (BR-06, BR-07), then `sendBookingConfirmation`. Email failure is swallowed and never affects the 200. |
-| `payment_intent.payment_failed` | Sets `payment_intents.status = 'failed'` with `stripe_error_code` / `stripe_error_message`. A booking stays `pending_payment` (payer can retry); a programme enrolment is marked `payment_status = 'failed'` (only while still `pending`). Abandoned rows reaped by the provisional-user cleanup cron. |
+| `payment_intent.payment_failed` | Sets `payment_intents.status = 'failed'` with `stripe_error_code` / `stripe_error_message`. A booking stays `pending_payment` — for Crikly's card-only intents a failed attempt is retryable, never definitive (BUG-13b); the update also bumps the audit row's `updated_at`, which the reaper reads as activity so a retrying payer keeps their slot. A programme enrolment is marked `payment_status = 'failed'` (only while still `pending`). Truly abandoned rows are released by `GET /api/cron/release-expired-bookings`. |
+| `payment_intent.canceled` | **BUG-13b.** Definitive — a cancelled intent can never be charged. Sets `payment_intents.status = 'failed'` / `stripe_status = 'canceled'` (never downgrading a `succeeded` row). Booking intents: **releases the slot** — soft-deletes the booking (`deleted_at` + `cancelled_at` + `cancellation_reason = 'payment_intent_cancelled'`, status stays `pending_payment`) scoped to live `pending_payment` rows (idempotent), and soft-deletes the provisional guest profile. Enrolment intents: audit mark only (`payment_status = 'failed'` while `pending`) — a pending enrolment holds no spot. |
 | any other | `console.info` log only, no DB writes, returns 200. |
+
+**Succeeded-after-release backstop (BUG-13b):** if `payment_intent.succeeded` arrives for a booking the release path already freed (soft-deleted, status still `pending_payment`, release `cancellation_reason`), the handler restores it — undelete + `confirmed` + email; the migration-034 partial unique index re-checks on UPDATE so Postgres arbitrates whether the slot is still free. If restore fails (23505 — slot re-booked), it logs `MANUAL REFUND NEEDED` loudly. Unreachable by design (the reaper cancels the intent before releasing); auto-refund deferred to Phase 2 hardening.
 
 **Response 200:** `{ "received": true }` — sent for every event Stripe successfully signed, including unhandled types and post-error paths. Stripe retries on any non-2xx, so the route MUST NOT 5xx on DB errors.
 
@@ -745,10 +748,31 @@ stripe-signature   required — verified against STRIPE_WEBHOOK_SECRET
 **Response 500:** `STRIPE_WEBHOOK_SECRET` is not set in the runtime environment. Configuration error — Stripe will retry until the env is fixed.
 
 **Setup notes:**
-- The endpoint must be registered in the Stripe Dashboard for both **test** and **live** modes (Developers → Webhooks → Add endpoint). Subscribe to `account.updated`, `payment_intent.succeeded`, and `payment_intent.payment_failed` — every event is a billable round-trip.
+- The endpoint must be registered in the Stripe Dashboard for both **test** and **live** modes (Developers → Webhooks → Add endpoint). Subscribe to `account.updated`, `payment_intent.succeeded`, `payment_intent.payment_failed`, and `payment_intent.canceled` (BUG-13b) — every event is a billable round-trip.
 - Webhook receivers have no Crikly user session — the route uses `createAdminClient()` to write to `coach_profiles`; ownership is implicit in the `stripe_account_id` match.
 - **Card data is never touched.** This route only reads booleans (`charges_enabled`, `payouts_enabled`) from `Stripe.Account`. PCI scope unchanged.
 - Local testing: `stripe listen --forward-to localhost:3000/api/webhooks/stripe` + `stripe trigger account.updated`.
+
+---
+
+## Cron Routes
+
+### GET /api/cron/release-expired-bookings
+The `pending_payment` reaper (BUG-13b). Releases guest bookings whose checkout was abandoned with no definitive Stripe signal, so their slots stop blocking the public calendar and the write side.
+**Status: Implemented — BUG-13b**
+**Auth: `Authorization: Bearer $CRON_SECRET`** — Vercel sends this automatically for cron invocations when the env var is set; 401 otherwise, 500 if `CRON_SECRET` is unconfigured.
+
+**Schedule:** `*/10 * * * *` via `vercel.json`. Repo config only — activates when deployed with `CRON_SECRET` set (Lasith-owned). Local testing: `curl -H "Authorization: Bearer $CRON_SECRET" localhost:3000/api/cron/release-expired-bookings`.
+
+**TTL policy (BUG-13b Step 0, soft TTL tightened to 15 min pre-push by Lasith):** soft TTL 15 min from booking creation; 15 min activity grace on `payment_intents.updated_at` (an actively retrying payer is never reaped); 2 h hard cap after which even `processing`/`requires_action` intents get a cancel attempt. Batch cap 50 rows/run, oldest first.
+
+**Race safety — cancel-first arbitration:** a row is released ONLY after `stripe.paymentIntents.cancel()` succeeds (a cancelled intent can never be charged). A PI found `succeeded` is never released (loud log — webhook delivery problem). A refused cancel (raced to success) skips the row. Bookings with no `payment_intents` row (creation crashed mid-flight; the intent's secret never left the server) release directly.
+
+**Release:** soft delete + `cancellation_reason = 'expired_pending_payment'` (see `src/lib/booking/release.ts`) + provisional guest profile soft-deleted alongside. Frees the slot atomically across the migration-034 unique index, the public calendar read, and the write-side commitments guard.
+
+**Response 200:** `{ "checked": n, "released": n, "skipped_active": n, "skipped_stripe": n, "errors": n }`
+
+**Phase 2 (BUG-19):** `coach_time_claims` expiry joins this route as a second sweep — same cadence, same cancel-first arbitration for money-bearing holds.
 
 ---
 

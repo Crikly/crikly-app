@@ -206,9 +206,24 @@ describe('POST /api/webhooks/stripe — payment_intent.succeeded', () => {
       }),
     })
 
+    // BUG-13b: when the confirm UPDATE matches zero rows, the handler runs the
+    // succeeded-after-release backstop, which reads the booking row. Default
+    // here: an already-confirmed row → backstop no-ops (the idempotent path).
+    const backstopLookupChain = makeChain({
+      data: {
+        id: BOOKING_ID,
+        status: 'confirmed',
+        deleted_at: null,
+        cancellation_reason: null,
+        booked_by_user_id: 'user-profile-1',
+        booking_reference: 'CRK-2026-TEST01',
+      },
+    })
+
     const mockFrom = jest.fn()
-      .mockReturnValueOnce(piChain)      // payment_intents update
-      .mockReturnValueOnce(bookingChain) // bookings update
+      .mockReturnValueOnce(piChain)              // payment_intents update
+      .mockReturnValueOnce(bookingChain)         // bookings update
+      .mockReturnValueOnce(backstopLookupChain)  // bookings backstop lookup (zero-rows branch only)
 
     ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom })
 
@@ -1172,5 +1187,322 @@ describe('POST /api/webhooks/stripe — payment_intent.payment_failed (enrolment
     const secondEqCall = (firstEqReturn.eq as MockFn).mock.calls[0]
     expect(secondEqCall[0]).toBe('payment_status')
     expect(secondEqCall[1]).toBe('pending')
+  })
+})
+
+// ── payment_intent.canceled (BUG-13b) ─────────────────────────────────────────
+
+describe('POST /api/webhooks/stripe — payment_intent.canceled (BUG-13b)', () => {
+  function makeCanceledIntent(metadata: Record<string, string> = { booking_id: BOOKING_ID }) {
+    return { id: 'pi_test_canceled', status: 'canceled', metadata, last_payment_error: null }
+  }
+
+  /**
+   * from() sequence for a booking-intent cancel:
+   *   1. payment_intents — update → eq → neq (never downgrade succeeded)
+   *   2. bookings        — release update → eq → eq → is → select
+   *   3. user_profiles   — provisional soft-delete → eq → eq → is  (only if released)
+   */
+  function setupCanceledMocks(releasedData: unknown[] = [{ id: BOOKING_ID, booked_by_user_id: 'prov-user-1' }]) {
+    const piChain: Record<string, MockFn> = {}
+    piChain.update = jest.fn().mockReturnValue({
+      eq: jest.fn().mockReturnValue({
+        neq: jest.fn().mockResolvedValue({ data: null, error: null }),
+      }),
+    })
+
+    const bookingChain: Record<string, MockFn> = {}
+    bookingChain.update = jest.fn().mockReturnValue({
+      eq: jest.fn().mockReturnValue({
+        eq: jest.fn().mockReturnValue({
+          is: jest.fn().mockReturnValue({
+            select: jest.fn().mockResolvedValue({ data: releasedData, error: null }),
+          }),
+        }),
+      }),
+    })
+
+    const profileChain: Record<string, MockFn> = {}
+    profileChain.update = jest.fn().mockReturnValue({
+      eq: jest.fn().mockReturnValue({
+        eq: jest.fn().mockReturnValue({
+          is: jest.fn().mockResolvedValue({ data: null, error: null }),
+        }),
+      }),
+    })
+
+    const mockFrom = jest.fn()
+      .mockReturnValueOnce(piChain)
+      .mockReturnValueOnce(bookingChain)
+      .mockReturnValueOnce(profileChain)
+    ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom })
+
+    const event = makeStripeEvent('payment_intent.canceled', makeCanceledIntent())
+    const stripeMock = { webhooks: { constructEvent: jest.fn().mockReturnValue(event) } }
+    ;(getStripe as MockFn).mockReturnValue(stripeMock)
+
+    return { mockFrom, piChain, bookingChain, profileChain }
+  }
+
+  it('releases the booking: soft delete + release reason, status untouched', async () => {
+    const { bookingChain } = setupCanceledMocks()
+    const res = await callPost('{"type":"payment_intent.canceled"}')
+    expect(res.status).toBe(200)
+
+    const updateArg = (bookingChain.update as MockFn).mock.calls[0][0] as Record<string, unknown>
+    expect(updateArg.deleted_at).toBeTruthy()
+    expect(updateArg.cancelled_at).toBeTruthy()
+    expect(updateArg.cancellation_reason).toBe('payment_intent_cancelled')
+    // Release NEVER rewrites status — 'pending_payment' + deleted_at + reason
+    // IS the released state (BUG-13b Step 0 semantics).
+    expect(updateArg.status).toBeUndefined()
+  })
+
+  it('release is scoped to live pending_payment rows (idempotency guard)', async () => {
+    const { bookingChain } = setupCanceledMocks()
+    await callPost('{}')
+
+    const updateReturn = (bookingChain.update as MockFn).mock.results[0].value as Record<string, MockFn>
+    const firstEq = (updateReturn.eq as MockFn).mock.calls[0]
+    expect(firstEq[0]).toBe('id')
+    expect(firstEq[1]).toBe(BOOKING_ID)
+    const firstEqReturn = (updateReturn.eq as MockFn).mock.results[0].value as Record<string, MockFn>
+    const secondEq = (firstEqReturn.eq as MockFn).mock.calls[0]
+    expect(secondEq[0]).toBe('status')
+    expect(secondEq[1]).toBe('pending_payment')
+    const secondEqReturn = (firstEqReturn.eq as MockFn).mock.results[0].value as Record<string, MockFn>
+    const isCall = (secondEqReturn.is as MockFn).mock.calls[0]
+    expect(isCall[0]).toBe('deleted_at')
+    expect(isCall[1]).toBeNull()
+  })
+
+  it('soft-deletes the provisional guest profile of the released booking', async () => {
+    const { profileChain } = setupCanceledMocks()
+    await callPost('{}')
+
+    const updateArg = (profileChain.update as MockFn).mock.calls[0][0] as Record<string, unknown>
+    expect(updateArg.deleted_at).toBeTruthy()
+
+    const updateReturn = (profileChain.update as MockFn).mock.results[0].value as Record<string, MockFn>
+    const firstEq = (updateReturn.eq as MockFn).mock.calls[0]
+    expect(firstEq[0]).toBe('id')
+    expect(firstEq[1]).toBe('prov-user-1')
+    const firstEqReturn = (updateReturn.eq as MockFn).mock.results[0].value as Record<string, MockFn>
+    const secondEq = (firstEqReturn.eq as MockFn).mock.calls[0]
+    expect(secondEq[0]).toBe('is_provisional')
+    expect(secondEq[1]).toBe(true)
+  })
+
+  it('idempotent no-op when the booking is not releasable (already released/confirmed)', async () => {
+    const { mockFrom, profileChain } = setupCanceledMocks([])
+    const res = await callPost('{}')
+    expect(res.status).toBe(200)
+    // Profile must NOT be touched when nothing was released.
+    expect(profileChain.update).not.toHaveBeenCalled()
+    expect((mockFrom as MockFn).mock.calls.length).toBe(2)
+  })
+
+  it('never downgrades a succeeded payment_intents audit row', async () => {
+    const { piChain } = setupCanceledMocks()
+    await callPost('{}')
+
+    const piUpdateArg = (piChain.update as MockFn).mock.calls[0][0] as Record<string, unknown>
+    expect(piUpdateArg.status).toBe('failed')
+    expect(piUpdateArg.stripe_status).toBe('canceled')
+
+    const updateReturn = (piChain.update as MockFn).mock.results[0].value as Record<string, MockFn>
+    const eqReturn = (updateReturn.eq as MockFn).mock.results[0].value as Record<string, MockFn>
+    const neqCall = (eqReturn.neq as MockFn).mock.calls[0]
+    expect(neqCall[0]).toBe('status')
+    expect(neqCall[1]).toBe('succeeded')
+  })
+
+  it('enrolment intent: audit mark only (failed while pending), no booking release', async () => {
+    const piChain: Record<string, MockFn> = {}
+    piChain.update = jest.fn().mockReturnValue({
+      eq: jest.fn().mockReturnValue({
+        neq: jest.fn().mockResolvedValue({ data: null, error: null }),
+      }),
+    })
+    const enrolChain: Record<string, MockFn> = {}
+    enrolChain.update = jest.fn().mockReturnValue({
+      eq: jest.fn().mockReturnValue({
+        eq: jest.fn().mockResolvedValue({ data: null, error: null }),
+      }),
+    })
+
+    const mockFrom = jest.fn()
+      .mockReturnValueOnce(piChain)
+      .mockReturnValueOnce(enrolChain)
+    ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom })
+
+    const event = makeStripeEvent(
+      'payment_intent.canceled',
+      makeCanceledIntent({ enrolment_id: 'enrolment-uuid-001' }),
+    )
+    const stripeMock = { webhooks: { constructEvent: jest.fn().mockReturnValue(event) } }
+    ;(getStripe as MockFn).mockReturnValue(stripeMock)
+
+    const res = await callPost('{}')
+    expect(res.status).toBe(200)
+
+    const enrolArg = (enrolChain.update as MockFn).mock.calls[0][0] as Record<string, unknown>
+    expect(enrolArg.payment_status).toBe('failed')
+    // Exactly 2 from() calls — enrolments hold no slot, nothing else touched.
+    expect((mockFrom as MockFn).mock.calls.length).toBe(2)
+  })
+
+  it('no booking_id metadata → audit update only, returns 200', async () => {
+    const piChain: Record<string, MockFn> = {}
+    piChain.update = jest.fn().mockReturnValue({
+      eq: jest.fn().mockReturnValue({
+        neq: jest.fn().mockResolvedValue({ data: null, error: null }),
+      }),
+    })
+    const mockFrom = jest.fn().mockReturnValueOnce(piChain)
+    ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom })
+
+    const event = makeStripeEvent('payment_intent.canceled', makeCanceledIntent({}))
+    const stripeMock = { webhooks: { constructEvent: jest.fn().mockReturnValue(event) } }
+    ;(getStripe as MockFn).mockReturnValue(stripeMock)
+
+    const res = await callPost('{}')
+    expect(res.status).toBe(200)
+    expect((mockFrom as MockFn).mock.calls.length).toBe(1)
+  })
+})
+
+// ── succeeded-after-release backstop (BUG-13b) ────────────────────────────────
+
+describe('POST /api/webhooks/stripe — succeeded-after-release backstop (BUG-13b)', () => {
+  const RELEASED_ROW = {
+    id: BOOKING_ID,
+    status: 'pending_payment',
+    deleted_at: '2026-07-05T09:00:00.000Z',
+    cancellation_reason: 'expired_pending_payment',
+    booked_by_user_id: 'prov-user-1',
+    booking_reference: 'CRK-2026-TEST01',
+  }
+
+  const RESTORED_ROW = {
+    id: BOOKING_ID,
+    booking_reference: 'CRK-2026-TEST01',
+    coach_profile_id: 'coach-uuid-1',
+    session_date: '2026-07-20',
+    session_start_time: '10:00:00',
+    session_end_time: '11:00:00',
+    session_type: 'individual',
+  }
+
+  /**
+   * from() sequence when the confirm UPDATE matches zero rows and the row is
+   * release-marked:
+   *   1. payment_intents — audit update
+   *   2. bookings        — confirm update → zero rows
+   *   3. bookings        — backstop lookup (maybeSingle)
+   *   4. bookings        — restore update → eq → eq → not → select
+   *   5. user_profiles   — provisional restore → eq → eq  (on restore success)
+   */
+  function setupBackstopMocks(opts: {
+    lookupRow?: unknown
+    restoreResult?: { data: unknown; error: unknown }
+  } = {}) {
+    const piChain: Record<string, MockFn> = {}
+    piChain.update = jest.fn().mockReturnValue({
+      eq: jest.fn().mockResolvedValue({ data: null, error: null }),
+    })
+
+    const confirmChain: Record<string, MockFn> = {}
+    confirmChain.update = jest.fn().mockReturnValue({
+      eq: jest.fn().mockReturnValue({
+        eq: jest.fn().mockReturnValue({
+          select: jest.fn().mockResolvedValue({ data: [], error: null }),
+        }),
+      }),
+    })
+
+    const lookupChain = makeChain({ data: opts.lookupRow ?? RELEASED_ROW })
+
+    const restoreChain: Record<string, MockFn> = {}
+    restoreChain.update = jest.fn().mockReturnValue({
+      eq: jest.fn().mockReturnValue({
+        eq: jest.fn().mockReturnValue({
+          not: jest.fn().mockReturnValue({
+            select: jest.fn().mockResolvedValue(
+              opts.restoreResult ?? { data: [RESTORED_ROW], error: null },
+            ),
+          }),
+        }),
+      }),
+    })
+
+    const profileChain: Record<string, MockFn> = {}
+    profileChain.update = jest.fn().mockReturnValue({
+      eq: jest.fn().mockReturnValue({
+        eq: jest.fn().mockResolvedValue({ data: null, error: null }),
+      }),
+    })
+
+    const mockFrom = jest.fn()
+      .mockReturnValueOnce(piChain)
+      .mockReturnValueOnce(confirmChain)
+      .mockReturnValueOnce(lookupChain)
+      .mockReturnValueOnce(restoreChain)
+      .mockReturnValueOnce(profileChain)
+    ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom })
+
+    const event = makeStripeEvent('payment_intent.succeeded', makeSucceededIntent())
+    const stripeMock = { webhooks: { constructEvent: jest.fn().mockReturnValue(event) } }
+    ;(getStripe as MockFn).mockReturnValue(stripeMock)
+
+    return { mockFrom, restoreChain, profileChain }
+  }
+
+  it('restores a released row when the slot is still free (undelete + confirm)', async () => {
+    const { restoreChain, profileChain } = setupBackstopMocks()
+    const res = await callPost('{"type":"payment_intent.succeeded"}')
+    expect(res.status).toBe(200)
+
+    const restoreArg = (restoreChain.update as MockFn).mock.calls[0][0] as Record<string, unknown>
+    expect(restoreArg.deleted_at).toBeNull()
+    expect(restoreArg.cancelled_at).toBeNull()
+    expect(restoreArg.cancellation_reason).toBeNull()
+    expect(restoreArg.status).toBe('confirmed')
+    expect(restoreArg.messaging_unlocked).toBe(true)
+
+    // The provisional profile comes back too.
+    const profileArg = (profileChain.update as MockFn).mock.calls[0][0] as Record<string, unknown>
+    expect(profileArg.deleted_at).toBeNull()
+  })
+
+  it('logs MANUAL REFUND NEEDED when restore hits 23505 (slot re-booked)', async () => {
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      const { profileChain } = setupBackstopMocks({
+        restoreResult: { data: null, error: { code: '23505', message: 'duplicate key' } },
+      })
+      const res = await callPost('{}')
+      expect(res.status).toBe(200)
+
+      const manualRefundLogged = errorSpy.mock.calls.some(
+        (args) => typeof args[0] === 'string' && args[0].includes('MANUAL REFUND NEEDED'),
+      )
+      expect(manualRefundLogged).toBe(true)
+      // No restore happened — the profile is never touched.
+      expect(profileChain.update).not.toHaveBeenCalled()
+    } finally {
+      errorSpy.mockRestore()
+    }
+  })
+
+  it('does NOT restore a soft-deleted row that is not release-marked (guest-route rollback)', async () => {
+    const { mockFrom, restoreChain } = setupBackstopMocks({
+      lookupRow: { ...RELEASED_ROW, cancellation_reason: null },
+    })
+    const res = await callPost('{}')
+    expect(res.status).toBe(200)
+    expect(restoreChain.update).not.toHaveBeenCalled()
+    // pi update + confirm + lookup only.
+    expect((mockFrom as MockFn).mock.calls.length).toBe(3)
   })
 })

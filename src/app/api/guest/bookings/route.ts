@@ -174,7 +174,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   // 1b. Idempotency: if this exact submit was already processed (client retry),
   //     return the existing booking + PaymentIntent instead of creating orphans.
+  //
+  //     BUG-13b: the prior attempt may since have been RELEASED (reaper TTL or
+  //     payment_intent.canceled) — soft-deleted booking, cancelled intent. A
+  //     cancelled intent can never be confirmed, so replaying it would
+  //     dead-end the guest. In that case fall through to a fresh attempt, and
+  //     BURN the token-based key: reusing it would make Stripe replay the
+  //     cancelled intent and collide with payment_intents.unique_idempotency_key.
+  //     The fresh attempt uses per-booking keys instead (see step 7).
   const idempotencyKey = input.idempotencyToken ? `guest-booking-${input.idempotencyToken}` : null
+  let tokenKeyBurned = false
   if (idempotencyKey) {
     const { data: existingPi } = await supabase
       .from('payment_intents')
@@ -189,22 +198,38 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       const bookingId = existingPi.booking_id
       const { data: existingBooking } = await supabase
         .from('bookings')
-        .select('booking_reference')
+        .select('booking_reference, status, deleted_at')
         .eq('id', bookingId)
         .maybeSingle()
 
-      try {
-        const pi = await getStripe().paymentIntents.retrieve(existingPi.stripe_payment_intent_id)
-        if (pi.client_secret && existingBooking) {
-          return NextResponse.json({
-            clientSecret: pi.client_secret,
-            bookingReference: existingBooking.booking_reference,
-            bookingId,
-          })
+      if (existingBooking?.deleted_at) {
+        // Prior attempt released or rolled back — its slot is free again and
+        // its intent is dead. Start fresh with burned keys.
+        tokenKeyBurned = true
+      } else {
+        try {
+          const pi = await getStripe().paymentIntents.retrieve(existingPi.stripe_payment_intent_id)
+          if (pi.status === 'canceled') {
+            // Intent cancelled (e.g. Dashboard) but the release webhook hasn't
+            // landed yet — replaying its secret would dead-end the guest.
+            tokenKeyBurned = true
+          } else if (pi.client_secret && existingBooking) {
+            return NextResponse.json({
+              clientSecret: pi.client_secret,
+              bookingReference: existingBooking.booking_reference,
+              bookingId,
+            })
+          }
+        } catch (err) {
+          console.error('[POST /api/guest/bookings] idempotent PI retrieve failed:', err)
+          // Fall through to a fresh attempt — with the token key BURNED: the
+          // old intent's status is unknown, and reusing its key with the new
+          // booking's metadata would raise a Stripe idempotency mismatch
+          // (different params, same key) and 502 the whole attempt (BUG-13b
+          // review fix). If the old booking still holds this slot, the 034
+          // unique index turns the fresh insert into a clean slot_taken 409.
+          tokenKeyBurned = true
         }
-      } catch (err) {
-        console.error('[POST /api/guest/bookings] idempotent PI retrieve failed:', err)
-        // Fall through and let a fresh attempt proceed.
       }
     }
   }
@@ -556,8 +581,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   // 7. Create the Stripe PaymentIntent for the full parent total.
   //    The idempotency key prefers the client-stable token (so a retry reuses
-  //    the same intent); it falls back to the booking UUID when no token is sent.
-  const piKey = idempotencyKey ?? `guest-booking-${booking.id}`
+  //    the same intent); it falls back to the booking UUID when no token is
+  //    sent — or when the token's key is burned because a prior attempt was
+  //    released/cancelled (BUG-13b, step 1b above).
+  const piKey = idempotencyKey && !tokenKeyBurned ? idempotencyKey : `guest-booking-${booking.id}`
   let paymentIntent: Stripe.PaymentIntent
   try {
     const stripe = getStripe()
