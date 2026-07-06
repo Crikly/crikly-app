@@ -6,7 +6,7 @@
 // the summary content, the POST target (/api/guest/programme-enrolments), the
 // error copy, and the "You're enrolled!" confirmation.
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import {
   Elements,
@@ -32,6 +32,7 @@ import {
 } from 'lucide-react'
 import { Input } from '@/components/ui/Input'
 import { AddressAutocomplete } from '@/components/booking/AddressAutocomplete'
+import { readParticipantHandoff } from '@/lib/booking/participant-handoff'
 import { getStripePromise } from '@/lib/stripe/browser'
 import {
   BookingSummaryCard,
@@ -52,6 +53,10 @@ interface GuestForm {
   billingAddress: string
   billingTownCity: string
   billingPostcode: string
+  /** BUG-20: who the programme is for — required (mirrors UX-16 on bookings). */
+  participantName: string
+  /** Age in years as typed — optional; kept as string, it's form state. */
+  participantAge: string
 }
 
 const EMPTY_FORM: GuestForm = {
@@ -65,6 +70,8 @@ const EMPTY_FORM: GuestForm = {
   billingAddress: '',
   billingTownCity: '',
   billingPostcode: '',
+  participantName: '',
+  participantAge: '',
 }
 
 interface GuestEnrolmentFlowProps {
@@ -302,6 +309,26 @@ function GuestEnrolmentForm({
   const [billingSame, setBillingSame] = useState<boolean>(true)
   const [error, setError] = useState<EnrolmentError | null>(initialError ?? null)
   const [submitting, setSubmitting] = useState<boolean>(false)
+  // BUG-20: participant name is required — inline error under the field.
+  const [participantError, setParticipantError] = useState<boolean>(false)
+
+  // BUG-24: pre-fill "Who is this for?" from the availability panel's
+  // sessionStorage handoff (never URL params — child names must not land in
+  // shareable links). Effect, not initial state: sessionStorage doesn't exist
+  // during SSR and reading it post-hydration avoids a markup mismatch. The
+  // form stays the source of truth — the parent can edit or clear the values.
+  useEffect(() => {
+    const handoff = readParticipantHandoff()
+    if (!handoff) return
+    // One-shot mount prefill from an external store — the same accepted
+    // pattern as BookingCard's URL-param hydration (BookingCard.tsx).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setForm((prev) =>
+      prev.participantName || prev.participantAge
+        ? prev
+        : { ...prev, participantName: handoff.name, participantAge: handoff.age },
+    )
+  }, [])
 
   // Stable per-checkout idempotency token — a retried submit reuses the same
   // enrolment + PaymentIntent instead of creating orphans.
@@ -352,6 +379,8 @@ function GuestEnrolmentForm({
     guest: { fullName: string; email: string; phone: string; address: string; townCity: string; postcode: string },
   ): Promise<{ clientSecret: string; enrolmentReference: string } | null> {
     try {
+      // BUG-20: age is optional — send a number only when the field parses.
+      const ageNumber = Number.parseInt(form.participantAge, 10)
       const res = await fetch('/api/guest/programme-enrolments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -360,6 +389,8 @@ function GuestEnrolmentForm({
           programmeId,
           paymentType,
           selectedSessionIds,
+          participantName: form.participantName.trim(),
+          participantAge: Number.isInteger(ageNumber) ? ageNumber : null,
           idempotencyToken,
           guest,
         }),
@@ -392,6 +423,12 @@ function GuestEnrolmentForm({
   // Card payment via the Payment Element.
   async function handlePay(): Promise<void> {
     if (!stripe || !elements || submitting) return
+    // BUG-20: the participant name is required — the roster and confirmation
+    // email are meaningless without it (same rule as the 1-on-1 flow, UX-16).
+    if (!form.participantName.trim()) {
+      setParticipantError(true)
+      return
+    }
     setError(null)
     setSubmitting(true)
 
@@ -444,6 +481,14 @@ function GuestEnrolmentForm({
   // Wallet payment (Apple Pay / Google Pay) via the Express Checkout Element.
   async function handleExpressConfirm(event: StripeExpressCheckoutElementConfirmEvent): Promise<void> {
     if (!stripe || !elements || submitting) {
+      event.paymentFailed({ reason: 'fail' })
+      return
+    }
+    // BUG-20: wallets skip the form's submit path, so gate here too — the
+    // wallet sheet has already closed, so fail the payment and surface the
+    // inline field error.
+    if (!form.participantName.trim()) {
+      setParticipantError(true)
       event.paymentFailed({ reason: 'fail' })
       return
     }
@@ -583,6 +628,52 @@ function GuestEnrolmentForm({
 
         {/* ② Form column — desktop col-1, spans both rows */}
         <div className="flex flex-col gap-6 lg:col-start-1 lg:row-start-1 lg:row-span-2 lg:gap-5">
+
+          {/* Who is this for? — BUG-20/BUG-24: participant is captured HERE
+              (single funnel); pre-filled from the availability panel's
+              sessionStorage handoff when the parent came from there. */}
+          <section className="flex flex-col">
+            <div className="flex flex-col gap-[14px] lg:gap-4 lg:rounded-[12px] lg:border lg:border-neutral-100 lg:bg-white lg:p-6">
+              <div>
+                <h2 className="text-base font-semibold tracking-[-0.01em] text-neutral-900 lg:text-lg">
+                  Who is this for?
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Tell us about the player. Used for this enrolment only.
+                </p>
+              </div>
+              <div className="grid grid-cols-[1fr_120px] gap-3 lg:grid-cols-[1fr_160px] lg:gap-4">
+                <Input
+                  label="Player's name"
+                  placeholder="e.g. Sam"
+                  autoComplete="off"
+                  value={form.participantName}
+                  data-testid="participant-name-input"
+                  onChange={(e) => {
+                    setField('participantName', e.target.value)
+                    setParticipantError(false)
+                  }}
+                />
+                <Input
+                  label="Age (optional)"
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={99}
+                  placeholder="—"
+                  autoComplete="off"
+                  value={form.participantAge}
+                  data-testid="participant-age-input"
+                  onChange={(e) => setField('participantAge', e.target.value)}
+                />
+              </div>
+              {participantError && (
+                <p className="text-sm text-danger" role="alert" data-testid="participant-error">
+                  Add the player&apos;s name to continue.
+                </p>
+              )}
+            </div>
+          </section>
 
           {/* Your details */}
           <section className="flex flex-col">

@@ -28,6 +28,7 @@ import {
   type GeneratedSlot,
 } from './_data/slots'
 import type { DayProgramme } from './_data/programmeSchedule'
+import { stashParticipant } from '@/lib/booking/participant-handoff'
 import { hhmmToMinutes, type Interval } from '@/lib/availability/overlap'
 
 /**
@@ -268,6 +269,18 @@ export function AvailabilityClient({
 
   const handleBook = () => {
     if (!hasSelection) return
+    // BUG-24: programmes enrol through the detail page's SessionPicker — the
+    // ONE programme funnel. (The old /book/[coachId]?programme=… destination
+    // never read the param; the enrolment silently evaporated.) The
+    // participant is captured and validated at the enrolment checkout, so no
+    // name gate here; anything already typed on this panel travels via
+    // sessionStorage — never the URL, a child's name must not land in a
+    // shareable link (docs/06 child-data rules).
+    if (selectedProgramme) {
+      stashParticipant(participantName, participantAge)
+      router.push(`/coaches/${coachId}/programmes/${selectedProgramme.id}`)
+      return
+    }
     // UX-16: name is required; age is optional (adult players may omit it).
     if (!participantName.trim()) {
       setShowError(true)
@@ -285,8 +298,6 @@ export function AvailabilityClient({
       // price from the template (BUG-09).
       const effectivePrice = selectedSlot.pricePence ?? pricePence
       if (effectivePrice != null) q.set('price', String(effectivePrice))
-    } else if (selectedProgramme) {
-      q.set('programme', selectedProgramme.id)
     }
     // Param names mirror what the checkout page reads (UX-16).
     q.set('participant', participantName.trim())

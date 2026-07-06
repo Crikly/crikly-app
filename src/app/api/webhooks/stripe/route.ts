@@ -512,6 +512,13 @@ async function handleEnrolmentSucceeded(intent: Stripe.PaymentIntent, enrolmentI
   const guestName = intent.metadata?.guest_name
   if (!guestEmail) return
 
+  // BUG-20: who the programme is for, stashed at intent creation. Absent on
+  // intents created before BUG-20 — the email then omits its "Booking for"
+  // row (same treatment as the 1-on-1 confirmation, UX-16).
+  const enrolParticipantName = intent.metadata?.participant_name || undefined
+  const enrolParticipantAgeRaw = Number.parseInt(intent.metadata?.participant_age ?? '', 10)
+  const enrolParticipantAge = Number.isInteger(enrolParticipantAgeRaw) ? enrolParticipantAgeRaw : undefined
+
   const { data: programme } = await adminSupabase
     .from('group_programmes')
     .select('title, day_of_week, days_of_week, start_time, duration_minutes, coach_profile_id')
@@ -547,6 +554,8 @@ async function handleEnrolmentSucceeded(intent: Stripe.PaymentIntent, enrolmentI
     guestName: guestName || 'there',
     guestEmail,
     coachName,
+    participantName: enrolParticipantName,
+    participantAge: enrolParticipantAge,
     enrolmentReference: enrolment.enrolment_reference ?? 'your enrolment',
     programmeTitle: programme?.title ?? 'your programme',
     scheduleSummary: programme

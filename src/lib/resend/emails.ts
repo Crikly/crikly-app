@@ -286,6 +286,13 @@ export interface GuestProgrammeConfirmationParams {
   scheduleSummary: string
   sessionsSummary: string
   totalPence: number
+  /**
+   * BUG-20 (UX-16 parity with sendGuestBookingConfirmation): who the
+   * programme is for. Optional only because intents created before BUG-20
+   * carry no participant metadata — new enrolments always have the name.
+   */
+  participantName?: string
+  participantAge?: number
 }
 
 /**
@@ -299,6 +306,7 @@ export async function sendGuestProgrammeConfirmation(
   const {
     guestName, guestEmail, coachName, enrolmentReference,
     programmeTitle, scheduleSummary, sessionsSummary, totalPence,
+    participantName, participantAge,
   } = params
 
   const safeName = escapeHtml(guestName)
@@ -308,7 +316,16 @@ export async function sendGuestProgrammeConfirmation(
   const safeSchedule = escapeHtml(scheduleSummary)
   const safeSessions = escapeHtml(sessionsSummary)
 
+  // BUG-20: "Yuwin (age 10)" or just the name when no age was given — the
+  // exact treatment sendGuestBookingConfirmation uses (UX-16).
+  const safeParticipant = participantName
+    ? escapeHtml(
+        participantAge ? `${participantName} (age ${participantAge})` : participantName,
+      )
+    : null
+
   const detailRows = [
+    ...(safeParticipant ? [{ label: 'Booking for', value: safeParticipant }] : []),
     { label: 'Programme', value: safeTitle },
     { label: 'Coach', value: safeCoach },
     { label: 'Schedule', value: safeSchedule },
