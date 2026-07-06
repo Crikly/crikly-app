@@ -274,7 +274,7 @@ export async function PATCH(
     // ends_at against the merged (existing ∪ body) state on PATCH.
     const { data: existingProgramme, error: programmeCheckError } = await adminSupabase
       .from('group_programmes')
-      .select('id, status, current_spots, max_spots, schedule_type, days_of_week, day_of_week, session_count, starts_at, ends_at, camp_mode')
+      .select('id, status, current_spots, max_spots, schedule_type, days_of_week, day_of_week, session_count, starts_at, ends_at, camp_mode, payment_type')
       .eq('id', programmeId)
       .eq('coach_profile_id', coachProfile.id)
       .is('deleted_at', null)
@@ -539,6 +539,18 @@ export async function PATCH(
     if (body.status !== undefined) updateData.status = body.status
     // CF-PROG-SESSIONS-DB: camp_mode is now persisted (was a STUB no-op).
     if (body.campMode !== undefined) updateData.camp_mode = body.campMode === true
+
+    // BUG-23 (approved ruling): camp programmes are per_session ONLY. Check
+    // the EFFECTIVE values (body ∪ existing) so neither toggling camp on a
+    // block programme nor switching a camp to block can slip through.
+    const effectiveCampMode = updateData.camp_mode ?? existingProgramme.camp_mode === true
+    const effectivePaymentType = updateData.payment_type ?? existingProgramme.payment_type
+    if (effectiveCampMode && effectivePaymentType === 'block_upfront') {
+      return NextResponse.json(
+        { error: 'Camp-mode programmes must use per-session payment.' },
+        { status: 400 },
+      )
+    }
 
     // Fix-58-DB-api: populate days_of_week — prefer explicit array, fall back to [day_of_week]
     if (Array.isArray(body.days_of_week) && body.days_of_week.length > 0) {

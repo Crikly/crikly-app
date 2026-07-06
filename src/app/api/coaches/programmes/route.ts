@@ -105,6 +105,8 @@ interface ProgrammeResponse {
    *  ISO timestamp string or null. ends_at is NOT exposed on the list endpoint
    *  by design — it is internal-only here, returned only on the single-programme GET. */
   starts_at: string | null
+  /** BUG-23: camp programmes render real per-day slot blocks in the coach modal. */
+  camp_mode: boolean
 }
 
 /**
@@ -149,7 +151,7 @@ export async function GET(
     const adminSupabase = createAdminClient()
     let query = adminSupabase
       .from('group_programmes')
-      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address, min_participants, cancellation_window_hours, image_url, age_groups, starts_at')
+      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address, min_participants, cancellation_window_hours, image_url, age_groups, starts_at, camp_mode')
       .eq('coach_profile_id', coachProfile.id)
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
@@ -193,6 +195,8 @@ export async function GET(
       price_per_session_pence: prog.price_per_session_pence,
       block_price_pence: prog.block_price_pence,
       block_session_count: prog.block_session_count,
+      // BUG-23: the coach modal needs camp_mode to render real slot blocks.
+      camp_mode: prog.camp_mode === true,
       currency: prog.currency,
       status: prog.status,
       created_at: prog.created_at,
@@ -469,6 +473,17 @@ export async function POST(
       camp_mode: body.campMode === true,
     }
 
+    // BUG-23 (approved ruling): camp programmes are per_session ONLY — a
+    // block price cannot define what a "whole programme" of multi-slot days
+    // covers. The form hides the block option in camp mode; this guards
+    // crafted requests.
+    if (insertData.camp_mode && insertData.payment_type === 'block_upfront') {
+      return NextResponse.json(
+        { error: 'Camp-mode programmes must use per-session payment.' },
+        { status: 400 },
+      )
+    }
+
     if (body.min_participants !== undefined) {
       insertData.min_participants = typeof body.min_participants === 'number' && body.min_participants > 0
         ? body.min_participants
@@ -689,6 +704,8 @@ export async function POST(
       id: newProgramme.id,
       sport_id: newProgramme.sport_id,
       sport_name: postSportName,
+      // BUG-23: camp_mode comes from insertData (the POST select doesn't project it).
+      camp_mode: insertData.camp_mode === true,
       title: newProgramme.title,
       description: newProgramme.description,
       schedule_type: newProgramme.schedule_type,

@@ -38,6 +38,8 @@ interface ProgrammeResponse {
   age_groups: string[]
   /** CF-PROG-START-DATE: list endpoint exposes starts_at. Used by ShareCard. */
   starts_at: string | null
+  /** BUG-23: camp programmes render real per-day slot blocks in the modal. */
+  camp_mode: boolean
 }
 
 // UI Programme type
@@ -70,6 +72,8 @@ interface Programme {
   age_groups: string[]
   /** CF-PROG-SHARE-CARD: first session anchor for the share preview. */
   starts_at: string | null
+  /** BUG-23: camp programmes render real per-day slot blocks in the modal. */
+  camp_mode: boolean
 }
 
 // Module-level helper used by both main component and modal
@@ -226,6 +230,7 @@ export function ProgrammesManagement() {
           image_url: prog.image_url ?? null,
           age_groups: Array.isArray(prog.age_groups) ? prog.age_groups : [],
           starts_at: prog.starts_at ?? null,
+          camp_mode: prog.camp_mode === true,
         }
       })
   }, [])
@@ -783,6 +788,39 @@ function ProgrammeDetailModal({
   const startTime = programme.start_time ? programme.start_time.substring(0, 5) : null
   const endTime = startTime ? calculateEndTime(startTime, programme.duration_minutes) : null
 
+  // BUG-23: a camp day's REAL time blocks live on its session rows (slots
+  // jsonb) — the base start_time + duration_minutes is only the first block
+  // and was rendering misleading times here. Lazy-fetch the single-programme
+  // GET (which projects session_dates incl. slots) when the modal opens for a
+  // camp, and show the distinct block pattern(s).
+  const [campBlocksLabel, setCampBlocksLabel] = useState<string | null>(null)
+  useEffect(() => {
+    if (!programme.camp_mode) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/coaches/programmes/${programme.id}`)
+        if (!res.ok) return
+        const data = (await res.json()) as {
+          session_dates?: { startTime: string; endTime: string; slots?: { startTime: string; endTime: string }[] }[]
+        }
+        const patterns = new Set<string>()
+        for (const entry of data.session_dates ?? []) {
+          const blocks = entry.slots && entry.slots.length > 0 ? entry.slots : [entry]
+          patterns.add(blocks.map(b => `${b.startTime} – ${b.endTime}`).join(' & '))
+        }
+        if (cancelled || patterns.size === 0) return
+        const list = [...patterns]
+        setCampBlocksLabel(list.length === 1 ? list[0] : `${list[0]} · varies by day`)
+      } catch {
+        // Fetch failed — the base-times fallback below still renders.
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [programme.camp_mode, programme.id])
+
   const priceAmt = programme.price.split(' ')[0]
   const pricePer = programme.price.split(' ').slice(1).join(' ')
 
@@ -868,10 +906,16 @@ function ProgrammeDetailModal({
               </div>
               <div>
                 <div className="text-[15px] font-medium text-[#0F172A] tracking-[-0.005em]">
-                  Every {daysLabel}{startTime && endTime ? ` · ${startTime} – ${endTime}` : ''}
+                  {/* BUG-23: camps show the day's real slot blocks, not the
+                      base first-block time. */}
+                  {programme.camp_mode && campBlocksLabel
+                    ? `Every ${daysLabel} · ${campBlocksLabel}`
+                    : `Every ${daysLabel}${startTime && endTime ? ` · ${startTime} – ${endTime}` : ''}`}
                 </div>
                 <div className="text-[13px] text-[#64748B] mt-0.5">
-                  {programme.duration_minutes} minutes{programme.block_session_count ? ` · ${programme.block_session_count} sessions` : ''}
+                  {programme.camp_mode
+                    ? 'Multiple sessions per day · priced per session'
+                    : `${programme.duration_minutes} minutes${programme.block_session_count ? ` · ${programme.block_session_count} sessions` : ''}`}
                 </div>
               </div>
             </div>

@@ -12,6 +12,8 @@ interface EnrolmentItem {
   joined_at_session_number: number
   status: string
   created_at: string
+  /** BUG-23: which sessions/slots this child attends (chronological lines). */
+  sessions: string[]
 }
 
 interface RosterData {
@@ -211,6 +213,17 @@ export function ProgrammeRoster({ programmeId }: { programmeId: string }) {
                     </span>
                   </div>
                   <p className="text-[12px] text-gray-500 mb-2">{enrolment.parent_name}</p>
+                  {/* BUG-23: slot-level attendance — the coach sees exactly
+                      which sessions this child is coming to. */}
+                  {enrolment.sessions.length > 0 && (
+                    <ul className="mb-2 flex flex-col gap-0.5" data-testid="roster-sessions">
+                      {enrolment.sessions.map(line => (
+                        <li key={line} className="text-[12px] text-gray-600">
+                          {line}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                   <div className="flex items-center gap-2 flex-wrap">
                     {enrolment.joined_at_session_number > 1 && (
                       <span className="text-[11px] text-gray-400 bg-gray-50 px-2 py-0.5 rounded-full">
