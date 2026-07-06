@@ -46,6 +46,9 @@ var _callIdx = 0
 
 jest.mock('@/lib/supabase/server', () => ({
   createClient: jest.fn().mockResolvedValue({
+    // BUG-23: camp programmes read per-slot occupancy via
+    // rpc('camp_slot_occupancy'). Default: nothing taken (every slot open).
+    rpc: jest.fn().mockResolvedValue({ data: [], error: null }),
     from: jest.fn(() => {
       const chain = _responses[_callIdx++]
       if (!chain) {

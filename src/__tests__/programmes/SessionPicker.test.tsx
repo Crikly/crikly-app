@@ -34,6 +34,8 @@ function makeSession(overrides: Partial<SessionView> = {}): SessionView {
   return {
     key: 'key-1',
     sessionId: 'session-1',
+    slotIndex: 0,
+    spotsLeft: null,
     dateISO: '2099-07-05',
     dateLabel: 'Sat 5 July',
     timeLabel: '9:00am – 10:00am',
@@ -51,6 +53,8 @@ function makeSessions(count: number): SessionView[] {
   return Array.from({ length: count }, (_, i) => ({
     key: `key-${i + 1}`,
     sessionId: `session-${i + 1}`,
+    slotIndex: 0,
+    spotsLeft: null,
     dateISO: `2099-07-${String(i + 1).padStart(2, '0')}`,
     dateLabel: `Day ${i + 1}`,
     timeLabel: '9:00am – 10:00am',
@@ -336,31 +340,46 @@ describe('SessionPicker — CTA navigation', () => {
     expect(pushArg).toContain(`/book/${COACH_ID}/programmes/${PROGRAMME_ID}?sessions=`)
   })
 
-  it('URL deduplicates: two keys sharing a sessionId appear only once', async () => {
-    // Sessions where key differs but sessionId is identical (camp slot deduplication).
+  it('BUG-23: two SLOTS of one camp session are two URL entries (uuid + uuid.1), never deduped', async () => {
+    // The pre-BUG-23 picker deduped by session-row id here — which sold a
+    // full camp day (both slots) as ONE session at 1×. Slot identity must
+    // survive into the checkout URL.
     const user = userEvent.setup()
-    const sessions = [
-      makeSession({ key: 'k1', sessionId: 'shared-uuid' }),
-      makeSession({ key: 'k2', sessionId: 'shared-uuid', dateISO: '2099-07-06', dateLabel: 'Day 2' }),
+    const campDays: CampDay[] = [
+      {
+        dateISO: '2099-07-05',
+        dateLabel: 'Mon 5 July',
+        slots: [
+          makeSession({ key: 'k1', sessionId: 'shared-uuid', slotIndex: 0, slotName: 'Morning' }),
+          makeSession({ key: 'k2', sessionId: 'shared-uuid', slotIndex: 1, slotName: 'Afternoon' }),
+        ],
+      },
     ]
     render(
       <SessionPicker
         coachId={COACH_ID}
         programmeId={PROGRAMME_ID}
         pricePerSessionPence={2500}
-        campMode={false}
-        sessions={sessions}
-        campDays={EMPTY_CAMP_DAYS}
+        campMode={true}
+        sessions={[]}
+        campDays={campDays}
       />,
     )
     const rows = screen.getAllByTestId('session-row')
     await user.click(rows[0])
     await user.click(rows[1])
+
+    // Count + total reflect BOTH slots (2 × £25 + 10% fee = £55.00 shown).
+    expect(screen.getByTestId('pay-cta')).toHaveTextContent(/Pay for 2 sessions/)
+    expect(screen.getAllByTestId('fee-line')[0]).toHaveTextContent('incl. £5.00 service fee')
+
     await user.click(screen.getByTestId('pay-cta'))
     const pushArg = mockPush.mock.calls[0][0] as string
-    // 'shared-uuid' should appear exactly once in the URL
+    expect(pushArg).toContain('shared-uuid')
+    expect(pushArg).toContain('shared-uuid.1')
+    // Both entries present: the bare uuid (slot 0) AND uuid.1 (slot 1).
     const occurrences = pushArg.split('shared-uuid').length - 1
-    expect(occurrences).toBe(1)
+    expect(occurrences).toBe(2)
   })
 
   it('does NOT call router.push when CTA is disabled (no selection)', async () => {
