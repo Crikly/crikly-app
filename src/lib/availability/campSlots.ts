@@ -34,6 +34,20 @@ function toHHMM(t: string): string {
  * validators enforce shape on write, so this only guards legacy/manual rows.
  * Returns [] only when no usable times exist at all.
  */
+/**
+ * Time-of-day display name for a slot block, from its start hour — the
+ * wording rulebook for slot-level attendance everywhere it renders (picker
+ * rows, coach roster, confirmation email): "Tue 4 Aug — Morning (9:00am –
+ * 12:00pm)". Mirrors the public picker's naming (programmeDetail.slotName).
+ */
+export function slotDisplayName(startHHMM: string): string {
+  const h = Number.parseInt(startHHMM.slice(0, 2), 10)
+  if (!Number.isFinite(h)) return 'Session'
+  if (h < 12) return 'Morning'
+  if (h < 17) return 'Afternoon'
+  return 'Evening'
+}
+
 export function expandSessionBlocks(session: {
   start_time: string | null
   end_time: string | null

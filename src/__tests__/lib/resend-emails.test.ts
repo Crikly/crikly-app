@@ -298,6 +298,24 @@ describe('sendGuestProgrammeConfirmation — participant (BUG-20)', () => {
     expect(getHtml()).not.toContain('Booking for')
   })
 
+  it('renders BUG-23 camp session lines under the Sessions row, individually escaped', async () => {
+    await sendGuestProgrammeConfirmation({
+      ...BASE_PROGRAMME_PARAMS,
+      sessionLines: [
+        'Tue 4 Aug — Morning (9:00am – 12:00pm)',
+        'Tue 4 Aug — Afternoon (1:00pm – 5:00pm)',
+      ],
+    })
+    const html = getHtml()
+    expect(html).toContain('Morning (9:00am')
+    expect(html).toContain('Afternoon (1:00pm')
+  })
+
+  it('omits session lines for non-camp sends (count-only Sessions row unchanged)', async () => {
+    await sendGuestProgrammeConfirmation(BASE_PROGRAMME_PARAMS)
+    expect(getHtml()).not.toContain('Morning (')
+  })
+
   it('escapes < > characters in the participant name', async () => {
     await sendGuestProgrammeConfirmation({
       ...BASE_PROGRAMME_PARAMS,
