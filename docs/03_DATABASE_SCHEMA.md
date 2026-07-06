@@ -862,36 +862,45 @@ Tracks which children/players are enrolled in group programmes.
 
 ### 6.6 group_programme_enrolment_sessions
 
-Per-session record for a `per_session` programme enrolment — one row per session the enrolment paid for.
+Per-session/per-slot record for a `per_session` programme enrolment — one row per **slot** the enrolment paid for.
 
-**Purpose:** Records exactly which sessions a guest/parent paid for under the per-session model. References the session ROW (date-level); individual camp slots are not tracked separately (deferred — P-00c-ENROL S0 decision 4).
-**Migration:** 033_programme_enrolment_payment.sql
+**Purpose:** Records exactly which sessions — and for camp-mode programmes, which time SLOTS — a guest/parent paid for under the per-session model. Slot identity added by BUG-23 (REQ-P-NEW-01): each camp slot is one session at the per-session price; full day = both slots = 2×.
+**Migration:** 033_programme_enrolment_payment.sql; 040_camp_slot_granularity.sql (slot_index, widened UNIQUE, capacity functions)
 
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
 | id | uuid | NO | gen_random_uuid() | Primary key |
 | enrolment_id | uuid | NO | — | FK → group_programme_enrolments(id) ON DELETE CASCADE |
 | group_programme_session_id | uuid | NO | — | FK → group_programme_sessions(id) |
-| price_pence | integer | NO | — | Per-session price snapshot in pence (BR-10) |
+| slot_index | integer | NO | 0 | Which time block of the session this row pays for — ordinal into group_programme_sessions.slots; 0 for single-block/non-camp. Mirrors coach_time_claims.slot_index. CHECK 0–19. Legacy pre-040 camp rows pinned to 0 (RAISE NOTICE at migration time — sold as whole-day at 1×). (migration 040) |
+| price_pence | integer | NO | — | Per-SLOT price snapshot in pence (= per-session price, BUG-23 ruling 1; BR-10) |
 | created_at | timestamptz | NO | now() | |
 
 **Constraints:**
-- UNIQUE (enrolment_id, group_programme_session_id)
-- CHECK (price_pence >= 0)
+- UNIQUE (enrolment_id, group_programme_session_id, slot_index) — widened in migration 040
+- CHECK (price_pence >= 0); CHECK (slot_index BETWEEN 0 AND 19)
 
 **RLS Policies:**
 - SELECT: Own enrolment (the user who booked) OR the coach who owns the programme
-- INSERT/UPDATE/DELETE: Service role only (no user policies — guest rows created server-side)
+- INSERT/UPDATE/DELETE: Service role only (no user policies — guest rows created server-side; camp rows via reserve_camp_slot_sessions())
 
 **Indexes:**
-- (enrolment_id, group_programme_session_id) — implicit from the UNIQUE constraint
+- (enrolment_id, group_programme_session_id, slot_index) — implicit from the UNIQUE constraint
 - group_programme_session_id (reverse lookup)
+
+**Occupancy definition (BUG-23, shared by the three functions below):** a (session, slot) spot is held by a junction row whose enrolment is not cancelled AND is either `payment_status='succeeded'` OR `'pending'` created within the last 15 minutes (BUG-13b SOFT_TTL convention — a live checkout holds its spot; an abandoned one self-expires, no reaper).
 
 ---
 
-### 6.7 increment_programme_spots() — function
+### 6.7 Programme capacity functions
 
-`increment_programme_spots(p_programme_id uuid) RETURNS boolean` (migration 033). Atomically increments `group_programmes.current_spots` by 1 **only while `current_spots < max_spots`**, and returns whether a spot was taken. Called from the Stripe webhook on programme-enrolment confirmation; a `false` return means the programme filled between checkout and payment confirmation (caller logs + flags for manual refund — P-00c-ENROL S0 decision 3). `SET search_path = public`; EXECUTE granted to `service_role`.
+`increment_programme_spots(p_programme_id uuid) RETURNS boolean` (migration 033). Atomically increments `group_programmes.current_spots` by 1 **only while `current_spots < max_spots`**, and returns whether a spot was taken. Called from the Stripe webhook on **non-camp** programme-enrolment confirmation; a `false` return means the programme filled between checkout and payment confirmation (caller logs + flags for manual refund — P-00c-ENROL S0 decision 3). `SET search_path = public`; EXECUTE granted to `service_role`.
+
+**Camp capacity is PER SLOT** (BUG-23 ruling 3: `max_spots` applies to each (session, slot) independently; camps skip `increment_programme_spots` and `current_spots` stays 0). Three functions, migration 040, all SECURITY DEFINER `SET search_path = ''`:
+
+- `camp_slot_occupancy(p_programme_id uuid) RETURNS TABLE(session_id, slot_index, taken)` — aggregate per-slot taken counts (no PII); feeds the public picker's "N left"/"Full" states. EXECUTE: anon, authenticated, service_role.
+- `reserve_camp_slot_sessions(p_enrolment_id uuid, p_price_pence integer, p_selections jsonb) RETURNS jsonb` — atomic pre-charge reservation: locks the involved session rows FOR UPDATE in sorted-id order (deadlock-safe serialization), counts occupancy per requested pair, inserts the enrolment's junction rows or returns `{ok:false, full:[…]}` so the API can 409 **before any Stripe intent exists**. EXECUTE: service_role only.
+- `confirm_camp_slot_spots(p_enrolment_id uuid) RETURNS boolean` — webhook-time re-check (counts succeeded others under the same lock); `false` → caller logs MANUAL REFUND NEEDED, mirroring increment_programme_spots semantics. EXECUTE: service_role only.
 
 ---
 
@@ -1672,6 +1681,12 @@ Migrations must run in this exact order:
                                         constraint, sync triggers on bookings /
                                         group_programme_sessions /
                                         group_programmes, cron reconciler
+039_add_participant_age_to_enrolments.sql
+                                      → participant_age on enrolments (BUG-20)
+040_camp_slot_granularity.sql         → slot_index on the enrolment junction,
+                                        widened UNIQUE, camp_slot_occupancy /
+                                        reserve_camp_slot_sessions /
+                                        confirm_camp_slot_spots (BUG-23)
 ```
 
 ---
