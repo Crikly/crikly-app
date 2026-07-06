@@ -351,6 +351,21 @@ export async function PATCH(
         validationErrors.push('max_spots must be between 2 and 100')
       } else if (body.max_spots < existingProgramme.current_spots) {
         validationErrors.push(`Cannot reduce max_spots below current_spots (${existingProgramme.current_spots})`)
+      } else if (existingProgramme.camp_mode === true) {
+        // BUG-23: camp capacity is per SLOT and current_spots stays 0 — the
+        // counter check above cannot guard camps. Compare against the busiest
+        // slot's real occupancy instead.
+        const { data: occupancy, error: occupancyError } = await adminSupabase.rpc('camp_slot_occupancy', {
+          p_programme_id: programmeId,
+        })
+        if (occupancyError) {
+          console.error('[PATCH /api/coaches/programmes/[programmeId]] occupancy check failed:', occupancyError)
+          return NextResponse.json({ error: 'Failed to update programme' }, { status: 500 })
+        }
+        const busiest = Math.max(0, ...(occupancy ?? []).map((o) => o.taken))
+        if (body.max_spots < busiest) {
+          validationErrors.push(`Cannot reduce max_spots below the busiest slot's enrolment count (${busiest})`)
+        }
       }
     }
 
@@ -889,7 +904,7 @@ export async function DELETE(
     const adminSupabase = createAdminClient()
     const { data: existingProgramme, error: programmeCheckError } = await adminSupabase
       .from('group_programmes')
-      .select('id, status, current_spots')
+      .select('id, status, current_spots, camp_mode')
       .eq('id', programmeId)
       .eq('coach_profile_id', coachProfile.id)
       .is('deleted_at', null)
@@ -899,8 +914,28 @@ export async function DELETE(
       return NextResponse.json({ error: 'Programme not found or access denied' }, { status: 404 })
     }
 
-    // Only allow deletion if draft or no enrolments
-    if (existingProgramme.status !== 'draft' && existingProgramme.current_spots > 0) {
+    // Only allow deletion if draft or no enrolments.
+    //
+    // BUG-23: camp capacity is per SLOT — camps never touch current_spots (it
+    // stays 0), so the counter cannot guard them. Check the enrolments table
+    // directly: any active paid (or coach-added offline) participant blocks
+    // deletion, exactly as current_spots > 0 does for regular programmes.
+    let hasActiveParticipants = existingProgramme.current_spots > 0
+    if (existingProgramme.camp_mode === true && !hasActiveParticipants) {
+      const { count, error: participantCountError } = await adminSupabase
+        .from('group_programme_enrolments')
+        .select('id', { count: 'exact', head: true })
+        .eq('programme_id', programmeId)
+        .eq('status', 'active')
+        .or('payment_status.eq.succeeded,payment_type.eq.offline')
+      if (participantCountError) {
+        console.error('[DELETE /api/coaches/programmes/[programmeId]] participant count failed:', participantCountError)
+        return NextResponse.json({ error: 'Failed to delete programme' }, { status: 500 })
+      }
+      hasActiveParticipants = (count ?? 0) > 0
+    }
+
+    if (existingProgramme.status !== 'draft' && hasActiveParticipants) {
       return NextResponse.json(
         { error: 'Cannot delete a programme with active enrolments. Cancel it instead.' },
         { status: 400 }

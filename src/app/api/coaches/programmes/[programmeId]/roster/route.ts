@@ -70,7 +70,7 @@ export async function GET(
     const adminSupabase = createAdminClient()
     const { data: programme, error: progError } = await adminSupabase
       .from('group_programmes')
-      .select('id, title, max_spots, current_spots')
+      .select('id, title, max_spots, current_spots, camp_mode')
       .eq('id', programmeId)
       .eq('coach_profile_id', coachProfile.id)
       .is('deleted_at', null)
@@ -200,7 +200,10 @@ export async function GET(
       programme_id: programme.id,
       programme_title: programme.title,
       total_spots: programme.max_spots,
-      enrolled_count: programme.current_spots,
+      // BUG-23: camps never increment current_spots (per-slot capacity), so
+      // the counter would show 0 above a populated list — count the real
+      // roster instead. Regular programmes keep the counter (byte-identical).
+      enrolled_count: programme.camp_mode === true ? enrolmentItems.length : programme.current_spots,
       enrolments: enrolmentItems,
     }
 

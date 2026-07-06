@@ -485,3 +485,58 @@ describe('PATCH /api/coaches/programmes/[programmeId] — session conflict guard
     }
   })
 })
+
+// ── DELETE — camp participant guard (BUG-23 review blocker) ───────────────────
+//
+// Camp capacity is per SLOT, so current_spots stays 0 forever — the old
+// `current_spots > 0` guard silently no-oped for camps and a fully-paid camp
+// could be soft-deleted. Camps now check the enrolments table directly.
+
+async function callDelete(programmeId: string) {
+  const { DELETE } = await import('@/app/api/coaches/programmes/[programmeId]/route')
+  const request = new Request(`http://localhost/api/coaches/programmes/${programmeId}`, {
+    method: 'DELETE',
+  })
+  return DELETE(request as unknown as NextRequest, { params: Promise.resolve({ programmeId }) })
+}
+
+function makeDeleteAdmin(existing: Record<string, unknown>, participantCount: number) {
+  const chain: Record<string, unknown> = {}
+  for (const m of ['select', 'eq', 'is', 'or', 'update']) {
+    chain[m] = jest.fn(() => chain)
+  }
+  chain.single = jest.fn().mockResolvedValue({ data: existing, error: null })
+  // Awaited thenables: the participant head-count resolves {count}; the
+  // soft-delete update destructures {error} from the same shape (null → ok).
+  chain.then = (resolve: (r: unknown) => void) => resolve({ count: participantCount, error: null })
+  ;(createAdminClient as jest.Mock).mockReturnValue({ from: jest.fn(() => chain) })
+  return chain
+}
+
+describe('DELETE /api/coaches/programmes/[programmeId] — camp participant guard (BUG-23)', () => {
+  it('blocks deleting an active camp with a paid participant even though current_spots is 0', async () => {
+    mockPatchAuth()
+    makeDeleteAdmin({ id: 'prog-1', status: 'active', current_spots: 0, camp_mode: true }, 1)
+
+    const res = await callDelete('prog-1')
+    expect(res.status).toBe(400)
+    const data = await res.json()
+    expect(String(data.error)).toContain('active enrolments')
+  })
+
+  it('allows deleting an active camp with no participants', async () => {
+    mockPatchAuth()
+    makeDeleteAdmin({ id: 'prog-1', status: 'active', current_spots: 0, camp_mode: true }, 0)
+
+    const res = await callDelete('prog-1')
+    expect(res.status).toBe(200)
+  })
+
+  it('non-camp guard unchanged: active programme with current_spots > 0 still blocks', async () => {
+    mockPatchAuth()
+    makeDeleteAdmin({ id: 'prog-1', status: 'active', current_spots: 3, camp_mode: false }, 0)
+
+    const res = await callDelete('prog-1')
+    expect(res.status).toBe(400)
+  })
+})
