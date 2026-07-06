@@ -48,6 +48,10 @@ interface EnrolmentInput {
   programmeId: string
   paymentType: PaymentType
   selectedSessionIds: string[]
+  /** Who the programme is for — REQUIRED (BUG-20, mirrors UX-16 on bookings). */
+  participantName: string
+  /** Age in years. Optional — children have it, adult players may not. */
+  participantAge: number | null
   idempotencyToken: string | null
   guest: GuestDetails
 }
@@ -79,6 +83,32 @@ function parseBody(raw: unknown): EnrolmentInput | null {
   if (typeof g.fullName !== 'string' || g.fullName.trim().length === 0) return null
   if (!isValidEmail(g.email)) return null
 
+  // BUG-20: participant name is REQUIRED for every guest enrolment — it is
+  // what the coach's roster shows ("who am I coaching?"). Length-bounded like
+  // other free text; mirrors POST /api/guest/bookings (UX-16).
+  if (
+    typeof b.participantName !== 'string' ||
+    b.participantName.trim().length === 0 ||
+    b.participantName.trim().length > 100
+  ) {
+    return null
+  }
+
+  // Age is optional (adult players may omit it) but must be a sane integer
+  // when present — mirrors the migration-039 DB CHECK (1–99).
+  let participantAge: number | null = null
+  if (b.participantAge !== undefined && b.participantAge !== null) {
+    if (
+      typeof b.participantAge !== 'number' ||
+      !Number.isInteger(b.participantAge) ||
+      b.participantAge < 1 ||
+      b.participantAge > 99
+    ) {
+      return null
+    }
+    participantAge = b.participantAge
+  }
+
   const token =
     typeof b.idempotencyToken === 'string' &&
     b.idempotencyToken.length > 0 &&
@@ -91,6 +121,8 @@ function parseBody(raw: unknown): EnrolmentInput | null {
     programmeId: b.programmeId,
     paymentType: b.paymentType,
     selectedSessionIds,
+    participantName: b.participantName.trim(),
+    participantAge,
     idempotencyToken: token,
     guest: {
       fullName: g.fullName.trim(),
@@ -310,6 +342,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       payment_model: input.paymentType === 'block_upfront' ? 'block' : 'per_session',
       block_amount_pence: input.paymentType === 'block_upfront' ? coachAmountPence : null,
       sessions_paid_for: sessionsPaidFor,
+      // BUG-20: snapshot of who the programme is for — guests have no
+      // child_profiles row, so this is the coach roster's only source.
+      participant_name: input.participantName,
+      participant_age: input.participantAge,
       status: 'active',
       payment_status: 'pending',
       enrolment_reference: reference,
@@ -376,6 +412,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           // payment_intent.succeeded webhook can send the confirmation.
           guest_email: input.guest.email,
           guest_name: input.guest.fullName,
+          // BUG-20: the confirmation email says who the programme is for
+          // (UX-16 parity with /api/guest/bookings). Stripe metadata values
+          // are strings; age omitted when not given.
+          participant_name: input.participantName,
+          ...(input.participantAge !== null
+            ? { participant_age: String(input.participantAge) }
+            : {}),
         },
       },
       { idempotencyKey: piKey },

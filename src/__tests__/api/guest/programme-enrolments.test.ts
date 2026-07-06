@@ -96,6 +96,9 @@ const VALID_BODY_PER_SESSION = {
   programmeId: PROGRAMME_ID,
   paymentType: 'per_session',
   selectedSessionIds: [SESSION_ID_1],
+  // BUG-20: participant is required for every guest enrolment.
+  participantName: 'Yuwin Test',
+  participantAge: 10,
   idempotencyToken: 'idem-enrol-abc',
   guest: VALID_GUEST,
 }
@@ -105,6 +108,8 @@ const VALID_BODY_BLOCK = {
   programmeId: PROGRAMME_ID,
   paymentType: 'block_upfront',
   selectedSessionIds: [],
+  participantName: 'Yuwin Test',
+  participantAge: 10,
   idempotencyToken: 'idem-enrol-block',
   guest: VALID_GUEST,
 }
@@ -391,6 +396,50 @@ describe('POST /api/guest/programme-enrolments — happy path (per_session)', ()
   })
 })
 
+// ── Participant capture (BUG-20) ──────────────────────────────────────────────
+
+describe('POST /api/guest/programme-enrolments — participant capture (BUG-20)', () => {
+  it('persists participant_name and participant_age on the enrolment insert', async () => {
+    const { enrolmentChain } = setupHappyPathPerSession()
+    await callPost(VALID_BODY_PER_SESSION)
+
+    const insertArg = (enrolmentChain.insert as MockFn).mock.calls[0][0] as Record<string, unknown>
+    expect(insertArg.participant_name).toBe('Yuwin Test')
+    expect(insertArg.participant_age).toBe(10)
+  })
+
+  it('accepts a null participantAge (adult players) and persists null', async () => {
+    const { enrolmentChain } = setupHappyPathPerSession()
+    const res = await callPost({ ...VALID_BODY_PER_SESSION, participantAge: null })
+    expect(res.status).toBe(200)
+
+    const insertArg = (enrolmentChain.insert as MockFn).mock.calls[0][0] as Record<string, unknown>
+    expect(insertArg.participant_age).toBeNull()
+  })
+
+  it('stashes participant metadata on the PaymentIntent for the confirmation email', async () => {
+    const { stripeMock } = setupHappyPathPerSession()
+    await callPost(VALID_BODY_PER_SESSION)
+
+    const createArg = (stripeMock.paymentIntents.create as MockFn).mock.calls[0][0] as {
+      metadata: Record<string, string>
+    }
+    expect(createArg.metadata.participant_name).toBe('Yuwin Test')
+    expect(createArg.metadata.participant_age).toBe('10')
+  })
+
+  it('omits participant_age from the intent metadata when not given', async () => {
+    const { stripeMock } = setupHappyPathPerSession()
+    await callPost({ ...VALID_BODY_PER_SESSION, participantAge: null })
+
+    const createArg = (stripeMock.paymentIntents.create as MockFn).mock.calls[0][0] as {
+      metadata: Record<string, string>
+    }
+    expect(createArg.metadata.participant_name).toBe('Yuwin Test')
+    expect('participant_age' in createArg.metadata).toBe(false)
+  })
+})
+
 // ── Happy path — block_upfront ────────────────────────────────────────────────
 
 describe('POST /api/guest/programme-enrolments — happy path (block_upfront)', () => {
@@ -458,6 +507,29 @@ describe('POST /api/guest/programme-enrolments — invalid body', () => {
   it('returns 400 when programmeId is missing', async () => {
     const { programmeId: _omit, ...noProgrammeId } = VALID_BODY_PER_SESSION
     const res = await callPost(noProgrammeId)
+    expect(res.status).toBe(400)
+  })
+
+  // ── BUG-20: participant validation (mirrors POST /api/guest/bookings) ──
+
+  it('returns 400 when participantName is missing', async () => {
+    // undefined is dropped by JSON.stringify — the body arrives without the key.
+    const res = await callPost({ ...VALID_BODY_PER_SESSION, participantName: undefined })
+    expect(res.status).toBe(400)
+  })
+
+  it('returns 400 when participantName is blank', async () => {
+    const res = await callPost({ ...VALID_BODY_PER_SESSION, participantName: '   ' })
+    expect(res.status).toBe(400)
+  })
+
+  it('returns 400 when participantAge is out of range', async () => {
+    const res = await callPost({ ...VALID_BODY_PER_SESSION, participantAge: 100 })
+    expect(res.status).toBe(400)
+  })
+
+  it('returns 400 when participantAge is not an integer', async () => {
+    const res = await callPost({ ...VALID_BODY_PER_SESSION, participantAge: 9.5 })
     expect(res.status).toBe(400)
   })
 

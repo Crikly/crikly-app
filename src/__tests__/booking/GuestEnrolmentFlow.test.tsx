@@ -118,7 +118,20 @@ beforeAll(() => {
 
 afterEach(() => {
   jest.clearAllMocks()
+  window.sessionStorage.clear()
 })
+
+// ── Shared interaction helpers ────────────────────────────────────────────────
+
+/**
+ * BUG-20: the pay gate requires a participant name before createEnrolment
+ * fires. Fills the "Who is this for?" name field, then clicks Pay — the
+ * default interaction for every test that exercises handlePay.
+ */
+async function clickPay(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+  await user.type(screen.getAllByTestId('participant-name-input')[0], 'Yuwin Test')
+  await user.click(screen.getAllByTestId('pay-button')[0])
+}
 
 // ── Checkout view ──────────────────────────────────────────────────────────────
 
@@ -439,7 +452,7 @@ describe('GuestEnrolmentFlow — handlePay success (confirmation view)', () => {
       />,
     )
 
-    await user.click(screen.getAllByTestId('pay-button')[0])
+    await clickPay(user)
 
     await waitFor(() => {
       expect(screen.getByText("You're enrolled!")).toBeInTheDocument()
@@ -458,7 +471,7 @@ describe('GuestEnrolmentFlow — handlePay success (confirmation view)', () => {
       />,
     )
 
-    await user.click(screen.getAllByTestId('pay-button')[0])
+    await clickPay(user)
 
     await waitFor(() => {
       // "You're enrolled!" must be visible
@@ -479,7 +492,7 @@ describe('GuestEnrolmentFlow — handlePay success (confirmation view)', () => {
       />,
     )
 
-    await user.click(screen.getAllByTestId('pay-button')[0])
+    await clickPay(user)
 
     await waitFor(() => {
       expect(screen.getByText(/Enrolment reference/i)).toBeInTheDocument()
@@ -499,7 +512,7 @@ describe('GuestEnrolmentFlow — handlePay success (confirmation view)', () => {
       />,
     )
 
-    await user.click(screen.getAllByTestId('pay-button')[0])
+    await clickPay(user)
 
     await waitFor(() => {
       expect(screen.getByText(ENROLMENT_REFERENCE)).toBeInTheDocument()
@@ -518,7 +531,7 @@ describe('GuestEnrolmentFlow — handlePay success (confirmation view)', () => {
       />,
     )
 
-    await user.click(screen.getAllByTestId('pay-button')[0])
+    await clickPay(user)
 
     await waitFor(() => {
       expect(screen.queryByTestId('pay-button')).not.toBeInTheDocument()
@@ -537,7 +550,7 @@ describe('GuestEnrolmentFlow — handlePay success (confirmation view)', () => {
       />,
     )
 
-    await user.click(screen.getAllByTestId('pay-button')[0])
+    await clickPay(user)
 
     await waitFor(() => {
       expect(screen.queryByLabelText(/Full name/i)).not.toBeInTheDocument()
@@ -557,7 +570,7 @@ describe('GuestEnrolmentFlow — handlePay success (confirmation view)', () => {
     )
 
     await user.type(screen.getByLabelText(/Email address/i), 'sarah@example.com')
-    await user.click(screen.getAllByTestId('pay-button')[0])
+    await clickPay(user)
 
     await waitFor(() => {
       expect(screen.getByText('sarah@example.com')).toBeInTheDocument()
@@ -576,7 +589,7 @@ describe('GuestEnrolmentFlow — handlePay success (confirmation view)', () => {
       />,
     )
 
-    await user.click(screen.getAllByTestId('pay-button')[0])
+    await clickPay(user)
 
     await waitFor(() => {
       expect(screen.getByText('your email')).toBeInTheDocument()
@@ -595,7 +608,7 @@ describe('GuestEnrolmentFlow — handlePay success (confirmation view)', () => {
       />,
     )
 
-    await user.click(screen.getAllByTestId('pay-button')[0])
+    await clickPay(user)
 
     await waitFor(() => {
       expect(screen.getByTestId('copy-reference-button')).toBeInTheDocument()
@@ -614,7 +627,7 @@ describe('GuestEnrolmentFlow — handlePay success (confirmation view)', () => {
       />,
     )
 
-    await user.click(screen.getAllByTestId('pay-button')[0])
+    await clickPay(user)
 
     await waitFor(() => {
       expect(screen.getByTestId('share-button')).toBeInTheDocument()
@@ -654,7 +667,7 @@ describe('GuestEnrolmentFlow — handlePay POST body shape', () => {
       />,
     )
 
-    await user.click(screen.getAllByTestId('pay-button')[0])
+    await clickPay(user)
 
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(
@@ -676,7 +689,7 @@ describe('GuestEnrolmentFlow — handlePay POST body shape', () => {
       />,
     )
 
-    await user.click(screen.getAllByTestId('pay-button')[0])
+    await clickPay(user)
 
     await waitFor(() => {
       const [, init] = (global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit]
@@ -697,7 +710,7 @@ describe('GuestEnrolmentFlow — handlePay POST body shape', () => {
       />,
     )
 
-    await user.click(screen.getAllByTestId('pay-button')[0])
+    await clickPay(user)
 
     await waitFor(() => {
       const [, init] = (global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit]
@@ -718,7 +731,7 @@ describe('GuestEnrolmentFlow — handlePay POST body shape', () => {
       />,
     )
 
-    await user.click(screen.getAllByTestId('pay-button')[0])
+    await clickPay(user)
 
     await waitFor(() => {
       const [, init] = (global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit]
@@ -739,7 +752,7 @@ describe('GuestEnrolmentFlow — handlePay POST body shape', () => {
       />,
     )
 
-    await user.click(screen.getAllByTestId('pay-button')[0])
+    await clickPay(user)
 
     await waitFor(() => {
       const [, init] = (global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit]
@@ -761,7 +774,7 @@ describe('GuestEnrolmentFlow — handlePay POST body shape', () => {
       />,
     )
 
-    await user.click(screen.getAllByTestId('pay-button')[0])
+    await clickPay(user)
 
     await waitFor(() => {
       const [, init] = (global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit]
@@ -786,7 +799,7 @@ describe('GuestEnrolmentFlow — handlePay POST body shape', () => {
     // Fill in the form
     await user.type(screen.getByLabelText(/Full name/i), 'Sarah Test')
     await user.type(screen.getByLabelText(/Email address/i), 'sarah@example.com')
-    await user.click(screen.getAllByTestId('pay-button')[0])
+    await clickPay(user)
 
     await waitFor(() => {
       const [, init] = (global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit]
@@ -824,7 +837,7 @@ describe('GuestEnrolmentFlow — handlePay 409 spots_taken from API', () => {
       />,
     )
 
-    await user.click(screen.getAllByTestId('pay-button')[0])
+    await clickPay(user)
 
     await waitFor(() => {
       const alerts = screen.getAllByRole('alert')
@@ -851,7 +864,7 @@ describe('GuestEnrolmentFlow — handlePay 409 spots_taken from API', () => {
       />,
     )
 
-    await user.click(screen.getAllByTestId('pay-button')[0])
+    await clickPay(user)
 
     await waitFor(() => {
       expect(screen.queryByText("You're enrolled!")).not.toBeInTheDocument()
@@ -885,7 +898,7 @@ describe('GuestEnrolmentFlow — handlePay 409 invalid_sessions from API', () =>
       />,
     )
 
-    await user.click(screen.getAllByTestId('pay-button')[0])
+    await clickPay(user)
 
     await waitFor(() => {
       const alerts = screen.getAllByRole('alert')
@@ -914,12 +927,136 @@ describe('GuestEnrolmentFlow — handlePay 409 invalid_sessions from API', () =>
       />,
     )
 
-    await user.click(screen.getAllByTestId('pay-button')[0])
+    await clickPay(user)
 
     await waitFor(() => {
       const alerts = screen.getAllByRole('alert')
       expect(alerts.length).toBeGreaterThanOrEqual(1)
       expect(within(alerts[0]).getByText(/Payment couldn't be completed/i)).toBeInTheDocument()
     })
+  })
+})
+
+// ── Participant capture (BUG-20 / BUG-24) ─────────────────────────────────────
+//
+// The enrol checkout owns the "Who is this for?" fields: required name gates
+// handlePay, values land in the POST body, and the availability panel's
+// sessionStorage handoff (BUG-24) pre-fills them — never URL params.
+
+describe('GuestEnrolmentFlow — participant capture (BUG-20/BUG-24)', () => {
+  beforeEach(() => {
+    global.fetch = jest.fn().mockResolvedValue({
+      status: 200,
+      ok: true,
+      json: jest.fn().mockResolvedValue({
+        clientSecret: 'pi_test_secret',
+        enrolmentReference: ENROLMENT_REFERENCE,
+        enrolmentId: 'enrolment-uuid-001',
+      }),
+    } as unknown as Response)
+
+    stripeModule.__mockConfirmPayment.mockResolvedValue({ error: null })
+    stripeModule.__mockSubmit.mockResolvedValue({ error: null })
+  })
+
+  it('blocks Pay and shows the inline error when the participant name is empty', async () => {
+    const user = userEvent.setup()
+    render(
+      <GuestEnrolmentFlow
+        coachId={COACH_ID}
+        programmeId={PROGRAMME_ID}
+        paymentType="block_upfront"
+        selectedSessionIds={[]}
+        summary={SUMMARY}
+      />,
+    )
+
+    await user.click(screen.getAllByTestId('pay-button')[0])
+
+    expect(screen.getByTestId('participant-error')).toBeInTheDocument()
+    expect(global.fetch).not.toHaveBeenCalled()
+  })
+
+  it('POST body carries participantName and the parsed participantAge', async () => {
+    const user = userEvent.setup()
+    render(
+      <GuestEnrolmentFlow
+        coachId={COACH_ID}
+        programmeId={PROGRAMME_ID}
+        paymentType="block_upfront"
+        selectedSessionIds={[]}
+        summary={SUMMARY}
+      />,
+    )
+
+    await user.type(screen.getAllByTestId('participant-name-input')[0], 'Yuwin Test')
+    await user.type(screen.getAllByTestId('participant-age-input')[0], '9')
+    await user.click(screen.getAllByTestId('pay-button')[0])
+
+    await waitFor(() => {
+      const [, init] = (global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit]
+      const body = JSON.parse(init.body as string) as Record<string, unknown>
+      expect(body.participantName).toBe('Yuwin Test')
+      expect(body.participantAge).toBe(9)
+    })
+  })
+
+  it('sends participantAge: null when the age field is left empty', async () => {
+    const user = userEvent.setup()
+    render(
+      <GuestEnrolmentFlow
+        coachId={COACH_ID}
+        programmeId={PROGRAMME_ID}
+        paymentType="block_upfront"
+        selectedSessionIds={[]}
+        summary={SUMMARY}
+      />,
+    )
+
+    await clickPay(user)
+
+    await waitFor(() => {
+      const [, init] = (global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit]
+      const body = JSON.parse(init.body as string) as Record<string, unknown>
+      expect(body.participantAge).toBeNull()
+    })
+  })
+
+  it('pre-fills from the availability panel sessionStorage handoff (BUG-24)', async () => {
+    window.sessionStorage.setItem(
+      'crikly:enrol-participant',
+      JSON.stringify({ name: 'Handoff Kid', age: '11' }),
+    )
+
+    render(
+      <GuestEnrolmentFlow
+        coachId={COACH_ID}
+        programmeId={PROGRAMME_ID}
+        paymentType="block_upfront"
+        selectedSessionIds={[]}
+        summary={SUMMARY}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('participant-name-input')[0]).toHaveValue('Handoff Kid')
+      expect(screen.getAllByTestId('participant-age-input')[0]).toHaveValue(11)
+    })
+  })
+
+  it('a malformed handoff is ignored (fields stay empty, no crash)', async () => {
+    window.sessionStorage.setItem('crikly:enrol-participant', 'not-json{')
+
+    render(
+      <GuestEnrolmentFlow
+        coachId={COACH_ID}
+        programmeId={PROGRAMME_ID}
+        paymentType="block_upfront"
+        selectedSessionIds={[]}
+        summary={SUMMARY}
+      />,
+    )
+
+    expect(screen.getAllByTestId('participant-name-input')[0]).toHaveValue('')
   })
 })

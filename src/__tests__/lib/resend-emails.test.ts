@@ -248,3 +248,63 @@ describe('sendGuestBookingConfirmation — return value and errors', () => {
     )
   })
 })
+
+// ── Programme confirmation — participant (BUG-20) ─────────────────────────────
+//
+// Mirrors the sendGuestBookingConfirmation "Booking for" coverage above: same
+// row treatment, same escaping, same omission for pre-BUG-20 sends.
+
+import { sendGuestProgrammeConfirmation } from '@/lib/resend/emails'
+import type { GuestProgrammeConfirmationParams } from '@/lib/resend/emails'
+
+const BASE_PROGRAMME_PARAMS: GuestProgrammeConfirmationParams = {
+  guestName: 'Sarah Test',
+  guestEmail: 'sarah@example.com',
+  coachName: 'Coach Davies',
+  enrolmentReference: 'CRK-2026-ENROL1',
+  programmeTitle: 'Summer Camp',
+  scheduleSummary: 'Mon–Fri · 9:00am – 12:00pm',
+  sessionsSummary: '3 sessions',
+  totalPence: 18480,
+}
+
+describe('sendGuestProgrammeConfirmation — participant (BUG-20)', () => {
+  function getHtml(): string {
+    const [callArg] = mockEmailsSend.mock.calls[0] as [Record<string, unknown>]
+    return callArg.html as string
+  }
+
+  it('shows a "Booking for" row with name and age when both are given', async () => {
+    await sendGuestProgrammeConfirmation({
+      ...BASE_PROGRAMME_PARAMS,
+      participantName: 'Yuwin',
+      participantAge: 10,
+    })
+    const html = getHtml()
+    expect(html).toContain('Booking for')
+    expect(html).toContain('Yuwin (age 10)')
+  })
+
+  it('shows the "Booking for" row with name only when no age was given', async () => {
+    await sendGuestProgrammeConfirmation({ ...BASE_PROGRAMME_PARAMS, participantName: 'Yuwin' })
+    const html = getHtml()
+    expect(html).toContain('Booking for')
+    expect(html).toContain('Yuwin')
+    expect(html).not.toContain('(age')
+  })
+
+  it('omits the "Booking for" row for pre-BUG-20 sends without a participant', async () => {
+    await sendGuestProgrammeConfirmation(BASE_PROGRAMME_PARAMS)
+    expect(getHtml()).not.toContain('Booking for')
+  })
+
+  it('escapes < > characters in the participant name', async () => {
+    await sendGuestProgrammeConfirmation({
+      ...BASE_PROGRAMME_PARAMS,
+      participantName: '<script>alert(1)</script>',
+    })
+    const html = getHtml()
+    expect(html).not.toContain('<script>alert(1)</script>')
+    expect(html).toContain('&lt;script&gt;')
+  })
+})

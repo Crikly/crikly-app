@@ -820,7 +820,7 @@ Individual scheduled sessions within a `group_programmes` row. The session list 
 Tracks which children/players are enrolled in group programmes.
 
 **Purpose:** Links participants to recurring programmes, separate from one-off bookings.
-**Migration:** 015_coach_schema_gaps.sql; 020 (participant_name); 033_programme_enrolment_payment.sql (guest paid-checkout lifecycle — P-00c-ENROL)
+**Migration:** 015_coach_schema_gaps.sql; 020 (participant_name); 033_programme_enrolment_payment.sql (guest paid-checkout lifecycle — P-00c-ENROL); 039_add_participant_age_to_enrolments.sql (participant_age, BUG-24/BUG-20)
 
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
@@ -833,7 +833,8 @@ Tracks which children/players are enrolled in group programmes.
 | payment_model | text | NO | — | 'per_session' or 'block' (maps from programme payment_type 'block_upfront' → 'block') |
 | block_amount_pence | integer | YES | null | Block total in pence (block model only) |
 | sessions_paid_for | integer | YES | null | Count of sessions paid (per_session model) |
-| participant_name | text | YES | null | Display name for offline participants (migration 020) |
+| participant_name | text | YES | null | Who the programme is for — entered at guest checkout (BUG-20, REQUIRED at the API layer for new guest enrolments) or by the coach for offline participants (migration 020) |
+| participant_age | integer | YES | null | Participant age in years at enrolment time, as entered at guest checkout. Optional — adult players may omit it. CHECK 1–99. Mirrors bookings.participant_age (migration 035). (migration 039) |
 | status | text | NO | 'active' | 'active', 'cancelled', 'completed' |
 | payment_status | text | NO | 'pending' | 'pending', 'succeeded', 'failed', 'refunded' (migration 033). Enrolment only holds a spot once 'succeeded'. |
 | enrolment_reference | text | YES | null | CRK-YYYY-XXXXXX human reference (migration 033). UNIQUE when present. |
