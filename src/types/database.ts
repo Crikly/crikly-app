@@ -1431,6 +1431,7 @@ export type Database = {
           id: string
           joined_at_session_number: number
           parent_total_pence: number | null
+          participant_age: number | null
           participant_name: string | null
           payment_model: string
           payment_status: string
@@ -1457,6 +1458,7 @@ export type Database = {
           id?: string
           joined_at_session_number?: number
           parent_total_pence?: number | null
+          participant_age?: number | null
           participant_name?: string | null
           payment_model: string
           payment_status?: string
@@ -1483,6 +1485,7 @@ export type Database = {
           id?: string
           joined_at_session_number?: number
           parent_total_pence?: number | null
+          participant_age?: number | null
           participant_name?: string | null
           payment_model?: string
           payment_status?: string
