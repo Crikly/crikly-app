@@ -21,6 +21,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getStripe } from '@/lib/stripe/client'
+import { parseSelectionList, type SlotSelection } from '@/lib/booking/slot-selection'
+import { expandSessionBlocks } from '@/lib/availability/campSlots'
 import {
   generateBookingReference,
   computeBookingTotals,
@@ -47,7 +49,8 @@ interface EnrolmentInput {
   coachId: string
   programmeId: string
   paymentType: PaymentType
-  selectedSessionIds: string[]
+  /** Deduped (sessionId, slotIndex) pairs — identity only, never price. */
+  selections: SlotSelection[]
   /** Who the programme is for — REQUIRED (BUG-20, mirrors UX-16 on bookings). */
   participantName: string
   /** Age in years. Optional — children have it, adult players may not. */
@@ -70,13 +73,18 @@ function parseBody(raw: unknown): EnrolmentInput | null {
   if (typeof b.programmeId !== 'string' || b.programmeId.length === 0) return null
   if (b.paymentType !== 'per_session' && b.paymentType !== 'block_upfront') return null
 
-  // selectedSessionIds: required + non-empty for per_session; ignored for block.
-  let selectedSessionIds: string[] = []
+  // selectedSessionIds: required + non-empty for per_session; ignored for
+  // block. Entries are slot-selection wire strings — "uuid" (slot 0) or
+  // "uuid.N" (camp block N, BUG-23). parseSelectionList rejects the whole
+  // body on any malformed entry and dedupes by (session, slot) PAIR so a
+  // tampered body can't pay once but list a slot twice.
+  let selections: SlotSelection[] = []
   if (b.paymentType === 'per_session') {
     if (!Array.isArray(b.selectedSessionIds) || b.selectedSessionIds.length === 0) return null
     if (!b.selectedSessionIds.every((s) => typeof s === 'string' && s.length > 0)) return null
-    // De-dupe so a tampered body can't pay once but list a session twice.
-    selectedSessionIds = [...new Set(b.selectedSessionIds as string[])]
+    const parsed = parseSelectionList(b.selectedSessionIds as string[])
+    if (!parsed || parsed.length === 0) return null
+    selections = parsed
   }
 
   if (typeof g !== 'object' || g === null) return null
@@ -120,7 +128,7 @@ function parseBody(raw: unknown): EnrolmentInput | null {
     coachId: b.coachId,
     programmeId: b.programmeId,
     paymentType: b.paymentType,
-    selectedSessionIds,
+    selections,
     participantName: b.participantName.trim(),
     participantAge,
     idempotencyToken: token,
@@ -207,7 +215,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const { data: programme, error: programmeError } = await supabase
     .from('group_programmes')
     .select(
-      'id, coach_profile_id, payment_type, price_per_session_pence, block_price_pence, block_session_count, max_spots, current_spots, currency, status, deleted_at',
+      'id, coach_profile_id, payment_type, price_per_session_pence, block_price_pence, block_session_count, max_spots, current_spots, currency, status, deleted_at, camp_mode',
     )
     .eq('id', input.programmeId)
     .is('deleted_at', null)
@@ -227,21 +235,28 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   // 4. Re-derive the canonical COACH price server-side (never trust the client).
   //    Commission is added ON TOP (BR-01) in step 5.
+  //
+  //    BUG-23: pricing is per (session, slot) PAIR. Each camp slot is one
+  //    session at the per-session price; a full camp day (both slots) is 2×
+  //    (Lasith ruling, 5–6 Jul 2026). Non-camp sessions have exactly one
+  //    block, so pairs ≡ session rows and the maths is unchanged.
   let coachAmountPence: number
   let sessionsPaidFor: number | null = null
-  let validSessions: { id: string; price_pence: number }[] = []
+  let validSelections: { sessionId: string; slotIndex: number; price_pence: number }[] = []
 
   if (input.paymentType === 'per_session') {
     const pricePer = programme.price_per_session_pence
     if (pricePer === null || pricePer <= 0) return badRequest('session_price_unavailable')
 
     // Only sessions that belong to this programme, are still scheduled, and are
-    // not in the past can be paid for.
+    // not in the past can be paid for. slots is fetched so each pair's
+    // slotIndex can be bounds-checked against the session's REAL block count.
+    const sessionIds = [...new Set(input.selections.map((s) => s.sessionId))]
     const { data: sessionRows, error: sessionError } = await supabase
       .from('group_programme_sessions')
-      .select('id, session_date, status')
+      .select('id, session_date, status, start_time, end_time, slots')
       .eq('group_programme_id', programme.id)
-      .in('id', input.selectedSessionIds)
+      .in('id', sessionIds)
 
     if (sessionError) {
       console.error('[POST /api/guest/programme-enrolments] session lookup failed:', sessionError)
@@ -249,19 +264,44 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     const today = todayISO()
-    const usable = (sessionRows ?? []).filter(
-      (s) => s.status === 'scheduled' && s.session_date >= today,
+    const usableById = new Map(
+      (sessionRows ?? [])
+        .filter((s) => s.status === 'scheduled' && s.session_date >= today)
+        .map((s) => [s.id, s]),
     )
-    // Every requested id must resolve to a usable session — otherwise the page is
-    // stale or the body was tampered with.
-    if (usable.length !== input.selectedSessionIds.length) {
-      return NextResponse.json({ error: 'invalid_sessions' }, { status: 409 })
+
+    // Every requested PAIR must resolve to a usable session and a real block —
+    // otherwise the page is stale or the body was tampered with. Non-camp
+    // programmes only ever have block 0 (expandSessionBlocks returns the row's
+    // single interval), so a crafted "uuid.1" against a non-camp session
+    // rejects here.
+    for (const sel of input.selections) {
+      const session = usableById.get(sel.sessionId)
+      if (!session) {
+        return NextResponse.json({ error: 'invalid_sessions' }, { status: 409 })
+      }
+      const blockCount = programme.camp_mode
+        ? Math.max(1, expandSessionBlocks(session).length)
+        : 1
+      if (sel.slotIndex >= blockCount) {
+        return NextResponse.json({ error: 'invalid_sessions' }, { status: 409 })
+      }
     }
 
-    validSessions = usable.map((s) => ({ id: s.id, price_pence: pricePer }))
-    sessionsPaidFor = validSessions.length
-    coachAmountPence = pricePer * validSessions.length
+    validSelections = input.selections.map((s) => ({
+      sessionId: s.sessionId,
+      slotIndex: s.slotIndex,
+      price_pence: pricePer,
+    }))
+    sessionsPaidFor = validSelections.length
+    coachAmountPence = pricePer * validSelections.length
   } else {
+    // BUG-23 (approved ruling): camp programmes are per_session ONLY — a
+    // block price cannot say what a "whole programme" of multi-slot days
+    // covers. No camp+block programme exists; this guards legacy/manual data.
+    if (programme.camp_mode) {
+      return badRequest('camp_block_unsupported')
+    }
     const blockPrice = programme.block_price_pence
     if (blockPrice === null || blockPrice <= 0) return badRequest('block_price_unavailable')
     coachAmountPence = blockPrice
@@ -289,9 +329,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const { commissionPence, parentTotalPence } = computeBookingTotals(coachAmountPence, commissionRate)
   const currency = programme.currency || 'GBP'
 
-  // 6. Capacity: soft check now (avoids obvious oversell); the authoritative
-  //    atomic guard runs at confirm via increment_programme_spots() (S0 decision 3).
-  if (programme.current_spots >= programme.max_spots) {
+  // 6. Capacity. BUG-23 ruling 3: camp capacity is PER SLOT — max_spots
+  //    applies to each (session, slot) independently, current_spots stays 0,
+  //    and the authoritative atomic guard is reserve_camp_slot_sessions() in
+  //    step 9 (which 409s BEFORE any Stripe intent). Non-camp keeps the
+  //    programme-level soft check here + increment_programme_spots() at
+  //    confirm (S0 decision 3) — byte-identical to pre-BUG-23.
+  if (!programme.camp_mode && programme.current_spots >= programme.max_spots) {
     return NextResponse.json({ error: 'spots_taken' }, { status: 409 })
   }
 
@@ -372,23 +416,63 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (error) console.error('[POST /api/guest/programme-enrolments] rollback enrolment soft-fail failed:', error)
   }
 
-  // 9. Per-session: record exactly which sessions were paid for (session-row level).
+  // 9. Per-session: record exactly which (session, slot) pairs were paid for.
+  //
+  //    CAMP programmes go through reserve_camp_slot_sessions() (migration 040):
+  //    an atomic lock-count-insert so two parents racing for the last spot of
+  //    one slot serialize — the loser gets a clean 409 HERE, before any Stripe
+  //    intent exists (per-slot capacity, BUG-23 ruling 3; occupancy counts
+  //    succeeded + sub-15-minute pending holds).
+  //
+  //    Non-camp keeps the plain insert (slot_index defaults to 0) and the
+  //    programme-level capacity semantics above — byte-identical to pre-BUG-23.
   if (input.paymentType === 'per_session') {
-    const { error: sessionsInsertError } = await supabase
-      .from('group_programme_enrolment_sessions')
-      .insert(
-        validSessions.map((s) => ({
-          enrolment_id: enrolment.id,
-          group_programme_session_id: s.id,
-          price_pence: s.price_pence,
-        })),
+    if (programme.camp_mode) {
+      const { data: reserveResult, error: reserveError } = await supabase.rpc(
+        'reserve_camp_slot_sessions',
+        {
+          p_enrolment_id: enrolment.id,
+          p_price_pence: validSelections[0]?.price_pence ?? 0,
+          p_selections: validSelections.map((s) => ({
+            sessionId: s.sessionId,
+            slotIndex: s.slotIndex,
+          })),
+        },
       )
 
-    if (sessionsInsertError) {
-      console.error('[POST /api/guest/programme-enrolments] enrolment sessions insert failed:', sessionsInsertError)
-      await softFailEnrolment()
-      await softDeleteProfile()
-      return NextResponse.json({ error: 'internal_error' }, { status: 500 })
+      if (reserveError) {
+        console.error('[POST /api/guest/programme-enrolments] slot reservation failed:', reserveError)
+        await softFailEnrolment()
+        await softDeleteProfile()
+        return NextResponse.json({ error: 'internal_error' }, { status: 500 })
+      }
+
+      const reserve = reserveResult as { ok: boolean; full?: { sessionId: string; slotIndex: number }[] }
+      if (!reserve.ok) {
+        await softFailEnrolment()
+        await softDeleteProfile()
+        return NextResponse.json(
+          { error: 'slot_full', full: reserve.full ?? [] },
+          { status: 409 },
+        )
+      }
+    } else {
+      const { error: sessionsInsertError } = await supabase
+        .from('group_programme_enrolment_sessions')
+        .insert(
+          validSelections.map((s) => ({
+            enrolment_id: enrolment.id,
+            group_programme_session_id: s.sessionId,
+            price_pence: s.price_pence,
+          })),
+        )
+
+      if (sessionsInsertError) {
+        console.error('[POST /api/guest/programme-enrolments] enrolment sessions insert failed:', sessionsInsertError)
+        await softFailEnrolment()
+        await softDeleteProfile()
+        return NextResponse.json({ error: 'internal_error' }, { status: 500 })
+      }
     }
   }
 

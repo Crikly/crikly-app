@@ -79,8 +79,8 @@ function makeStripeMock(overrides: { clientSecret?: string; intentId?: string } 
 
 const COACH_ID = 'coach-uuid-001'
 const PROGRAMME_ID = 'programme-uuid-001'
-const SESSION_ID_1 = 'session-uuid-001'
-const SESSION_ID_2 = 'session-uuid-002'
+const SESSION_ID_1 = '11111111-1111-4111-8111-111111111101'
+const SESSION_ID_2 = '11111111-1111-4111-8111-111111111102'
 
 const VALID_GUEST = {
   fullName: 'Sarah Test',
@@ -1026,5 +1026,208 @@ describe('POST /api/guest/programme-enrolments — Stripe failure', () => {
     expect(profileUpdate.update).toHaveBeenCalledWith(
       expect.objectContaining({ deleted_at: expect.any(String) })
     )
+  })
+})
+
+// ── Camp slot granularity (BUG-23) ────────────────────────────────────────────
+//
+// Rulings (Lasith, 5–6 Jul 2026): each camp SLOT is one session at the
+// per-session price; full day = 2×; max_spots PER SLOT; BR-01 unchanged.
+// Wire format: "uuid" = slot 0, "uuid.N" = camp block N. Camp junction rows
+// go through reserve_camp_slot_sessions() (atomic per-slot capacity); the
+// programme-level spots pre-check is skipped for camps.
+
+const PROGRAMME_ROW_CAMP = {
+  ...PROGRAMME_ROW_PER_SESSION,
+  price_per_session_pence: 4000, // the ruling's £40 example
+  camp_mode: true,
+  max_spots: 8,
+  current_spots: 0,
+}
+
+const CAMP_SESSION_ROW = {
+  id: SESSION_ID_1,
+  session_date: '2099-07-05',
+  status: 'scheduled',
+  start_time: '09:00:00',
+  end_time: '12:00:00',
+  slots: [
+    { startTime: '09:00', endTime: '12:00' },
+    { startTime: '13:00', endTime: '17:00' },
+  ],
+}
+
+/** Camp happy-path mocks. from() order: pi-idempotency, coach, programme,
+ * sessions, config, profile, enrolment, [rpc reserve], pi audit. */
+function setupHappyPathCamp(rpcResult: unknown = { ok: true }) {
+  const stripeMock = makeStripeMock()
+  ;(getStripe as MockFn).mockReturnValue(stripeMock)
+
+  const piIdempotentChain = makeChain({ data: null, error: null })
+  const coachChain = makeChain({ data: COACH_ROW, error: null })
+  const programmeChain = makeChain({ data: PROGRAMME_ROW_CAMP, error: null })
+  const sessionsChain: Record<string, MockFn> = {}
+  for (const m of ['select', 'eq', 'in']) {
+    sessionsChain[m] = jest.fn(() => sessionsChain)
+  }
+  sessionsChain.in = jest.fn().mockResolvedValue({ data: [CAMP_SESSION_ROW], error: null })
+  const configChain = makeChain({ data: PLATFORM_CONFIG_ROW, error: null })
+  const profileChain = makeChain({ data: PROFILE_ROW, error: null })
+  const enrolmentChain = makeChain({ data: ENROLMENT_ROW, error: null })
+  const enrolmentUpdateChain = makeChain({ data: null, error: null })
+  const profileUpdateChain = makeChain({ data: null, error: null })
+  const piInsertChain = makeChain({ data: null, error: null })
+
+  // Per-table call counters (first call vs later calls) — avoids referencing
+  // mockFrom inside its own initializer, which TS rejects (TS7022).
+  const tableCalls: Record<string, number> = {}
+  const mockFrom = jest.fn((table: string) => {
+    tableCalls[table] = (tableCalls[table] ?? 0) + 1
+    if (table === 'payment_intents') {
+      // first call = idempotency lookup, later = audit insert
+      return tableCalls[table] <= 1 ? piIdempotentChain : piInsertChain
+    }
+    if (table === 'coach_profiles') return coachChain
+    if (table === 'group_programmes') return programmeChain
+    if (table === 'group_programme_sessions') return sessionsChain
+    if (table === 'platform_config') return configChain
+    if (table === 'user_profiles') {
+      return tableCalls[table] <= 1 ? profileChain : profileUpdateChain
+    }
+    if (table === 'group_programme_enrolments') {
+      return tableCalls[table] <= 1 ? enrolmentChain : enrolmentUpdateChain
+    }
+    if (table === 'group_programme_enrolment_sessions') {
+      throw new Error('camp path must not plain-insert junction rows')
+    }
+    throw new Error(`unexpected from('${table}')`)
+  })
+
+  const mockRpc = jest.fn().mockResolvedValue({ data: rpcResult, error: null })
+  ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom, rpc: mockRpc })
+
+  return { mockFrom, mockRpc, stripeMock, enrolmentChain }
+}
+
+describe('POST /api/guest/programme-enrolments — camp slot granularity (BUG-23)', () => {
+  it('prices a full camp day (both slots) at 2× the per-session price + commission', async () => {
+    const { mockRpc, stripeMock, enrolmentChain } = setupHappyPathCamp()
+    const res = await callPost({
+      ...VALID_BODY_PER_SESSION,
+      selectedSessionIds: [SESSION_ID_1, `${SESSION_ID_1}.1`],
+    })
+    expect(res.status).toBe(200)
+
+    // Server-side money: 2 × 4000 = 8000 coach, +10% = 8800 charged (£88.00).
+    const insertArg = (enrolmentChain.insert as MockFn).mock.calls[0][0] as Record<string, unknown>
+    expect(insertArg.coach_amount_pence).toBe(8000)
+    expect(insertArg.commission_pence).toBe(800)
+    expect(insertArg.parent_total_pence).toBe(8800)
+    expect(insertArg.sessions_paid_for).toBe(2)
+
+    const piArg = (stripeMock.paymentIntents.create as MockFn).mock.calls[0][0] as { amount: number }
+    expect(piArg.amount).toBe(8800)
+
+    // Junction rows written via the atomic reservation, one per slot pair.
+    expect(mockRpc).toHaveBeenCalledWith('reserve_camp_slot_sessions', {
+      p_enrolment_id: ENROLMENT_ROW.id,
+      p_price_pence: 4000,
+      p_selections: [
+        { sessionId: SESSION_ID_1, slotIndex: 0 },
+        { sessionId: SESSION_ID_1, slotIndex: 1 },
+      ],
+    })
+  })
+
+  it('prices a single slot (morning only) at 1×', async () => {
+    const { enrolmentChain } = setupHappyPathCamp()
+    const res = await callPost({
+      ...VALID_BODY_PER_SESSION,
+      selectedSessionIds: [SESSION_ID_1],
+    })
+    expect(res.status).toBe(200)
+    const insertArg = (enrolmentChain.insert as MockFn).mock.calls[0][0] as Record<string, unknown>
+    expect(insertArg.coach_amount_pence).toBe(4000)
+    expect(insertArg.parent_total_pence).toBe(4400)
+    expect(insertArg.sessions_paid_for).toBe(1)
+  })
+
+  it('returns 409 slot_full BEFORE any Stripe intent when the reservation loses the race', async () => {
+    const { mockRpc, stripeMock } = setupHappyPathCamp({
+      ok: false,
+      full: [{ sessionId: SESSION_ID_1, slotIndex: 0 }],
+    })
+    const res = await callPost({
+      ...VALID_BODY_PER_SESSION,
+      selectedSessionIds: [SESSION_ID_1],
+    })
+    expect(res.status).toBe(409)
+    const data = await res.json() as Record<string, unknown>
+    expect(data.error).toBe('slot_full')
+    expect(mockRpc).toHaveBeenCalled()
+    // The loser is never charged — no PaymentIntent was created.
+    expect(stripeMock.paymentIntents.create).not.toHaveBeenCalled()
+  })
+
+  it('rejects a slotIndex beyond the session block count (tampered uuid.N)', async () => {
+    setupHappyPathCamp()
+    const res = await callPost({
+      ...VALID_BODY_PER_SESSION,
+      selectedSessionIds: [`${SESSION_ID_1}.2`], // session has 2 blocks: 0 and 1
+    })
+    expect(res.status).toBe(409)
+    const data = await res.json() as Record<string, unknown>
+    expect(data.error).toBe('invalid_sessions')
+  })
+
+  it('rejects uuid.N against a NON-camp programme (only slot 0 exists)', async () => {
+    setupHappyPathPerSession()
+    const res = await callPost({
+      ...VALID_BODY_PER_SESSION,
+      selectedSessionIds: [`${SESSION_ID_1}.1`],
+    })
+    expect(res.status).toBe(409)
+  })
+
+  it('returns 400 on a malformed selection entry', async () => {
+    ;(createAdminClient as MockFn).mockReturnValue({ from: jest.fn() })
+    ;(getStripe as MockFn).mockReturnValue(makeStripeMock())
+    const res = await callPost({
+      ...VALID_BODY_PER_SESSION,
+      selectedSessionIds: ['not-a-uuid'],
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('dedupe is per PAIR: the same slot listed twice pays once', async () => {
+    const { enrolmentChain } = setupHappyPathCamp()
+    const res = await callPost({
+      ...VALID_BODY_PER_SESSION,
+      selectedSessionIds: [SESSION_ID_1, SESSION_ID_1],
+    })
+    expect(res.status).toBe(200)
+    const insertArg = (enrolmentChain.insert as MockFn).mock.calls[0][0] as Record<string, unknown>
+    expect(insertArg.coach_amount_pence).toBe(4000)
+  })
+
+  it('rejects block_upfront checkout for a camp programme (approved ruling)', async () => {
+    const stripeMock = makeStripeMock()
+    ;(getStripe as MockFn).mockReturnValue(stripeMock)
+    const piIdempotentChain = makeChain({ data: null, error: null })
+    const coachChain = makeChain({ data: COACH_ROW, error: null })
+    const programmeChain = makeChain({
+      data: { ...PROGRAMME_ROW_CAMP, payment_type: 'block_upfront', block_price_pence: 22400 },
+      error: null,
+    })
+    const mockFrom = jest.fn()
+      .mockReturnValueOnce(piIdempotentChain)
+      .mockReturnValueOnce(coachChain)
+      .mockReturnValueOnce(programmeChain)
+    ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom })
+
+    const res = await callPost({ ...VALID_BODY_BLOCK, paymentType: 'block_upfront' })
+    expect(res.status).toBe(400)
+    const data = await res.json() as Record<string, unknown>
+    expect(data.error).toBe('camp_block_unsupported')
   })
 })
