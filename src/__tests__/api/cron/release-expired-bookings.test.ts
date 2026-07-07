@@ -477,3 +477,56 @@ describe('GET /api/cron/release-expired-bookings — claims drift sweep', () => 
     }
   })
 })
+
+// ── Webhook ledger prune (BUG-15) ─────────────────────────────────────────────
+//
+// Same cron, same cadence (approved ruling 4): every authorised run deletes
+// stripe_webhook_events rows older than 30 days. Mirrors the claims-sweep
+// test shape: count reported, failure never breaks the reaper.
+
+describe('GET /api/cron/release-expired-bookings — webhook ledger prune (BUG-15)', () => {
+  function adminClientWithLedger(ledgerResult: { data?: unknown; error?: unknown }) {
+    const candidatesChain = makeThenableChain({ data: [] })
+    const ledgerChain: Record<string, MockFn> & { then?: unknown } = {}
+    for (const m of ['delete', 'lt', 'select']) ledgerChain[m] = jest.fn(() => ledgerChain)
+    ledgerChain.then = (resolve: (v: unknown) => void) =>
+      resolve({ data: ledgerResult.data ?? null, error: ledgerResult.error ?? null })
+    const from = jest.fn((table: string) =>
+      table === 'stripe_webhook_events' ? ledgerChain : mockFromTables({ bookings: [candidatesChain] })(table),
+    )
+    ;(createAdminClient as MockFn).mockReturnValue({
+      from,
+      rpc: jest.fn().mockResolvedValue({ data: 0, error: null }),
+    })
+    return { ledgerChain }
+  }
+
+  it('prunes by first_seen_at cutoff and reports the deleted count', async () => {
+    const { ledgerChain } = adminClientWithLedger({ data: [{ event_id: 'evt_1' }, { event_id: 'evt_2' }] })
+
+    const res = await callGet()
+    expect(res.status).toBe(200)
+    const data = await res.json() as Record<string, unknown>
+    expect(data.ledger_pruned).toBe(2)
+
+    expect(ledgerChain.delete).toHaveBeenCalled()
+    const [ltColumn, ltCutoff] = (ledgerChain.lt as MockFn).mock.calls[0] as [string, string]
+    expect(ltColumn).toBe('first_seen_at')
+    // Cutoff ≈ 30 days ago (±1 day of slack for the test run itself).
+    const cutoffMs = new Date(ltCutoff).getTime()
+    expect(Math.abs(Date.now() - 30 * 24 * 3600_000 - cutoffMs)).toBeLessThan(24 * 3600_000)
+  })
+
+  it('a failed prune never breaks the reaper response', async () => {
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      adminClientWithLedger({ error: { message: 'boom' } })
+      const res = await callGet()
+      expect(res.status).toBe(200)
+      const data = await res.json() as Record<string, unknown>
+      expect(data.ledger_pruned).toBe(0)
+    } finally {
+      errorSpy.mockRestore()
+    }
+  })
+})

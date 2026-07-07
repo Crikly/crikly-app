@@ -579,6 +579,12 @@ async function restoreReleasedBookingIfPaid(
     .not('deleted_at', 'is', null)
     .select('id, booking_reference, coach_profile_id, session_date, session_start_time, session_end_time, session_type')
 
+  // BUG-15 (review fix): only a constraint violation IS the permanent
+  // conflict — any other restore failure is transient and must retry.
+  if (restoreError && !['23505', '23P01'].includes(restoreError.code ?? '')) {
+    throw new RetryableWebhookError(`booking restore failed for ${bookingId}: ${restoreError.message}`)
+  }
+
   if (restoreError) {
     // 23505 (unique_violation, migration-034 index) or 23P01
     // (exclusion_violation, coach_time_claims trigger — BUG-19 Phase 2) both

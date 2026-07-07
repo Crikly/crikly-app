@@ -778,7 +778,7 @@ The `pending_payment` reaper (BUG-13b). Releases guest bookings whose checkout w
 
 **Release:** soft delete + `cancellation_reason = 'expired_pending_payment'` (see `src/lib/booking/release.ts`) + provisional guest profile soft-deleted alongside. Frees the slot atomically across the migration-034 unique index, the public calendar read, and the write-side commitments guard.
 
-**Response 200:** `{ "checked": n, "released": n, "skipped_active": n, "skipped_stripe": n, "errors": n }`
+**Response 200:** `{ "checked": n, "released": n, "skipped_active": n, "skipped_stripe": n, "errors": n, "claims_reconciled": n, "ledger_pruned": n }` — `claims_reconciled` (BUG-19 P2) counts drift-released coach_time_claims (expected 0); `ledger_pruned` (BUG-15) counts stripe_webhook_events rows older than 30 days deleted this run.
 
 **Phase 2 (BUG-19):** `coach_time_claims` expiry joins this route as a second sweep — same cadence, same cancel-first arbitration for money-bearing holds.
 
