@@ -40,7 +40,7 @@ import {
   type BookingSummary,
 } from '@/components/booking/BookingSummaryCard'
 
-type EnrolmentError = 'payment' | 'spots_taken' | 'invalid_sessions'
+type EnrolmentError = 'payment' | 'spots_taken' | 'invalid_sessions' | 'slot_full'
 
 interface GuestForm {
   fullName: string
@@ -400,6 +400,9 @@ function GuestEnrolmentForm({
         const body = (await res.json().catch(() => ({}))) as { error?: string }
         if (body.error === 'spots_taken') setError('spots_taken')
         else if (body.error === 'invalid_sessions') setError('invalid_sessions')
+        // BUG-23: a camp (session, slot) filled in the race window — the
+        // parent was NOT charged; never show the "check your card" copy.
+        else if (body.error === 'slot_full') setError('slot_full')
         else setError('payment')
         return null
       }
@@ -542,6 +545,13 @@ function GuestEnrolmentForm({
         ) : error === 'invalid_sessions' ? (
           <>
             <p className="font-medium">One of your selected sessions is no longer available.</p>
+            <Link href={programmeHref} className="mt-1 inline-block font-medium underline">
+              Choose your sessions again
+            </Link>
+          </>
+        ) : error === 'slot_full' ? (
+          <>
+            <p className="font-medium">One of your selected sessions just filled up. You haven&apos;t been charged.</p>
             <Link href={programmeHref} className="mt-1 inline-block font-medium underline">
               Choose your sessions again
             </Link>

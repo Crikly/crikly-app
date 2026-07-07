@@ -1383,6 +1383,7 @@ export type Database = {
           group_programme_session_id: string
           id: string
           price_pence: number
+          slot_index: number
         }
         Insert: {
           created_at?: string
@@ -1390,6 +1391,7 @@ export type Database = {
           group_programme_session_id: string
           id?: string
           price_pence: number
+          slot_index?: number
         }
         Update: {
           created_at?: string
@@ -1397,6 +1399,7 @@ export type Database = {
           group_programme_session_id?: string
           id?: string
           price_pence?: number
+          slot_index?: number
         }
         Relationships: [
           {
@@ -2837,6 +2840,18 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      camp_slot_occupancy: {
+        Args: { p_programme_id: string }
+        Returns: {
+          session_id: string
+          slot_index: number
+          taken: number
+        }[]
+      }
+      confirm_camp_slot_spots: {
+        Args: { p_enrolment_id: string }
+        Returns: boolean
+      }
       increment_programme_spots: {
         Args: { p_programme_id: string }
         Returns: boolean
@@ -2845,6 +2860,14 @@ export type Database = {
       reconcile_session_claims: {
         Args: { p_session_id: string }
         Returns: undefined
+      }
+      reserve_camp_slot_sessions: {
+        Args: {
+          p_enrolment_id: string
+          p_price_pence: number
+          p_selections: Json
+        }
+        Returns: Json
       }
       timemultirange: { Args: never; Returns: unknown }
       user_profile_has_live_coach: {

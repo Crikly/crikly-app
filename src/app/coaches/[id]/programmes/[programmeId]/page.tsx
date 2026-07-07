@@ -169,16 +169,27 @@ function ProgrammeDetailsCard({ programme }: { programme: ProgrammeDetailView })
 
       <div className="h-px bg-gray-200 my-4" />
 
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-sm font-semibold text-gray-900">
-          {programme.spotsLeft} of {programme.maxSpots} spots left
+      {programme.campMode ? (
+        /* BUG-23 ruling 3: camp capacity is PER SLOT — a programme-level
+           "N of M left" is meaningless (current_spots stays 0). State the
+           per-session capacity; the live per-slot truth is on each row. */
+        <span className="text-sm font-semibold text-gray-900" data-testid="camp-spots-banner">
+          {programme.maxSpots} spot{programme.maxSpots !== 1 ? 's' : ''} per session
         </span>
-        {programme.scarcity && <span className="text-sm font-medium text-warning">{programme.scarcity}</span>}
-      </div>
-      <div className="h-[7px] rounded-full bg-gray-100 overflow-hidden" aria-hidden="true">
-        {/* Runtime width — inline style is the only option for a dynamic %. */}
-        <div className="h-full rounded-full bg-brand-600" style={{ width: `${programme.fillPct}%` }} />
-      </div>
+      ) : (
+        <>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-semibold text-gray-900">
+              {programme.spotsLeft} of {programme.maxSpots} spots left
+            </span>
+            {programme.scarcity && <span className="text-sm font-medium text-warning">{programme.scarcity}</span>}
+          </div>
+          <div className="h-[7px] rounded-full bg-gray-100 overflow-hidden" aria-hidden="true">
+            {/* Runtime width — inline style is the only option for a dynamic %. */}
+            <div className="h-full rounded-full bg-brand-600" style={{ width: `${programme.fillPct}%` }} />
+          </div>
+        </>
+      )}
     </div>
   )
 }

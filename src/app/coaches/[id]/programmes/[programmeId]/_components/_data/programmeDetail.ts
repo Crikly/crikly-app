@@ -26,18 +26,31 @@ export interface SessionView {
   /** Stable key — `${dateISO}#${startTime}` (unique within a programme). */
   key: string
   /** Real group_programme_sessions UUID — carried through to enrolment checkout
-   * (P-00c-ENROL). Camp slots from one row share this id (session-row granularity). */
+   * (P-00c-ENROL). Camp slots from one row share this id. */
   sessionId: string
+  /**
+   * BUG-23: which time block of the session this view IS — ordinal into the
+   * session's slots jsonb (0 for single-block/non-camp). (sessionId, slotIndex)
+   * is the selection identity the checkout wire format encodes; each pair is
+   * one session at the per-session price (full camp day = 2 pairs = 2×).
+   */
+  slotIndex: number
   dateISO: string
   dateLabel: string // "Sat 28 June"
   timeLabel: string // "9:00am – 10:00am"
   timeShort: string // "9–10am"
   slotName: string | null // camp only — derived time-of-day label
   pricePence: number
-  /** Selectable when scheduled and not in the past. */
+  /** Selectable when scheduled, not in the past, and (camps) not full. */
   selectable: boolean
-  /** Disabled-pill copy when not selectable ("Closed"). */
+  /** Disabled-pill copy when not selectable ("Closed" / "Full"). */
   closedLabel: string | null
+  /**
+   * BUG-23 ruling 3: spots remaining for THIS slot (max_spots − taken, from
+   * camp_slot_occupancy). null for non-camp views — their capacity is
+   * programme-level and lives on the spots banner, unchanged.
+   */
+  spotsLeft: number | null
 }
 
 export interface CampDay {
@@ -291,7 +304,25 @@ export const fetchProgrammeDetail = cache(
     const today = todayISO()
     const pricePence = programme.price_per_session_pence
 
-    // Flatten camp slots into individual session views (one per bookable block).
+    // BUG-23 ruling 3: camp capacity is PER SLOT. Occupancy (succeeded +
+    // sub-15-min pending holds) comes from the migration-040 aggregate
+    // function — anon-executable, counts only, no PII. A failed read renders
+    // every slot as open (the API's atomic reservation is authoritative).
+    const slotTaken = new Map<string, number>()
+    if (programme.camp_mode) {
+      const { data: occupancy, error: occupancyError } = await supabase.rpc('camp_slot_occupancy', {
+        p_programme_id: programme.id,
+      })
+      if (occupancyError) {
+        console.error('[fetchProgrammeDetail] camp_slot_occupancy failed:', occupancyError.message)
+      }
+      for (const o of occupancy ?? []) {
+        slotTaken.set(`${o.session_id}.${o.slot_index}`, o.taken)
+      }
+    }
+
+    // Flatten camp slots into individual session views (one per bookable
+    // block), each carrying its (sessionId, slotIndex) selection identity.
     const sessions: SessionView[] = []
     for (const row of sessionRows) {
       const blocks =
@@ -299,13 +330,18 @@ export const fetchProgrammeDetail = cache(
           ? row.slots.map((s) => ({ start: normaliseTime(s.startTime), end: normaliseTime(s.endTime) }))
           : [{ start: row.start_time, end: row.end_time }]
 
-      for (const block of blocks) {
+      blocks.forEach((block, slotIndex) => {
         const past = row.session_date < today
         const cancelled = row.status === 'cancelled' || row.status === 'completed'
-        const selectable = !past && !cancelled
+        const spotsLeft = programme.camp_mode
+          ? Math.max(0, programme.max_spots - (slotTaken.get(`${row.id}.${slotIndex}`) ?? 0))
+          : null
+        const full = spotsLeft !== null && spotsLeft <= 0
+        const selectable = !past && !cancelled && !full
         sessions.push({
           key: `${row.session_date}#${block.start}`,
           sessionId: row.id,
+          slotIndex,
           dateISO: row.session_date,
           dateLabel: fmtDateLabel(row.session_date),
           timeLabel: fmtRange(block.start, block.end),
@@ -313,9 +349,10 @@ export const fetchProgrammeDetail = cache(
           slotName: programme.camp_mode ? slotName(block.start) : null,
           pricePence: pricePence ?? 0,
           selectable,
-          closedLabel: selectable ? null : 'Closed',
+          closedLabel: selectable ? null : full && !past && !cancelled ? 'Full' : 'Closed',
+          spotsLeft,
         })
-      }
+      })
     }
 
     // Group by date for the camp picker.

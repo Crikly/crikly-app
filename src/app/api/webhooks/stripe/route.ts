@@ -49,6 +49,7 @@ import { sendBookingConfirmation } from '@/lib/resend/send-booking-confirmation'
 import { sendProgrammeConfirmation } from '@/lib/resend/send-programme-confirmation'
 import { addMinutesToTime } from '@/lib/booking/guest-checkout'
 import { RELEASE_REASON_PI_CANCELLED, isReleaseReason } from '@/lib/booking/release'
+import { expandSessionBlocks, slotDisplayName } from '@/lib/availability/campSlots'
 
 type SupabaseAdminClient = ReturnType<typeof createAdminClient>
 
@@ -490,18 +491,45 @@ async function handleEnrolmentSucceeded(intent: Stripe.PaymentIntent, enrolmentI
   }
   const enrolment = confirmed[0]
 
-  // Atomic, capacity-guarded spot claim. false = programme filled in the race
-  // window → log for manual refund (S0 decision 3). The payment is already taken.
-  const { data: claimed, error: spotError } = await adminSupabase.rpc('increment_programme_spots', {
-    p_programme_id: enrolment.programme_id,
-  })
-  if (spotError) {
-    console.error(`[Stripe Webhook] increment_programme_spots failed for ${enrolment.programme_id}:`, spotError)
-  } else if (claimed === false) {
-    console.error(
-      `[Stripe Webhook] MANUAL REFUND NEEDED: enrolment ${enrolmentId} (${enrolment.enrolment_reference}) ` +
-        `paid via ${intent.id} but programme ${enrolment.programme_id} is full`,
-    )
+  // Programme row fetched BEFORE the spot claim (BUG-23): camp_mode decides
+  // which capacity mechanism confirms the spot; the same row feeds the email.
+  const { data: programme } = await adminSupabase
+    .from('group_programmes')
+    .select('title, day_of_week, days_of_week, start_time, duration_minutes, coach_profile_id, camp_mode')
+    .eq('id', enrolment.programme_id)
+    .maybeSingle()
+
+  // Atomic, capacity-guarded spot claim. false = filled in the race window →
+  // log for manual refund (S0 decision 3). The payment is already taken.
+  //
+  // BUG-23 ruling 3: camp capacity is PER SLOT — confirm_camp_slot_spots()
+  // re-counts succeeded others per (session, slot) under the migration-040
+  // lock; camps never touch increment_programme_spots (current_spots stays 0).
+  // Non-camp keeps the programme-level claim, byte-identical.
+  if (programme?.camp_mode) {
+    const { data: slotsOk, error: slotError } = await adminSupabase.rpc('confirm_camp_slot_spots', {
+      p_enrolment_id: enrolment.id,
+    })
+    if (slotError) {
+      console.error(`[Stripe Webhook] confirm_camp_slot_spots failed for ${enrolment.id}:`, slotError)
+    } else if (slotsOk === false) {
+      console.error(
+        `[Stripe Webhook] MANUAL REFUND NEEDED: enrolment ${enrolmentId} (${enrolment.enrolment_reference}) ` +
+          `paid via ${intent.id} but a selected camp slot is over capacity`,
+      )
+    }
+  } else {
+    const { data: claimed, error: spotError } = await adminSupabase.rpc('increment_programme_spots', {
+      p_programme_id: enrolment.programme_id,
+    })
+    if (spotError) {
+      console.error(`[Stripe Webhook] increment_programme_spots failed for ${enrolment.programme_id}:`, spotError)
+    } else if (claimed === false) {
+      console.error(
+        `[Stripe Webhook] MANUAL REFUND NEEDED: enrolment ${enrolmentId} (${enrolment.enrolment_reference}) ` +
+          `paid via ${intent.id} but programme ${enrolment.programme_id} is full`,
+      )
+    }
   }
 
   console.info(`[Stripe Webhook] enrolment ${enrolmentId} confirmed via ${intent.id}`)
@@ -519,11 +547,12 @@ async function handleEnrolmentSucceeded(intent: Stripe.PaymentIntent, enrolmentI
   const enrolParticipantAgeRaw = Number.parseInt(intent.metadata?.participant_age ?? '', 10)
   const enrolParticipantAge = Number.isInteger(enrolParticipantAgeRaw) ? enrolParticipantAgeRaw : undefined
 
-  const { data: programme } = await adminSupabase
-    .from('group_programmes')
-    .select('title, day_of_week, days_of_week, start_time, duration_minutes, coach_profile_id')
-    .eq('id', enrolment.programme_id)
-    .maybeSingle()
+  // BUG-23: camp confirmations list exactly which slots were bought — e.g.
+  // "Tue 4 Aug — Morning (9:00am – 12:00pm)" — from the junction rows (the
+  // paid truth), never the client. Non-camp emails are unchanged.
+  const sessionLines = programme?.camp_mode
+    ? await buildCampSessionLines(adminSupabase, enrolment.id)
+    : undefined
 
   let coachName = 'your coach'
   if (programme?.coach_profile_id) {
@@ -556,6 +585,7 @@ async function handleEnrolmentSucceeded(intent: Stripe.PaymentIntent, enrolmentI
     coachName,
     participantName: enrolParticipantName,
     participantAge: enrolParticipantAge,
+    sessionLines,
     enrolmentReference: enrolment.enrolment_reference ?? 'your enrolment',
     programmeTitle: programme?.title ?? 'your programme',
     scheduleSummary: programme
@@ -577,6 +607,70 @@ async function handleEnrolmentSucceeded(intent: Stripe.PaymentIntent, enrolmentI
 
 const DAY_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const MON_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+/** '2026-08-04' → 'Tue 4 Aug' (UTC-anchored — dates are wall-clock UK). */
+function fmtShortDate(iso: string): string {
+  const d = new Date(`${iso.slice(0, 10)}T00:00:00Z`)
+  if (Number.isNaN(d.getTime())) return iso
+  return `${DAY_SHORT[d.getUTCDay()]} ${d.getUTCDate()} ${MON_SHORT[d.getUTCMonth()]}`
+}
+
+/**
+ * BUG-23: the slot-level attendance lines for a camp confirmation email —
+ * "Tue 4 Aug — Morning (9:00am – 12:00pm)" — built from the enrolment's
+ * junction rows (the paid truth, written by reserve_camp_slot_sessions).
+ * Returns undefined when nothing usable exists (email falls back to the
+ * count-only summary). Never throws — the email must never break the 200.
+ */
+async function buildCampSessionLines(
+  adminSupabase: SupabaseAdminClient,
+  enrolmentId: string,
+): Promise<string[] | undefined> {
+  const { data: junctionRows, error: junctionError } = await adminSupabase
+    .from('group_programme_enrolment_sessions')
+    .select('group_programme_session_id, slot_index')
+    .eq('enrolment_id', enrolmentId)
+
+  if (junctionError || !junctionRows || junctionRows.length === 0) {
+    if (junctionError) {
+      console.error(`[Stripe Webhook] session-line lookup failed for ${enrolmentId}:`, junctionError)
+    }
+    return undefined
+  }
+
+  const sessionIds = [...new Set(junctionRows.map((r) => r.group_programme_session_id))]
+  const { data: sessions, error: sessionsError } = await adminSupabase
+    .from('group_programme_sessions')
+    .select('id, session_date, start_time, end_time, slots')
+    .in('id', sessionIds)
+
+  if (sessionsError || !sessions) {
+    if (sessionsError) {
+      console.error(`[Stripe Webhook] session-line sessions lookup failed for ${enrolmentId}:`, sessionsError)
+    }
+    return undefined
+  }
+
+  const sessionById = new Map(sessions.map((s) => [s.id, s]))
+  const lines: { date: string; slot: number; text: string }[] = []
+  for (const row of junctionRows) {
+    const session = sessionById.get(row.group_programme_session_id)
+    if (!session) continue
+    const blocks = expandSessionBlocks(session)
+    const block = blocks[row.slot_index] ?? blocks[0]
+    if (!block) continue
+    lines.push({
+      date: session.session_date,
+      slot: row.slot_index,
+      text: `${fmtShortDate(session.session_date)} — ${slotDisplayName(block.startTime)} (${to12Hour(block.startTime)} – ${to12Hour(block.endTime)})`,
+    })
+  }
+
+  if (lines.length === 0) return undefined
+  lines.sort((a, b) => (a.date === b.date ? a.slot - b.slot : a.date.localeCompare(b.date)))
+  return lines.map((l) => l.text)
+}
 
 /** Builds "Every Saturday · 9:00am – 10:00am" from a programme's recurrence fields. */
 function formatProgrammeSchedule(

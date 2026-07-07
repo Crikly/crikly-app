@@ -820,12 +820,14 @@ const PROGRAMME_ROW_WH = {
 /**
  * Build the full chain of from() and rpc() calls for a happy enrolment webhook.
  *
- * Supabase call order in handleEnrolmentSucceeded:
+ * Supabase call order in handleEnrolmentSucceeded (BUG-23: the programme is
+ * fetched BEFORE the spot claim so camp_mode can pick the capacity mechanism):
  *   from(1) payment_intents update
  *   from(2) group_programme_enrolments update + select
- *   rpc()   increment_programme_spots
  *   from(3) group_programmes select
- *   from(4) coach_profiles select
+ *   rpc()   increment_programme_spots (non-camp) | confirm_camp_slot_spots (camp)
+ *   [camp only] from(4) group_programme_enrolment_sessions, from(5) group_programme_sessions
+ *   from(last) coach_profiles select
  */
 function setupEnrolmentMocks(options: {
   enrolmentUpdateData?: unknown[] | null
@@ -1504,5 +1506,146 @@ describe('POST /api/webhooks/stripe — succeeded-after-release backstop (BUG-13
     expect(restoreChain.update).not.toHaveBeenCalled()
     // pi update + confirm + lookup only.
     expect((mockFrom as MockFn).mock.calls.length).toBe(3)
+  })
+})
+
+// ── Camp slot capacity + email slot lines (BUG-23) ────────────────────────────
+//
+// Camp enrolments confirm capacity PER SLOT via confirm_camp_slot_spots()
+// (never increment_programme_spots — current_spots stays 0, ruling 3), and
+// the confirmation email lists the exact slots bought, built from the
+// junction rows (the paid truth).
+
+const CAMP_SESSION_ID_WH = '22222222-2222-4222-8222-222222222201'
+
+function setupCampEnrolmentMocks(options: { rpcResult?: boolean } = {}) {
+  const { rpcResult = true } = options
+
+  const piChain: Record<string, MockFn> = {}
+  piChain.update = jest.fn().mockReturnValue({
+    eq: jest.fn().mockResolvedValue({ data: null, error: null }),
+  })
+
+  const enrolmentChain: Record<string, MockFn> = {}
+  enrolmentChain.update = jest.fn().mockReturnValue({
+    eq: jest.fn().mockReturnValue({
+      eq: jest.fn().mockReturnValue({
+        select: jest.fn().mockResolvedValue({
+          data: [{ ...CONFIRMED_ENROLMENT, payment_model: 'per_session', sessions_paid_for: 2 }],
+          error: null,
+        }),
+      }),
+    }),
+  })
+
+  const programmeChain: Record<string, MockFn> = {}
+  for (const m of ['select', 'eq']) programmeChain[m] = jest.fn(() => programmeChain)
+  programmeChain.maybeSingle = jest.fn().mockResolvedValue({
+    data: { ...PROGRAMME_ROW_WH, camp_mode: true },
+    error: null,
+  })
+
+  // Junction rows: the full day — slot 0 and slot 1 of one session.
+  const junctionChain: Record<string, MockFn> = {}
+  for (const m of ['select']) junctionChain[m] = jest.fn(() => junctionChain)
+  junctionChain.eq = jest.fn().mockResolvedValue({
+    data: [
+      { group_programme_session_id: CAMP_SESSION_ID_WH, slot_index: 0 },
+      { group_programme_session_id: CAMP_SESSION_ID_WH, slot_index: 1 },
+    ],
+    error: null,
+  })
+
+  const sessionsChain: Record<string, MockFn> = {}
+  for (const m of ['select']) sessionsChain[m] = jest.fn(() => sessionsChain)
+  sessionsChain.in = jest.fn().mockResolvedValue({
+    data: [
+      {
+        id: CAMP_SESSION_ID_WH,
+        session_date: '2026-08-04',
+        start_time: '09:00:00',
+        end_time: '12:00:00',
+        slots: [
+          { startTime: '09:00', endTime: '12:00' },
+          { startTime: '13:00', endTime: '17:00' },
+        ],
+      },
+    ],
+    error: null,
+  })
+
+  const coachChain: Record<string, MockFn> = {}
+  for (const m of ['select', 'eq']) coachChain[m] = jest.fn(() => coachChain)
+  coachChain.maybeSingle = jest.fn().mockResolvedValue({
+    data: { display_name: 'Coach Davies', user_profile_id: null },
+    error: null,
+  })
+
+  const mockFrom = jest.fn()
+    .mockReturnValueOnce(piChain)          // 1. payment_intents
+    .mockReturnValueOnce(enrolmentChain)   // 2. group_programme_enrolments
+    .mockReturnValueOnce(programmeChain)   // 3. group_programmes
+    .mockReturnValueOnce(junctionChain)    // 4. group_programme_enrolment_sessions
+    .mockReturnValueOnce(sessionsChain)    // 5. group_programme_sessions
+    .mockReturnValueOnce(coachChain)       // 6. coach_profiles
+
+  const mockRpc = jest.fn().mockResolvedValue({ data: rpcResult, error: null })
+  ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom, rpc: mockRpc })
+
+  const intent = makeEnrolmentSucceededIntent()
+  const event = makeStripeEvent('payment_intent.succeeded', intent)
+  const stripeMock = { webhooks: { constructEvent: jest.fn().mockReturnValue(event) } }
+  ;(getStripe as MockFn).mockReturnValue(stripeMock)
+
+  return { mockFrom, mockRpc, intent }
+}
+
+describe('POST /api/webhooks/stripe — camp slot capacity (BUG-23)', () => {
+  it('confirms camp spots via confirm_camp_slot_spots, never increment_programme_spots', async () => {
+    const { mockRpc } = setupCampEnrolmentMocks()
+    const res = await callPost('{}')
+    expect(res.status).toBe(200)
+
+    expect(mockRpc).toHaveBeenCalledWith('confirm_camp_slot_spots', { p_enrolment_id: ENROLMENT_ID })
+    const calledFns = mockRpc.mock.calls.map((c) => c[0])
+    expect(calledFns).not.toContain('increment_programme_spots')
+  })
+
+  it('logs MANUAL REFUND NEEDED when a camp slot is over capacity at confirm', async () => {
+    setupCampEnrolmentMocks({ rpcResult: false })
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      const res = await callPost('{}')
+      expect(res.status).toBe(200) // never retry-loop Stripe
+      const logged = errorSpy.mock.calls.map((c) => String(c[0])).join('\n')
+      expect(logged).toContain('MANUAL REFUND NEEDED')
+      expect(logged).toContain('camp slot is over capacity')
+    } finally {
+      errorSpy.mockRestore()
+    }
+  })
+
+  it('email carries slot-level session lines built from the junction rows', async () => {
+    setupCampEnrolmentMocks()
+    await callPost('{}')
+
+    const emailArg = (sendProgrammeConfirmation as jest.Mock).mock.calls[0][0] as {
+      sessionLines?: string[]
+    }
+    expect(emailArg.sessionLines).toEqual([
+      'Tue 4 Aug — Morning (9:00am – 12:00pm)',
+      'Tue 4 Aug — Afternoon (1:00pm – 5:00pm)',
+    ])
+  })
+
+  it('non-camp enrolments still claim via increment_programme_spots with no session lines', async () => {
+    const { mockRpc } = setupEnrolmentMocks()
+    await callPost('{}')
+
+    expect(mockRpc).toHaveBeenCalledWith('increment_programme_spots', { p_programme_id: PROGRAMME_ID_WH })
+    const emailArg = (sendProgrammeConfirmation as jest.Mock).mock.calls[0][0] as {
+      sessionLines?: string[]
+    }
+    expect(emailArg.sessionLines).toBeUndefined()
   })
 })

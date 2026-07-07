@@ -1,8 +1,8 @@
 # Crikly — API Reference
 
-**Version:** 1.1
+**Version:** 1.2
 **Last Updated:** July 2026
-**Changed:** BUG-19 Phase 1 — `booked_slots` added to GET /api/coaches/[id]/availability; slot-validation 409s (`date_blocked`, `outside_booking_window`, `slot_not_available`, expanded `slot_taken`) added to POST /api/guest/bookings
+**Changed:** BUG-23 — camp slot granularity: slot-selection wire format (`uuid` / `uuid.N`) + per-slot pricing/capacity on POST /api/guest/programme-enrolments (new 400 `camp_block_unsupported`, 409 `slot_full`); camp branch (`confirm_camp_slot_spots()`) + email session lines in the Stripe webhook; `camp_mode` on programme list/POST responses; roster session lines. Previous (1.1): BUG-19 Phase 1 — `booked_slots` on GET /api/coaches/[id]/availability; slot-validation 409s on POST /api/guest/bookings
 
 This document is the single source of truth for all API routes.
 Update this file in the same commit as every new or modified route.
@@ -454,8 +454,8 @@ On a retry carrying the same `idempotencyToken`, the existing booking + PaymentI
 ---
 
 ### POST /api/guest/programme-enrolments
-Guest (logged-out) group-programme enrolment checkout. Same shape as `/api/guest/bookings`: creates a provisional user, a `payment_status='pending'` enrolment, and a Stripe PaymentIntent, then returns the client secret. The `payment_intent.succeeded` webhook flips `payment_status` to `succeeded` and atomically claims a spot via `increment_programme_spots()` (BR-06).
-**Status: Implemented — P-00c-ENROL**
+Guest (logged-out) group-programme enrolment checkout. Same shape as `/api/guest/bookings`: creates a provisional user, a `payment_status='pending'` enrolment, and a Stripe PaymentIntent, then returns the client secret. The `payment_intent.succeeded` webhook flips `payment_status` to `succeeded` and atomically claims a spot — via `increment_programme_spots()` for regular programmes, or `confirm_camp_slot_spots()` per (session, slot) for camps (BR-06; BUG-23).
+**Status: Implemented — P-00c-ENROL; camp slot granularity BUG-23**
 **Auth: None (public). Uses the service-role client — provisional users have no Supabase Auth credentials.**
 
 **Request:**
@@ -478,6 +478,8 @@ Guest (logged-out) group-programme enrolment checkout. Same shape as `/api/guest
 ```
 `selectedSessionIds` is required and non-empty for `paymentType: "per_session"`; ignored for `"block_upfront"`.
 
+**Slot-selection wire format (BUG-23):** each entry is `"uuid"` (slot 0 — the only block of a non-camp session; unchanged) or `"uuid.N"` (block N of a camp-mode session, ordinal into `group_programme_sessions.slots`). Entries are validated per PAIR server-side (session in programme, scheduled, not past, `N` < the session's real block count; non-camp rejects `N > 0`) and deduped by pair. **Each pair is one session at the per-session price** — a full camp day (both slots) = 2 pairs = 2×, commission on top (BR-01). Camp junction rows are written via `reserve_camp_slot_sessions()` — an atomic per-slot capacity reservation, so a losing racer 409s BEFORE any Stripe intent exists; occupancy counts succeeded enrolments + pending holds under 15 minutes. Camp programmes are `per_session` only (approved ruling).
+
 **Response 200:**
 ```json
 {
@@ -490,14 +492,16 @@ On a retry carrying the same `idempotencyToken`, the existing enrolment + Paymen
 
 **Error responses:**
 ```
-400 invalid_body              malformed/missing fields (or empty session list for per_session)
+400 invalid_body              malformed/missing fields, empty session list, or a malformed slot entry
 400 payment_type_mismatch     paymentType ≠ programme.payment_type
 400 session_price_unavailable per_session with no price_per_session_pence set
 400 block_price_unavailable   block_upfront with no block_price_pence set
+400 camp_block_unsupported    block_upfront requested for a camp-mode programme (BUG-23 ruling)
 404 coach_unavailable         coach not found, not live, paused, or suspended
 404 programme_unavailable     programme not found, not active, or not owned by the coach
-409 invalid_sessions          a selected session is missing/not scheduled/past/not in this programme
-409 spots_taken               programme already full at create (soft check)
+409 invalid_sessions          a selected pair is missing/not scheduled/past/not in this programme/slot out of range
+409 spots_taken               regular programme already full at create (soft check; camps use slot_full)
+409 slot_full                 camp only — a selected (session, slot) has no spots left (atomic, pre-charge; body lists the full pairs)
 502 payment_init_failed       Stripe PaymentIntent could not be created
 500 internal_error            DB failure (rolls back: enrolment soft-failed, provisional user soft-deleted)
 ```
@@ -731,7 +735,7 @@ stripe-signature   required — verified against STRIPE_WEBHOOK_SECRET
 | `event.type` | Action |
 |---|---|
 | `account.updated` | Computes `isComplete = charges_enabled && payouts_enabled` from `event.data.object` (Stripe.Account) and `UPDATE coach_profiles SET stripe_onboarding_complete = isComplete WHERE stripe_account_id = account.id`. Both directions written, so a Stripe-side capability revocation flips the flag back to `false`. |
-| `payment_intent.succeeded` | Branches on metadata. **Programme enrolment (P-00c-ENROL):** `metadata.enrolment_id` present → sets `payment_intents.status = 'succeeded'`, confirms the enrolment with `UPDATE group_programme_enrolments SET payment_status = 'succeeded' WHERE id = enrolment_id AND payment_status = 'pending'` (status-scoped idempotency guard), then atomically claims a spot via `increment_programme_spots()` (a `false` return ⇒ `console.error` MANUAL REFUND NEEDED, S0 decision 3), and sends `sendProgrammeConfirmation`. **1-to-1 booking (P-00c-API):** `metadata.booking_id` → `UPDATE bookings SET status = 'confirmed', messaging_unlocked = true WHERE id = booking_id AND status = 'pending_payment'` (BR-06, BR-07), then `sendBookingConfirmation`. Email failure is swallowed and never affects the 200. |
+| `payment_intent.succeeded` | Branches on metadata. **Programme enrolment (P-00c-ENROL):** `metadata.enrolment_id` present → sets `payment_intents.status = 'succeeded'`, confirms the enrolment with `UPDATE group_programme_enrolments SET payment_status = 'succeeded' WHERE id = enrolment_id AND payment_status = 'pending'` (status-scoped idempotency guard), then atomically claims a spot — the programme row (incl. `camp_mode`) is fetched first: **camps** call `confirm_camp_slot_spots()` (per-(session, slot) re-check under the migration-040 lock; `current_spots` never incremented — BUG-23 ruling 3), **regular programmes** keep `increment_programme_spots()`; a `false` return from either ⇒ `console.error` MANUAL REFUND NEEDED (S0 decision 3). Sends `sendProgrammeConfirmation` — for camps the email lists the exact slots bought (`sessionLines`, built from the enrolment junction rows: "Tue 4 Aug — Morning (9:00am – 12:00pm)"). **1-to-1 booking (P-00c-API):** `metadata.booking_id` → `UPDATE bookings SET status = 'confirmed', messaging_unlocked = true WHERE id = booking_id AND status = 'pending_payment'` (BR-06, BR-07), then `sendBookingConfirmation`. Email failure is swallowed and never affects the 200. |
 | `payment_intent.payment_failed` | Sets `payment_intents.status = 'failed'` with `stripe_error_code` / `stripe_error_message`. A booking stays `pending_payment` — for Crikly's card-only intents a failed attempt is retryable, never definitive (BUG-13b); the update also bumps the audit row's `updated_at`, which the reaper reads as activity so a retrying payer keeps their slot. A programme enrolment is marked `payment_status = 'failed'` (only while still `pending`). Truly abandoned rows are released by `GET /api/cron/release-expired-bookings`. |
 | `payment_intent.canceled` | **BUG-13b.** Definitive — a cancelled intent can never be charged. Sets `payment_intents.status = 'failed'` / `stripe_status = 'canceled'` (never downgrading a `succeeded` row). Booking intents: **releases the slot** — soft-deletes the booking (`deleted_at` + `cancelled_at` + `cancellation_reason = 'payment_intent_cancelled'`, status stays `pending_payment`) scoped to live `pending_payment` rows (idempotent), and soft-deletes the provisional guest profile. Enrolment intents: audit mark only (`payment_status = 'failed'` while `pending`) — a pending enrolment holds no spot. |
 | any other | `console.info` log only, no DB writes, returns 200. |

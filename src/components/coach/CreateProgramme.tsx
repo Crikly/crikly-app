@@ -730,7 +730,14 @@ export function CreateProgramme() {
                       type="button"
                       role="switch"
                       aria-checked={form.campMode}
-                      onClick={() => update('campMode', !form.campMode)}
+                      onClick={() => {
+                        // BUG-23 (approved ruling): camps are per_session only —
+                        // enabling camp mode forces the payment type.
+                        if (!form.campMode && form.payment_type === 'block_upfront') {
+                          update('payment_type', 'per_session')
+                        }
+                        update('campMode', !form.campMode)
+                      }}
                       className={`w-10 h-6 rounded-full relative flex-shrink-0 transition-colors ${form.campMode ? 'bg-brand-600' : 'bg-[#CBD5E1]'}`}
                     >
                       <span
@@ -743,7 +750,7 @@ export function CreateProgramme() {
                     <div className="bg-brand-50 rounded-md p-3 flex gap-2.5 items-start mb-[18px]">
                       <Info size={16} className="text-brand-600 flex-shrink-0 mt-0.5" />
                       <p className="text-[13px] text-brand-800 m-0 leading-snug">
-                        Parents book the full day. Each day can have multiple time blocks.
+                        Parents can book individual sessions or the full day. Each day can have multiple time blocks, priced per session.
                       </p>
                     </div>
                   )}
@@ -1006,13 +1013,25 @@ export function CreateProgramme() {
                     title="Per session"
                     description="Parents pay for each session."
                   />
-                  <SelectCard
-                    active={form.payment_type === 'block_upfront'}
-                    onClick={() => update('payment_type', 'block_upfront')}
-                    icon={<Layers size={20} strokeWidth={1.8} />}
-                    title="Block upfront"
-                    description="Parents pay for all sessions at once."
-                  />
+                  {/* BUG-23 (approved ruling): camps are per_session only —
+                      block is unavailable while camp mode is on (the API
+                      enforces the same rule against crafted requests). */}
+                  <div className={form.campMode ? 'opacity-50 pointer-events-none' : ''} aria-disabled={form.campMode}>
+                    <SelectCard
+                      active={form.payment_type === 'block_upfront'}
+                      onClick={() => {
+                        if (form.campMode) return
+                        update('payment_type', 'block_upfront')
+                      }}
+                      icon={<Layers size={20} strokeWidth={1.8} />}
+                      title="Block upfront"
+                      description={
+                        form.campMode
+                          ? 'Unavailable in camp mode — parents pay per session.'
+                          : 'Parents pay for all sessions at once.'
+                      }
+                    />
+                  </div>
                 </div>
               </div>
 

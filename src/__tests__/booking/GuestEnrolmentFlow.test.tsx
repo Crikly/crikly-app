@@ -1060,3 +1060,43 @@ describe('GuestEnrolmentFlow — participant capture (BUG-20/BUG-24)', () => {
     expect(screen.getAllByTestId('participant-name-input')[0]).toHaveValue('')
   })
 })
+
+// ── slot_full copy (BUG-23) ───────────────────────────────────────────────────
+//
+// A camp (session, slot) that fills in the race window returns 409 slot_full
+// BEFORE any charge — the banner must say so, never the "check your card
+// details" payment copy.
+
+describe('GuestEnrolmentFlow — 409 slot_full (BUG-23)', () => {
+  it('shows the slot-filled copy (not payment copy) on 409 slot_full', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      status: 409,
+      ok: false,
+      json: jest.fn().mockResolvedValue({
+        error: 'slot_full',
+        full: [{ sessionId: '11111111-1111-4111-8111-111111111101', slotIndex: 0 }],
+      }),
+    } as unknown as Response)
+    stripeModule.__mockSubmit.mockResolvedValue({ error: null })
+
+    const user = userEvent.setup()
+    render(
+      <GuestEnrolmentFlow
+        coachId={COACH_ID}
+        programmeId={PROGRAMME_ID}
+        paymentType="per_session"
+        selectedSessionIds={['11111111-1111-4111-8111-111111111101']}
+        summary={SUMMARY}
+      />,
+    )
+
+    await clickPay(user)
+
+    await waitFor(() => {
+      const alerts = screen.getAllByRole('alert')
+      expect(within(alerts[0]).getByText(/just filled up/i)).toBeInTheDocument()
+      expect(within(alerts[0]).getByText(/haven't been charged/i)).toBeInTheDocument()
+    })
+    expect(screen.queryByText(/check your card details/i)).not.toBeInTheDocument()
+  })
+})

@@ -293,6 +293,12 @@ export interface GuestProgrammeConfirmationParams {
    */
   participantName?: string
   participantAge?: number
+  /**
+   * BUG-23: slot-level attendance lines for camp enrolments — e.g.
+   * "Tue 4 Aug — Morning (9:00am – 12:00pm)". Omitted for non-camp
+   * enrolments (the count-only Sessions row stands alone, unchanged).
+   */
+  sessionLines?: string[]
 }
 
 /**
@@ -306,7 +312,7 @@ export async function sendGuestProgrammeConfirmation(
   const {
     guestName, guestEmail, coachName, enrolmentReference,
     programmeTitle, scheduleSummary, sessionsSummary, totalPence,
-    participantName, participantAge,
+    participantName, participantAge, sessionLines,
   } = params
 
   const safeName = escapeHtml(guestName)
@@ -324,12 +330,19 @@ export async function sendGuestProgrammeConfirmation(
       )
     : null
 
+  // BUG-23: camp enrolments list the exact slots bought under the Sessions
+  // count — each line escaped individually, joined with <br> inside the row.
+  const safeSessionDetail =
+    sessionLines && sessionLines.length > 0
+      ? `${safeSessions}<br>${sessionLines.map((l) => escapeHtml(l)).join('<br>')}`
+      : safeSessions
+
   const detailRows = [
     ...(safeParticipant ? [{ label: 'Booking for', value: safeParticipant }] : []),
     { label: 'Programme', value: safeTitle },
     { label: 'Coach', value: safeCoach },
     { label: 'Schedule', value: safeSchedule },
-    { label: 'Sessions', value: safeSessions },
+    { label: 'Sessions', value: safeSessionDetail },
     { label: 'Amount paid', value: formatGBP(totalPence) },
   ]
     .map(

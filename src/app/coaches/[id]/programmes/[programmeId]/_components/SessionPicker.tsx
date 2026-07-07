@@ -10,7 +10,8 @@ import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Check, ChevronDown } from 'lucide-react'
 import type { SessionView, CampDay } from './_data/programmeDetail'
-import { displayParentTotalPence } from '@/lib/booking/commission-display'
+import { displayParentTotalPence, displayCommissionPence } from '@/lib/booking/commission-display'
+import { encodeSelection } from '@/lib/booking/slot-selection'
 
 const COLLAPSED_COUNT = 4
 
@@ -99,6 +100,12 @@ function SessionRow({
         </div>
         <div className={`text-sm mt-px ${selected ? 'text-brand-600' : 'text-gray-500'}`}>
           {session.timeLabel}
+          {/* BUG-23: per-slot scarcity — camp slots fill independently. */}
+          {session.spotsLeft !== null && session.spotsLeft <= 3 && (
+            <span className="ml-2 text-sm font-semibold text-warning" data-testid={`slot-spots-${session.key}`}>
+              {session.spotsLeft} left
+            </span>
+          )}
         </div>
       </div>
       <span className={`text-base font-bold tabular-nums ${selected ? 'text-brand-800' : 'text-gray-900'}`}>
@@ -142,29 +149,33 @@ export function SessionPicker({
     })
   }
 
-  // Map every row key → its real session UUID (camp slots from one row share an
-  // id — session-row granularity, S0 decision 4).
-  const keyToSessionId = useMemo(() => {
-    const m = new Map<string, string>()
-    for (const s of sessions) m.set(s.key, s.sessionId)
-    for (const d of campDays) for (const s of d.slots) m.set(s.key, s.sessionId)
+  // BUG-23: map every row key → its (sessionId, slotIndex) selection. Each
+  // camp SLOT is one session at the per-session price — a full day (both
+  // slots) is 2 selections = 2× (the pre-BUG-23 dedupe-to-session-row is what
+  // sold full days at 1×). Non-camp rows are always slot 0.
+  const keyToSelection = useMemo(() => {
+    const m = new Map<string, SessionView>()
+    for (const s of sessions) m.set(s.key, s)
+    for (const d of campDays) for (const s of d.slots) m.set(s.key, s)
     return m
   }, [sessions, campDays])
 
-  // The session UUIDs that will actually be paid for (deduped by row).
+  // The wire entries that will actually be paid for — one per selected slot.
   const selectedSessionIds = useMemo(() => {
-    const ids = new Set<string>()
+    const entries: string[] = []
     for (const key of selected) {
-      const id = keyToSessionId.get(key)
-      if (id) ids.add(id)
+      const view = keyToSelection.get(key)
+      if (view) entries.push(encodeSelection({ sessionId: view.sessionId, slotIndex: view.slotIndex }))
     }
-    return [...ids]
-  }, [selected, keyToSessionId])
+    return entries
+  }, [selected, keyToSelection])
 
-  // Count + total reflect the deduped sessions being charged. Coach price is
-  // uniform; commission is added ON TOP (BR-01) for the displayed total.
+  // Count + total reflect every selected slot. Coach price is uniform;
+  // commission is added ON TOP (BR-01) — shown explicitly as the service fee
+  // so the total is never unexplained against a "per session" price.
   const payCount = selectedSessionIds.length
   const coachSubtotal = payCount * (pricePerSessionPence ?? 0)
+  const feePence = displayCommissionPence(coachSubtotal)
   const total = displayParentTotalPence(coachSubtotal)
 
   const collapsible = !campMode && sessions.length > COLLAPSED_COUNT
@@ -250,6 +261,13 @@ export function SessionPicker({
             <div className="text-xl font-bold text-gray-900 tracking-tight tabular-nums leading-tight">
               {formatTotal(total)}
             </div>
+            {/* BUG-23 fee transparency: the total must never sit unexplained
+                against a "per session" price (1-on-1 checkout parity). */}
+            {payCount > 0 && (
+              <div className="text-xs text-gray-500 tabular-nums" data-testid="fee-line">
+                incl. {formatTotal(feePence)} service fee
+              </div>
+            )}
           </div>
         </div>
         <button
@@ -272,9 +290,16 @@ export function SessionPicker({
             </span>
             <span className="text-base text-gray-600">session{payCount !== 1 ? 's' : ''} selected</span>
           </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">Total</span>
-            <span className="text-2xl font-bold text-gray-900 tracking-tight tabular-nums">{formatTotal(total)}</span>
+          <div className="flex flex-col">
+            <div className="flex items-baseline gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">Total</span>
+              <span className="text-2xl font-bold text-gray-900 tracking-tight tabular-nums">{formatTotal(total)}</span>
+            </div>
+            {payCount > 0 && (
+              <span className="text-xs text-gray-500 tabular-nums" data-testid="fee-line-desktop">
+                incl. {formatTotal(feePence)} service fee
+              </span>
+            )}
           </div>
           <button
             type="button"
