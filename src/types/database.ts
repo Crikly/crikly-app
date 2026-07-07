@@ -1994,6 +1994,66 @@ export type Database = {
           },
         ]
       }
+      payment_alerts: {
+        Row: {
+          amount_pence: number | null
+          booking_id: string | null
+          created_at: string
+          currency: string
+          detail: string
+          enrolment_id: string | null
+          id: string
+          kind: string
+          resolved_at: string | null
+          status: string
+          stripe_payment_intent_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          amount_pence?: number | null
+          booking_id?: string | null
+          created_at?: string
+          currency?: string
+          detail: string
+          enrolment_id?: string | null
+          id?: string
+          kind: string
+          resolved_at?: string | null
+          status?: string
+          stripe_payment_intent_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          amount_pence?: number | null
+          booking_id?: string | null
+          created_at?: string
+          currency?: string
+          detail?: string
+          enrolment_id?: string | null
+          id?: string
+          kind?: string
+          resolved_at?: string | null
+          status?: string
+          stripe_payment_intent_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_alerts_booking_id_fkey"
+            columns: ["booking_id"]
+            isOneToOne: false
+            referencedRelation: "bookings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_alerts_enrolment_id_fkey"
+            columns: ["enrolment_id"]
+            isOneToOne: false
+            referencedRelation: "group_programme_enrolments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payment_intents: {
         Row: {
           amount_pence: number
@@ -2577,6 +2637,36 @@ export type Database = {
         }
         Relationships: []
       }
+      stripe_webhook_events: {
+        Row: {
+          attempts: number
+          event_id: string
+          event_type: string
+          first_seen_at: string
+          last_error: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          event_id: string
+          event_type: string
+          first_seen_at?: string
+          last_error?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          event_id?: string
+          event_type?: string
+          first_seen_at?: string
+          last_error?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       subscription_tiers: {
         Row: {
           created_at: string
@@ -2851,6 +2941,15 @@ export type Database = {
       confirm_camp_slot_spots: {
         Args: { p_enrolment_id: string }
         Returns: boolean
+      }
+      confirm_programme_enrolment: {
+        Args: {
+          p_amount_pence: number
+          p_currency: string
+          p_enrolment_id: string
+          p_intent_id: string
+        }
+        Returns: Json
       }
       increment_programme_spots: {
         Args: { p_programme_id: string }

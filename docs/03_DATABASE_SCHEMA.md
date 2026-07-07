@@ -1051,6 +1051,56 @@ Tracks refunds issued for cancelled bookings.
 
 ---
 
+### 7.4 stripe_webhook_events
+
+Event-level idempotency ledger for `POST /api/webhooks/stripe` (BUG-15). One row per Stripe event that passed signature verification; replays terminate at the ledger before any handler runs.
+
+**Purpose:** Never lose an event silently (transient DB failures return 5xx → Stripe redelivers within its ~72h window), never double-process a replay, and bound poisoned events.
+**Migration:** 041_webhook_hardening.sql
+
+| Column | Type | Nullable | Default | Notes |
+|---|---|---|---|---|
+| event_id | text | NO | — | PK — Stripe's globally unique `evt_…` id (no uuid). |
+| event_type | text | NO | — | e.g. payment_intent.succeeded |
+| status | text | NO | 'processing' | 'processing' (in flight; stale > 10 min = retry allowed) · 'processed' (terminal — replays 200 immediately) · 'failed' (awaiting Stripe redelivery). |
+| attempts | integer | NO | 1 | Delivery attempts seen. At ≥ 8 the event is poison-bounded: marked processed + a `payment_alerts` (webhook_poisoned) row. |
+| last_error | text | YES | null | Most recent handler error (retryable failures). |
+| first_seen_at | timestamptz | NO | now() | Prune anchor — the reaper cron deletes rows older than 30 days. |
+| updated_at | timestamptz | NO | now() | Bump trigger. |
+
+**RLS:** enabled, no policies — service-role only (webhook + reaper).
+**Indexes:** (first_seen_at) for the prune scan.
+
+---
+
+### 7.5 payment_alerts
+
+Durable, queryable record of every situation where money needs human attention (BUG-15, refund policy B — manual refund via the Stripe Dashboard; ops email fired on insert when `OPS_ALERT_EMAIL` is set).
+
+**Migration:** 041_webhook_hardening.sql
+
+| Column | Type | Nullable | Default | Notes |
+|---|---|---|---|---|
+| id | uuid | NO | gen_random_uuid() | Primary key |
+| kind | text | NO | — | 'needs_refund' (paid-but-no-spot) · 'restore_conflict' (succeeded-after-release, slot re-taken — BUG-13b/19-P2 path) · 'webhook_poisoned' (attempts cap hit). |
+| booking_id | uuid | YES | null | FK → bookings(id) — restore_conflict alerts. |
+| enrolment_id | uuid | YES | null | FK → group_programme_enrolments(id) — needs_refund alerts. |
+| stripe_payment_intent_id | text | YES | null | The intent holding the parent's money. |
+| amount_pence | integer | YES | null | Charged amount snapshot (integer pence, BR-10). |
+| currency | text | NO | 'GBP' | ISO code. |
+| detail | text | NO | — | Human-readable description incl. what to do. |
+| status | text | NO | 'open' | 'open' \| 'resolved'. CHECK ties resolved_at to status. |
+| created_at | timestamptz | NO | now() | |
+| updated_at | timestamptz | NO | now() | Bump trigger. |
+| resolved_at | timestamptz | YES | null | |
+
+**RLS:** enabled, no policies — service-role only until the admin module defines admin reads. **Never auto-pruned.**
+**Indexes:** partial (created_at) WHERE status='open'; partial FK indexes on booking_id / enrolment_id.
+
+**Function:** `confirm_programme_enrolment(p_enrolment_id uuid, p_intent_id text, p_amount_pence integer, p_currency text) RETURNS jsonb` (migration 041; SECURITY DEFINER, `search_path=''`, service_role only). Atomic confirm-and-claim for the webhook's enrolment path: status-scoped flip (pending→succeeded) + spot claim (camps → `confirm_camp_slot_spots`, regular → `increment_programme_spots`) + on claim failure a `needs_refund` alert row — all one transaction, so a crash rolls back everything and a Stripe redelivery re-runs cleanly (spot claimed exactly once). Returns `{confirmed, spot_claimed}`; `spot_claimed=false` ⇒ the caller suppresses the confirmation email (approved ruling).
+
+---
+
 ## 8. Module 7 — Training Passport & Reviews
 
 ### 8.1 passport_entries
@@ -1687,6 +1737,9 @@ Migrations must run in this exact order:
                                         widened UNIQUE, camp_slot_occupancy /
                                         reserve_camp_slot_sessions /
                                         confirm_camp_slot_spots (BUG-23)
+041_webhook_hardening.sql             → stripe_webhook_events ledger,
+                                        payment_alerts,
+                                        confirm_programme_enrolment (BUG-15)
 ```
 
 ---
