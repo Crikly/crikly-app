@@ -32,10 +32,15 @@ jest.mock('@/lib/resend/send-programme-confirmation', () => ({
   sendProgrammeConfirmation: jest.fn(),
 }))
 
+jest.mock('@/lib/resend/send-ops-alert', () => ({
+  sendOpsAlert: jest.fn().mockResolvedValue(true),
+}))
+
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getStripe } from '@/lib/stripe/client'
 import { sendBookingConfirmation } from '@/lib/resend/send-booking-confirmation'
 import { sendProgrammeConfirmation } from '@/lib/resend/send-programme-confirmation'
+import { sendOpsAlert } from '@/lib/resend/send-ops-alert'
 import { POST } from '@/app/api/webhooks/stripe/route'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -98,6 +103,35 @@ function makeWebhookRequest(rawBody: string, signature = 'valid-sig') {
   })
 }
 
+// ── BUG-15: admin-client wrapper with a permissive ledger interceptor ────────
+//
+// Every POST now begins with the stripe_webhook_events ledger (insert-first)
+// and ends by marking it processed/failed. Intercepting that table keeps the
+// per-test positional from() mocks unaware of the ledger; pass a custom
+// ledgerChain to exercise replay / poison / ledger-down behaviour.
+
+function makeLedgerChain(result: { data?: unknown; error?: unknown } = {}) {
+  const resolved = { data: result.data ?? null, error: result.error ?? null }
+  const chain: Record<string, MockFn> & { then?: unknown } = {}
+  for (const m of ['insert', 'select', 'eq', 'update', 'single', 'delete', 'lt']) {
+    chain[m] = jest.fn(() => chain)
+  }
+  chain.then = (resolve: (v: unknown) => void) => resolve(resolved)
+  return chain
+}
+
+function adminMock(from: unknown, rpc?: jest.Mock, ledgerChain?: ReturnType<typeof makeLedgerChain>) {
+  const ledger = ledgerChain ?? makeLedgerChain()
+  const wrapped = jest.fn((table: string) =>
+    table === 'stripe_webhook_events' ? ledger : (from as (t: string) => unknown)(table),
+  )
+  return {
+    from: wrapped,
+    rpc: rpc ?? jest.fn().mockResolvedValue({ data: null, error: null }),
+    __ledger: ledger,
+  }
+}
+
 // ── Helper — call the route handler ──────────────────────────────────────────
 
 async function callPost(rawBody: string, signature?: string) {
@@ -123,7 +157,7 @@ beforeEach(() => {
       }),
     },
   })
-  ;(createAdminClient as jest.Mock).mockReturnValue({ from: jest.fn() })
+  ;(createAdminClient as jest.Mock).mockReturnValue(adminMock(jest.fn()))
   // sendBookingConfirmation is a no-op by default — tests that care about it
   // override this. Existing tests use intents without guest_email metadata so the
   // route returns before ever calling this function.
@@ -138,7 +172,7 @@ describe('POST /api/webhooks/stripe — signature verification', () => {
   it('returns 400 when stripe-signature header is missing', async () => {
     const stripeMock = { webhooks: { constructEvent: jest.fn() } }
     ;(getStripe as MockFn).mockReturnValue(stripeMock)
-    ;(createAdminClient as MockFn).mockReturnValue({ from: jest.fn() })
+    ;(createAdminClient as MockFn).mockReturnValue(adminMock(jest.fn()))
 
     const req = new Request('http://localhost/api/webhooks/stripe', {
       method: 'POST',
@@ -159,7 +193,7 @@ describe('POST /api/webhooks/stripe — signature verification', () => {
       },
     }
     ;(getStripe as MockFn).mockReturnValue(stripeMock)
-    ;(createAdminClient as MockFn).mockReturnValue({ from: jest.fn() })
+    ;(createAdminClient as MockFn).mockReturnValue(adminMock(jest.fn()))
 
     const res = await callPost('{"forged":"payload"}', 'bad-sig')
     expect(res.status).toBe(400)
@@ -169,7 +203,7 @@ describe('POST /api/webhooks/stripe — signature verification', () => {
 
   it('does NOT call any DB handler when signature verification fails', async () => {
     const mockFrom = jest.fn()
-    ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom })
+    ;(createAdminClient as MockFn).mockReturnValue(adminMock(mockFrom))
     const stripeMock = {
       webhooks: {
         constructEvent: jest.fn().mockImplementation(() => { throw new Error('sig fail') }),
@@ -225,7 +259,7 @@ describe('POST /api/webhooks/stripe — payment_intent.succeeded', () => {
       .mockReturnValueOnce(bookingChain)         // bookings update
       .mockReturnValueOnce(backstopLookupChain)  // bookings backstop lookup (zero-rows branch only)
 
-    ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom })
+    ;(createAdminClient as MockFn).mockReturnValue(adminMock(mockFrom))
 
     const event = makeStripeEvent('payment_intent.succeeded', makeSucceededIntent())
     const stripeMock = {
@@ -286,22 +320,36 @@ describe('POST /api/webhooks/stripe — payment_intent.succeeded', () => {
     expect(piUpdateArg.status).toBe('succeeded')
   })
 
-  it('returns 200 even when DB update throws (never causes Stripe retry loop)', async () => {
-    // payment_intents update fails
-    const piChain: Record<string, MockFn> = {}
-    piChain.update = jest.fn().mockReturnValue({
-      eq: jest.fn().mockRejectedValue(new Error('DB connection lost')),
-    })
+  it('BUG-15: returns 500 when the booking confirm write fails (transient — Stripe redelivers)', async () => {
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      const piChain: Record<string, MockFn> = {}
+      piChain.update = jest.fn().mockReturnValue({
+        eq: jest.fn().mockResolvedValue({ data: null, error: null }),
+      })
+      const bookingChain: Record<string, MockFn> = {}
+      bookingChain.update = jest.fn().mockReturnValue({
+        eq: jest.fn().mockReturnValue({
+          eq: jest.fn().mockReturnValue({
+            select: jest.fn().mockResolvedValue({ data: null, error: { message: 'DB down' } }),
+          }),
+        }),
+      })
+      const mockFrom = jest.fn().mockReturnValueOnce(piChain).mockReturnValueOnce(bookingChain)
+      const admin = adminMock(mockFrom)
+      ;(createAdminClient as MockFn).mockReturnValue(admin)
 
-    const mockFrom = jest.fn().mockReturnValue(piChain)
-    ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom })
+      const event = makeStripeEvent('payment_intent.succeeded', makeSucceededIntent())
+      const stripeMock = { webhooks: { constructEvent: jest.fn().mockReturnValue(event) } }
+      ;(getStripe as MockFn).mockReturnValue(stripeMock)
 
-    const event = makeStripeEvent('payment_intent.succeeded', makeSucceededIntent())
-    const stripeMock = { webhooks: { constructEvent: jest.fn().mockReturnValue(event) } }
-    ;(getStripe as MockFn).mockReturnValue(stripeMock)
-
-    const res = await callPost('{}')
-    expect(res.status).toBe(200)
+      const res = await callPost('{}')
+      expect(res.status).toBe(500)
+      // The ledger row was marked failed so the redelivery is admitted.
+      expect(admin.__ledger.update).toHaveBeenCalled()
+    } finally {
+      errorSpy.mockRestore()
+    }
   })
 
   it('skips booking update when payment intent has no booking_id metadata', async () => {
@@ -317,7 +365,7 @@ describe('POST /api/webhooks/stripe — payment_intent.succeeded', () => {
     const mockFrom = jest.fn()
       .mockReturnValueOnce(piChain)
       .mockReturnValueOnce(bookingChain)
-    ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom })
+    ;(createAdminClient as MockFn).mockReturnValue(adminMock(mockFrom))
 
     // Intent with NO booking_id in metadata
     const intentNoBookingId = makeSucceededIntent({ metadata: {} })
@@ -336,13 +384,17 @@ describe('POST /api/webhooks/stripe — payment_intent.succeeded', () => {
 
 describe('POST /api/webhooks/stripe — payment_intent.payment_failed', () => {
   function setupFailedMocks(updateError: unknown = null) {
+    // BUG-15 risk 5: the update is .eq(intent).neq('status','succeeded') —
+    // the chain resolves at the .neq (downgrade guard).
     const piChain: Record<string, MockFn> = {}
+    const neqMock = jest.fn().mockResolvedValue({ data: null, error: updateError })
     piChain.update = jest.fn().mockReturnValue({
-      eq: jest.fn().mockResolvedValue({ data: null, error: updateError }),
+      eq: jest.fn().mockReturnValue({ neq: neqMock }),
     })
+    piChain.__neq = neqMock
 
     const mockFrom = jest.fn().mockReturnValue(piChain)
-    ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom })
+    ;(createAdminClient as MockFn).mockReturnValue(adminMock(mockFrom))
 
     const event = makeStripeEvent('payment_intent.payment_failed', makeFailedIntent())
     const stripeMock = { webhooks: { constructEvent: jest.fn().mockReturnValue(event) } }
@@ -381,19 +433,30 @@ describe('POST /api/webhooks/stripe — payment_intent.payment_failed', () => {
     expect(updateArg.stripe_error_message).toBe('Your card was declined.')
   })
 
-  it('returns 200 even when payment_intents update fails (never retry loops)', async () => {
-    setupFailedMocks({ message: 'DB error' })
-    const res = await callPost('{}')
-    expect(res.status).toBe(200)
+  it('BUG-15: returns 500 when the payment_intents update fails (transient — Stripe redelivers)', async () => {
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      setupFailedMocks({ message: 'DB error' })
+      const res = await callPost('{}')
+      expect(res.status).toBe(500)
+    } finally {
+      errorSpy.mockRestore()
+    }
   })
-})
 
-// ── Unknown event type ────────────────────────────────────────────────────────
+  it('BUG-15 risk 5: the failed update NEVER downgrades a succeeded audit row (.neq guard)', async () => {
+    const { piChain } = setupFailedMocks()
+    await callPost('{}')
 
-describe('POST /api/webhooks/stripe — unknown event type', () => {
+    // .update(...).eq('stripe_payment_intent_id', id).neq('status', 'succeeded')
+    const updateReturn = (piChain.update as MockFn).mock.results[0].value as Record<string, MockFn>
+    const eqReturn = (updateReturn.eq as MockFn).mock.results[0].value as Record<string, MockFn>
+    expect(eqReturn.neq).toHaveBeenCalledWith('status', 'succeeded')
+  })
+
   it('returns 200 and does not crash for an unrecognised event type', async () => {
     const mockFrom = jest.fn()
-    ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom })
+    ;(createAdminClient as MockFn).mockReturnValue(adminMock(mockFrom))
 
     const event = makeStripeEvent('customer.subscription.updated', { id: 'sub_test' })
     const stripeMock = { webhooks: { constructEvent: jest.fn().mockReturnValue(event) } }
@@ -510,7 +573,7 @@ describe('POST /api/webhooks/stripe — payment_intent.succeeded email (P-00c-EM
       mockFrom.mockReturnValueOnce(coachChain) // 3. coach_profiles
     }
 
-    ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom })
+    ;(createAdminClient as MockFn).mockReturnValue(adminMock(mockFrom))
 
     const intent = makeIntentWithGuestEmail(intentOverrides)
     const event = makeStripeEvent('payment_intent.succeeded', intent)
@@ -660,10 +723,17 @@ describe('POST /api/webhooks/stripe — payment_intent.succeeded email (P-00c-EM
       }),
     })
 
+    // The empty confirm result enters the BUG-13b backstop, which looks the
+    // row up — a normally-confirmed row (not release-marked) is the
+    // idempotent redelivery case.
+    const lookupChain = makeChain({
+      data: { id: BOOKING_ID, status: 'confirmed', deleted_at: null, cancellation_reason: null, booked_by_user_id: 'u1', booking_reference: 'CRK-2026-TEST01' },
+    })
     const mockFrom = jest.fn()
       .mockReturnValueOnce(piChain)
       .mockReturnValueOnce(bookingChain)
-    ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom })
+      .mockReturnValueOnce(lookupChain)
+    ;(createAdminClient as MockFn).mockReturnValue(adminMock(mockFrom))
 
     const intent = makeIntentWithGuestEmail()
     const event = makeStripeEvent('payment_intent.succeeded', intent)
@@ -697,7 +767,7 @@ describe('POST /api/webhooks/stripe — payment_intent.succeeded email (P-00c-EM
     const mockFrom = jest.fn()
       .mockReturnValueOnce(piChain)
       .mockReturnValueOnce(bookingChain)
-    ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom })
+    ;(createAdminClient as MockFn).mockReturnValue(adminMock(mockFrom))
 
     // Intent with booking_id but NO guest_email
     const intentNoEmail = {
@@ -748,7 +818,7 @@ describe('POST /api/webhooks/stripe — payment_intent.succeeded email (P-00c-EM
       .mockReturnValueOnce(piChain)
       .mockReturnValueOnce(bookingChain)
       .mockReturnValueOnce(coachChain)
-    ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom })
+    ;(createAdminClient as MockFn).mockReturnValue(adminMock(mockFrom))
 
     // Intent has guest_email but no guest_name
     const intentNoName = {
@@ -830,13 +900,12 @@ const PROGRAMME_ROW_WH = {
  *   from(last) coach_profiles select
  */
 function setupEnrolmentMocks(options: {
-  enrolmentUpdateData?: unknown[] | null
-  rpcResult?: boolean
+  /** confirm_programme_enrolment RPC result (BUG-15 atomic confirm-and-claim). */
+  rpcResult?: { confirmed: boolean; spot_claimed: boolean }
   coachRow?: { display_name: string | null; user_profile_id: string | null } | null
 } = {}) {
   const {
-    enrolmentUpdateData = [CONFIRMED_ENROLMENT],
-    rpcResult = true,
+    rpcResult = { confirmed: true, spot_claimed: true },
     coachRow = { display_name: 'Coach Davies', user_profile_id: null },
   } = options
 
@@ -846,18 +915,13 @@ function setupEnrolmentMocks(options: {
     eq: jest.fn().mockResolvedValue({ data: null, error: null }),
   })
 
-  // 2. group_programme_enrolments update
+  // 2. group_programme_enrolments READ-BACK for the email (BUG-15: the
+  //    confirm+claim happens atomically inside the RPC, not via update here)
   const enrolmentChain: Record<string, MockFn> = {}
-  enrolmentChain.update = jest.fn().mockReturnValue({
-    eq: jest.fn().mockReturnValue({
-      eq: jest.fn().mockReturnValue({
-        select: jest.fn().mockResolvedValue({
-          data: enrolmentUpdateData,
-          error: null,
-        }),
-      }),
-    }),
-  })
+  for (const m of ['select', 'eq']) {
+    enrolmentChain[m] = jest.fn(() => enrolmentChain)
+  }
+  enrolmentChain.maybeSingle = jest.fn().mockResolvedValue({ data: CONFIRMED_ENROLMENT, error: null })
 
   // 3. group_programmes select
   const programmeChain: Record<string, MockFn> = {}
@@ -875,13 +939,13 @@ function setupEnrolmentMocks(options: {
 
   const mockFrom = jest.fn()
     .mockReturnValueOnce(piChain)         // 1. payment_intents
-    .mockReturnValueOnce(enrolmentChain)  // 2. group_programme_enrolments
+    .mockReturnValueOnce(enrolmentChain)  // 2. group_programme_enrolments read-back
     .mockReturnValueOnce(programmeChain)  // 3. group_programmes
     .mockReturnValueOnce(coachChain)      // 4. coach_profiles
 
   const mockRpc = jest.fn().mockResolvedValue({ data: rpcResult, error: null })
 
-  ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom, rpc: mockRpc })
+  ;(createAdminClient as MockFn).mockReturnValue(adminMock(mockFrom, mockRpc))
 
   const intent = makeEnrolmentSucceededIntent()
   const event = makeStripeEvent('payment_intent.succeeded', intent)
@@ -908,128 +972,52 @@ describe('POST /api/webhooks/stripe — handleEnrolmentSucceeded (P-00c-ENROL)',
     expect(updateArg.status).toBe('succeeded')
   })
 
-  it('updates group_programme_enrolments payment_status from pending to succeeded', async () => {
-    const { enrolmentChain } = setupEnrolmentMocks()
+  it('delegates confirm-and-claim to confirm_programme_enrolment atomically (BUG-15)', async () => {
+    const { mockRpc, intent } = setupEnrolmentMocks()
     await callPost('{}')
 
-    const updateArg = (enrolmentChain.update as MockFn).mock.calls[0][0] as Record<string, unknown>
-    expect(updateArg.payment_status).toBe('succeeded')
+    expect(mockRpc).toHaveBeenCalledTimes(1)
+    expect(mockRpc).toHaveBeenCalledWith('confirm_programme_enrolment', {
+      p_enrolment_id: ENROLMENT_ID,
+      p_intent_id: intent.id,
+      p_amount_pence: intent.amount,
+      p_currency: 'GBP',
+    })
+    // The spot-claim functions are INSIDE the DB transaction now — the
+    // webhook must never call them directly.
+    const calledFns = mockRpc.mock.calls.map((c) => c[0])
+    expect(calledFns).not.toContain('increment_programme_spots')
+    expect(calledFns).not.toContain('confirm_camp_slot_spots')
   })
 
-  it('enrolment update is scoped to payment_status=pending (idempotency guard)', async () => {
-    const { enrolmentChain } = setupEnrolmentMocks()
-    await callPost('{}')
-
-    // .update(...).eq('id', enrolmentId).eq('payment_status', 'pending')
-    const updateReturn = (enrolmentChain.update as MockFn).mock.results[0].value as Record<string, MockFn>
-    const firstEqCall = (updateReturn.eq as MockFn).mock.calls[0]
-    expect(firstEqCall[0]).toBe('id')
-    expect(firstEqCall[1]).toBe(ENROLMENT_ID)
-
-    const secondEqReturn = (updateReturn.eq as MockFn).mock.results[0].value as Record<string, MockFn>
-    const secondEqCall = (secondEqReturn.eq as MockFn).mock.calls[0]
-    expect(secondEqCall[0]).toBe('payment_status')
-    expect(secondEqCall[1]).toBe('pending')
-  })
-
-  it('idempotency: returns 200 when enrolment already confirmed (empty update result)', async () => {
-    setupEnrolmentMocks({ enrolmentUpdateData: [] })
-
-    // When enrolmentUpdateData is empty, the route returns early without calling rpc
-    // Rebuild mocks so the from() chain for empty result doesn't try to access
-    // programme/coach chains that aren't set up.
-    const piChain: Record<string, MockFn> = {}
-    piChain.update = jest.fn().mockReturnValue({
-      eq: jest.fn().mockResolvedValue({ data: null, error: null }),
-    })
-    const enrolmentChain: Record<string, MockFn> = {}
-    enrolmentChain.update = jest.fn().mockReturnValue({
-      eq: jest.fn().mockReturnValue({
-        eq: jest.fn().mockReturnValue({
-          select: jest.fn().mockResolvedValue({ data: [], error: null }),
-        }),
-      }),
-    })
-
-    const mockFrom = jest.fn()
-      .mockReturnValueOnce(piChain)
-      .mockReturnValueOnce(enrolmentChain)
-    const mockRpc = jest.fn()
-    ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom, rpc: mockRpc })
-
-    const intent = makeEnrolmentSucceededIntent()
-    const event = makeStripeEvent('payment_intent.succeeded', intent)
-    const stripeMock = { webhooks: { constructEvent: jest.fn().mockReturnValue(event) } }
-    ;(getStripe as MockFn).mockReturnValue(stripeMock)
-
+  it('idempotency: returns 200 and sends nothing when the RPC reports confirmed:false (redelivery)', async () => {
+    const { mockFrom } = setupEnrolmentMocks({ rpcResult: { confirmed: false, spot_claimed: false } })
     const res = await callPost('{}')
     expect(res.status).toBe(200)
-    expect(mockRpc).not.toHaveBeenCalled()
     expect(sendProgrammeConfirmation).not.toHaveBeenCalled()
+    // Only the payment_intents audit update ran — no email read-backs.
+    expect((mockFrom as MockFn).mock.calls.length).toBe(1)
   })
 
-  it('calls increment_programme_spots RPC with the correct programme_id', async () => {
-    const { mockRpc } = setupEnrolmentMocks()
-    await callPost('{}')
-
-    expect(mockRpc).toHaveBeenCalledWith('increment_programme_spots', {
-      p_programme_id: PROGRAMME_ID_WH,
-    })
-  })
-
-  it('logs MANUAL REFUND NEEDED and returns 200 when RPC returns false (programme filled)', async () => {
+  it('spot_claimed:false → 200, MANUAL REFUND log, ops alert, and the confirmation email is SUPPRESSED', async () => {
     const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      setupEnrolmentMocks({ rpcResult: { confirmed: true, spot_claimed: false } })
+      const res = await callPost('{}')
+      expect(res.status).toBe(200)
 
-    const piChain: Record<string, MockFn> = {}
-    piChain.update = jest.fn().mockReturnValue({
-      eq: jest.fn().mockResolvedValue({ data: null, error: null }),
-    })
-    const enrolmentChain: Record<string, MockFn> = {}
-    enrolmentChain.update = jest.fn().mockReturnValue({
-      eq: jest.fn().mockReturnValue({
-        eq: jest.fn().mockReturnValue({
-          select: jest.fn().mockResolvedValue({
-            data: [CONFIRMED_ENROLMENT],
-            error: null,
-          }),
-        }),
-      }),
-    })
-    const programmeChain: Record<string, MockFn> = {}
-    for (const m of ['select', 'eq']) {
-      programmeChain[m] = jest.fn(() => programmeChain)
+      const logged = consoleSpy.mock.calls.map((c) => String(c[0])).join('\n')
+      expect(logged).toContain('MANUAL REFUND NEEDED')
+      // Approved ruling: a parent with no spot must not receive "You're
+      // enrolled!" — the payment_alerts row (written inside the RPC) + ops
+      // email are the channel.
+      expect(sendProgrammeConfirmation).not.toHaveBeenCalled()
+      expect(sendOpsAlert).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: 'needs_refund' }),
+      )
+    } finally {
+      consoleSpy.mockRestore()
     }
-    programmeChain.maybeSingle = jest.fn().mockResolvedValue({ data: PROGRAMME_ROW_WH, error: null })
-
-    const coachChain: Record<string, MockFn> = {}
-    for (const m of ['select', 'eq']) {
-      coachChain[m] = jest.fn(() => coachChain)
-    }
-    coachChain.maybeSingle = jest.fn().mockResolvedValue({
-      data: { display_name: 'Coach Davies', user_profile_id: null },
-      error: null,
-    })
-
-    const mockFrom = jest.fn()
-      .mockReturnValueOnce(piChain)
-      .mockReturnValueOnce(enrolmentChain)
-      .mockReturnValueOnce(programmeChain)
-      .mockReturnValueOnce(coachChain)
-
-    // RPC returns false = programme is full
-    const mockRpc = jest.fn().mockResolvedValue({ data: false, error: null })
-    ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom, rpc: mockRpc })
-
-    const intent = makeEnrolmentSucceededIntent()
-    const event = makeStripeEvent('payment_intent.succeeded', intent)
-    const stripeMock = { webhooks: { constructEvent: jest.fn().mockReturnValue(event) } }
-    ;(getStripe as MockFn).mockReturnValue(stripeMock)
-
-    const res = await callPost('{}')
-    expect(res.status).toBe(200)
-    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('MANUAL REFUND NEEDED'))
-
-    consoleSpy.mockRestore()
   })
 
   it('calls sendProgrammeConfirmation (not sendBookingConfirmation)', async () => {
@@ -1076,7 +1064,7 @@ describe('POST /api/webhooks/stripe — handleEnrolmentSucceeded (P-00c-ENROL)',
       .mockReturnValueOnce(piChain)
       .mockReturnValueOnce(enrolmentChain)
     const mockRpc = jest.fn().mockResolvedValue({ data: true, error: null })
-    ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom, rpc: mockRpc })
+    ;(createAdminClient as MockFn).mockReturnValue(adminMock(mockFrom, mockRpc))
 
     // No guest_email in metadata
     const intent = makeEnrolmentSucceededIntent({ metadata: { enrolment_id: ENROLMENT_ID } })
@@ -1095,20 +1083,28 @@ describe('POST /api/webhooks/stripe — handleEnrolmentSucceeded (P-00c-ENROL)',
     expect(sendBookingConfirmation).not.toHaveBeenCalled()
   })
 
-  it('still returns 200 when DB update throws (never causes Stripe retry loop)', async () => {
-    const piChain: Record<string, MockFn> = {}
-    piChain.update = jest.fn().mockReturnValue({
-      eq: jest.fn().mockRejectedValue(new Error('DB connection lost')),
-    })
-    ;(createAdminClient as MockFn).mockReturnValue({ from: jest.fn().mockReturnValue(piChain), rpc: jest.fn() })
+  it('BUG-15: returns 500 when the confirm RPC fails (transient — Stripe redelivers)', async () => {
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      const piChain: Record<string, MockFn> = {}
+      piChain.update = jest.fn().mockReturnValue({
+        eq: jest.fn().mockResolvedValue({ data: null, error: null }),
+      })
+      const mockFrom = jest.fn().mockReturnValueOnce(piChain)
+      const mockRpc = jest.fn().mockResolvedValue({ data: null, error: { message: 'DB down' } })
+      ;(createAdminClient as MockFn).mockReturnValue(adminMock(mockFrom, mockRpc))
 
-    const intent = makeEnrolmentSucceededIntent()
-    const event = makeStripeEvent('payment_intent.succeeded', intent)
-    const stripeMock = { webhooks: { constructEvent: jest.fn().mockReturnValue(event) } }
-    ;(getStripe as MockFn).mockReturnValue(stripeMock)
+      const intent = makeEnrolmentSucceededIntent()
+      const event = makeStripeEvent('payment_intent.succeeded', intent)
+      const stripeMock = { webhooks: { constructEvent: jest.fn().mockReturnValue(event) } }
+      ;(getStripe as MockFn).mockReturnValue(stripeMock)
 
-    const res = await callPost('{}')
-    expect(res.status).toBe(200)
+      const res = await callPost('{}')
+      expect(res.status).toBe(500)
+      expect(sendProgrammeConfirmation).not.toHaveBeenCalled()
+    } finally {
+      errorSpy.mockRestore()
+    }
   })
 })
 
@@ -1131,7 +1127,9 @@ describe('POST /api/webhooks/stripe — payment_intent.payment_failed (enrolment
   it('updates payment_intents to status=failed for a failed enrolment intent', async () => {
     const piChain: Record<string, MockFn> = {}
     piChain.update = jest.fn().mockReturnValue({
-      eq: jest.fn().mockResolvedValue({ data: null, error: null }),
+      eq: jest.fn().mockReturnValue({
+        neq: jest.fn().mockResolvedValue({ data: null, error: null }),
+      }),
     })
     const enrolmentFailChain: Record<string, MockFn> = {}
     enrolmentFailChain.update = jest.fn().mockReturnValue({
@@ -1144,7 +1142,7 @@ describe('POST /api/webhooks/stripe — payment_intent.payment_failed (enrolment
       .mockReturnValueOnce(piChain)             // payment_intents update
       .mockReturnValueOnce(enrolmentFailChain)  // group_programme_enrolments update
 
-    ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom, rpc: jest.fn() })
+    ;(createAdminClient as MockFn).mockReturnValue(adminMock(mockFrom, jest.fn()))
 
     const event = makeStripeEvent('payment_intent.payment_failed', makeFailedEnrolmentIntent())
     const stripeMock = { webhooks: { constructEvent: jest.fn().mockReturnValue(event) } }
@@ -1160,7 +1158,9 @@ describe('POST /api/webhooks/stripe — payment_intent.payment_failed (enrolment
   it('marks group_programme_enrolments payment_status=failed (scoped to pending)', async () => {
     const piChain: Record<string, MockFn> = {}
     piChain.update = jest.fn().mockReturnValue({
-      eq: jest.fn().mockResolvedValue({ data: null, error: null }),
+      eq: jest.fn().mockReturnValue({
+        neq: jest.fn().mockResolvedValue({ data: null, error: null }),
+      }),
     })
     const enrolmentFailChain: Record<string, MockFn> = {}
     enrolmentFailChain.update = jest.fn().mockReturnValue({
@@ -1172,7 +1172,7 @@ describe('POST /api/webhooks/stripe — payment_intent.payment_failed (enrolment
     const mockFrom = jest.fn()
       .mockReturnValueOnce(piChain)
       .mockReturnValueOnce(enrolmentFailChain)
-    ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom, rpc: jest.fn() })
+    ;(createAdminClient as MockFn).mockReturnValue(adminMock(mockFrom, jest.fn()))
 
     const event = makeStripeEvent('payment_intent.payment_failed', makeFailedEnrolmentIntent())
     const stripeMock = { webhooks: { constructEvent: jest.fn().mockReturnValue(event) } }
@@ -1237,7 +1237,7 @@ describe('POST /api/webhooks/stripe — payment_intent.canceled (BUG-13b)', () =
       .mockReturnValueOnce(piChain)
       .mockReturnValueOnce(bookingChain)
       .mockReturnValueOnce(profileChain)
-    ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom })
+    ;(createAdminClient as MockFn).mockReturnValue(adminMock(mockFrom))
 
     const event = makeStripeEvent('payment_intent.canceled', makeCanceledIntent())
     const stripeMock = { webhooks: { constructEvent: jest.fn().mockReturnValue(event) } }
@@ -1336,7 +1336,7 @@ describe('POST /api/webhooks/stripe — payment_intent.canceled (BUG-13b)', () =
     const mockFrom = jest.fn()
       .mockReturnValueOnce(piChain)
       .mockReturnValueOnce(enrolChain)
-    ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom })
+    ;(createAdminClient as MockFn).mockReturnValue(adminMock(mockFrom))
 
     const event = makeStripeEvent(
       'payment_intent.canceled',
@@ -1362,7 +1362,7 @@ describe('POST /api/webhooks/stripe — payment_intent.canceled (BUG-13b)', () =
       }),
     })
     const mockFrom = jest.fn().mockReturnValueOnce(piChain)
-    ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom })
+    ;(createAdminClient as MockFn).mockReturnValue(adminMock(mockFrom))
 
     const event = makeStripeEvent('payment_intent.canceled', makeCanceledIntent({}))
     const stripeMock = { webhooks: { constructEvent: jest.fn().mockReturnValue(event) } }
@@ -1444,6 +1444,9 @@ describe('POST /api/webhooks/stripe — succeeded-after-release backstop (BUG-13
         eq: jest.fn().mockResolvedValue({ data: null, error: null }),
       }),
     })
+    // BUG-15: on the conflict path the 5th from() call is the payment_alerts
+    // insert instead of the profile restore — the chain serves both.
+    profileChain.insert = jest.fn().mockResolvedValue({ data: null, error: null })
 
     const mockFrom = jest.fn()
       .mockReturnValueOnce(piChain)
@@ -1451,7 +1454,7 @@ describe('POST /api/webhooks/stripe — succeeded-after-release backstop (BUG-13
       .mockReturnValueOnce(lookupChain)
       .mockReturnValueOnce(restoreChain)
       .mockReturnValueOnce(profileChain)
-    ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom })
+    ;(createAdminClient as MockFn).mockReturnValue(adminMock(mockFrom))
 
     const event = makeStripeEvent('payment_intent.succeeded', makeSucceededIntent())
     const stripeMock = { webhooks: { constructEvent: jest.fn().mockReturnValue(event) } }
@@ -1492,6 +1495,15 @@ describe('POST /api/webhooks/stripe — succeeded-after-release backstop (BUG-13
       expect(manualRefundLogged).toBe(true)
       // No restore happened — the profile is never touched.
       expect(profileChain.update).not.toHaveBeenCalled()
+      // BUG-15: durable restore_conflict alert + ops email; the confirmation
+      // email is suppressed (a parent with no slot must not get "booked!").
+      expect(profileChain.insert).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: 'restore_conflict', booking_id: BOOKING_ID }),
+      )
+      expect(sendOpsAlert).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: 'restore_conflict' }),
+      )
+      expect(sendBookingConfirmation).not.toHaveBeenCalled()
     } finally {
       errorSpy.mockRestore()
     }
@@ -1518,24 +1530,24 @@ describe('POST /api/webhooks/stripe — succeeded-after-release backstop (BUG-13
 
 const CAMP_SESSION_ID_WH = '22222222-2222-4222-8222-222222222201'
 
-function setupCampEnrolmentMocks(options: { rpcResult?: boolean } = {}) {
-  const { rpcResult = true } = options
+function setupCampEnrolmentMocks(options: {
+  rpcResult?: { confirmed: boolean; spot_claimed: boolean }
+} = {}) {
+  const { rpcResult = { confirmed: true, spot_claimed: true } } = options
 
   const piChain: Record<string, MockFn> = {}
   piChain.update = jest.fn().mockReturnValue({
     eq: jest.fn().mockResolvedValue({ data: null, error: null }),
   })
 
+  // BUG-15: the flip + camp slot claim happen atomically inside
+  // confirm_programme_enrolment; the webhook then READS the enrolment back
+  // for the email.
   const enrolmentChain: Record<string, MockFn> = {}
-  enrolmentChain.update = jest.fn().mockReturnValue({
-    eq: jest.fn().mockReturnValue({
-      eq: jest.fn().mockReturnValue({
-        select: jest.fn().mockResolvedValue({
-          data: [{ ...CONFIRMED_ENROLMENT, payment_model: 'per_session', sessions_paid_for: 2 }],
-          error: null,
-        }),
-      }),
-    }),
+  for (const m of ['select', 'eq']) enrolmentChain[m] = jest.fn(() => enrolmentChain)
+  enrolmentChain.maybeSingle = jest.fn().mockResolvedValue({
+    data: { ...CONFIRMED_ENROLMENT, payment_model: 'per_session', sessions_paid_for: 2 },
+    error: null,
   })
 
   const programmeChain: Record<string, MockFn> = {}
@@ -1583,14 +1595,14 @@ function setupCampEnrolmentMocks(options: { rpcResult?: boolean } = {}) {
 
   const mockFrom = jest.fn()
     .mockReturnValueOnce(piChain)          // 1. payment_intents
-    .mockReturnValueOnce(enrolmentChain)   // 2. group_programme_enrolments
+    .mockReturnValueOnce(enrolmentChain)   // 2. group_programme_enrolments read-back
     .mockReturnValueOnce(programmeChain)   // 3. group_programmes
     .mockReturnValueOnce(junctionChain)    // 4. group_programme_enrolment_sessions
     .mockReturnValueOnce(sessionsChain)    // 5. group_programme_sessions
     .mockReturnValueOnce(coachChain)       // 6. coach_profiles
 
   const mockRpc = jest.fn().mockResolvedValue({ data: rpcResult, error: null })
-  ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom, rpc: mockRpc })
+  ;(createAdminClient as MockFn).mockReturnValue(adminMock(mockFrom, mockRpc))
 
   const intent = makeEnrolmentSucceededIntent()
   const event = makeStripeEvent('payment_intent.succeeded', intent)
@@ -1600,26 +1612,32 @@ function setupCampEnrolmentMocks(options: { rpcResult?: boolean } = {}) {
   return { mockFrom, mockRpc, intent }
 }
 
-describe('POST /api/webhooks/stripe — camp slot capacity (BUG-23)', () => {
-  it('confirms camp spots via confirm_camp_slot_spots, never increment_programme_spots', async () => {
+describe('POST /api/webhooks/stripe — camp slot capacity (BUG-23/BUG-15)', () => {
+  it('camps go through the same atomic confirm_programme_enrolment (claim lives in the DB)', async () => {
     const { mockRpc } = setupCampEnrolmentMocks()
     const res = await callPost('{}')
     expect(res.status).toBe(200)
 
-    expect(mockRpc).toHaveBeenCalledWith('confirm_camp_slot_spots', { p_enrolment_id: ENROLMENT_ID })
+    expect(mockRpc).toHaveBeenCalledTimes(1)
+    expect(mockRpc.mock.calls[0][0]).toBe('confirm_programme_enrolment')
     const calledFns = mockRpc.mock.calls.map((c) => c[0])
+    expect(calledFns).not.toContain('confirm_camp_slot_spots')
     expect(calledFns).not.toContain('increment_programme_spots')
   })
 
-  it('logs MANUAL REFUND NEEDED when a camp slot is over capacity at confirm', async () => {
-    setupCampEnrolmentMocks({ rpcResult: false })
+  it('camp over-capacity: MANUAL REFUND log + ops alert, email SUPPRESSED, still 200', async () => {
     const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined)
     try {
+      setupCampEnrolmentMocks({ rpcResult: { confirmed: true, spot_claimed: false } })
       const res = await callPost('{}')
-      expect(res.status).toBe(200) // never retry-loop Stripe
+      expect(res.status).toBe(200) // never retry-loop Stripe on a permanent outcome
+
       const logged = errorSpy.mock.calls.map((c) => String(c[0])).join('\n')
       expect(logged).toContain('MANUAL REFUND NEEDED')
-      expect(logged).toContain('camp slot is over capacity')
+      expect(sendProgrammeConfirmation).not.toHaveBeenCalled()
+      expect(sendOpsAlert).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: 'needs_refund' }),
+      )
     } finally {
       errorSpy.mockRestore()
     }
@@ -1638,14 +1656,187 @@ describe('POST /api/webhooks/stripe — camp slot capacity (BUG-23)', () => {
     ])
   })
 
-  it('non-camp enrolments still claim via increment_programme_spots with no session lines', async () => {
+  it('non-camp enrolments use the same RPC and carry no session lines', async () => {
     const { mockRpc } = setupEnrolmentMocks()
     await callPost('{}')
 
-    expect(mockRpc).toHaveBeenCalledWith('increment_programme_spots', { p_programme_id: PROGRAMME_ID_WH })
+    expect(mockRpc).toHaveBeenCalledWith('confirm_programme_enrolment', expect.objectContaining({
+      p_enrolment_id: ENROLMENT_ID,
+    }))
     const emailArg = (sendProgrammeConfirmation as jest.Mock).mock.calls[0][0] as {
       sessionLines?: string[]
     }
     expect(emailArg.sessionLines).toBeUndefined()
+  })
+})
+
+// ── BUG-15: event ledger + retryable/permanent split ──────────────────────────
+//
+// The ledger (stripe_webhook_events) runs BEFORE any handler: replays 200
+// immediately with zero handler work; a ledger DB failure 500s before any
+// side effect; repeated failures poison-bound at 8 attempts with a durable
+// webhook_poisoned alert.
+
+describe('POST /api/webhooks/stripe — event ledger (BUG-15)', () => {
+  function setupLedgerScenario(ledgerChain: ReturnType<typeof makeLedgerChain>) {
+    // A from() that throws if any handler runs — these tests assert the
+    // ledger short-circuits before any business logic.
+    const mockFrom = jest.fn(() => {
+      throw new Error('handler must not run')
+    })
+    const admin = adminMock(mockFrom, jest.fn(), ledgerChain)
+    ;(createAdminClient as MockFn).mockReturnValue(admin)
+
+    const event = makeStripeEvent('payment_intent.succeeded', makeSucceededIntent())
+    const stripeMock = { webhooks: { constructEvent: jest.fn().mockReturnValue(event) } }
+    ;(getStripe as MockFn).mockReturnValue(stripeMock)
+
+    return { mockFrom, admin }
+  }
+
+  it('replay: a processed event returns 200 without running any handler', async () => {
+    // insert → 23505 conflict; read-back → processed.
+    const ledger = makeLedgerChain()
+    ledger.insert = jest.fn(() => {
+      const chain: Record<string, unknown> = {
+        then: (resolve: (v: unknown) => void) => resolve({ error: { code: '23505', message: 'dup' } }),
+      }
+      return chain
+    })
+    ledger.single = jest.fn().mockResolvedValue({
+      data: { status: 'processed', attempts: 1, updated_at: new Date().toISOString() },
+      error: null,
+    })
+
+    const { mockFrom } = setupLedgerScenario(ledger)
+    const res = await callPost('{}')
+    expect(res.status).toBe(200)
+    expect(mockFrom).not.toHaveBeenCalled()
+  })
+
+  it('in-flight: a fresh processing row returns 200 without running any handler', async () => {
+    const ledger = makeLedgerChain()
+    ledger.insert = jest.fn(() => ({
+      then: (resolve: (v: unknown) => void) => resolve({ error: { code: '23505', message: 'dup' } }),
+    }))
+    ledger.single = jest.fn().mockResolvedValue({
+      data: { status: 'processing', attempts: 1, updated_at: new Date().toISOString() },
+      error: null,
+    })
+
+    const { mockFrom } = setupLedgerScenario(ledger)
+    const res = await callPost('{}')
+    expect(res.status).toBe(200)
+    expect(mockFrom).not.toHaveBeenCalled()
+  })
+
+  it('ledger insert failure → 500 with ZERO side effects (safest failure in the file)', async () => {
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      const ledger = makeLedgerChain({ error: { code: 'XX000', message: 'db down' } })
+      const { mockFrom } = setupLedgerScenario(ledger)
+      const res = await callPost('{}')
+      expect(res.status).toBe(500)
+      expect(mockFrom).not.toHaveBeenCalled()
+    } finally {
+      errorSpy.mockRestore()
+    }
+  })
+
+  it('a failed event redelivered → handler runs again (retry admitted)', async () => {
+    const ledger = makeLedgerChain()
+    ledger.insert = jest.fn(() => ({
+      then: (resolve: (v: unknown) => void) => resolve({ error: { code: '23505', message: 'dup' } }),
+    }))
+    ledger.single = jest.fn().mockResolvedValue({
+      data: { status: 'failed', attempts: 2, updated_at: new Date(Date.now() - 60_000).toISOString() },
+      error: null,
+    })
+
+    // This time the handler SHOULD run: give it working booking mocks.
+    const piChain: Record<string, MockFn> = {}
+    piChain.update = jest.fn().mockReturnValue({
+      eq: jest.fn().mockResolvedValue({ data: null, error: null }),
+    })
+    const bookingChain: Record<string, MockFn> = {}
+    bookingChain.update = jest.fn().mockReturnValue({
+      eq: jest.fn().mockReturnValue({
+        eq: jest.fn().mockReturnValue({
+          select: jest.fn().mockResolvedValue({ data: [], error: null }),
+        }),
+      }),
+    })
+    const lookupChain = makeChain({
+      data: { id: BOOKING_ID, status: 'confirmed', deleted_at: null, cancellation_reason: null, booked_by_user_id: 'u1', booking_reference: 'R' },
+    })
+    const mockFrom = jest.fn()
+      .mockReturnValueOnce(piChain)
+      .mockReturnValueOnce(bookingChain)
+      .mockReturnValueOnce(lookupChain)
+    ;(createAdminClient as MockFn).mockReturnValue(adminMock(mockFrom, jest.fn(), ledger))
+
+    const event = makeStripeEvent('payment_intent.succeeded', makeSucceededIntent())
+    const stripeMock = { webhooks: { constructEvent: jest.fn().mockReturnValue(event) } }
+    ;(getStripe as MockFn).mockReturnValue(stripeMock)
+
+    const res = await callPost('{}')
+    expect(res.status).toBe(200)
+    expect(mockFrom).toHaveBeenCalled() // handler genuinely ran
+  })
+
+  it('poison bound: attempts cap → webhook_poisoned alert, 200, handler never runs', async () => {
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      const ledger = makeLedgerChain()
+      ledger.insert = jest.fn((arg: Record<string, unknown>) => {
+        // First insert call is the ledger row (conflicts); a later insert on
+        // the SAME intercepted chain is the payment_alerts row — resolve ok
+        // and record it for the assertion below.
+        if (arg && (arg as { kind?: string }).kind === 'webhook_poisoned') {
+          return { then: (resolve: (v: unknown) => void) => resolve({ error: null }) }
+        }
+        return { then: (resolve: (v: unknown) => void) => resolve({ error: { code: '23505', message: 'dup' } }) }
+      })
+      ledger.single = jest.fn().mockResolvedValue({
+        data: { status: 'failed', attempts: 7, updated_at: new Date(Date.now() - 3600_000).toISOString() },
+        error: null,
+      })
+
+      // payment_alerts insert goes through from('payment_alerts') — NOT the
+      // ledger table — so the interceptor routes it to the inner mock:
+      const alertChain: Record<string, MockFn> = {}
+      alertChain.insert = jest.fn().mockResolvedValue({ data: null, error: null })
+      const mockFrom = jest.fn().mockReturnValue(alertChain)
+      ;(createAdminClient as MockFn).mockReturnValue(adminMock(mockFrom, jest.fn(), ledger))
+
+      const event = makeStripeEvent('payment_intent.succeeded', makeSucceededIntent())
+      const stripeMock = { webhooks: { constructEvent: jest.fn().mockReturnValue(event) } }
+      ;(getStripe as MockFn).mockReturnValue(stripeMock)
+
+      const res = await callPost('{}')
+      expect(res.status).toBe(200)
+      expect(alertChain.insert).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: 'webhook_poisoned' }),
+      )
+      expect(sendOpsAlert).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: 'webhook_poisoned' }),
+      )
+      // Only the alert insert ran — no business handler.
+      expect((mockFrom as MockFn).mock.calls.every((c) => c[0] === 'payment_alerts')).toBe(true)
+    } finally {
+      errorSpy.mockRestore()
+    }
+  })
+
+  it('ruling 3: an ops-alert email failure never affects the response', async () => {
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      ;(sendOpsAlert as jest.Mock).mockRejectedValueOnce(new Error('resend down'))
+      setupEnrolmentMocks({ rpcResult: { confirmed: true, spot_claimed: false } })
+      const res = await callPost('{}')
+      expect(res.status).toBe(200)
+    } finally {
+      errorSpy.mockRestore()
+    }
   })
 })

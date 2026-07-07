@@ -1,9 +1,4 @@
-// BUG-STRIPE-ONBOARDING-COMPLETE-WIRING: Stripe webhook receiver.
-//
-// Single responsibility right now: persist `coach_profiles.stripe_onboarding_complete`
-// when Stripe sends an `account.updated` event. Every other event type is
-// acknowledged with 200 and ignored — Stripe retries on non-2xx, so unknown
-// types MUST return 200 or we self-DoS.
+// Stripe webhook receiver — the money pipe.
 //
 // Security non-negotiables (docs/06_SECURITY_COMPLIANCE.md §Payment Security):
 //   - Verify the signature BEFORE touching the payload.
@@ -16,8 +11,11 @@
 //
 // Handled events:
 //   - account.updated                 → coach Connect onboarding status
-//   - payment_intent.succeeded        → confirm guest booking (P-00c-API)
-//   - payment_intent.payment_failed   → record payment failure (P-00c-API)
+//   - payment_intent.succeeded        → confirm guest booking (P-00c-API) or
+//                                       programme enrolment (P-00c-ENROL,
+//                                       atomic confirm-and-claim — BUG-15)
+//   - payment_intent.payment_failed   → record payment failure (never
+//                                       downgrades a succeeded row — BUG-15)
 //   - payment_intent.canceled         → release the held slot (BUG-13b)
 //
 // Event semantics for our card-only, auto-capture PaymentIntents (BUG-13b):
@@ -27,15 +25,21 @@
 //   — so it releases immediately. Time-based abandonment (no signal at all) is
 //   handled by the reaper: GET /api/cron/release-expired-bookings.
 //
-// Idempotency: each handler is self-guarding rather than relying on a shared
-// audit table. account.updated writes an idempotent boolean; the booking confirm
-// is scoped to status='pending_payment' so redelivery is a no-op; the PI audit
-// updates are state-convergent. A `stripe_webhook_events` table keyed on event.id
-// is the next hardening step if we add non-idempotent side effects.
+// Reliability (BUG-15): a durable stripe_webhook_events ledger makes the
+// route idempotent at the EVENT level (replays 200 before any handler runs),
+// and failures split explicitly: TRANSIENT → 500 so Stripe redelivers (the
+// per-handler status scoping makes every retry safe); PERMANENT → 200 with a
+// durable payment_alerts row wherever money needs a human (refund policy B —
+// manual refund via the Stripe Dashboard, ops email via OPS_ALERT_EMAIL).
+// Unknown event types still 200 immediately — Stripe retries on non-2xx and
+// unhandled types must never self-DoS.
 //
 // Booking-confirmation email (P-00c-EMAIL) is sent inside the booking-confirm
-// transition — single-fire is guaranteed by the pending_payment guard, and email
-// failure never affects the 200 response (sendBookingConfirmation never throws).
+// transition — single-fire is guaranteed by the pending_payment guard, and
+// email failure never affects the response (senders never throw). The
+// confirmation email is SUPPRESSED when money was taken but no spot/slot
+// exists (paid-but-no-spot, restore-conflict) — the payment_alerts row and
+// ops email are the channel (approved BUG-15 ruling).
 //
 // Follow-ups:
 //   - Add `account.application.deauthorized` so a revoked Connect account flips
@@ -47,6 +51,7 @@ import { getStripe } from '@/lib/stripe/client'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendBookingConfirmation } from '@/lib/resend/send-booking-confirmation'
 import { sendProgrammeConfirmation } from '@/lib/resend/send-programme-confirmation'
+import { sendOpsAlert } from '@/lib/resend/send-ops-alert'
 import { addMinutesToTime } from '@/lib/booking/guest-checkout'
 import { RELEASE_REASON_PI_CANCELLED, isReleaseReason } from '@/lib/booking/release'
 import { expandSessionBlocks, slotDisplayName } from '@/lib/availability/campSlots'
@@ -56,13 +61,144 @@ type SupabaseAdminClient = ReturnType<typeof createAdminClient>
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
+// ─── BUG-15: event ledger + retryable/permanent split ─────────────────────────
+//
+// Every event that passes signature verification is recorded in
+// stripe_webhook_events (migration 041) BEFORE any handler runs:
+//   processed            → replay: 200 immediately, no handler runs
+//   processing (fresh)   → concurrent delivery in flight: 200 (the per-handler
+//                          status scoping remains the inner defence)
+//   processing (stale) / failed → legitimate Stripe retry: run again
+// Handler failures split two ways:
+//   TRANSIENT (DB unreachable, write failed)  → ledger 'failed' + HTTP 500 —
+//     Stripe redelivers within its ~72h window. Signalled by throwing
+//     RetryableWebhookError; unexpected throws take the same path, bounded by
+//     the attempts cap below.
+//   PERMANENT (idempotent no-op, slot conflict, email failure) → handled
+//     inline (durable payment_alerts row where money is involved) + 200.
+// attempts >= POISON_ATTEMPTS_CAP marks the event processed + writes a
+// webhook_poisoned alert — a broken event stops burning retries but is never
+// silently lost. If the ledger INSERT itself fails we return 500 before any
+// side effect — the safest failure in the file (approved ruling 1).
+
+/** Thrown by handlers for transient failures where a Stripe redelivery can
+ * succeed. The dispatcher maps it to ledger 'failed' + HTTP 500. */
+class RetryableWebhookError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'RetryableWebhookError'
+  }
+}
+
+const POISON_ATTEMPTS_CAP = 8
+const STALE_PROCESSING_MINUTES = 10
+
+type LedgerDecision = 'run' | 'skip'
+
+/**
+ * Insert-first ledger check. Returns 'run' (process the event) or 'skip'
+ * (already processed / in flight / just poison-bounded → respond 200).
+ * Throws RetryableWebhookError on any ledger DB failure — no side effects
+ * have happened yet, so a 500 here is always safe.
+ */
+async function beginLedgerEvent(
+  adminSupabase: SupabaseAdminClient,
+  event: Stripe.Event,
+): Promise<LedgerDecision> {
+  const { error: insertError } = await adminSupabase
+    .from('stripe_webhook_events')
+    .insert({ event_id: event.id, event_type: event.type })
+
+  if (!insertError) return 'run'
+  if (insertError.code !== '23505') {
+    throw new RetryableWebhookError(`ledger insert failed: ${insertError.message}`)
+  }
+
+  // Seen before — decide from the existing row.
+  const { data: row, error: readError } = await adminSupabase
+    .from('stripe_webhook_events')
+    .select('status, attempts, updated_at')
+    .eq('event_id', event.id)
+    .single()
+
+  if (readError || !row) {
+    throw new RetryableWebhookError(`ledger read failed: ${readError?.message ?? 'row missing'}`)
+  }
+
+  if (row.status === 'processed') {
+    console.info(`[Stripe Webhook] ${event.id} already processed — replay acknowledged`)
+    return 'skip'
+  }
+
+  const ageMs = Date.now() - new Date(row.updated_at).getTime()
+  if (row.status === 'processing' && ageMs < STALE_PROCESSING_MINUTES * 60_000) {
+    console.info(`[Stripe Webhook] ${event.id} in flight — concurrent delivery acknowledged`)
+    return 'skip'
+  }
+
+  const attempts = row.attempts + 1
+  if (attempts >= POISON_ATTEMPTS_CAP) {
+    // Poison bound: this event has failed repeatedly — stop retrying, keep a
+    // durable record. Never silently lost (approved ruling 1).
+    const detail =
+      `Webhook event ${event.id} (${event.type}) hit the ${POISON_ATTEMPTS_CAP}-attempt cap ` +
+      `and was marked processed without completing. Last error: ${row.status === 'failed' ? 'see ledger last_error' : 'stale processing lease'}.`
+    const { error: alertError } = await adminSupabase
+      .from('payment_alerts')
+      .insert({ kind: 'webhook_poisoned', detail })
+    if (alertError) {
+      throw new RetryableWebhookError(`poison alert insert failed: ${alertError.message}`)
+    }
+    const { error: poisonError } = await adminSupabase
+      .from('stripe_webhook_events')
+      .update({ status: 'processed', attempts, last_error: 'poisoned: attempts cap reached' })
+      .eq('event_id', event.id)
+    if (poisonError) {
+      console.error(`[Stripe Webhook] poison mark failed for ${event.id}:`, poisonError)
+    }
+    console.error(`[Stripe Webhook] POISONED: ${detail}`)
+    await sendOpsAlert({ kind: 'webhook_poisoned', detail }).catch(() => undefined)
+    return 'skip'
+  }
+
+  const { error: retryError } = await adminSupabase
+    .from('stripe_webhook_events')
+    .update({ status: 'processing', attempts })
+    .eq('event_id', event.id)
+  if (retryError) {
+    throw new RetryableWebhookError(`ledger retry update failed: ${retryError.message}`)
+  }
+  return 'run'
+}
+
+/** Best-effort terminal ledger updates. Failures are logged, never thrown —
+ * by the time these run the outcome is already decided. */
+async function markLedger(
+  adminSupabase: SupabaseAdminClient,
+  eventId: string,
+  status: 'processed' | 'failed',
+  lastError?: string,
+): Promise<void> {
+  const { error } = await adminSupabase
+    .from('stripe_webhook_events')
+    .update({ status, last_error: lastError ?? null })
+    .eq('event_id', eventId)
+  if (error) {
+    console.error(`[Stripe Webhook] ledger ${status} mark failed for ${eventId}:`, error)
+  }
+}
+
 /**
  * POST /api/webhooks/stripe
  *
- * Verifies the Stripe signature, dispatches the event, and ALWAYS returns 200
- * once the signature has passed (even on DB error — never trigger Stripe
- * retry loops). Returns 400 on signature failure and 500 only if the webhook
- * signing secret is unconfigured.
+ * Verifies the Stripe signature, checks the event ledger, dispatches, and
+ * returns:
+ *   400 — signature failure (Stripe surfaces it, no retry storm)
+ *   200 — processed, replayed, in-flight, poison-bounded, or a PERMANENT
+ *         handler outcome (durable payment_alerts row where money needs a
+ *         human — refund policy B)
+ *   500 — TRANSIENT failure (ledger or handler DB error): Stripe redelivers;
+ *         every handler is idempotent under redelivery (BUG-15)
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
   // 1. Pull the signing secret. Crash early at request time if missing rather
@@ -115,8 +251,25 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Invalid signature' }, { status: 400 })
   }
 
-  // 5. Dispatch. Wrapped in a catch-all so DB / handler errors don't propagate
-  //    as 5xx — Stripe retries on any non-2xx and we MUST NOT induce loops.
+  // 5. Ledger (BUG-15): record the event BEFORE any handler side effect.
+  //    Replays and in-flight duplicates stop here with a 200; a ledger DB
+  //    failure returns 500 with zero side effects — Stripe redelivers.
+  const adminSupabase = createAdminClient()
+  try {
+    const decision = await beginLedgerEvent(adminSupabase, event)
+    if (decision === 'skip') {
+      return NextResponse.json({ received: true }, { status: 200 })
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'unknown'
+    console.error(`[Stripe Webhook] ledger failed for ${event.id} — 500 for redelivery:`, message)
+    return NextResponse.json({ error: 'Ledger unavailable' }, { status: 500 })
+  }
+
+  // 6. Dispatch. TRANSIENT failures (RetryableWebhookError, or any unexpected
+  //    throw — bounded by the attempts cap) → ledger 'failed' + 500 so Stripe
+  //    redelivers. PERMANENT outcomes are handled inside the handlers (durable
+  //    payment_alerts rows where money is involved) and fall through to 200.
   try {
     switch (event.type) {
       case 'account.updated':
@@ -152,11 +305,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         console.info(`[Stripe Webhook] Unhandled event type: ${event.type}`)
     }
   } catch (err) {
-    // Handler-level catch-all. Per the task brief: NEVER let DB errors cause
-    // retry loops. Log and return 200 so Stripe stops retrying.
-    console.error(`[Stripe Webhook] Handler threw for event ${event.type}:`, err)
+    const message = err instanceof Error ? err.message : 'unknown'
+    console.error(
+      `[Stripe Webhook] ${err instanceof RetryableWebhookError ? 'transient' : 'unexpected'} failure for ${event.id} (${event.type}) — 500 for redelivery:`,
+      message,
+    )
+    await markLedger(adminSupabase, event.id, 'failed', message)
+    return NextResponse.json({ error: 'Handler failed' }, { status: 500 })
   }
 
+  // Success. If this terminal mark fails the row stays 'processing' and the
+  // stale lease re-admits a later replay — safe, because every handler is
+  // idempotent; the side effects are complete, so still 200.
+  await markLedger(adminSupabase, event.id, 'processed')
   return NextResponse.json({ received: true }, { status: 200 })
 }
 
@@ -181,15 +342,11 @@ async function handleAccountUpdated(account: Stripe.Account): Promise<void> {
     .select('id')
 
   if (updateError) {
-    // DB error during an otherwise valid event. Log and let the outer handler
-    // return 200 — never retry-loop. Coach UI continues to poll Stripe directly
-    // (see /api/payments/connect/onboard) until the next account.updated event
-    // lands.
-    console.error(
-      `[Stripe Webhook] account.updated DB update failed for ${account.id}:`,
-      updateError,
+    // BUG-15: transient DB failure — 500 so Stripe redelivers (the write is
+    // an idempotent boolean; a retry is always safe).
+    throw new RetryableWebhookError(
+      `account.updated DB update failed for ${account.id}: ${updateError.message}`,
     )
-    return
   }
 
   if (!rows || rows.length === 0) {
@@ -240,14 +397,15 @@ async function handlePaymentIntentSucceeded(intent: Stripe.PaymentIntent): Promi
 
   const adminSupabase = createAdminClient()
 
-  // Always reconcile the audit row to the terminal success state.
+  // Always reconcile the audit row to the terminal success state. BUG-15:
+  // transient failure → 500 (idempotent write, retry always safe).
   const { error: piError } = await adminSupabase
     .from('payment_intents')
     .update({ status: 'succeeded', stripe_status: intent.status })
     .eq('stripe_payment_intent_id', intent.id)
 
   if (piError) {
-    console.error(`[Stripe Webhook] payment_intents update failed for ${intent.id}:`, piError)
+    throw new RetryableWebhookError(`payment_intents update failed for ${intent.id}: ${piError.message}`)
   }
 
   // Confirm the booking only if still awaiting payment — this is the idempotency
@@ -262,8 +420,9 @@ async function handlePaymentIntentSucceeded(intent: Stripe.PaymentIntent): Promi
     )
 
   if (bookingError) {
-    console.error(`[Stripe Webhook] booking confirm failed for ${bookingId}:`, bookingError)
-    return
+    // BUG-15: a paid booking we failed to confirm is the worst event to lose —
+    // 500 so Stripe redelivers (the pending_payment scope makes retries safe).
+    throw new RetryableWebhookError(`booking confirm failed for ${bookingId}: ${bookingError.message}`)
   }
 
   if (!confirmed || confirmed.length === 0) {
@@ -279,7 +438,13 @@ async function handlePaymentIntentSucceeded(intent: Stripe.PaymentIntent): Promi
 
   console.info(`[Stripe Webhook] booking ${bookingId} confirmed via ${intent.id}`)
 
-  await sendGuestBookingConfirmationEmail(adminSupabase, confirmed[0], intent)
+  // BUG-15: email failures are PERMANENT — never convert to a retryable 500
+  // (a redelivery would no-op at the confirm guard and still send no email).
+  try {
+    await sendGuestBookingConfirmationEmail(adminSupabase, confirmed[0], intent)
+  } catch (err) {
+    console.error(`[Stripe Webhook] confirmation email crashed for ${bookingId}:`, err)
+  }
 }
 
 /** Booking row shape needed to build the confirmation email. */
@@ -389,8 +554,8 @@ async function restoreReleasedBookingIfPaid(
     .maybeSingle()
 
   if (rowError) {
-    console.error(`[Stripe Webhook] released-booking lookup failed for ${bookingId}:`, rowError)
-    return
+    // BUG-15: transient — this path guards real money; never lose the event.
+    throw new RetryableWebhookError(`released-booking lookup failed for ${bookingId}: ${rowError.message}`)
   }
 
   if (!row || row.status !== 'pending_payment' || !row.deleted_at || !isReleaseReason(row.cancellation_reason)) {
@@ -419,12 +584,36 @@ async function restoreReleasedBookingIfPaid(
     // (exclusion_violation, coach_time_claims trigger — BUG-19 Phase 2) both
     // mean the slot's time was re-committed after release. Either way money
     // was taken for a booking we cannot restore — this MUST reach a human.
-    console.error(
-      `[Stripe Webhook] MANUAL REFUND NEEDED: booking ${bookingId} (${row.booking_reference}) ` +
-        `paid via ${intent.id} AFTER release and restore failed ` +
-        `(23505/23P01 = slot re-taken). Refund the payer and reconcile:`,
-      restoreError,
-    )
+    //
+    // BUG-15 (refund policy B): durable payment_alerts row + ops email;
+    // refund is manual via the Stripe Dashboard. PERMANENT outcome —
+    // retrying cannot free the slot. The confirmation email is suppressed by
+    // construction (this return path never reaches the send). If the alert
+    // insert itself fails we throw retryable: the refund flag must not be
+    // lost, and no state changed on this delivery (the restore no-oped).
+    const detail =
+      `Booking ${bookingId} (${row.booking_reference}) paid via ${intent.id} AFTER its slot was ` +
+      `released, and the restore failed because the slot was re-taken (23505/23P01). ` +
+      `Confirmation email suppressed. Refund the payer in the Stripe Dashboard and contact them.`
+    const { error: alertError } = await adminSupabase.from('payment_alerts').insert({
+      kind: 'restore_conflict',
+      booking_id: bookingId,
+      stripe_payment_intent_id: intent.id,
+      amount_pence: intent.amount,
+      currency: (intent.currency ?? 'gbp').toUpperCase(),
+      detail,
+    })
+    if (alertError) {
+      throw new RetryableWebhookError(`restore_conflict alert insert failed: ${alertError.message}`)
+    }
+    console.error(`[Stripe Webhook] MANUAL REFUND NEEDED (alert recorded): ${detail}`, restoreError)
+    await sendOpsAlert({
+      kind: 'restore_conflict',
+      detail,
+      stripePaymentIntentId: intent.id,
+      amountPence: intent.amount,
+      currency: (intent.currency ?? 'gbp').toUpperCase(),
+    }).catch(() => undefined)
     return
   }
 
@@ -448,18 +637,30 @@ async function restoreReleasedBookingIfPaid(
     `[Stripe Webhook] booking ${bookingId} RESTORED after release via ${intent.id} (succeeded-after-release backstop)`,
   )
 
-  await sendGuestBookingConfirmationEmail(adminSupabase, restored[0], intent)
+  try {
+    await sendGuestBookingConfirmationEmail(adminSupabase, restored[0], intent)
+  } catch (err) {
+    console.error(`[Stripe Webhook] restore confirmation email crashed for ${bookingId}:`, err)
+  }
 }
 
 /**
  * payment_intent.succeeded for a GUEST PROGRAMME ENROLMENT (P-00c-ENROL).
  *
- * Mirrors the booking confirm: flips payment_status 'pending' → 'succeeded'
- * (idempotency guard scopes the UPDATE to 'pending'), then atomically claims a
- * programme spot via increment_programme_spots(). If the programme filled between
- * checkout and confirmation (RPC returns false), we log loudly for a manual
- * refund (S0 decision 3) — the payment already cleared. Sends the enrolment
- * confirmation email from the intent metadata. Never throws.
+ * BUG-15: the confirm and the spot claim are ONE transaction —
+ * confirm_programme_enrolment() (migration 041) flips payment_status
+ * 'pending' → 'succeeded' AND claims the spot (camps → confirm_camp_slot_spots
+ * per BUG-23 ruling 3; regular → increment_programme_spots) atomically. The
+ * old two-write flow had a crash window where a redelivery hit the pending
+ * guard and the spot was never claimed; now a crash rolls both back and the
+ * redelivery re-runs cleanly — the spot is claimed exactly once.
+ *
+ * Outcomes: {confirmed:false} = redelivery no-op. {spot_claimed:false} =
+ * capacity overrun past the reservation TTL — a needs_refund payment_alerts
+ * row was written in the same transaction; the confirmation email is
+ * SUPPRESSED (approved ruling: a parent with no spot must not receive
+ * "You're enrolled!") and the ops email fires instead. Transient DB failures
+ * throw RetryableWebhookError → 500 → Stripe redelivers.
  */
 async function handleEnrolmentSucceeded(intent: Stripe.PaymentIntent, enrolmentId: string): Promise<void> {
   const adminSupabase = createAdminClient()
@@ -470,67 +671,67 @@ async function handleEnrolmentSucceeded(intent: Stripe.PaymentIntent, enrolmentI
     .update({ status: 'succeeded', stripe_status: intent.status })
     .eq('stripe_payment_intent_id', intent.id)
   if (piError) {
-    console.error(`[Stripe Webhook] payment_intents update failed for ${intent.id}:`, piError)
+    throw new RetryableWebhookError(`payment_intents update failed for ${intent.id}: ${piError.message}`)
   }
 
-  // Confirm only while still pending — idempotency guard against redelivery.
-  const { data: confirmed, error: enrolError } = await adminSupabase
-    .from('group_programme_enrolments')
-    .update({ payment_status: 'succeeded', updated_at: new Date().toISOString() })
-    .eq('id', enrolmentId)
-    .eq('payment_status', 'pending')
-    .select('id, programme_id, enrolment_reference, payment_model, sessions_paid_for')
-
-  if (enrolError) {
-    console.error(`[Stripe Webhook] enrolment confirm failed for ${enrolmentId}:`, enrolError)
-    return
+  // Atomic confirm-and-claim (BUG-15). All-or-nothing under the hood.
+  const { data: confirmResult, error: confirmError } = await adminSupabase.rpc(
+    'confirm_programme_enrolment',
+    {
+      p_enrolment_id: enrolmentId,
+      p_intent_id: intent.id,
+      p_amount_pence: intent.amount,
+      p_currency: (intent.currency ?? 'gbp').toUpperCase(),
+    },
+  )
+  if (confirmError) {
+    throw new RetryableWebhookError(`confirm_programme_enrolment failed for ${enrolmentId}: ${confirmError.message}`)
   }
-  if (!confirmed || confirmed.length === 0) {
+
+  const result = confirmResult as { confirmed: boolean; spot_claimed: boolean }
+  if (!result.confirmed) {
     console.info(`[Stripe Webhook] enrolment ${enrolmentId} not in pending; skipping (idempotent)`)
     return
   }
-  const enrolment = confirmed[0]
 
-  // Programme row fetched BEFORE the spot claim (BUG-23): camp_mode decides
-  // which capacity mechanism confirms the spot; the same row feeds the email.
+  if (!result.spot_claimed) {
+    // Paid but no spot (capacity overran past the reservation-hold TTL). The
+    // durable needs_refund alert was written inside the RPC's transaction.
+    // PERMANENT outcome — retrying cannot create capacity. Email suppressed.
+    const detail =
+      `Enrolment ${enrolmentId} paid via ${intent.id} but the programme/slot filled in the ` +
+      `race window. needs_refund alert recorded; confirmation email suppressed. ` +
+      `Refund manually in the Stripe Dashboard and contact the parent.`
+    console.error(`[Stripe Webhook] MANUAL REFUND NEEDED (alert recorded): ${detail}`)
+    await sendOpsAlert({
+      kind: 'needs_refund',
+      detail,
+      stripePaymentIntentId: intent.id,
+      amountPence: intent.amount,
+      currency: (intent.currency ?? 'gbp').toUpperCase(),
+    }).catch(() => undefined)
+    return
+  }
+
+  // Money state is settled and the spot is held — everything below is email
+  // assembly. Failures here are PERMANENT (log + skip): a redelivery would
+  // no-op at {confirmed:false} and never resend the email anyway.
+  const { data: enrolmentRow, error: enrolmentReadError } = await adminSupabase
+    .from('group_programme_enrolments')
+    .select('id, programme_id, enrolment_reference, payment_model, sessions_paid_for')
+    .eq('id', enrolmentId)
+    .maybeSingle()
+  if (enrolmentReadError || !enrolmentRow) {
+    console.error(`[Stripe Webhook] enrolment read-back failed for ${enrolmentId} — email skipped:`, enrolmentReadError)
+    return
+  }
+  const enrolment = enrolmentRow
+
   const { data: programme } = await adminSupabase
     .from('group_programmes')
     .select('title, day_of_week, days_of_week, start_time, duration_minutes, coach_profile_id, camp_mode')
     .eq('id', enrolment.programme_id)
     .maybeSingle()
-
-  // Atomic, capacity-guarded spot claim. false = filled in the race window →
-  // log for manual refund (S0 decision 3). The payment is already taken.
-  //
-  // BUG-23 ruling 3: camp capacity is PER SLOT — confirm_camp_slot_spots()
-  // re-counts succeeded others per (session, slot) under the migration-040
-  // lock; camps never touch increment_programme_spots (current_spots stays 0).
-  // Non-camp keeps the programme-level claim, byte-identical.
-  if (programme?.camp_mode) {
-    const { data: slotsOk, error: slotError } = await adminSupabase.rpc('confirm_camp_slot_spots', {
-      p_enrolment_id: enrolment.id,
-    })
-    if (slotError) {
-      console.error(`[Stripe Webhook] confirm_camp_slot_spots failed for ${enrolment.id}:`, slotError)
-    } else if (slotsOk === false) {
-      console.error(
-        `[Stripe Webhook] MANUAL REFUND NEEDED: enrolment ${enrolmentId} (${enrolment.enrolment_reference}) ` +
-          `paid via ${intent.id} but a selected camp slot is over capacity`,
-      )
-    }
-  } else {
-    const { data: claimed, error: spotError } = await adminSupabase.rpc('increment_programme_spots', {
-      p_programme_id: enrolment.programme_id,
-    })
-    if (spotError) {
-      console.error(`[Stripe Webhook] increment_programme_spots failed for ${enrolment.programme_id}:`, spotError)
-    } else if (claimed === false) {
-      console.error(
-        `[Stripe Webhook] MANUAL REFUND NEEDED: enrolment ${enrolmentId} (${enrolment.enrolment_reference}) ` +
-          `paid via ${intent.id} but programme ${enrolment.programme_id} is full`,
-      )
-    }
-  }
 
   console.info(`[Stripe Webhook] enrolment ${enrolmentId} confirmed via ${intent.id}`)
 
@@ -748,6 +949,10 @@ async function handlePaymentIntentFailed(intent: Stripe.PaymentIntent): Promise<
   const lastError = intent.last_payment_error
   const adminSupabase = createAdminClient()
 
+  // BUG-15 risk 5: never downgrade a succeeded audit row. A payment_failed
+  // event delivered late (or replayed) after payment_intent.succeeded must
+  // not overwrite the terminal success — the same .neq guard the canceled
+  // handler (BUG-13b) already uses.
   const { error } = await adminSupabase
     .from('payment_intents')
     .update({
@@ -757,10 +962,10 @@ async function handlePaymentIntentFailed(intent: Stripe.PaymentIntent): Promise<
       stripe_error_message: lastError?.message ?? null,
     })
     .eq('stripe_payment_intent_id', intent.id)
+    .neq('status', 'succeeded')
 
   if (error) {
-    console.error(`[Stripe Webhook] payment_intents failure update failed for ${intent.id}:`, error)
-    return
+    throw new RetryableWebhookError(`payment_intents failure update failed for ${intent.id}: ${error.message}`)
   }
 
   // For a programme enrolment, also mark the enrolment failed (only while still
@@ -773,7 +978,7 @@ async function handlePaymentIntentFailed(intent: Stripe.PaymentIntent): Promise<
       .eq('id', enrolmentId)
       .eq('payment_status', 'pending')
     if (enrolError) {
-      console.error(`[Stripe Webhook] enrolment failure update failed for ${enrolmentId}:`, enrolError)
+      throw new RetryableWebhookError(`enrolment failure update failed for ${enrolmentId}: ${enrolError.message}`)
     }
   }
 
@@ -819,7 +1024,9 @@ async function handlePaymentIntentCanceled(intent: Stripe.PaymentIntent): Promis
     .neq('status', 'succeeded')
 
   if (piError) {
-    console.error(`[Stripe Webhook] payment_intents cancel update failed for ${intent.id}:`, piError)
+    // BUG-15: transient — the release below must not run off a failed audit
+    // write; 500 and let Stripe redeliver (every write here is idempotent).
+    throw new RetryableWebhookError(`payment_intents cancel update failed for ${intent.id}: ${piError.message}`)
   }
 
   const enrolmentId = intent.metadata?.enrolment_id
@@ -830,7 +1037,7 @@ async function handlePaymentIntentCanceled(intent: Stripe.PaymentIntent): Promis
       .eq('id', enrolmentId)
       .eq('payment_status', 'pending')
     if (enrolError) {
-      console.error(`[Stripe Webhook] enrolment cancel update failed for ${enrolmentId}:`, enrolError)
+      throw new RetryableWebhookError(`enrolment cancel update failed for ${enrolmentId}: ${enrolError.message}`)
     }
     return
   }
@@ -856,8 +1063,10 @@ async function handlePaymentIntentCanceled(intent: Stripe.PaymentIntent): Promis
     .select('id, booked_by_user_id')
 
   if (releaseError) {
-    console.error(`[Stripe Webhook] booking release failed for ${bookingId}:`, releaseError)
-    return
+    // BUG-15: a lost release = a permanently blocked slot. 500 → redelivery
+    // (the live-pending_payment scope makes the retry a clean no-op or the
+    // release itself — BUG-13b semantics unchanged).
+    throw new RetryableWebhookError(`booking release failed for ${bookingId}: ${releaseError.message}`)
   }
 
   if (!released || released.length === 0) {

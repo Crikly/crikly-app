@@ -127,10 +127,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     skipped_stripe: 0,
     errors: 0,
     claims_reconciled: 0,
+    ledger_pruned: 0,
   }
 
   if (rows.length === 0) {
     counts.claims_reconciled = await reconcileClaims(supabase)
+    counts.ledger_pruned = await pruneWebhookLedger(supabase)
     return NextResponse.json(counts)
   }
 
@@ -272,13 +274,36 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
 
   counts.claims_reconciled = await reconcileClaims(supabase)
+  counts.ledger_pruned = await pruneWebhookLedger(supabase)
 
   console.info(
     `[Reaper] run complete: checked=${counts.checked} released=${counts.released} ` +
       `active=${counts.skipped_active} stripe_skip=${counts.skipped_stripe} errors=${counts.errors} ` +
-      `claims_reconciled=${counts.claims_reconciled}`,
+      `claims_reconciled=${counts.claims_reconciled} ledger_pruned=${counts.ledger_pruned}`,
   )
   return NextResponse.json(counts)
+}
+
+/**
+ * BUG-15: prune stripe_webhook_events rows older than 30 days (approved
+ * ruling 4 — same cron, no new schedule). Stripe's retry window is ~72h, so
+ * 30 days is pure audit headroom; payment_alerts is never pruned. Never
+ * throws — a failed prune must not break the reaper.
+ */
+const LEDGER_RETENTION_DAYS = 30
+
+async function pruneWebhookLedger(supabase: ReturnType<typeof createAdminClient>): Promise<number> {
+  const cutoff = new Date(Date.now() - LEDGER_RETENTION_DAYS * 24 * 3600_000).toISOString()
+  const { data, error } = await supabase
+    .from('stripe_webhook_events')
+    .delete()
+    .lt('first_seen_at', cutoff)
+    .select('event_id')
+  if (error) {
+    console.error('[Reaper] webhook ledger prune failed:', error)
+    return 0
+  }
+  return data?.length ?? 0
 }
 
 /**

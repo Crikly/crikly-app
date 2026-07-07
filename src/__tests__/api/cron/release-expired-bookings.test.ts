@@ -132,7 +132,16 @@ async function callGet(auth?: string | null) {
 // clean sweep (0 released). Tests pass their own rpc mock to exercise the
 // drift / failure paths.
 function adminClient(from: unknown, rpc?: MockFn) {
-  return { from, rpc: rpc ?? jest.fn().mockResolvedValue({ data: 0, error: null }) }
+  // BUG-15: every authorised run also prunes the stripe_webhook_events
+  // ledger. Intercept that table with a permissive chain so the per-test
+  // from() mocks stay positional and unaware of the prune.
+  const ledgerChain: Record<string, MockFn> & { then?: unknown } = {}
+  for (const m of ['delete', 'lt', 'select']) ledgerChain[m] = jest.fn(() => ledgerChain)
+  ledgerChain.then = (resolve: (v: unknown) => void) => resolve({ data: [], error: null })
+  const wrapped = jest.fn((table: string) =>
+    table === 'stripe_webhook_events' ? ledgerChain : (from as (t: string) => unknown)(table),
+  )
+  return { from: wrapped, rpc: rpc ?? jest.fn().mockResolvedValue({ data: 0, error: null }) }
 }
 
 // ── Setup ─────────────────────────────────────────────────────────────────────
