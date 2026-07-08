@@ -214,8 +214,9 @@ export function ProfileEdit() {
     // AF-M-Wave-1: gate on real availability data — was unconditional `completed++`
     if (hasAvailability) completed++
     
-    // Booking Policy (cancellation_window_hours set)
-    if (profile.cancellation_window_hours > 0) completed++
+    // Booking Policy (cancellation_window_hours set). BUG-27: 0 = "No
+    // cancellations" is a deliberate, complete choice.
+    if (profile.cancellation_window_hours >= 0) completed++
 
     // BUG-QA-03: Payment Setup — read stripe_onboarding_complete (canonical
     // field set by account.updated webhook in d74bb96) to match Dashboard.
@@ -235,7 +236,8 @@ export function ProfileEdit() {
     const qualificationsComplete = hasQualifications
     // AF-M-Wave-1: derived from real availability data — was hardcoded `true`
     const availabilityComplete = hasAvailability
-    const policyComplete = profile.cancellation_window_hours > 0
+    // BUG-27: 0 = "No cancellations" is a deliberate, complete choice.
+    const policyComplete = profile.cancellation_window_hours >= 0
     // BUG-QA-03: fully live = stripe_onboarding_complete (canonical webhook-set field);
     // partial = connected but not complete (still uses live Stripe state for the nuance).
     const paymentFullyComplete = !!profile.stripe_onboarding_complete
@@ -282,11 +284,14 @@ export function ProfileEdit() {
       { 
         id: 'policy', 
         icon: <ShieldCheck size={18} className={policyComplete ? "text-brand-600" : "text-[#F59E0B]"} />,
-        title: 'Booking Policy', 
-        subtitle: policyComplete 
-          ? `${profile.cancellation_window_hours}hr cancellation window` 
-          : 'Set your booking policy', 
-        isComplete: policyComplete 
+        title: 'Booking Policy',
+        subtitle: policyComplete
+          // BUG-27: value 0 = "No cancellations" — don't render "0hr".
+          ? (profile.cancellation_window_hours === 0
+              ? 'No cancellations'
+              : `${profile.cancellation_window_hours}hr cancellation window`)
+          : 'Set your booking policy',
+        isComplete: policyComplete
       },
       {
         id: 'payment',

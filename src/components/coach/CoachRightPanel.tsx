@@ -412,7 +412,8 @@ export function CoachRightPanel() {
   //
   // Client-side (cached profile + Stripe cache):
   //   1. Basic profile  — name + bio + location
-  //   2. Booking policy — cancellation_window_hours > 0
+  //   2. Booking policy — cancellation_window_hours >= 0 (BUG-27: 0 = "No
+  //                       cancellations" is a valid, complete choice)
   //   3. Stripe         — chargesEnabled && payoutsEnabled
   //
   // Server-side (/api/coaches/profile-completeness, cached 60s):
@@ -433,7 +434,7 @@ export function CoachRightPanel() {
     // "incomplete" state on first paint.
     return scoreCompleteness({
       basicProfile: !!(profile.full_name && profile.bio && profile.location_city),
-      bookingPolicy: profile.cancellation_window_hours > 0,
+      bookingPolicy: profile.cancellation_window_hours >= 0,
       stripe: stripeChargesEnabled && stripePayoutsEnabled,
       sports: completeness ? completeness.sports : true,
       qualifications: completeness ? completeness.qualifications : true,

@@ -13,7 +13,9 @@
 export interface CompletenessChecks {
   // Basic profile: full_name + bio + location set.
   basicProfile: boolean
-  // Booking policy: cancellation_window_hours > 0.
+  // Booking policy: cancellation_window_hours >= 0. BUG-27: 0 = "No
+  // cancellations" is a deliberate, complete coach choice (the column is
+  // NOT NULL, default 24, so any value means the policy is set).
   bookingPolicy: boolean
   // Stripe: charges AND payouts enabled.
   stripe: boolean

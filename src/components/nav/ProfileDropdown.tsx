@@ -104,7 +104,8 @@ export function ProfileDropdown() {
               coachProfile.bio &&
               userProfile.location_city
             ),
-            bookingPolicy: (coachProfile.cancellation_window_hours ?? 0) > 0,
+            // BUG-27: 0 = "No cancellations" is a deliberate, complete choice.
+            bookingPolicy: (coachProfile.cancellation_window_hours ?? 0) >= 0,
             stripe: !!(stripe?.charges_enabled && stripe?.payouts_enabled),
             sports: comp?.sports ?? false,
             qualifications: comp?.qualifications ?? false,
