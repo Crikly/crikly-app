@@ -84,24 +84,73 @@ export async function POST(request: Request) {
     }
 
     // Fix-12: First get the user_profile_id
-    const { data: userProfile, error: profileFetchError } = await supabase
+    const { data: existingProfile, error: profileFetchError } = await supabase
       .from('user_profiles')
       .select('id')
       .eq('auth_user_id', user.id)
       .single()
 
+    // BUG-26: if the auth callback that normally creates user_profiles failed
+    // (DB hiccup, deploy mid-flight, timeout), the user is authenticated but
+    // has no profile row and gets stranded here with no escape. Recover by
+    // creating the row from the authenticated session — mirroring the callback
+    // payload EXACTLY (auth/callback/route.ts): auth_user_id, full_name,
+    // avatar_url, auth_provider. terms_accepted_at is deliberately left NULL so
+    // the user still passes through /onboarding/terms and gives explicit
+    // consent. The upsert is idempotent (auth_user_id is UNIQUE), so a repeat
+    // click or a slow callback racing us converges to a single row. Only if
+    // this recovery also fails do we surface a human-readable error. Happy path
+    // (row already exists) skips this block entirely — zero extra DB calls.
+    //
+    // The trigger is intentionally broad (any fetch error OR no row), not just
+    // PGRST116 "no rows": the recovery upsert is fail-safe either way — a
+    // genuine miss is created, and a transient SELECT blip on an existing row
+    // harmlessly updates-and-returns it. Narrowing to PGRST116 would instead
+    // 500 on a transient error that an upsert would have recovered, and risk a
+    // null deref downstream. We log the original error so the miss-vs-transient
+    // distinction is preserved for diagnosis.
+    let userProfile = existingProfile
     if (profileFetchError || !userProfile) {
-      console.error('Profile fetch error:', profileFetchError)
-      return NextResponse.json(
-        {
-          success: false,
-          error: {
-            code: 'UNKNOWN_ERROR',
-            message: 'Could not find your profile. Please try again.',
+      console.error('[BUG-26] profile fetch missed, attempting recovery:', profileFetchError)
+      const fullName = (user.user_metadata?.full_name as string | undefined)
+        || (user.user_metadata?.name as string | undefined)
+        || ''
+      const avatarUrl = (user.user_metadata?.avatar_url as string | undefined)
+        || (user.user_metadata?.picture as string | undefined)
+        || null
+
+      const { data: recoveredProfile, error: recoveryError } = await supabase
+        .from('user_profiles')
+        .upsert(
+          {
+            auth_user_id: user.id,
+            full_name: fullName,
+            avatar_url: avatarUrl,
+            auth_provider: user.app_metadata?.provider ?? 'email',
           },
-        },
-        { status: 500 }
-      )
+          {
+            onConflict: 'auth_user_id',
+            ignoreDuplicates: false,
+          }
+        )
+        .select('id')
+        .single()
+
+      if (recoveryError || !recoveredProfile) {
+        console.error('[BUG-26] profile recovery upsert failed:', recoveryError)
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: 'UNKNOWN_ERROR',
+              message: 'Could not create your profile. Please try again.',
+            },
+          },
+          { status: 500 }
+        )
+      }
+
+      userProfile = recoveredProfile
     }
 
     // Fix-12: Update active_role in user_profiles
