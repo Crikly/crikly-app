@@ -371,7 +371,9 @@ describe('SessionPicker — CTA navigation', () => {
 
     // Count + total reflect BOTH slots (2 × £25 + 10% fee = £55.00 shown).
     expect(screen.getByTestId('pay-cta')).toHaveTextContent(/Pay for 2 sessions/)
-    expect(screen.getAllByTestId('fee-line')[0]).toHaveTextContent('incl. £5.00 service fee')
+    // UX-21 itemisation: subtotal and fee are separate lines.
+    expect(screen.getAllByTestId('subtotal-line')[0]).toHaveTextContent('2 sessions × £25 = £50.00')
+    expect(screen.getAllByTestId('fee-line')[0]).toHaveTextContent('Service fee £5.00')
 
     await user.click(screen.getByTestId('pay-cta'))
     const pushArg = mockPush.mock.calls[0][0] as string
@@ -380,6 +382,37 @@ describe('SessionPicker — CTA navigation', () => {
     // Both entries present: the bare uuid (slot 0) AND uuid.1 (slot 1).
     const occurrences = pushArg.split('shared-uuid').length - 1
     expect(occurrences).toBe(2)
+  })
+
+  it('UX-21: summary bar itemises subtotal, service fee and total on both variants', async () => {
+    const user = userEvent.setup()
+    render(
+      <SessionPicker
+        coachId={COACH_ID}
+        programmeId={PROGRAMME_ID}
+        pricePerSessionPence={4000}
+        campMode={false}
+        sessions={makeSessions(3)}
+        campDays={EMPTY_CAMP_DAYS}
+      />,
+    )
+    const rows = screen.getAllByTestId('session-row')
+
+    // No selection → no subtotal/fee lines, just the £0.00 total.
+    expect(screen.queryByTestId('subtotal-line')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('fee-line')).not.toBeInTheDocument()
+
+    await user.click(rows[0])
+    // Singular label at one session.
+    expect(screen.getByTestId('subtotal-line')).toHaveTextContent('1 session × £40 = £40.00')
+
+    await user.click(rows[1])
+    // Mobile sticky bar (BR-01: 2 × £40 = £80.00 subtotal, £8.00 fee on top).
+    expect(screen.getByTestId('subtotal-line')).toHaveTextContent('2 sessions × £40 = £80.00')
+    expect(screen.getByTestId('fee-line')).toHaveTextContent('Service fee £8.00')
+    // Desktop sticky card shows the same breakdown.
+    expect(screen.getByTestId('subtotal-line-desktop')).toHaveTextContent('2 sessions × £40 = £80.00')
+    expect(screen.getByTestId('fee-line-desktop')).toHaveTextContent('Service fee £8.00')
   })
 
   it('does NOT call router.push when CTA is disabled (no selection)', async () => {

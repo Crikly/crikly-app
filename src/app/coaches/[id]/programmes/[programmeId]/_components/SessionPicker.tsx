@@ -256,18 +256,26 @@ export function SessionPicker({
             </span>
             <span className="text-sm text-gray-600">session{payCount !== 1 ? 's' : ''} selected</span>
           </div>
+          {/* BUG-23/UX-21 fee transparency: itemised subtotal → fee → total,
+              matching the BookingSummaryCard breakdown on the checkout page. */}
           <div className="text-right">
-            <div className="text-xs font-semibold uppercase tracking-wider text-gray-500">Total</div>
-            <div className="text-xl font-bold text-gray-900 tracking-tight tabular-nums leading-tight">
-              {formatTotal(total)}
-            </div>
-            {/* BUG-23 fee transparency: the total must never sit unexplained
-                against a "per session" price (1-on-1 checkout parity). */}
-            {payCount > 0 && (
-              <div className="text-xs text-gray-500 tabular-nums" data-testid="fee-line">
-                incl. {formatTotal(feePence)} service fee
+            {payCount > 0 && pricePerSessionPence !== null && (
+              <div className="text-xs text-gray-500 tabular-nums" data-testid="subtotal-line">
+                {payCount} session{payCount !== 1 ? 's' : ''} × {formatPence(pricePerSessionPence)} ={' '}
+                {formatTotal(coachSubtotal)}
               </div>
             )}
+            {payCount > 0 && pricePerSessionPence !== null && (
+              <div className="text-xs text-gray-500 tabular-nums" data-testid="fee-line">
+                Service fee {formatTotal(feePence)}
+              </div>
+            )}
+            <div className="flex items-baseline justify-end gap-1.5">
+              <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">Total</span>
+              <span className="text-xl font-bold text-gray-900 tracking-tight tabular-nums leading-tight">
+                {formatTotal(total)}
+              </span>
+            </div>
           </div>
         </div>
         <button
@@ -290,16 +298,24 @@ export function SessionPicker({
             </span>
             <span className="text-base text-gray-600">session{payCount !== 1 ? 's' : ''} selected</span>
           </div>
+          {/* BUG-23/UX-21 fee transparency: itemised subtotal → fee → total,
+              matching the BookingSummaryCard breakdown on the checkout page. */}
           <div className="flex flex-col">
+            {payCount > 0 && pricePerSessionPence !== null && (
+              <span className="text-xs text-gray-500 tabular-nums" data-testid="subtotal-line-desktop">
+                {payCount} session{payCount !== 1 ? 's' : ''} × {formatPence(pricePerSessionPence)} ={' '}
+                {formatTotal(coachSubtotal)}
+              </span>
+            )}
+            {payCount > 0 && pricePerSessionPence !== null && (
+              <span className="text-xs text-gray-500 tabular-nums" data-testid="fee-line-desktop">
+                Service fee {formatTotal(feePence)}
+              </span>
+            )}
             <div className="flex items-baseline gap-2">
               <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">Total</span>
               <span className="text-2xl font-bold text-gray-900 tracking-tight tabular-nums">{formatTotal(total)}</span>
             </div>
-            {payCount > 0 && (
-              <span className="text-xs text-gray-500 tabular-nums" data-testid="fee-line-desktop">
-                incl. {formatTotal(feePence)} service fee
-              </span>
-            )}
           </div>
           <button
             type="button"
