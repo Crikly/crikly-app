@@ -257,6 +257,56 @@ describe('GuestBookingFlow — payment error', () => {
   })
 })
 
+// ── slot_unavailable error (UX-18) ─────────────────────────────────────────────
+
+describe('GuestBookingFlow — slot_unavailable error', () => {
+  it('banner contains the "no longer available" message', () => {
+    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} checkout={CHECKOUT} initialError="slot_unavailable" />)
+    const alert = screen.getAllByRole('alert')[0]
+    expect(
+      within(alert).getByText(/Sorry, this time is no longer available/i)
+    ).toBeInTheDocument()
+  })
+
+  it('banner has a "Choose another time" link to the availability picker', () => {
+    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} checkout={CHECKOUT} initialError="slot_unavailable" />)
+    const alert = screen.getAllByRole('alert')[0]
+    const link = within(alert).getByRole('link', { name: /Choose another time/i })
+    expect(link).toHaveAttribute('href', `/coaches/${COACH_ID}/availability`)
+  })
+
+  it('does NOT show the card-details copy', () => {
+    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} checkout={CHECKOUT} initialError="slot_unavailable" />)
+    const alert = screen.getAllByRole('alert')[0]
+    expect(within(alert).queryByText(/check your card details/i)).not.toBeInTheDocument()
+  })
+})
+
+// ── price_changed error (UX-18) ────────────────────────────────────────────────
+
+describe('GuestBookingFlow — price_changed error', () => {
+  it('banner contains the "price has changed" message', () => {
+    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} checkout={CHECKOUT} initialError="price_changed" />)
+    const alert = screen.getAllByRole('alert')[0]
+    expect(
+      within(alert).getByText(/The price for this session has changed/i)
+    ).toBeInTheDocument()
+  })
+
+  it('banner has a "Back to profile" link to the coach profile', () => {
+    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} checkout={CHECKOUT} initialError="price_changed" />)
+    const alert = screen.getAllByRole('alert')[0]
+    const link = within(alert).getByRole('link', { name: /Back to profile/i })
+    expect(link).toHaveAttribute('href', `/coaches/${COACH_ID}`)
+  })
+
+  it('does NOT show the card-details copy', () => {
+    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} checkout={CHECKOUT} initialError="price_changed" />)
+    const alert = screen.getAllByRole('alert')[0]
+    expect(within(alert).queryByText(/check your card details/i)).not.toBeInTheDocument()
+  })
+})
+
 // ── handlePay — confirmation flow ─────────────────────────────────────────────
 
 describe('GuestBookingFlow — handlePay success', () => {
@@ -494,6 +544,50 @@ describe('GuestBookingFlow — handlePay slot_taken from API', () => {
 
     await waitFor(() => {
       expect(screen.queryByText("You're all booked!")).not.toBeInTheDocument()
+    })
+  })
+
+  // UX-18: availability-shaped 409 codes must never show the card-details copy.
+  it.each(['slot_not_available', 'date_blocked', 'outside_booking_window'])(
+    'shows the slot_unavailable banner when fetch returns 409 %s',
+    async (code) => {
+      global.fetch = jest.fn().mockResolvedValue({
+        status: 409,
+        ok: false,
+        json: jest.fn().mockResolvedValue({ error: code }),
+      } as unknown as Response /* partial stub — only .status, .ok, .json are exercised */)
+
+      const user = userEvent.setup()
+      render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} checkout={CHECKOUT} />)
+
+      await user.click(screen.getAllByTestId('pay-button')[0])
+
+      await waitFor(() => {
+        const alerts = screen.getAllByRole('alert')
+        expect(alerts.length).toBeGreaterThanOrEqual(1)
+        expect(within(alerts[0]).getByText(/no longer available/i)).toBeInTheDocument()
+        expect(within(alerts[0]).queryByText(/check your card details/i)).not.toBeInTheDocument()
+      })
+    },
+  )
+
+  it('shows the price_changed banner when fetch returns 409 price_mismatch', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      status: 409,
+      ok: false,
+      json: jest.fn().mockResolvedValue({ error: 'price_mismatch' }),
+    } as unknown as Response /* partial stub — only .status, .ok, .json are exercised */)
+
+    const user = userEvent.setup()
+    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} checkout={CHECKOUT} />)
+
+    await user.click(screen.getAllByTestId('pay-button')[0])
+
+    await waitFor(() => {
+      const alerts = screen.getAllByRole('alert')
+      expect(alerts.length).toBeGreaterThanOrEqual(1)
+      expect(within(alerts[0]).getByText(/price for this session has changed/i)).toBeInTheDocument()
+      expect(within(alerts[0]).queryByText(/check your card details/i)).not.toBeInTheDocument()
     })
   })
 

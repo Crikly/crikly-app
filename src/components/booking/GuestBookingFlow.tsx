@@ -33,7 +33,25 @@ import {
   type BookingSummary,
 } from '@/components/booking/BookingSummaryCard'
 
-type CheckoutError = 'payment' | 'slot_taken'
+type CheckoutError = 'payment' | 'slot_taken' | 'slot_unavailable' | 'price_changed'
+
+// UX-18: every availability-shaped 409 code gets its own copy — only genuinely
+// payment-shaped failures may fall through to the "check your card details"
+// message, because the guest has NOT been charged on any 409.
+function checkoutErrorFor(code: string | undefined): CheckoutError {
+  switch (code) {
+    case 'slot_taken':
+      return 'slot_taken'
+    case 'slot_not_available':
+    case 'date_blocked':
+    case 'outside_booking_window':
+      return 'slot_unavailable'
+    case 'price_mismatch':
+      return 'price_changed'
+    default:
+      return 'payment'
+  }
+}
 
 /** Slot the guest is booking — supplied by the availability page as query params. */
 export interface GuestCheckoutParams {
@@ -419,7 +437,7 @@ function GuestCheckoutForm({
 
       if (res.status === 409) {
         const body = (await res.json().catch(() => ({}))) as { error?: string }
-        setError(body.error === 'slot_taken' ? 'slot_taken' : 'payment')
+        setError(checkoutErrorFor(body.error))
         return null
       }
       if (!res.ok) {
@@ -563,6 +581,26 @@ function GuestCheckoutForm({
               className="mt-1 inline-block font-medium underline"
             >
               Choose another time
+            </Link>
+          </>
+        ) : error === 'slot_unavailable' ? (
+          <>
+            <p className="font-medium">Sorry, this time is no longer available.</p>
+            <Link
+              href={availabilityHref}
+              className="mt-1 inline-block font-medium underline"
+            >
+              Choose another time
+            </Link>
+          </>
+        ) : error === 'price_changed' ? (
+          <>
+            <p className="font-medium">The price for this session has changed. Please go back and start again.</p>
+            <Link
+              href={coachProfileHref}
+              className="mt-1 inline-block font-medium underline"
+            >
+              Back to profile
             </Link>
           </>
         ) : (
