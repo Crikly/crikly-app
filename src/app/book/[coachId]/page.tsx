@@ -39,7 +39,7 @@ const FALLBACK_PRICE_PENCE = 4000
 // admin changing the rate would make this label diverge from the real charge.
 const COMMISSION_RATE = 0.1
 
-type CheckoutError = 'payment' | 'slot_taken'
+type CheckoutError = 'payment' | 'slot_taken' | 'slot_unavailable' | 'price_changed'
 
 // ─── Param parsing ───────────────────────────────────────────────────────────────
 
@@ -49,7 +49,7 @@ function firstParam(value: string | string[] | undefined): string | undefined {
 
 function parseSimulatedError(value: string | string[] | undefined): CheckoutError | undefined {
   const v = firstParam(value)
-  if (v === 'payment' || v === 'slot_taken') return v
+  if (v === 'payment' || v === 'slot_taken' || v === 'slot_unavailable' || v === 'price_changed') return v
   return undefined
 }
 
