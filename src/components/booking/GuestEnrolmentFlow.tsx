@@ -17,6 +17,7 @@ import {
 } from '@stripe/react-stripe-js'
 import type {
   StripeElementsOptions,
+  StripeError,
   StripeExpressCheckoutElementConfirmEvent,
   StripeExpressCheckoutElementReadyEvent,
 } from '@stripe/stripe-js'
@@ -455,22 +456,37 @@ function GuestEnrolmentForm({
       return
     }
 
-    const { error: confirmError } = await stripe.confirmPayment({
-      elements,
-      clientSecret: created.clientSecret,
-      confirmParams: {
-        return_url: `${window.location.origin}${programmeHref}`,
-        payment_method_data: {
-          billing_details: {
-            name: form.cardholderName || form.fullName,
-            email: form.email || undefined,
-            phone: form.phone || undefined,
-            address: buildBillingAddress(),
+    // BUG-29: every field declared 'never' on the Payment Element MUST be
+    // passed here — Stripe REJECTS (IntegrationError) on an undefined field,
+    // and an uncaught rejection froze the button on "Processing…" forever.
+    // Empty string satisfies the contract for optional fields. The try/catch
+    // is the second layer: card declines still resolve into confirmError and
+    // keep their branch; only thrown rejections land in the catch.
+    let confirmError: StripeError | undefined
+    try {
+      const result = await stripe.confirmPayment({
+        elements,
+        clientSecret: created.clientSecret,
+        confirmParams: {
+          return_url: `${window.location.origin}${programmeHref}`,
+          payment_method_data: {
+            billing_details: {
+              name: form.cardholderName || form.fullName,
+              email: form.email,
+              phone: form.phone,
+              address: buildBillingAddress(),
+            },
           },
         },
-      },
-      redirect: 'if_required',
-    })
+        redirect: 'if_required',
+      })
+      confirmError = result.error
+    } catch (err) {
+      console.error('[GuestEnrolmentFlow] confirmPayment threw:', err)
+      setError('payment')
+      setSubmitting(false)
+      return
+    }
 
     if (confirmError) {
       setError('payment')
@@ -513,12 +529,24 @@ function GuestEnrolmentForm({
       return
     }
 
-    const { error: confirmError } = await stripe.confirmPayment({
-      elements,
-      clientSecret: created.clientSecret,
-      confirmParams: { return_url: `${window.location.origin}${programmeHref}` },
-      redirect: 'if_required',
-    })
+    // BUG-29 layer 2 (defensive): confirmPayment can REJECT on integration
+    // errors (vs resolving {error} for card declines) — never let a rejection
+    // freeze the submitting state. Wallet argument shape is unchanged.
+    let confirmError: StripeError | undefined
+    try {
+      const result = await stripe.confirmPayment({
+        elements,
+        clientSecret: created.clientSecret,
+        confirmParams: { return_url: `${window.location.origin}${programmeHref}` },
+        redirect: 'if_required',
+      })
+      confirmError = result.error
+    } catch (err) {
+      console.error('[GuestEnrolmentFlow] express confirmPayment threw:', err)
+      setError('payment')
+      setSubmitting(false)
+      return
+    }
 
     if (confirmError) {
       setError('payment')
