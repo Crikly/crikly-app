@@ -64,7 +64,24 @@ test.describe('P1 — Availability', () => {
   })
 
   test('T1.4: add then delete an availability template (atomic)', async ({ page }) => {
-    test.skip(true, 'Known flaky — atomic add/delete race condition, documented in Fix-E2E-01')
+    // TEST-E2E-03: unskipped (was the Fix-E2E-01 "known flaky" skip). The race
+    // was between the optimistic UI row and the server INSERT — the delete
+    // step could fire while the row still had no committed DB id. Stabilised
+    // by pinning both sides to the database: poll until the Sun 17:00 row
+    // exists after submit, reload so the page renders committed server state,
+    // then delete and poll until the row is gone.
+    const coachProfileId = await getCoachProfileIdByEmail(TEST_COACH_EMAIL)
+    const sunRowCount = async (): Promise<number> => {
+      const { data, error } = await dbAdmin
+        .from('availability_templates')
+        .select('id')
+        .eq('coach_profile_id', coachProfileId)
+        .eq('day_of_week', 0)
+        .eq('start_time', '17:00:00')
+      if (error) throw new Error(`[p1] availability_templates read failed: ${error.message}`)
+      return (data ?? []).length
+    }
+
     await page.goto('/coach/availability')
 
     // ── OPEN FORM ────────────────────────────────────────────────────────
@@ -91,27 +108,47 @@ test.describe('P1 — Availability', () => {
 
     // ── SUBMIT ───────────────────────────────────────────────────────────
     await page.getByTestId('e2e-availability-submit').click()
-    // Form closes; new row appears under the Sunday day heading. Each block
-    // row has the sport name + time range in its summary, so the most stable
-    // visible-text assertion is "Cricket · 17:00".
+
+    // TEST-E2E-03 stabilisation: don't trust the optimistic row — wait for the
+    // INSERT to be committed, then reload so the delete below operates on a
+    // row with its real DB id (the Fix-E2E-01 race deleted the optimistic row
+    // before the id existed).
+    await expect.poll(sunRowCount, { timeout: 15_000 }).toBe(1)
+    await page.reload()
+
+    // New row renders under the Sunday day heading. Each block row has the
+    // sport name + time range in its summary, so the most stable visible-text
+    // assertion is "Cricket · 17:00".
     const newRow = page.getByText(/Cricket · 17:00/i).first()
     await expect(newRow).toBeVisible({ timeout: 15_000 })
 
     // ── DELETE ───────────────────────────────────────────────────────────
-    // Scope to the Sunday day-column container so we don't accidentally click
-    // the Wed/Sat seeded blocks' trash buttons. Each day-column has its own
-    // h3 heading; locate the wrapping div by `has: heading('Sunday')` and
-    // grab the only delete-* testid inside it.
-    const sundayContainer = page
-      .locator('div')
-      .filter({ has: page.getByRole('heading', { name: 'Sunday', level: 3 }) })
-      .first()
-    await sundayContainer.locator('[data-testid^="e2e-availability-delete-"]').first().click()
+    // TEST-E2E-03 root cause of the historical "flake": the old scoping —
+    // `page.locator('div').filter({ has: heading('Sunday') }).first()` —
+    // resolves to the OUTERMOST matching div (the whole-page wrapper), so
+    // `.first()` on its delete buttons clicked the first delete button on the
+    // page and deleted the seeded MONDAY template instead of the Sunday row
+    // (which then broke every downstream spec that needs Monday slots).
+    // Address the row by its real DB id instead — the reload above guarantees
+    // the rendered testid carries it.
+    const { data: sunRows, error: sunErr } = await dbAdmin
+      .from('availability_templates')
+      .select('id')
+      .eq('coach_profile_id', coachProfileId)
+      .eq('day_of_week', 0)
+      .eq('start_time', '17:00:00')
+    if (sunErr || !sunRows || sunRows.length !== 1) {
+      throw new Error(`[p1] expected exactly one Sun 17:00 row, got ${sunRows?.length ?? 'error'}`)
+    }
+    await page.getByTestId(`e2e-availability-delete-${sunRows[0].id as string}`).click()
 
     // Inline confirm appears next to the trash icon — click "Delete" button.
     await page.getByTestId('e2e-availability-confirm-delete').click()
 
-    // Row gone.
+    // Row gone — in the UI and, decisively, in the database (TEST-E2E-03:
+    // the DB poll is the atomic proof the DELETE committed; the UI check
+    // alone was the flaky half of the old race).
     await expect(newRow).not.toBeVisible({ timeout: 10_000 })
+    await expect.poll(sunRowCount, { timeout: 15_000 }).toBe(0)
   })
 })
