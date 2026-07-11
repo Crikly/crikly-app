@@ -695,6 +695,8 @@ export async function PATCH(
     // when the programme is unlocked (current_spots === 0) and the form carried a
     // session list — mirrors the reconciliation guard below. excludeProgrammeId
     // stops the programme's own existing sessions from self-conflicting.
+    // BUG-30: availability templates are deliberately EXCLUDED — a passive canvas,
+    // not a commitment. Only real commitments (other programmes, bookings) conflict.
     const patchConflictLocked = (existingProgramme.current_spots as number) > 0
     if (!patchConflictLocked && sessionDatesBody && sessionDatesBody.length > 0) {
       for (const entry of sessionDatesBody as SessionEntry[]) {
@@ -702,6 +704,7 @@ export async function PATCH(
         const endMin = hhmmToMinutes(entry.endTime)
         const commitments = await getCoachCommitments(adminSupabase, coachProfile.id, entry.date, {
           excludeProgrammeId: programmeId,
+          sources: ['programme', 'booking'],
         })
         const conflict = findFirstConflict(startMin, endMin, commitments)
         if (conflict) {

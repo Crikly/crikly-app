@@ -606,15 +606,20 @@ export async function POST(
     // mismatch on dev DB (same root cause as Fix-19).
     const adminSupabase = createAdminClient()
 
-    // BUG-18: block any session that overlaps something already committed for this
-    // coach on that date — recurring availability, ad-hoc slots, other programme
-    // sessions, or confirmed 1-on-1 bookings. Runs BEFORE the programme insert so a
-    // conflict never leaves an orphan row (no rollback needed).
+    // BUG-18: block any session that overlaps a real commitment for this coach on
+    // that date — another programme session or a confirmed 1-on-1 booking. Runs
+    // BEFORE the programme insert so a conflict never leaves an orphan row (no
+    // rollback needed). BUG-30: availability templates are deliberately EXCLUDED —
+    // they are a passive canvas, not a commitment. A programme placed on top of an
+    // availability block is the coach's decision; its sessions then suppress 1-on-1
+    // slots in that window (same sources filter as the guest bookings route).
     if (sessionDatesBody && sessionDatesBody.length > 0) {
       for (const entry of sessionDatesBody as SessionEntry[]) {
         const startMin = hhmmToMinutes(entry.startTime)
         const endMin = hhmmToMinutes(entry.endTime)
-        const commitments = await getCoachCommitments(adminSupabase, coachProfile.id, entry.date)
+        const commitments = await getCoachCommitments(adminSupabase, coachProfile.id, entry.date, {
+          sources: ['programme', 'booking'],
+        })
         const conflict = findFirstConflict(startMin, endMin, commitments)
         if (conflict) {
           return NextResponse.json(

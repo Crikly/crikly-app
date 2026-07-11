@@ -1,7 +1,9 @@
-// BUG-18: POST /api/coaches/programmes must reject any session that overlaps
-// something already committed for the coach on that date (recurring availability,
-// ad-hoc slot, another programme session, or a confirmed booking) — via
-// getCoachCommitments — BEFORE inserting the programme.
+// BUG-18: POST /api/coaches/programmes must reject any session that overlaps a
+// real commitment for the coach on that date (another programme session or a
+// confirmed booking) — via getCoachCommitments — BEFORE inserting the programme.
+// BUG-30: availability templates (recurring + ad-hoc) are a passive canvas, NOT
+// a commitment — both routes must pass sources: ['programme', 'booking'] so a
+// coach can place a programme on top of their own availability blocks.
 
 jest.mock('@supabase/ssr', () => ({
   createServerClient: jest.fn(),
@@ -101,7 +103,7 @@ describe('POST /api/coaches/programmes — session conflict guard (BUG-18)', () 
     mockAuthAndSport()
     ;(createAdminClient as jest.Mock).mockReturnValue({}) // unused once helper is mocked
     ;(getCoachCommitments as jest.Mock).mockResolvedValue([
-      { startMinutes: 600, endMinutes: 660, source: 'ad_hoc', label: 'an ad-hoc slot' },
+      { startMinutes: 600, endMinutes: 660, source: 'booking', label: 'a confirmed booking' },
     ])
 
     const res = await callPost({
@@ -112,11 +114,12 @@ describe('POST /api/coaches/programmes — session conflict guard (BUG-18)', () 
     expect(res.status).toBe(409)
     const data = await res.json()
     expect(data.error).toBe('Conflict detected')
-    expect(data.message).toContain('an ad-hoc slot')
+    expect(data.message).toContain('a confirmed booking')
     expect(getCoachCommitments as jest.Mock).toHaveBeenCalledWith(
       expect.anything(),
       'coach-uuid',
       '2026-07-05',
+      { sources: ['programme', 'booking'] },
     )
   })
 
@@ -205,6 +208,46 @@ describe('POST /api/coaches/programmes — session conflict guard (BUG-18)', () 
     expect(getCoachCommitments as jest.Mock).toHaveBeenCalledTimes(2)
     const data = await res.json()
     expect(data.id).toBe('prog-1')
+  })
+
+  it('creates the programme (201) on top of an availability block — templates are a passive canvas, not a commitment (BUG-30)', async () => {
+    mockAuthAndSport()
+    // Sources-aware mock mirroring the real aggregator: the coach has a
+    // recurring availability block covering the session, and nothing else.
+    // The route must exclude template sources, so this resolves to [] and
+    // creation proceeds. If the route ever drops the sources filter, the
+    // block comes back as a conflict and this test fails with a 409.
+    ;(getCoachCommitments as jest.Mock).mockImplementation(
+      async (_client, _coachId, _date, opts?: { sources?: string[] }) => {
+        const all = [
+          { startMinutes: 540, endMinutes: 660, source: 'recurring', label: 'a recurring availability block' },
+        ]
+        return all.filter((c) => !opts?.sources || opts.sources.includes(c.source))
+      },
+    )
+
+    const newProgramme = { id: 'prog-1', sport_id: 'sport-1', title: 'Saturday Cricket' }
+    const adminChain: Record<string, unknown> = {}
+    for (const m of ['insert', 'select', 'eq', 'is', 'in', 'update', 'upsert', 'delete']) {
+      adminChain[m] = jest.fn(() => adminChain)
+    }
+    adminChain.single = jest.fn().mockResolvedValue({ data: newProgramme, error: null })
+    adminChain.then = (resolve: (r: unknown) => void) => resolve({ data: null, error: null })
+    ;(createAdminClient as jest.Mock).mockReturnValue({ from: jest.fn(() => adminChain) })
+
+    // Sport-name fetch on the SSR client after the insert.
+    mockFrom.mockImplementationOnce(() => {
+      const c = makeChain()
+      c.single.mockResolvedValue({ data: { name: 'Cricket' }, error: null })
+      return c
+    })
+
+    const res = await callPost({
+      ...baseBody,
+      session_dates: [{ date: '2026-07-05', startTime: '10:00', endTime: '11:00' }],
+    })
+
+    expect(res.status).toBe(201)
   })
 
   it('returns a clean 409 when the DB exclusion constraint rejects the session insert (23P01, BUG-19 Phase 2)', async () => {
@@ -350,7 +393,7 @@ describe('PATCH /api/coaches/programmes/[programmeId] — session conflict guard
       expect.anything(),
       'coach-uuid',
       '2026-07-05',
-      { excludeProgrammeId: 'prog-1' },
+      { excludeProgrammeId: 'prog-1', sources: ['programme', 'booking'] },
     )
   })
 
@@ -402,8 +445,37 @@ describe('PATCH /api/coaches/programmes/[programmeId] — session conflict guard
       expect.anything(),
       'coach-uuid',
       '2026-07-12',
-      { excludeProgrammeId: 'prog-1' },
+      { excludeProgrammeId: 'prog-1', sources: ['programme', 'booking'] },
     )
+  })
+
+  it('updates the programme (200) on top of an availability block — templates are a passive canvas, not a commitment (BUG-30)', async () => {
+    mockPatchAuth()
+    makePatchAdmin(
+      { id: 'prog-1', status: 'draft', current_spots: 0, schedule_type: 'fixed', days_of_week: [0], day_of_week: 0, session_count: 1, starts_at: null, ends_at: null, camp_mode: false },
+      fullProgramme,
+    )
+    // Sources-aware mock (see the POST BUG-30 test): only an availability block
+    // occupies the slot — the route's sources filter must exclude it.
+    ;(getCoachCommitments as jest.Mock).mockImplementation(
+      async (_client, _coachId, _date, opts?: { sources?: string[] }) => {
+        const all = [
+          { startMinutes: 540, endMinutes: 660, source: 'recurring', label: 'a recurring availability block' },
+        ]
+        return all.filter((c) => !opts?.sources || opts.sources.includes(c.source))
+      },
+    )
+    mockFrom.mockImplementationOnce(() => {
+      const c = makeChain()
+      c.single.mockResolvedValue({ data: { name: 'Cricket' }, error: null })
+      return c
+    })
+
+    const res = await callPatch('prog-1', {
+      session_dates: [{ date: '2026-07-05', startTime: '10:00', endTime: '11:00' }],
+    })
+
+    expect(res.status).toBe(200)
   })
 
   // ── DB exclusion backstop (BUG-19 Phase 2) ─────────────────────────────────
