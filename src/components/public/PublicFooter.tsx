@@ -6,15 +6,39 @@ import type { ReactNode } from 'react'
 // /contact. `variant="minimal"` is the copyright row used by /privacy /terms
 // /cookies; `variant="full"` is the 3-col Explore / Coaches / Legal stack
 // from the landing page footer, used by /contact (and any future public
-// page that wants the full chrome). Server component.
+// page that wants the full chrome). `variant="links"` (P-00c-POLISH) is a
+// slim single-row links + copyright footer for the focused public booking
+// pages (programme detail, coach availability, guest checkout). Server component.
 
-type Variant = 'minimal' | 'full'
+type Variant = 'minimal' | 'full' | 'links'
 
 export function PublicFooter({ variant = 'minimal' }: { variant?: Variant }) {
   if (variant === 'full') {
     return <FullFooter />
   }
+  if (variant === 'links') {
+    return <LinksFooter />
+  }
   return <MinimalFooter />
+}
+
+// ─── Links (slim single-row nav + copyright) ─────────────────────────────────
+
+function LinksFooter() {
+  return (
+    <footer className="border-t border-neutral-100 bg-neutral-50">
+      <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-6 text-sm text-gray-500 sm:px-6 md:flex-row md:items-center md:justify-between">
+        <nav className="flex flex-wrap items-center gap-x-5 gap-y-2" aria-label="Site links">
+          <Link href="/#how" className="transition-colors hover:text-gray-900">How it works</Link>
+          <Link href="/#activities" className="transition-colors hover:text-gray-900">Activities</Link>
+          <Link href="/#personas" className="transition-colors hover:text-gray-900">For coaches</Link>
+          <Link href="/privacy" className="transition-colors hover:text-gray-900">Privacy Policy</Link>
+          <Link href="/terms" className="transition-colors hover:text-gray-900">Terms</Link>
+        </nav>
+        <span>© 2026 Tekly Solutions Ltd. Crikly is a product of Tekly Solutions.</span>
+      </div>
+    </footer>
+  )
 }
 
 // ─── Minimal (copyright row + Made in the UK) ────────────────────────────────

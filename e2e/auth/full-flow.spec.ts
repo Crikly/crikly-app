@@ -44,7 +44,9 @@ test.describe('Auth navigation flow', () => {
     await page.goto('/verify?email=test%40example.com')
     await expect(page.getByText('Check your inbox')).toBeVisible()
     await expect(page.getByText('test@example.com')).toBeVisible()
-    await expect(page.getByRole('link', { name: 'Resend email' })).toBeVisible()
+    // Fix-E2E-01b: ResendEmailButton changed <Link> → <button> (Fix-AUTH-RESEND-01)
+    // — it now calls supabase.auth.resend() in place instead of navigating.
+    await expect(page.getByRole('button', { name: 'Resend email' })).toBeVisible()
   })
 
   test('protected routes redirect unauthenticated users to login', async ({ page }) => {

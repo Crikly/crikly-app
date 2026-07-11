@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { requireCoachContext } from '@/lib/auth/require-coach'
+import { getCoachCommitments, findFirstConflict } from '@/lib/availability/commitments'
 
 interface AvailabilityResponse {
   id: string
@@ -29,6 +31,15 @@ function timeToMinutes(time: string): number {
 }
 
 /**
+ * Minutes from midnight → 'HH:MM' (for BUG-17 conflict messages).
+ */
+function minutesToHHMM(minutes: number): string {
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+}
+
+/**
  * PATCH /api/coaches/availability/[blockId]
  * 
  * Update an existing availability block with conflict validation.
@@ -48,7 +59,9 @@ export async function PATCH(
     // 4. Verify coach owns this block and get current values
     const { data: existingBlock, error: blockCheckError } = await supabase
       .from('availability_templates')
-      .select('id, sport_id, day_of_week, start_time, end_time')
+      // BUG-17: is_recurring + specific_date are needed to branch the conflict
+      // guard (ad-hoc → date-scoped, recurring → weekday template check).
+      .select('id, sport_id, day_of_week, start_time, end_time, is_recurring, specific_date')
       .eq('id', blockId)
       .eq('coach_profile_id', coachProfile.id)
       .single()
@@ -176,53 +189,59 @@ export async function PATCH(
 
     if (dayChanged || timeChanged || sportChanged) {
       const finalDayOfWeek = body.day_of_week !== undefined ? body.day_of_week : existingBlock.day_of_week
-      const finalSportId = body.sport_id !== undefined ? body.sport_id : existingBlock.sport_id
       const normalizedStartTime = normalizeTime(finalStartTime)
       const normalizedEndTime = normalizeTime(finalEndTime)
+      const newStart = timeToMinutes(normalizedStartTime)
+      const newEnd = timeToMinutes(normalizedEndTime)
+      const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
-      // Check for overlapping blocks (excluding this block)
-      let conflictQuery = supabase
-        .from('availability_templates')
-        .select('id, start_time, end_time, sports(name)')
-        .eq('coach_profile_id', coachProfile.id)
-        .eq('day_of_week', finalDayOfWeek)
-        .eq('is_active', true)
-        .neq('id', blockId)
-
-      // Sport-specific conflict check
-      if (finalSportId) {
-        conflictQuery = conflictQuery.eq('sport_id', finalSportId)
+      // Recurrence type is not editable via PATCH, so it stays as the block's
+      // existing value (BUG-17).
+      if (existingBlock.is_recurring === false && existingBlock.specific_date) {
+        // Ad-hoc slot: date-scoped, sport-agnostic guard across the coach's full
+        // commitment set on that date, excluding this block itself.
+        const adminSupabase = createAdminClient()
+        const commitments = await getCoachCommitments(
+          adminSupabase,
+          coachProfile.id,
+          existingBlock.specific_date,
+          { excludeAvailabilityBlockId: blockId },
+        )
+        const conflict = findFirstConflict(newStart, newEnd, commitments)
+        if (conflict) {
+          return NextResponse.json(
+            {
+              error: 'Conflict detected',
+              message: `This slot overlaps ${conflict.label} on that date (${minutesToHHMM(conflict.startMinutes)}–${minutesToHHMM(conflict.endMinutes)}). Adjust the time or date.`,
+            },
+            { status: 409 }
+          )
+        }
       } else {
-        conflictQuery = conflictQuery.is('sport_id', null)
-      }
+        // Recurring block: sport-agnostic template-vs-template overlap on the same
+        // weekday, excluding this block and any ad-hoc rows (Decision B).
+        const { data: potentialConflicts, error: conflictError } = await supabase
+          .from('availability_templates')
+          .select('id, start_time, end_time')
+          .eq('coach_profile_id', coachProfile.id)
+          .eq('day_of_week', finalDayOfWeek)
+          .eq('is_active', true)
+          .neq('is_recurring', false)
+          .neq('id', blockId)
 
-      const { data: potentialConflicts, error: conflictError } = await conflictQuery
+        if (conflictError) {
+          console.error('[PATCH /api/coaches/availability/[blockId]] conflict check error:', conflictError)
+          return NextResponse.json({ error: 'Failed to check for conflicts' }, { status: 500 })
+        }
 
-      if (conflictError) {
-        console.error('[PATCH /api/coaches/availability/[blockId]] conflict check error:', conflictError)
-        return NextResponse.json({ error: 'Failed to check for conflicts' }, { status: 500 })
-      }
-
-      // Check for time overlap
-      if (potentialConflicts && potentialConflicts.length > 0) {
-        for (const existing of potentialConflicts) {
+        for (const existing of potentialConflicts ?? []) {
           const existingStart = timeToMinutes(existing.start_time)
           const existingEnd = timeToMinutes(existing.end_time)
-          const newStart = timeToMinutes(normalizedStartTime)
-          const newEnd = timeToMinutes(normalizedEndTime)
-
           if (newStart < existingEnd && newEnd > existingStart) {
-            const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-            const sportData = existing.sports
-              ? (Array.isArray(existing.sports) ? existing.sports[0] : existing.sports)
-              : null
-            const sportName = sportData?.name || 'All sports'
-            const dayName = dayNames[finalDayOfWeek]
-
             return NextResponse.json(
               {
                 error: 'Conflict detected',
-                message: `${sportName} on ${dayName} already has a block from ${existing.start_time.slice(0, 5)}–${existing.end_time.slice(0, 5)}. Adjust the time or day.`,
+                message: `You already have a recurring block on ${dayNames[finalDayOfWeek]} from ${existing.start_time.slice(0, 5)}–${existing.end_time.slice(0, 5)}. Adjust the time or day.`,
                 conflicting_block_id: existing.id,
               },
               { status: 409 }

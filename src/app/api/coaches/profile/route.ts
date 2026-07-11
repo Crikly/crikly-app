@@ -227,9 +227,11 @@ export async function POST(
     }
 
     if (body.cancellation_window_hours !== undefined) {
-      const validWindows = [0, 12, 24, 48, 72]
+      // BUG-28: 168 (= "1 week") is a valid UI option (BookingPolicyStep) but
+      // was missing from this whitelist, so selecting it 400'd and never saved.
+      const validWindows = [0, 12, 24, 48, 72, 168]
       if (!validWindows.includes(body.cancellation_window_hours)) {
-        validationErrors.push('cancellation_window_hours must be one of: 0, 12, 24, 48, 72')
+        validationErrors.push('cancellation_window_hours must be one of: 0, 12, 24, 48, 72, 168')
       }
     }
 

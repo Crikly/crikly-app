@@ -28,6 +28,12 @@ loadDotEnvLocal()
 export default defineConfig({
   testDir: './e2e',
   testMatch: '**/*.spec.ts',
+  // Fix-E2E-01a: self-provision the E2E test coach before every run. seed.ts is
+  // idempotent (find-first auth user + upserts) so this is safe to run on every
+  // invocation — local clean DBs no longer cause false failures from a missing
+  // test coach. CI also benefits; the seed's env loader is a no-op when the
+  // Supabase vars are already set.
+  globalSetup: './e2e/fixtures/seed.ts',
   // TEST-E2E-01: 60s per test gives Next.js dev-mode first-hit compilation
   // room to finish (the production build is much faster — CI uses prebuilt
   // pages in webServer warmup).

@@ -6,6 +6,7 @@ import { Pencil, X, Plus, ChevronDown, AlertTriangle, ChevronLeft, ChevronRight 
 import { OnboardingPreviewPanel } from '../OnboardingPreviewPanel'
 import { VenueAutocomplete, type VenueSelection } from '../shared/LocationAutocomplete'
 import { fetchCoachProfileCached, fetchCoachSportsCached } from '@/lib/onboarding-cache'
+import { localISODate } from '@/lib/availability/slots'
 
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December']
 const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
@@ -305,14 +306,16 @@ export function AvailabilityStep() {
     setBlockedError(null)
     try {
       const end = rangeEnd ?? rangeStart
-      const formatDate = (d: Date) => d.toISOString().split('T')[0]
-      
+
+      // BUG-31: format as local YYYY-MM-DD — was toISOString() which UTC-shifts
+      // BST local-midnight dates to the previous calendar day (same class as AF-H-45
+      // in AvailabilityManagement.tsx; localISODate is the canonical helper).
       const response = await fetch('/api/coaches/blocked-dates', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          blocked_date: formatDate(rangeStart),
-          blocked_date_end: sameDay(rangeStart, end) ? null : formatDate(end),
+          blocked_date: localISODate(rangeStart),
+          blocked_date_end: sameDay(rangeStart, end) ? null : localISODate(end),
           label: blockLabel.trim() || null,
         })
       })

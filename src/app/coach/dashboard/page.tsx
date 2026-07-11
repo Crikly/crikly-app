@@ -348,7 +348,8 @@ export default async function CoachDashboardPage() {
       (sportsCountResult.count ?? 0) > 0,
       (qualsCountResult.count ?? 0) > 0,
       (availCountResult.count ?? 0) > 0,
-      coachProfile.cancellation_window_hours > 0,
+      // BUG-27: 0 = "No cancellations" is a deliberate, complete choice.
+      coachProfile.cancellation_window_hours >= 0,
       !!coachProfile.stripe_onboarding_complete,
     ]
     const filledCount = completionChecks.filter(Boolean).length

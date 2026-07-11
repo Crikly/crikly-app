@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -10,6 +11,17 @@ interface AvailabilityTemplateRow {
   start_time: string
   end_time: string
   is_active: boolean
+  // BUG-08: per-block price override. NULL = use the sport default; non-null =
+  // this block costs a different price (e.g. £75 Sunday vs £60 default).
+  price_override_pence: number | null
+  // UX-09: where the session happens. Either a free-text venue_name on the block,
+  // or a coach_venue_id pointing at a coach_venues row (the venue-picker path).
+  venue_name: string | null
+  coach_venue_id: string | null
+  // BUG-04: recurrence shape. is_recurring=false (⟺ specific_date set) marks an
+  // ad-hoc one-off slot, which the public calendar renders with a teal dot.
+  is_recurring: boolean
+  specific_date: string | null
 }
 
 interface BlockedDateRow {
@@ -23,7 +35,21 @@ interface CoachPolicyRow {
   max_advance_days: number
 }
 
+interface BookedSlotRow {
+  session_date: string
+  session_start_time: string
+  session_end_time: string
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/** Local-timezone YYYY-MM-DD (mirrors slots.localISODate). */
+function localISODate(d: Date): string {
+  const y = d.getFullYear()
+  const mo = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${y}-${mo}-${dd}`
+}
 
 function expandBlockedDates(rows: BlockedDateRow[]): string[] {
   const dates = new Set<string>()
@@ -115,7 +141,7 @@ export async function GET(
 
     let templatesQuery = supabase
       .from('availability_templates')
-      .select('id, sport_id, day_of_week, start_time, end_time, is_active')
+      .select('id, sport_id, day_of_week, start_time, end_time, is_active, price_override_pence, venue_name, coach_venue_id, is_recurring, specific_date')
       .eq('coach_profile_id', id)
       .eq('is_active', true)
 
@@ -131,9 +157,51 @@ export async function GET(
       return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
     }
 
-    // ── Fetch blocked dates ───────────────────────────────────────────────────
+    // ── Resolve venue labels (UX-09) ──────────────────────────────────────────
+    // A block's venue is either its free-text venue_name or a coach_venues row
+    // referenced by coach_venue_id (the venue-picker path). Mirror the coach-facing
+    // route (POST /api/coaches/availability) and resolve the FK to a name so every
+    // coach's venue surfaces, not just free-text ones. coach_venues has a
+    // public-SELECT policy for live coaches, so this read is RLS-safe.
+    const templateRowsTyped = (templateRows ?? []) as AvailabilityTemplateRow[]
+    const venueIds = Array.from(
+      new Set(
+        templateRowsTyped
+          .filter(t => !t.venue_name && t.coach_venue_id)
+          .map(t => t.coach_venue_id as string),
+      ),
+    )
 
-    let blockedQuery = supabase
+    let venueMap: Record<string, string> = {}
+    if (venueIds.length > 0) {
+      const { data: venueRows, error: venueError } = await supabase
+        .from('coach_venues')
+        .select('id, name')
+        .eq('coach_profile_id', id)
+        .in('id', venueIds)
+
+      if (venueError) {
+        console.error('[GET /api/coaches/[id]/availability] coach_venues error:', venueError)
+        return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+      }
+
+      venueMap = Object.fromEntries(
+        ((venueRows ?? []) as { id: string; name: string }[]).map(v => [v.id, v.name]),
+      )
+    }
+
+    // ── Fetch blocked dates (BUG-32) ──────────────────────────────────────────
+    // blocked_dates has a coach-only SELECT policy, so the anon client returned
+    // [] for guests and blocked days kept rendering bookable slots (the parent
+    // only hit the 409 date_blocked backstop at checkout). This read uses the
+    // admin client — the second shaped, read-only exception to this route's
+    // RLS-respecting rule, mirroring the BUG-19 bookings read below (Lasith-
+    // approved, BUG-32 Step 0). Per-coach, window-filtered, and the select
+    // carries dates only — label/reason never leave the server;
+    // expandBlockedDates flattens to bare YYYY-MM-DD strings.
+    const adminSupabase = createAdminClient()
+
+    let blockedQuery = adminSupabase
       .from('blocked_dates')
       .select('blocked_date, blocked_date_end')
       .eq('coach_profile_id', id)
@@ -156,17 +224,78 @@ export async function GET(
       return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
     }
 
+    // ── Fetch booked slots (BUG-14 / BUG-19 Phase 1) ──────────────────────────
+    // Live bookings must reach the public calendar so booked slots stop
+    // rendering as bookable. `bookings` has no public SELECT policy (booker/
+    // coach only), so this single read uses the admin client — a deliberate,
+    // Lasith-approved exception (BUG-19 Phase 1 Step 0 approval, 4 Jul 2026)
+    // to this route's RLS-respecting rule. It is read-only and the response is
+    // shaped to busy INTERVALS only ({date, start_time, end_time}) — no ids,
+    // no participant data, no status ever leaves the server.
+    //
+    // Predicate mirrors migration 034's slot-holding partial unique index
+    // EXACTLY: pending_payment holds the slot (a parent mid-checkout must not
+    // lose it), cancelled/no-show/soft-deleted rows free it. Window: today
+    // through the coach's max-advance horizon (the only bookable range),
+    // intersected with any from_date/to_date the caller passed.
+    const today = new Date()
+    const horizon = new Date(today)
+    horizon.setDate(horizon.getDate() + policy.max_advance_days)
+
+    let bookedWindowStart = localISODate(today)
+    if (from_date && from_date > bookedWindowStart) bookedWindowStart = from_date
+    let bookedWindowEnd = localISODate(horizon)
+    if (to_date && to_date < bookedWindowEnd) bookedWindowEnd = to_date
+
+    let bookedRows: BookedSlotRow[] = []
+    if (bookedWindowStart <= bookedWindowEnd) {
+      const { data: bookingData, error: bookingsError } = await adminSupabase
+        .from('bookings')
+        .select('session_date, session_start_time, session_end_time')
+        .eq('coach_profile_id', id)
+        .gte('session_date', bookedWindowStart)
+        .lte('session_date', bookedWindowEnd)
+        .is('deleted_at', null)
+        // Unquoted PostgREST in-list — matches lib/availability/commitments.ts;
+        // quoted values silently no-match.
+        .not('status', 'in', '(cancelled_parent,cancelled_coach,no_show)')
+
+      if (bookingsError) {
+        console.error('[GET /api/coaches/[id]/availability] booked slots error:', bookingsError)
+        return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+      }
+      bookedRows = (bookingData ?? []) as BookedSlotRow[]
+    }
+
+    const booked_slots = bookedRows.map(b => ({
+      date: b.session_date.slice(0, 10),
+      start_time: b.session_start_time.slice(0, 5), // HH:MM
+      end_time: b.session_end_time.slice(0, 5),
+    }))
+
     // ── Transform ─────────────────────────────────────────────────────────────
 
-    const templates = (templateRows ?? []) as AvailabilityTemplateRow[]
     const blocked = (blockedRows ?? []) as BlockedDateRow[]
 
-    const availability = templates.map(t => ({
+    const availability = templateRowsTyped.map(t => ({
       id: t.id,
       sport_id: t.sport_id,
       day_of_week: t.day_of_week,
       start_time: t.start_time.slice(0, 5), // HH:MM
       end_time: t.end_time.slice(0, 5),
+      // BUG-08: surface the per-block override so the time picker can price each
+      // slot. NULL is preserved (not coerced) so the client can fall back to the
+      // sport default. Authoritative price is still re-derived server-side at
+      // booking time (BUG-09) — this value is for display only.
+      price_override_pence: t.price_override_pence,
+      // UX-09: the block's venue label — free-text venue_name, else the resolved
+      // coach_venues name, else null (the client shows nothing when null).
+      venue_name: t.venue_name ?? (t.coach_venue_id ? venueMap[t.coach_venue_id] ?? null : null),
+      // BUG-04: surface recurrence so the public calendar can render the teal
+      // ad-hoc dot. specific_date tells the frontend which date the dot belongs
+      // to (a bare boolean wouldn't). Mirrors the coach-facing availability route.
+      is_recurring: t.is_recurring,
+      specific_date: t.specific_date,
     }))
 
     const blocked_dates = expandBlockedDates(blocked)
@@ -175,6 +304,7 @@ export async function GET(
       {
         availability,
         blocked_dates,
+        booked_slots,
         booking_policy: {
           cancellation_window_hours: policy.cancellation_window_hours,
           min_advance_hours: policy.min_advance_hours,

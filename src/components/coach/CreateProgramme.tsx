@@ -1,7 +1,7 @@
 'use client'
 import React, { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Check, Loader2, Calendar, RefreshCw, CreditCard, Layers, Sun, Info } from 'lucide-react'
+import { ArrowLeft, Check, Loader2, Calendar, RefreshCw, CreditCard, Layers, Sun, Info, AlertTriangle } from 'lucide-react'
 import { VenueAutocomplete, type VenueSelection } from '@/components/coach/shared/LocationAutocomplete'
 import { ProgrammeImagePicker } from '@/components/coach/shared/ProgrammeImagePicker'
 import { DatePicker, TimePicker, todayYYYYMMDD } from '@/components/ui'
@@ -18,6 +18,19 @@ interface Sport {
   id: string
   sport_id: string
   sport_name: string
+}
+
+// UX-19: a 409 carries a human-readable `message` explaining what overlaps and
+// what to do — it must reach the coach, not be collapsed into `data.error`
+// (the constant "Conflict detected").
+class ConflictError extends Error {}
+
+async function throwApiError(res: Response, fallback: string): Promise<never> {
+  const data = (await res.json().catch(() => ({}))) as { error?: string; message?: string }
+  if (res.status === 409) {
+    throw new ConflictError(data.message || data.error || 'Conflict detected')
+  }
+  throw new Error(data.error || fallback)
 }
 
 interface FormData {
@@ -224,6 +237,10 @@ export function CreateProgramme() {
   const [programmeId, setProgrammeId] = useState<string | null>(null)
   const [autoSaving, setAutoSaving] = useState(false)
   const [continueError, setContinueError] = useState<string | null>(null)
+  // UX-19: scheduling-conflict 409s get a prominent banner and block Continue /
+  // Publish until the coach changes something (any form edit or step change
+  // clears it, re-enabling the buttons).
+  const [conflictError, setConflictError] = useState<string | null>(null)
 
   // Step 4 final save
   const [saving, setSaving] = useState(false)
@@ -263,6 +280,12 @@ export function CreateProgramme() {
     cancellation_window_hours: 24,
     image_url: null,
   })
+
+  // UX-19: any edit or step change invalidates a previously reported conflict —
+  // the coach adjusted something, so let them try Continue / Publish again.
+  useEffect(() => {
+    setConflictError(null)
+  }, [form, step])
 
   // Fix-58-9: fetch from /api/coaches/sports (coach's configured sports + valid sport_ids)
   useEffect(() => {
@@ -403,6 +426,7 @@ export function CreateProgramme() {
     if (!canContinue()) return
     setAutoSaving(true)
     setContinueError(null)
+    setConflictError(null)
 
     try {
       if (step === 1) {
@@ -413,8 +437,7 @@ export function CreateProgramme() {
           body: JSON.stringify(buildPostBody('draft')),
         })
         if (!res.ok) {
-          const data = await res.json()
-          throw new Error(data.error || 'Failed to save draft')
+          await throwApiError(res, 'Failed to save draft')
         }
         const data = await res.json()
         setProgrammeId(data.id)
@@ -445,8 +468,7 @@ export function CreateProgramme() {
           body: JSON.stringify(patchBody),
         })
         if (!res.ok) {
-          const data = await res.json()
-          throw new Error(data.error || 'Failed to save schedule')
+          await throwApiError(res, 'Failed to save schedule')
         }
       } else if (step === 3) {
         if (!programmeId) throw new Error('No programme ID — please go back to step 1.')
@@ -470,13 +492,16 @@ export function CreateProgramme() {
           body: JSON.stringify(patchBody),
         })
         if (!res.ok) {
-          const data = await res.json()
-          throw new Error(data.error || 'Failed to save settings')
+          await throwApiError(res, 'Failed to save settings')
         }
       }
       setStep((s) => s + 1)
     } catch (err) {
-      setContinueError(err instanceof Error ? err.message : 'Something went wrong. Please try again.')
+      if (err instanceof ConflictError) {
+        setConflictError(err.message)
+      } else {
+        setContinueError(err instanceof Error ? err.message : 'Something went wrong. Please try again.')
+      }
     } finally {
       setAutoSaving(false)
     }
@@ -500,8 +525,7 @@ export function CreateProgramme() {
           body: JSON.stringify({ status: 'active' }),
         })
         if (!res.ok) {
-          const data = await res.json()
-          throw new Error(data.error || 'Failed to publish programme')
+          await throwApiError(res, 'Failed to publish programme')
         }
       } else {
         // Fallback: create and publish in one call
@@ -511,8 +535,7 @@ export function CreateProgramme() {
           body: JSON.stringify(buildPostBody('active')),
         })
         if (!res.ok) {
-          const data = await res.json()
-          throw new Error(data.error || 'Failed to create programme')
+          await throwApiError(res, 'Failed to create programme')
         }
         const created: { id: string } = await res.json()
         activeId = created.id
@@ -520,11 +543,28 @@ export function CreateProgramme() {
       // CF-PROG-SHARE-CARD: open share modal in place; router push deferred to close.
       setPublishedShareId(activeId)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong')
+      if (err instanceof ConflictError) {
+        setConflictError(err.message)
+      } else {
+        setError(err instanceof Error ? err.message : 'Something went wrong')
+      }
     } finally {
       setSaving(false)
     }
   }
+
+  // UX-19: prominent inline conflict alert — rendered above the step 1–3 action
+  // bar and above the step-4 publish CTAs.
+  const conflictBanner = conflictError ? (
+    <div
+      role="alert"
+      data-testid="conflict-banner"
+      className="flex items-start gap-2.5 rounded-[10px] bg-danger/10 p-3.5 text-danger"
+    >
+      <AlertTriangle size={18} className="mt-0.5 flex-shrink-0" aria-hidden="true" />
+      <p className="min-w-0 text-sm font-medium">{conflictError}</p>
+    </div>
+  ) : null
 
   // Derived values for review step
   const sport = sports.find((s) => s.sport_id === form.sport_id)
@@ -730,7 +770,14 @@ export function CreateProgramme() {
                       type="button"
                       role="switch"
                       aria-checked={form.campMode}
-                      onClick={() => update('campMode', !form.campMode)}
+                      onClick={() => {
+                        // BUG-23 (approved ruling): camps are per_session only —
+                        // enabling camp mode forces the payment type.
+                        if (!form.campMode && form.payment_type === 'block_upfront') {
+                          update('payment_type', 'per_session')
+                        }
+                        update('campMode', !form.campMode)
+                      }}
                       className={`w-10 h-6 rounded-full relative flex-shrink-0 transition-colors ${form.campMode ? 'bg-brand-600' : 'bg-[#CBD5E1]'}`}
                     >
                       <span
@@ -743,7 +790,7 @@ export function CreateProgramme() {
                     <div className="bg-brand-50 rounded-md p-3 flex gap-2.5 items-start mb-[18px]">
                       <Info size={16} className="text-brand-600 flex-shrink-0 mt-0.5" />
                       <p className="text-[13px] text-brand-800 m-0 leading-snug">
-                        Parents book the full day. Each day can have multiple time blocks.
+                        Parents can book individual sessions or the full day. Each day can have multiple time blocks, priced per session.
                       </p>
                     </div>
                   )}
@@ -1006,13 +1053,25 @@ export function CreateProgramme() {
                     title="Per session"
                     description="Parents pay for each session."
                   />
-                  <SelectCard
-                    active={form.payment_type === 'block_upfront'}
-                    onClick={() => update('payment_type', 'block_upfront')}
-                    icon={<Layers size={20} strokeWidth={1.8} />}
-                    title="Block upfront"
-                    description="Parents pay for all sessions at once."
-                  />
+                  {/* BUG-23 (approved ruling): camps are per_session only —
+                      block is unavailable while camp mode is on (the API
+                      enforces the same rule against crafted requests). */}
+                  <div className={form.campMode ? 'opacity-50 pointer-events-none' : ''} aria-disabled={form.campMode}>
+                    <SelectCard
+                      active={form.payment_type === 'block_upfront'}
+                      onClick={() => {
+                        if (form.campMode) return
+                        update('payment_type', 'block_upfront')
+                      }}
+                      icon={<Layers size={20} strokeWidth={1.8} />}
+                      title="Block upfront"
+                      description={
+                        form.campMode
+                          ? 'Unavailable in camp mode — parents pay per session.'
+                          : 'Parents pay for all sessions at once.'
+                      }
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -1162,15 +1221,18 @@ export function CreateProgramme() {
               </div>
 
               {error && <p className="text-sm text-red-600 mb-4 text-center">{error}</p>}
+              {conflictBanner && (
+                <div className="max-w-[560px] mx-auto w-full mb-4">{conflictBanner}</div>
+              )}
 
               {/* Fix-57: Publish now is the primary CTA (top, filled brand-600).
                   Save as draft is the secondary fallback (below, outlined). */}
               <div className="flex flex-col gap-2.5 max-w-[560px] mx-auto w-full">
                 <button
                   type="button"
-                  disabled={saving}
+                  disabled={saving || conflictError !== null}
                   onClick={() => submit(true)}
-                  className="h-[52px] rounded-full bg-[#0077CC] hover:bg-[#0066AA] text-white text-[15px] font-medium flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+                  className="h-[52px] rounded-full bg-[#0077CC] hover:bg-[#0066AA] text-white text-[15px] font-medium flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {saving ? <Loader2 size={16} className="animate-spin" /> : null}
                   Publish now
@@ -1191,6 +1253,7 @@ export function CreateProgramme() {
           )}
 
           {/* ── Bottom action bar (steps 1–3) ── */}
+          {step < 4 && conflictBanner && <div className="mt-6">{conflictBanner}</div>}
           {step < 4 && (
             <div className="flex items-center justify-between mt-7 pt-5 border-t border-[#F1F5F9]">
               <button
@@ -1216,7 +1279,7 @@ export function CreateProgramme() {
                 )}
                 <button
                   type="button"
-                  disabled={!canContinue() || autoSaving}
+                  disabled={!canContinue() || autoSaving || conflictError !== null}
                   onClick={handleContinue}
                   className="h-12 px-6 rounded-full bg-[#0077CC] hover:bg-[#0066AA] text-white text-[15px] font-medium flex items-center gap-1.5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >
