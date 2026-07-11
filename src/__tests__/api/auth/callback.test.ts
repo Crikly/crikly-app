@@ -135,3 +135,29 @@ describe('GET /auth/callback — normal flow (regression)', () => {
     expect(target).toBe('/onboarding/terms')
   })
 })
+
+describe('GET /auth/callback — profile read hardening (BUG-34)', () => {
+  it('routes a transient profile read failure to /dashboard, not role selection', async () => {
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
+    mockExchange.mockResolvedValue({ error: null })
+    mockAuthedUser()
+    mockSingle.mockResolvedValue({
+      data: null,
+      error: { code: '57014', message: 'canceling statement due to statement timeout' },
+    })
+    const target = await callCallback('?code=abc')
+    expect(target).toBe('/dashboard')
+    consoleSpy.mockRestore()
+  })
+
+  it('still routes a genuine no-row result (PGRST116) to /onboarding/role', async () => {
+    mockExchange.mockResolvedValue({ error: null })
+    mockAuthedUser()
+    mockSingle.mockResolvedValue({
+      data: null,
+      error: { code: 'PGRST116', message: 'JSON object requested, multiple (or no) rows returned' },
+    })
+    const target = await callCallback('?code=abc')
+    expect(target).toBe('/onboarding/role')
+  })
+})

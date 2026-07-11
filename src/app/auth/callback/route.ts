@@ -108,11 +108,25 @@ export async function GET(request: Request) {
   // on user_metadata.primary_role — it can drift from the DB. Uses the existing
   // SSR client (the user's own session). active_role is nullable (Fix-AUDIT-01):
   // NULL means no role chosen yet → role selection.
-  const { data: userProfile } = await supabase
+  const { data: userProfile, error: profileError } = await supabase
     .from('user_profiles')
     .select('active_role, terms_accepted_at')
     .eq('auth_user_id', user.id)
     .single()
+
+  // BUG-34 hardening: .single() previously conflated "no row" (PGRST116) with
+  // transient query failures, so a DB blip would dump a fully-onboarded user
+  // into role selection. Route transient failures to /dashboard — a pure
+  // router that re-reads the profile — and log for diagnosis. Genuine no-row
+  // results (new users) fall through to the gate below unchanged.
+  if (profileError && profileError.code !== 'PGRST116') {
+    console.error('[auth/callback] user_profiles read failed:', {
+      userId: user.id,
+      code: profileError.code,
+      message: profileError.message,
+    })
+    return NextResponse.redirect(new URL('/dashboard', origin))
+  }
 
   let redirectTo: string
   if (!userProfile || !userProfile.active_role) {
