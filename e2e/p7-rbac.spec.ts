@@ -29,9 +29,14 @@ test.describe('P7 — RBAC: route protection', () => {
   }) => {
     const email = process.env.TEST_PARENT_EMAIL
     const password = process.env.TEST_PARENT_PASSWORD
+    // TEST-E2E-03: the parent user is now provisioned by e2e/fixtures/seed.ts
+    // (step 7) whenever TEST_PARENT_EMAIL/TEST_PARENT_PASSWORD are set — they
+    // are in .env.local locally and documented in .env.example. This guard now
+    // only fires on an environment missing the vars (e.g. CI until the two
+    // secrets are added), with this recorded reason.
     test.skip(
       !email || !password,
-      'TEST_PARENT_EMAIL / TEST_PARENT_PASSWORD must be set in .env.local — use the account Lasith set to active_role=parent during the AUTH-AUDIT-01 review.',
+      'TEST_PARENT_EMAIL / TEST_PARENT_PASSWORD not set — seed.ts skips parent provisioning without them (see .env.example). Add both to run this RBAC negative path.',
     )
 
     await page.goto('/login')
@@ -45,10 +50,19 @@ test.describe('P7 — RBAC: route protection', () => {
     // navigation below.
     await page.waitForURL(/\/(dashboard|onboarding)/, { timeout: 15000 })
 
-    // Manually navigate to /coach/dashboard. The coach layout guard should
-    // bounce this user to /dashboard because they have no coach role.
+    // Manually navigate to /coach/dashboard. The coach layout guard bounces a
+    // user with no coach role to /dashboard (coach/layout.tsx), and /dashboard
+    // then routes any non-coach active_role to /onboarding/role — the parent
+    // module has no dashboard yet in Block 0, so role selection is today's
+    // terminal destination ((dashboard)/dashboard/page.tsx).
+    //
+    // TEST-E2E-03: the original /\/dashboard$/ expectation predated that
+    // second hop and had never actually run (env-var skip). The invariant
+    // under test is unchanged — a parent must never land on a /coach/*
+    // surface. Revisit the terminal URL when the parent dashboard ships.
     await page.goto('/coach/dashboard')
-    await page.waitForURL(/\/dashboard$/, { timeout: 10000 })
-    await expect(page).toHaveURL(/\/dashboard$/)
+    await page.waitForURL(/\/onboarding\/role$/, { timeout: 10000 })
+    await expect(page).toHaveURL(/\/onboarding\/role$/)
+    await expect(page).not.toHaveURL(/\/coach\//)
   })
 })

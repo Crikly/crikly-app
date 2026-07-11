@@ -258,6 +258,60 @@ async function main(): Promise<void> {
   }
   console.info('[seed] step 6/6: availability_templates upserted (3 weekly slots)')
 
+  // 7. TEST-E2E-03: parent test user for P7 T7.3 (RBAC negative path — a
+  //    parent must be bounced off /coach/dashboard). Conditional on the env
+  //    vars so CI without the secrets degrades to T7.3's recorded skip instead
+  //    of failing the whole seed. Same find-or-create + upsert pattern as the
+  //    coach; a parent needs no coach_profiles/coach_sports/availability rows.
+  const parentEmail = process.env.TEST_PARENT_EMAIL
+  const parentPassword = process.env.TEST_PARENT_PASSWORD
+  if (parentEmail && parentPassword) {
+    let parentAuthId = await findAuthUserByEmail(parentEmail)
+    if (!parentAuthId) {
+      const { data: created, error: createErr } = await supabase.auth.admin.createUser({
+        email: parentEmail,
+        password: parentPassword,
+        email_confirm: true,
+      })
+      if (createErr || !created.user) {
+        console.error('[seed] failed to create parent auth user:', createErr)
+        process.exit(1)
+      }
+      parentAuthId = created.user.id
+    }
+    const { data: parentUp, error: parentUpErr } = await supabase
+      .from('user_profiles')
+      .upsert(
+        {
+          auth_user_id: parentAuthId,
+          full_name: 'Test Parent',
+          active_role: 'parent',
+          terms_accepted_at: now,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'auth_user_id' },
+      )
+      .select('id')
+      .single()
+    if (parentUpErr || !parentUp) {
+      console.error('[seed] parent user_profiles upsert failed:', parentUpErr)
+      process.exit(1)
+    }
+    const { error: parentRoleErr } = await supabase
+      .from('user_roles')
+      .upsert(
+        { user_profile_id: parentUp.id as string, role: 'parent' },
+        { onConflict: 'user_profile_id,role' },
+      )
+    if (parentRoleErr) {
+      console.error('[seed] parent user_roles upsert failed:', parentRoleErr)
+      process.exit(1)
+    }
+    console.info('[seed] step 7/7: parent test user upserted (P7 T7.3 will run)')
+  } else {
+    console.info('[seed] step 7/7: TEST_PARENT_EMAIL/PASSWORD not set — parent user not seeded (P7 T7.3 skips with its recorded reason)')
+  }
+
   console.info('')
   console.info('[seed] complete')
   console.info(`        auth_user_id     = ${authUserId}`)
