@@ -15,6 +15,9 @@ jest.mock('next/headers', () => ({
 
 // BUG-19 Phase 1 (BUG-14): the route reads live booked slots via the admin
 // client (bookings has no public SELECT policy — Lasith-approved exception).
+// BUG-32: blocked_dates is read the same way (coach-only SELECT policy meant
+// the anon client silently returned [] and blocked days kept showing slots).
+// Admin call order in the route: blocked_dates FIRST, then bookings.
 jest.mock('@/lib/supabase/admin', () => ({
   createAdminClient: jest.fn(),
 }))
@@ -34,9 +37,10 @@ function makeChain() {
   return c
 }
 
-// The bookings read chains .select().eq().gte().lte().is().not() and is awaited
-// directly, so the chain must be thenable.
-function makeBookingsChain(result: { data: unknown; error: unknown }) {
+// The admin-client reads (blocked_dates: .select().eq() [+ .or()/.lte()];
+// bookings: .select().eq().gte().lte().is().not()) are awaited directly, so
+// the chain must be thenable.
+function makeThenableChain(result: { data: unknown; error: unknown }) {
   const c: Record<string, unknown> = {}
   for (const m of ['select', 'eq', 'neq', 'is', 'in', 'not', 'gte', 'lte', 'or', 'order', 'limit']) {
     c[m] = jest.fn(() => c)
@@ -53,8 +57,9 @@ beforeEach(() => {
   jest.clearAllMocks()
   ;(createServerClient as jest.Mock).mockReturnValue(mockSupabase)
   ;(createAdminClient as jest.Mock).mockReturnValue({ from: mockAdminFrom })
-  // Default: no live bookings. Tests override with their own rows.
-  mockAdminFrom.mockImplementation(() => makeBookingsChain({ data: [], error: null }))
+  // Default: no blocked dates, no live bookings. Tests override with their own
+  // rows via mockImplementationOnce — remember blocked_dates is consumed first.
+  mockAdminFrom.mockImplementation(() => makeThenableChain({ data: [], error: null }))
 })
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -137,12 +142,8 @@ describe('GET /api/coaches/[id]/availability — success', () => {
         })
         return c
       })
-      .mockImplementationOnce(() => {
-        // blocked_dates — .select().eq('coach_profile_id') then awaited (single eq)
-        const c = makeChain()
-        c.eq = jest.fn(() => Promise.resolve({ data: [], error: null }))
-        return c
-      })
+    // blocked_dates is read via the admin client (BUG-32) — beforeEach default
+    // returns no rows.
 
     const res = await callGet(COACH_UUID)
     expect(res.status).toBe(200)
@@ -184,11 +185,6 @@ describe('GET /api/coaches/[id]/availability — success', () => {
           }
           return c
         })
-        return c
-      })
-      .mockImplementationOnce(() => {
-        const c = makeChain()
-        c.eq = jest.fn(() => Promise.resolve({ data: [], error: null }))
         return c
       })
 
@@ -236,12 +232,6 @@ describe('GET /api/coaches/[id]/availability — venue resolution (UX-09)', () =
         c.in = jest.fn(() => Promise.resolve({ data: [{ id: 'venue-1', name: 'Kingston Hospital' }], error: null }))
         return c
       })
-      .mockImplementationOnce(() => {
-        // blocked_dates — .select().eq('coach_profile_id') then awaited
-        const c = makeChain()
-        c.eq = jest.fn(() => Promise.resolve({ data: [], error: null }))
-        return c
-      })
 
     const res = await callGet(COACH_UUID)
     expect(res.status).toBe(200)
@@ -276,12 +266,6 @@ describe('GET /api/coaches/[id]/availability — venue resolution (UX-09)', () =
         })
         return c
       })
-      .mockImplementationOnce(() => {
-        // blocked_dates — no coach_venues fetch because venue_name is already set
-        const c = makeChain()
-        c.eq = jest.fn(() => Promise.resolve({ data: [], error: null }))
-        return c
-      })
 
     const res = await callGet(COACH_UUID)
     expect(res.status).toBe(200)
@@ -313,11 +297,6 @@ describe('GET /api/coaches/[id]/availability — venue resolution (UX-09)', () =
           }
           return c
         })
-        return c
-      })
-      .mockImplementationOnce(() => {
-        const c = makeChain()
-        c.eq = jest.fn(() => Promise.resolve({ data: [], error: null }))
         return c
       })
 
@@ -372,7 +351,8 @@ describe('GET /api/coaches/[id]/availability — venue resolution (UX-09)', () =
 // participant data, or status may leave the server.
 
 describe('GET /api/coaches/[id]/availability — booked_slots (BUG-14)', () => {
-  // Queues the three RLS-client reads (coach → templates → blocked_dates).
+  // Queues the two RLS-client reads (coach → templates). blocked_dates moved to
+  // the admin client under BUG-32 and is queued there (before bookings).
   function mockBaseReads() {
     mockFrom
       .mockImplementationOnce(() => {
@@ -393,23 +373,25 @@ describe('GET /api/coaches/[id]/availability — booked_slots (BUG-14)', () => {
         })
         return c
       })
-      .mockImplementationOnce(() => {
-        const c = makeChain()
-        c.eq = jest.fn(() => Promise.resolve({ data: [], error: null }))
-        return c
-      })
+  }
+
+  // BUG-32: the admin client serves blocked_dates first, then bookings — a
+  // single mockImplementationOnce would feed the bookings rows to the blocked
+  // read. Queue both in route order.
+  function mockAdminBlockedThenBookings(bookings: { data: unknown; error: unknown }) {
+    mockAdminFrom
+      .mockImplementationOnce(() => makeThenableChain({ data: [], error: null }))
+      .mockImplementationOnce(() => makeThenableChain(bookings))
   }
 
   it('returns booked slots as HH:MM intervals with ONLY date/start/end fields', async () => {
     mockBaseReads()
-    mockAdminFrom.mockImplementationOnce(() =>
-      makeBookingsChain({
-        data: [
-          { session_date: '2026-07-20', session_start_time: '10:00:00', session_end_time: '11:00:00' },
-        ],
-        error: null,
-      }),
-    )
+    mockAdminBlockedThenBookings({
+      data: [
+        { session_date: '2026-07-20', session_start_time: '10:00:00', session_end_time: '11:00:00' },
+      ],
+      error: null,
+    })
 
     const res = await callGet(COACH_UUID)
     expect(res.status).toBe(200)
@@ -426,8 +408,10 @@ describe('GET /api/coaches/[id]/availability — booked_slots (BUG-14)', () => {
 
   it('applies the migration-034 slot-holding predicate (soft-deletes and cancellations excluded)', async () => {
     mockBaseReads()
-    const chain = makeBookingsChain({ data: [], error: null })
-    mockAdminFrom.mockImplementationOnce(() => chain)
+    const chain = makeThenableChain({ data: [], error: null })
+    mockAdminFrom
+      .mockImplementationOnce(() => makeThenableChain({ data: [], error: null }))
+      .mockImplementationOnce(() => chain)
 
     const res = await callGet(COACH_UUID)
     expect(res.status).toBe(200)
@@ -437,8 +421,73 @@ describe('GET /api/coaches/[id]/availability — booked_slots (BUG-14)', () => {
 
   it('returns 500 when the booked-slots query errors', async () => {
     mockBaseReads()
+    mockAdminBlockedThenBookings({ data: null, error: { message: 'db error' } })
+
+    const res = await callGet(COACH_UUID)
+    expect(res.status).toBe(500)
+  })
+})
+
+// ─── Blocked dates via admin client (BUG-32) ──────────────────────────────────
+//
+// blocked_dates has a coach-only SELECT policy. The route used to read it with
+// the anon client, which silently returned [] for guests — blocked days kept
+// rendering bookable slots and parents only hit the 409 date_blocked backstop
+// at checkout. The read must go through the admin client, shaped to bare
+// YYYY-MM-DD strings (no label/reason).
+
+describe('GET /api/coaches/[id]/availability — blocked_dates (BUG-32)', () => {
+  function mockBaseReads() {
+    mockFrom
+      .mockImplementationOnce(() => {
+        const c = makeChain()
+        c.maybeSingle.mockResolvedValue({
+          data: { cancellation_window_hours: 24, min_advance_hours: 12, max_advance_days: 60 },
+          error: null,
+        })
+        return c
+      })
+      .mockImplementationOnce(() => {
+        const c = makeChain()
+        let eqCount = 0
+        c.eq = jest.fn(() => {
+          eqCount++
+          if (eqCount >= 2) return Promise.resolve({ data: [], error: null })
+          return c
+        })
+        return c
+      })
+  }
+
+  it('surfaces blocked dates from the ADMIN client — anon RLS no longer empties them', async () => {
+    mockBaseReads()
+    mockAdminFrom
+      .mockImplementationOnce(() =>
+        makeThenableChain({
+          data: [
+            { blocked_date: '2026-07-25', blocked_date_end: null },
+            { blocked_date: '2026-08-01', blocked_date_end: '2026-08-03' },
+          ],
+          error: null,
+        }),
+      )
+      .mockImplementationOnce(() => makeThenableChain({ data: [], error: null }))
+
+    const res = await callGet(COACH_UUID)
+    expect(res.status).toBe(200)
+    const data = await res.json()
+    // Single day + expanded range, bare date strings only.
+    expect(data.blocked_dates).toEqual(['2026-07-25', '2026-08-01', '2026-08-02', '2026-08-03'])
+    expect(data.blocked_dates.every((d: unknown) => typeof d === 'string')).toBe(true)
+    // The read went through the admin client — and never through the anon one.
+    expect(mockAdminFrom).toHaveBeenCalledWith('blocked_dates')
+    expect(mockFrom).not.toHaveBeenCalledWith('blocked_dates')
+  })
+
+  it('returns 500 when the blocked_dates query errors', async () => {
+    mockBaseReads()
     mockAdminFrom.mockImplementationOnce(() =>
-      makeBookingsChain({ data: null, error: { message: 'db error' } }),
+      makeThenableChain({ data: null, error: { message: 'db error' } }),
     )
 
     const res = await callGet(COACH_UUID)
