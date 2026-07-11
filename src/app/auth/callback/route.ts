@@ -8,7 +8,18 @@ export async function GET(request: Request) {
   const code = requestUrl.searchParams.get('code')
   const origin = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'
 
+  // BUG-33: forgot-password sends redirectTo `/auth/callback?type=recovery`,
+  // and Supabase's verify endpoint preserves that param when it appends the
+  // code. A recovery login must land on the set-new-password screen, never on
+  // the normal post-login destination.
+  const isRecovery = requestUrl.searchParams.get('type') === 'recovery'
+
   if (!code) {
+    // Expired/used recovery links arrive with error params and no code —
+    // send the user somewhere they can request a fresh link.
+    if (isRecovery) {
+      return NextResponse.redirect(new URL('/forgot-password?error=link_expired', origin))
+    }
     return NextResponse.redirect(new URL('/login', origin))
   }
 
@@ -31,7 +42,18 @@ export async function GET(request: Request) {
   const { error } = await supabase.auth.exchangeCodeForSession(code)
 
   if (error) {
+    if (isRecovery) {
+      return NextResponse.redirect(new URL('/forgot-password?error=link_expired', origin))
+    }
     return NextResponse.redirect(new URL('/login?error=oauth_failed', origin))
+  }
+
+  // BUG-33: recovery session established — go straight to the set-password
+  // screen. Profile upsert/routing is skipped: a recovery user already has an
+  // account, and their post-save destination is decided by
+  // /api/auth/reset-password using the same profile-state gate as login.
+  if (isRecovery) {
+    return NextResponse.redirect(new URL('/reset-password', origin))
   }
 
   const { data: { user } } = await supabase.auth.getUser()
