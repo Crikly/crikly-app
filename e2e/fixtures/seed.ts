@@ -179,23 +179,25 @@ async function main(): Promise<void> {
   console.info('[seed] step 3/6: user_roles upserted (coach)')
 
   // 4. coach_profiles — upsert on user_profile_id. Seed with is_profile_live=true
-  //    (Fix-E2E-01b): the client-side onboarding gate in CoachLayoutClient.tsx
-  //    redirects any coach with is_profile_live=false to /coach/onboarding/profile
-  //    (it treats "not live" as "onboarding incomplete"). A draft seed therefore
-  //    bounced the test coach off every /coach/* target page (P1.T1.2, P3.T3.3,
-  //    P4.T4.2 failed via redirect). Seeding live satisfies the gate so the suite
-  //    can reach the coach surfaces.
+  //    (Fix-E2E-01b) so specs that need a public/live coach (P8–P12) start from
+  //    a sane default; those specs also set the flag themselves (BUG-QA-04).
+  //
+  //    BUG-34: the CoachLayoutClient onboarding gate now keys on WIZARD
+  //    PROGRESS (coach_profiles.display_name, set by wizard step 1) instead of
+  //    is_profile_live — so display_name must be seeded or the test coach is
+  //    treated as "never started onboarding" and bounced off every
+  //    non-onboarding /coach/* page (the Fix-E2E-01b failure mode). In
+  //    production every wizard-started coach has display_name set.
   //
   //    NOTE: P5 (Go Live) drives its own is_profile_live state via beforeAll/
-  //    afterAll in p5-profile-golive.spec.ts and does NOT rely on this seed value.
-  //    T5.2/T5.3 are skipped (Fix-E2E-01b) because the go-live button only renders
-  //    in draft state, which the gate makes unreachable on /coach/profile/edit —
-  //    Fix-E2E-02 tracks the gate-logic review.
+  //    afterAll in p5-profile-golive.spec.ts and does NOT rely on this seed
+  //    value.
   const { data: cpRow, error: cpErr } = await supabase
     .from('coach_profiles')
     .upsert(
       {
         user_profile_id: userProfileId,
+        display_name: 'Test Coach',
         is_profile_live: true,
         updated_at: new Date().toISOString(),
       },
@@ -208,7 +210,7 @@ async function main(): Promise<void> {
     process.exit(1)
   }
   const coachProfileId = cpRow.id as string
-  console.info('[seed] step 4/6: coach_profiles upserted (is_profile_live=true)')
+  console.info('[seed] step 4/6: coach_profiles upserted (display_name set, is_profile_live=true)')
 
   // 5. coach_sports — upsert on (coach_profile_id, sport_id).
   //    session_types + skill_levels are NOT NULL text[] (migration 002 lines 111-112).

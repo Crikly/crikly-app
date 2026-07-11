@@ -8,7 +8,18 @@ export async function GET(request: Request) {
   const code = requestUrl.searchParams.get('code')
   const origin = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'
 
+  // BUG-33: forgot-password sends redirectTo `/auth/callback?type=recovery`,
+  // and Supabase's verify endpoint preserves that param when it appends the
+  // code. A recovery login must land on the set-new-password screen, never on
+  // the normal post-login destination.
+  const isRecovery = requestUrl.searchParams.get('type') === 'recovery'
+
   if (!code) {
+    // Expired/used recovery links arrive with error params and no code —
+    // send the user somewhere they can request a fresh link.
+    if (isRecovery) {
+      return NextResponse.redirect(new URL('/forgot-password?error=link_expired', origin))
+    }
     return NextResponse.redirect(new URL('/login', origin))
   }
 
@@ -31,7 +42,18 @@ export async function GET(request: Request) {
   const { error } = await supabase.auth.exchangeCodeForSession(code)
 
   if (error) {
+    if (isRecovery) {
+      return NextResponse.redirect(new URL('/forgot-password?error=link_expired', origin))
+    }
     return NextResponse.redirect(new URL('/login?error=oauth_failed', origin))
+  }
+
+  // BUG-33: recovery session established — go straight to the set-password
+  // screen. Profile upsert/routing is skipped: a recovery user already has an
+  // account, and their post-save destination is decided by
+  // /api/auth/reset-password using the same profile-state gate as login.
+  if (isRecovery) {
+    return NextResponse.redirect(new URL('/reset-password', origin))
   }
 
   const { data: { user } } = await supabase.auth.getUser()
@@ -86,11 +108,25 @@ export async function GET(request: Request) {
   // on user_metadata.primary_role — it can drift from the DB. Uses the existing
   // SSR client (the user's own session). active_role is nullable (Fix-AUDIT-01):
   // NULL means no role chosen yet → role selection.
-  const { data: userProfile } = await supabase
+  const { data: userProfile, error: profileError } = await supabase
     .from('user_profiles')
     .select('active_role, terms_accepted_at')
     .eq('auth_user_id', user.id)
     .single()
+
+  // BUG-34 hardening: .single() previously conflated "no row" (PGRST116) with
+  // transient query failures, so a DB blip would dump a fully-onboarded user
+  // into role selection. Route transient failures to /dashboard — a pure
+  // router that re-reads the profile — and log for diagnosis. Genuine no-row
+  // results (new users) fall through to the gate below unchanged.
+  if (profileError && profileError.code !== 'PGRST116') {
+    console.error('[auth/callback] user_profiles read failed:', {
+      userId: user.id,
+      code: profileError.code,
+      message: profileError.message,
+    })
+    return NextResponse.redirect(new URL('/dashboard', origin))
+  }
 
   let redirectTo: string
   if (!userProfile || !userProfile.active_role) {

@@ -49,9 +49,12 @@ export default async function CoachLayout({
   // looped (Fix-LAYOUT-01 patched the wrong branch). UX redirect only — role
   // (gate 3) and terms (gate 5) stay server-side; API routes use
   // requireCoachContext.
+  // BUG-34: display_name (set by wizard step 1) is the nudge signal — NOT
+  // is_profile_live, which only turns true at the final go-live step and
+  // force-bounced every returning not-yet-live coach back into the wizard.
   const { data: coachProfile } = await supabase
     .from('coach_profiles')
-    .select('id, is_profile_live')
+    .select('id, display_name')
     .eq('user_profile_id', userProfile.id)
     .single()
 
@@ -64,7 +67,7 @@ export default async function CoachLayout({
       initialCoachName={userProfile.full_name || ''}
       initialAvatarUrl={userProfile.avatar_url || null}
       hasCoachProfile={!!coachProfile}
-      isProfileLive={coachProfile?.is_profile_live ?? false}
+      hasWizardProgress={!!coachProfile?.display_name}
     >
       {children}
     </CoachLayoutClient>
