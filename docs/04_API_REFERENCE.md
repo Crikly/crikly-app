@@ -73,6 +73,28 @@ Add a role to the authenticated user's account.
 
 ---
 
+### POST /api/auth/reset-password
+Save a new password for a user holding a recovery session (BUG-33). The
+session is established by `/auth/callback?type=recovery` from the reset-email
+link; this route calls `supabase.auth.updateUser({ password })` on that
+session and returns the same profile-state-gated redirect as login.
+
+**Request:**
+```json
+{ "password": "new password, min 8 chars" }
+```
+
+**Response 200:**
+```json
+{ "success": true, "redirectTo": "/coach/dashboard" }
+```
+
+**Errors:** 400 `VALIDATION_ERROR` (missing/short password), 401
+`SESSION_EXPIRED` (no recovery session — user should request a new link),
+422 `SAME_PASSWORD` (new password equals the old one), 500 `UNKNOWN_ERROR`.
+
+---
+
 ## Coach Routes
 
 ### GET /api/coaches

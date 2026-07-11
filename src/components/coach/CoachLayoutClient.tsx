@@ -17,6 +17,7 @@ import { CoachRightPanel } from '@/components/coach/CoachRightPanel'
 import { BookingsProvider } from '@/contexts/BookingsContext'
 import { createClient } from '@/lib/supabase/client'
 import { fetchCoachProfileCached } from '@/lib/onboarding-cache'
+import { shouldNudgeToWizard } from '@/lib/coach-onboarding-gate'
 import { ShareLinkPanel } from '@/components/coach/shared/ShareLinkPanel'
 
 interface CoachLayoutClientProps {
@@ -24,7 +25,9 @@ interface CoachLayoutClientProps {
   initialCoachName: string
   initialAvatarUrl: string | null
   hasCoachProfile: boolean
-  isProfileLive: boolean
+  // BUG-34: wizard step 1 completed (coach_profiles.display_name set) —
+  // replaces isProfileLive as the onboarding-nudge signal.
+  hasWizardProgress: boolean
 }
 
 export function CoachLayoutClient({
@@ -32,7 +35,7 @@ export function CoachLayoutClient({
   initialCoachName,
   initialAvatarUrl,
   hasCoachProfile,
-  isProfileLive,
+  hasWizardProgress,
 }: CoachLayoutClientProps) {
   const router = useRouter()
   const pathname = usePathname()
@@ -170,10 +173,10 @@ export function CoachLayoutClient({
   // later navigation (REQ-C-001, dashboard-first). Reads mount-time props +
   // pathname by design. UX-only gate — role + terms stay server-side; API routes
   // use requireCoachContext.
+  // BUG-34: the nudge keys on wizard progress, not is_profile_live — see
+  // shouldNudgeToWizard for the full rationale.
   useEffect(() => {
-    const incompleteCoach = !hasCoachProfile || !isProfileLive
-    const onOnboarding = pathname.startsWith('/coach/onboarding')
-    if (incompleteCoach && !onOnboarding) {
+    if (shouldNudgeToWizard({ hasCoachProfile, hasWizardProgress, pathname })) {
       router.push('/coach/onboarding/profile')
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
