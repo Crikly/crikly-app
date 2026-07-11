@@ -190,9 +190,18 @@ export async function GET(
       )
     }
 
-    // ── Fetch blocked dates ───────────────────────────────────────────────────
+    // ── Fetch blocked dates (BUG-32) ──────────────────────────────────────────
+    // blocked_dates has a coach-only SELECT policy, so the anon client returned
+    // [] for guests and blocked days kept rendering bookable slots (the parent
+    // only hit the 409 date_blocked backstop at checkout). This read uses the
+    // admin client — the second shaped, read-only exception to this route's
+    // RLS-respecting rule, mirroring the BUG-19 bookings read below (Lasith-
+    // approved, BUG-32 Step 0). Per-coach, window-filtered, and the select
+    // carries dates only — label/reason never leave the server;
+    // expandBlockedDates flattens to bare YYYY-MM-DD strings.
+    const adminSupabase = createAdminClient()
 
-    let blockedQuery = supabase
+    let blockedQuery = adminSupabase
       .from('blocked_dates')
       .select('blocked_date, blocked_date_end')
       .eq('coach_profile_id', id)
@@ -240,7 +249,6 @@ export async function GET(
 
     let bookedRows: BookedSlotRow[] = []
     if (bookedWindowStart <= bookedWindowEnd) {
-      const adminSupabase = createAdminClient()
       const { data: bookingData, error: bookingsError } = await adminSupabase
         .from('bookings')
         .select('session_date, session_start_time, session_end_time')
