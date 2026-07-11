@@ -70,21 +70,17 @@ test.describe('P12 — Gate 3: guest 1-on-1 checkout', () => {
     return `/book/${coachProfileId}?${q.toString()}`
   }
 
-  /** Fills the guest details and the Stripe card element.
+  /** Fills ONLY the required guest details and the Stripe card element.
    *
-   *  Phone and address are optional server-side but are filled here because
-   *  of PROD BUG (TEST-E2E-03 Gate 3 finding, reported to Lasith): handlePay
-   *  passes `phone: form.phone || undefined` to confirmPayment while the
-   *  Payment Element declares fields.billing_details.phone: 'never' — an
-   *  EMPTY phone makes Stripe throw an unhandled IntegrationError and the
-   *  checkout freezes on "Processing…" forever. This spec tests the working
-   *  filled-in path; the empty-phone freeze is a production fix, not a test
-   *  workaround — do NOT assert the broken behaviour here. */
+   *  BUG-29 regression: phone and address are deliberately left EMPTY. The
+   *  pre-fix code passed `phone: form.phone || undefined` to confirmPayment
+   *  while the Payment Element declares fields.billing_details.phone:
+   *  'never' — Stripe rejected with an unhandled IntegrationError and the
+   *  checkout froze on "Processing…" forever. T12.2 completing a real
+   *  payment with these fields blank IS the regression test for that fix. */
   async function fillCheckout(page: Page): Promise<void> {
     await page.getByPlaceholder('Your full name').fill(GUEST_NAME)
     await page.getByPlaceholder('you@example.com').fill('e2e-g3-guest@crikly.app')
-    await page.getByPlaceholder('07700 900000').fill('07700900000')
-    await page.getByTestId('guest-address-input').fill('1 Test Street')
     await fillPaymentElementCard(page)
     // Blur out of the Stripe iframe before the pay click (see clickPayResilient).
     await page.getByRole('heading', { name: 'Payment' }).click()

@@ -11,6 +11,7 @@ import {
 } from '@stripe/react-stripe-js'
 import type {
   StripeElementsOptions,
+  StripeError,
   StripeExpressCheckoutElementConfirmEvent,
   StripeExpressCheckoutElementReadyEvent,
 } from '@stripe/stripe-js'
@@ -490,25 +491,41 @@ function GuestCheckoutForm({
       return
     }
 
-    const { error: confirmError } = await stripe.confirmPayment({
-      elements,
-      clientSecret: created.clientSecret,
-      confirmParams: {
-        // 3DS / redirect-based methods return here. redirect:'if_required' keeps
-        // the common card path inline. TODO(P-00c-API): handle the redirect-return
-        // case (read payment_intent_client_secret on load → show confirmation).
-        return_url: `${window.location.origin}/book/${coachId}`,
-        payment_method_data: {
-          billing_details: {
-            name: form.cardholderName || form.fullName,
-            email: form.email || undefined,
-            phone: form.phone || undefined,
-            address: buildBillingAddress(),
+    // BUG-29: every field declared 'never' on the Payment Element MUST be
+    // passed here — Stripe REJECTS (IntegrationError) on an undefined field,
+    // and an uncaught rejection froze the button on "Processing…" forever.
+    // Empty string satisfies the contract for optional fields (same mechanism
+    // as buildBillingAddress's state: ''). The try/catch is the second layer:
+    // card declines still resolve into confirmError and keep their branch;
+    // only thrown rejections land in the catch.
+    let confirmError: StripeError | undefined
+    try {
+      const result = await stripe.confirmPayment({
+        elements,
+        clientSecret: created.clientSecret,
+        confirmParams: {
+          // 3DS / redirect-based methods return here. redirect:'if_required' keeps
+          // the common card path inline. TODO(P-00c-API): handle the redirect-return
+          // case (read payment_intent_client_secret on load → show confirmation).
+          return_url: `${window.location.origin}/book/${coachId}`,
+          payment_method_data: {
+            billing_details: {
+              name: form.cardholderName || form.fullName,
+              email: form.email,
+              phone: form.phone,
+              address: buildBillingAddress(),
+            },
           },
         },
-      },
-      redirect: 'if_required',
-    })
+        redirect: 'if_required',
+      })
+      confirmError = result.error
+    } catch (err) {
+      console.error('[GuestBookingFlow] confirmPayment threw:', err)
+      setError('payment')
+      setSubmitting(false)
+      return
+    }
 
     if (confirmError) {
       // Card declined / authentication failed. Form data is preserved.
@@ -551,12 +568,24 @@ function GuestCheckoutForm({
       return
     }
 
-    const { error: confirmError } = await stripe.confirmPayment({
-      elements,
-      clientSecret: created.clientSecret,
-      confirmParams: { return_url: `${window.location.origin}/book/${coachId}` },
-      redirect: 'if_required',
-    })
+    // BUG-29 layer 2 (defensive): confirmPayment can REJECT on integration
+    // errors (vs resolving {error} for card declines) — never let a rejection
+    // freeze the submitting state. Wallet argument shape is unchanged.
+    let confirmError: StripeError | undefined
+    try {
+      const result = await stripe.confirmPayment({
+        elements,
+        clientSecret: created.clientSecret,
+        confirmParams: { return_url: `${window.location.origin}/book/${coachId}` },
+        redirect: 'if_required',
+      })
+      confirmError = result.error
+    } catch (err) {
+      console.error('[GuestBookingFlow] express confirmPayment threw:', err)
+      setError('payment')
+      setSubmitting(false)
+      return
+    }
 
     if (confirmError) {
       setError('payment')
