@@ -17,11 +17,19 @@ const mockExchange = jest.fn()
 const mockGetUser = jest.fn()
 const mockSingle = jest.fn()
 const mockUpsert = jest.fn()
+// BUG-35: records gap-fill payloads. The route awaits update().eq() as a
+// chain, so the inner fn returns the chain (whose `error` is undefined —
+// success) while mockUpdate captures the payload for assertions.
+const mockUpdate = jest.fn()
 const mockFrom = jest.fn(() => {
   const c: Record<string, jest.Mock> = {}
   for (const m of ['select', 'eq']) c[m] = jest.fn(() => c)
   c.single = mockSingle
   c.upsert = mockUpsert
+  c.update = jest.fn((payload: Record<string, unknown>) => {
+    mockUpdate(payload)
+    return c
+  })
   return c
 })
 const mockSupabase = {
@@ -55,12 +63,12 @@ async function callCallback(query: string) {
   return url.pathname + url.search
 }
 
-function mockAuthedUser() {
+function mockAuthedUser(userMetadata: Record<string, unknown> = { full_name: 'Test Coach' }) {
   mockGetUser.mockResolvedValue({
     data: {
       user: {
         id: 'user-123',
-        user_metadata: { full_name: 'Test Coach' },
+        user_metadata: userMetadata,
         app_metadata: { provider: 'google' },
       },
     },
@@ -106,18 +114,23 @@ describe('GET /auth/callback — normal flow (regression)', () => {
     mockExchange.mockResolvedValue({ error: null })
     mockAuthedUser()
     mockSingle.mockResolvedValue({
-      data: { active_role: 'coach', terms_accepted_at: '2026-01-01T00:00:00Z' },
+      data: {
+        active_role: 'coach',
+        terms_accepted_at: '2026-01-01T00:00:00Z',
+        full_name: 'Test Coach',
+        avatar_url: 'https://cdn.example/own-photo.png',
+      },
       error: null,
     })
     const target = await callCallback('?code=abc')
     expect(target).toBe('/coach/dashboard')
   })
 
-  it('routes a genuinely new user (no active_role) to /onboarding/role — Fix-11i path', async () => {
+  it('routes an existing row with no active_role to /onboarding/role', async () => {
     mockExchange.mockResolvedValue({ error: null })
     mockAuthedUser()
     mockSingle.mockResolvedValue({
-      data: { active_role: null, terms_accepted_at: null },
+      data: { active_role: null, terms_accepted_at: null, full_name: 'Test Coach', avatar_url: null },
       error: null,
     })
     const target = await callCallback('?code=abc')
@@ -128,7 +141,7 @@ describe('GET /auth/callback — normal flow (regression)', () => {
     mockExchange.mockResolvedValue({ error: null })
     mockAuthedUser()
     mockSingle.mockResolvedValue({
-      data: { active_role: 'coach', terms_accepted_at: null },
+      data: { active_role: 'coach', terms_accepted_at: null, full_name: 'Test Coach', avatar_url: null },
       error: null,
     })
     const target = await callCallback('?code=abc')
@@ -147,6 +160,10 @@ describe('GET /auth/callback — profile read hardening (BUG-34)', () => {
     })
     const target = await callCallback('?code=abc')
     expect(target).toBe('/dashboard')
+    // BUG-35: a transient read failure must not trigger any profile write —
+    // the seed/gap-fill decision needs a trustworthy row to branch on.
+    expect(mockUpsert).not.toHaveBeenCalled()
+    expect(mockUpdate).not.toHaveBeenCalled()
     consoleSpy.mockRestore()
   })
 
@@ -159,5 +176,115 @@ describe('GET /auth/callback — profile read hardening (BUG-34)', () => {
     })
     const target = await callCallback('?code=abc')
     expect(target).toBe('/onboarding/role')
+  })
+})
+
+// BUG-35: provider metadata must only ever FILL GAPS in user_profiles — a
+// returning OAuth login must never overwrite a user-entered name or avatar,
+// while a genuinely new user still gets the full metadata seed (Fix-11i).
+describe('GET /auth/callback — fill-gaps-only profile writes (BUG-35)', () => {
+  const googleMetadata = {
+    full_name: 'Lasith Harshana',
+    picture: 'https://lh3.googleusercontent.com/photo.jpg',
+  }
+
+  beforeEach(() => {
+    mockExchange.mockResolvedValue({ error: null })
+  })
+
+  it('issues NO write when the existing profile already has a name and avatar', async () => {
+    mockAuthedUser(googleMetadata)
+    mockSingle.mockResolvedValue({
+      data: {
+        active_role: 'coach',
+        terms_accepted_at: '2026-01-01T00:00:00Z',
+        full_name: 'Alestair Cook',
+        avatar_url: 'https://cdn.example/own-photo.png',
+      },
+      error: null,
+    })
+    const target = await callCallback('?code=abc')
+    expect(target).toBe('/coach/dashboard')
+    expect(mockUpsert).not.toHaveBeenCalled()
+    expect(mockUpdate).not.toHaveBeenCalled()
+  })
+
+  it('fills only the missing avatar when the name is user-entered', async () => {
+    mockAuthedUser(googleMetadata)
+    mockSingle.mockResolvedValue({
+      data: {
+        active_role: 'coach',
+        terms_accepted_at: '2026-01-01T00:00:00Z',
+        full_name: 'Alestair Cook',
+        avatar_url: null,
+      },
+      error: null,
+    })
+    await callCallback('?code=abc')
+    expect(mockUpsert).not.toHaveBeenCalled()
+    expect(mockUpdate).toHaveBeenCalledTimes(1)
+    const payload = mockUpdate.mock.calls[0][0]
+    expect(payload.avatar_url).toBe(googleMetadata.picture)
+    expect(payload).not.toHaveProperty('full_name')
+  })
+
+  it('fills an empty-string name (and missing avatar) from metadata', async () => {
+    mockAuthedUser(googleMetadata)
+    mockSingle.mockResolvedValue({
+      data: { active_role: null, terms_accepted_at: null, full_name: '', avatar_url: null },
+      error: null,
+    })
+    await callCallback('?code=abc')
+    expect(mockUpsert).not.toHaveBeenCalled()
+    expect(mockUpdate).toHaveBeenCalledTimes(1)
+    const payload = mockUpdate.mock.calls[0][0]
+    expect(payload.full_name).toBe('Lasith Harshana')
+    expect(payload.avatar_url).toBe(googleMetadata.picture)
+  })
+
+  it('issues no write when fields are empty but metadata has nothing to offer', async () => {
+    mockAuthedUser({})
+    mockSingle.mockResolvedValue({
+      data: { active_role: null, terms_accepted_at: null, full_name: '', avatar_url: null },
+      error: null,
+    })
+    await callCallback('?code=abc')
+    expect(mockUpsert).not.toHaveBeenCalled()
+    expect(mockUpdate).not.toHaveBeenCalled()
+  })
+
+  it('seeds a brand-new user (no row) with the full metadata payload — Fix-11i preserved', async () => {
+    mockAuthedUser(googleMetadata)
+    mockSingle.mockResolvedValue({
+      data: null,
+      error: { code: 'PGRST116', message: 'no rows' },
+    })
+    const target = await callCallback('?code=abc')
+    expect(target).toBe('/onboarding/role')
+    expect(mockUpdate).not.toHaveBeenCalled()
+    expect(mockUpsert).toHaveBeenCalledTimes(1)
+    expect(mockUpsert).toHaveBeenCalledWith(
+      {
+        auth_user_id: 'user-123',
+        full_name: 'Lasith Harshana',
+        avatar_url: googleMetadata.picture,
+        auth_provider: 'google',
+      },
+      // DO NOTHING — the seed itself must be unable to overwrite.
+      { onConflict: 'auth_user_id', ignoreDuplicates: true }
+    )
+  })
+
+  it('a failed seed still routes to /onboarding/role (BUG-26 recovery is the net)', async () => {
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
+    mockAuthedUser(googleMetadata)
+    mockSingle.mockResolvedValue({
+      data: null,
+      error: { code: 'PGRST116', message: 'no rows' },
+    })
+    mockUpsert.mockResolvedValue({ error: { code: '57014', message: 'timeout' } })
+    const target = await callCallback('?code=abc')
+    expect(target).toBe('/onboarding/role')
+    consoleSpy.mockRestore()
   })
 })

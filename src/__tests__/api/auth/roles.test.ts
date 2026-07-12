@@ -120,17 +120,19 @@ describe('POST /api/auth/roles', () => {
 // creates user_profiles has failed, the role route must recover by creating the
 // row from the authenticated session instead of stranding the user on a 500.
 describe('POST /api/auth/roles — BUG-26 profile recovery', () => {
-  // Records every table.method the route issues, so tests can assert whether a
-  // user_profiles upsert (the recovery write) was performed. `single()` returns
-  // the recovery result only for the user_profiles chain that had `.upsert()`
-  // called on it — distinguishing the initial fetch from the recovery write on
-  // the same table.
-  type DbCall = { table?: string; method: string }
+  // Records every table.method (and its args) the route issues, so tests can
+  // assert whether — and how — a user_profiles recovery write was performed.
+  // BUG-35 reshaped recovery to upsert-DO-NOTHING + follow-up SELECT, so the
+  // user_profiles upsert resolves { error } directly, and single() serves the
+  // initial fetch on its first call and the follow-up id fetch afterwards.
+  type DbCall = { table?: string; method: string; args?: unknown[] }
   function trackingImpl(
     dbCalls: DbCall[],
     fetchResult: { data: unknown; error: unknown },
-    recoveryResult: { data: unknown; error: unknown },
+    recoveryUpsertResult: { error: unknown },
+    recoveredFetchResult: { data: unknown; error: unknown },
   ) {
+    let userProfilesSingleCalls = 0
     return (table?: string) => {
       const c: Record<string, jest.Mock> = {}
       for (const m of ['select', 'eq', 'update', 'insert']) {
@@ -139,14 +141,18 @@ describe('POST /api/auth/roles — BUG-26 profile recovery', () => {
           return c
         })
       }
-      c.upsert = jest.fn(() => {
-        dbCalls.push({ table, method: 'upsert' })
+      c.upsert = jest.fn((...args: unknown[]) => {
+        dbCalls.push({ table, method: 'upsert', args })
+        if (table === 'user_profiles') {
+          return Promise.resolve(recoveryUpsertResult)
+        }
         return c
       })
       c.single = jest.fn(() => {
         if (table === 'user_profiles') {
+          userProfilesSingleCalls += 1
           return Promise.resolve(
-            c.upsert.mock.calls.length > 0 ? recoveryResult : fetchResult,
+            userProfilesSingleCalls === 1 ? fetchResult : recoveredFetchResult,
           )
         }
         return Promise.resolve({ data: { id: 'profile-123' }, error: null })
@@ -173,7 +179,8 @@ describe('POST /api/auth/roles — BUG-26 profile recovery', () => {
       trackingImpl(
         dbCalls,
         { data: null, error: { code: 'PGRST116', message: 'no rows' } }, // fetch: not found
-        { data: { id: 'recovered-1' }, error: null }, // recovery: success
+        { error: null }, // recovery upsert: success
+        { data: { id: 'recovered-1' }, error: null }, // follow-up id fetch: success
       ),
     )
 
@@ -189,6 +196,33 @@ describe('POST /api/auth/roles — BUG-26 profile recovery', () => {
     ).toBe(true)
   })
 
+  it('recovery upsert is ON CONFLICT DO NOTHING — it can never overwrite an existing row (BUG-35)', async () => {
+    mockGetUser.mockResolvedValue(authedUser)
+    const dbCalls: DbCall[] = []
+    mockFrom.mockImplementation(
+      trackingImpl(
+        dbCalls,
+        // Transient fetch blip — the broad recovery trigger fires even though
+        // a row exists. The write must be a no-op, not an overwrite.
+        { data: null, error: { code: '57014', message: 'statement timeout' } },
+        { error: null },
+        { data: { id: 'profile-123' }, error: null }, // follow-up finds the existing row
+      ),
+    )
+
+    const res = await callRoles({ role: 'coach' })
+
+    expect(res.status).toBe(200)
+    const recoveryUpsert = dbCalls.find(
+      (c) => c.table === 'user_profiles' && c.method === 'upsert',
+    )
+    expect(recoveryUpsert).toBeDefined()
+    expect(recoveryUpsert?.args?.[1]).toEqual({
+      onConflict: 'auth_user_id',
+      ignoreDuplicates: true,
+    })
+  })
+
   it('returns a clean error (no throw) when the recovery upsert itself fails', async () => {
     mockGetUser.mockResolvedValue(authedUser)
     const dbCalls: DbCall[] = []
@@ -196,7 +230,28 @@ describe('POST /api/auth/roles — BUG-26 profile recovery', () => {
       trackingImpl(
         dbCalls,
         { data: null, error: { code: 'PGRST116', message: 'no rows' } }, // fetch: not found
-        { data: null, error: { message: 'db unavailable' } }, // recovery: fails
+        { error: { message: 'db unavailable' } }, // recovery upsert: fails
+        { data: null, error: { message: 'should not be reached' } },
+      ),
+    )
+
+    const res = await callRoles({ role: 'coach' })
+
+    expect(res.status).toBe(500)
+    const data = await res.json()
+    expect(data.success).toBe(false)
+    expect(data.error.message).toBe('Could not create your profile. Please try again.')
+  })
+
+  it('returns a clean error when the follow-up id fetch after recovery fails', async () => {
+    mockGetUser.mockResolvedValue(authedUser)
+    const dbCalls: DbCall[] = []
+    mockFrom.mockImplementation(
+      trackingImpl(
+        dbCalls,
+        { data: null, error: { code: 'PGRST116', message: 'no rows' } }, // fetch: not found
+        { error: null }, // recovery upsert: success
+        { data: null, error: { message: 'db unavailable' } }, // follow-up fetch: fails
       ),
     )
 
@@ -215,6 +270,7 @@ describe('POST /api/auth/roles — BUG-26 profile recovery', () => {
       trackingImpl(
         dbCalls,
         { data: { id: 'profile-123' }, error: null }, // fetch: found
+        { error: null },
         { data: { id: 'should-not-be-used' }, error: null },
       ),
     )

@@ -119,7 +119,14 @@ export async function POST(request: Request) {
         || (user.user_metadata?.picture as string | undefined)
         || null
 
-      const { data: recoveredProfile, error: recoveryError } = await supabase
+      // BUG-35: ignoreDuplicates:true → ON CONFLICT DO NOTHING. The recovery
+      // trigger is deliberately broad (see above), so it can fire on a
+      // transient SELECT blip when a row DOES exist — DO UPDATE here would
+      // overwrite that row's user-entered full_name/avatar_url with provider
+      // metadata. DO NOTHING returns no rows on conflict, so the id comes
+      // from the follow-up SELECT, which serves both the fresh-insert and
+      // existing-row cases. Do not reintroduce DO UPDATE.
+      const { error: recoveryError } = await supabase
         .from('user_profiles')
         .upsert(
           {
@@ -130,14 +137,20 @@ export async function POST(request: Request) {
           },
           {
             onConflict: 'auth_user_id',
-            ignoreDuplicates: false,
+            ignoreDuplicates: true,
           }
         )
-        .select('id')
-        .single()
 
-      if (recoveryError || !recoveredProfile) {
-        console.error('[BUG-26] profile recovery upsert failed:', recoveryError)
+      const { data: recoveredProfile, error: recoveredFetchError } = recoveryError
+        ? { data: null, error: null }
+        : await supabase
+            .from('user_profiles')
+            .select('id')
+            .eq('auth_user_id', user.id)
+            .single()
+
+      if (recoveryError || recoveredFetchError || !recoveredProfile) {
+        console.error('[BUG-26] profile recovery upsert failed:', recoveryError ?? recoveredFetchError)
         return NextResponse.json(
           {
             success: false,
