@@ -26,6 +26,9 @@ export default function CoachSettingsPage() {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [email, setEmail] = useState('')
+  // BUG-37: full_name is the private account name — shown ONLY here, clearly
+  // labelled. Every coach-visible surface uses coach_profiles.display_name.
+  const [accountName, setAccountName] = useState('')
   // Fix A: renamed from showPasswordRow to isOAuth (intent clearer; password row shown when !isOAuth).
   const [isOAuth, setIsOAuth] = useState(false)
   const [isPaused, setIsPaused] = useState(false)
@@ -84,6 +87,7 @@ export default function CoachSettingsPage() {
 
         setIsPaused(!!profile.is_paused)
         setEmail(user.email ?? '')
+        setAccountName(profile.full_name ?? '')
         setUserProfileId(profile.user_profile_id)
 
         // Fix A: detect OAuth via user.identities — more reliable than app_metadata.provider,
@@ -431,6 +435,15 @@ export default function CoachSettingsPage() {
 
           {/* ===== ACCOUNT ===== */}
           <Card title="Account">
+            {/* BUG-37: read-only — the name on the account (user_profiles.full_name).
+                Not shown anywhere coaches are visible; that's the display name,
+                edited via My Profile / onboarding step 1. */}
+            <Row
+              label="Account name"
+              value={accountName || '—'}
+              sub="Private to your account. Players and parents see your public display name from My Profile."
+              action={null}
+            />
             <Row
               label="Email address"
               value={emailFormOpen ? '' : email}

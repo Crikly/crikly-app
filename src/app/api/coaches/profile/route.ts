@@ -46,6 +46,9 @@ interface CoachProfileResponse {
   id: string
   user_profile_id: string
   full_name: string
+  // BUG-37: the coach's public-facing name (coach_profiles). full_name above is
+  // the private account name (user_profiles) — Settings-only per product rule.
+  display_name: string | null
   avatar_url: string | null
   location_city: string | null
   location_postcode: string | null
@@ -95,6 +98,7 @@ export async function GET(): Promise<NextResponse<CoachProfileResponse | { error
       .select(`
         id,
         user_profile_id,
+        display_name,
         bio,
         years_experience,
         dbs_status,
@@ -149,6 +153,7 @@ export async function GET(): Promise<NextResponse<CoachProfileResponse | { error
       id: coachProfile.id,
       user_profile_id: coachProfile.user_profile_id,
       full_name: userProfileData.full_name,
+      display_name: coachProfile.display_name ?? null,
       avatar_url: userProfileData.avatar_url,
       location_city: userProfileData.location_city,
       location_postcode: userProfileData.location_postcode,
@@ -263,9 +268,13 @@ export async function POST(
     }
 
     // Fix-COACH-UX-02: validate display_name (coach_profiles, nullable).
+    // BUG-37: reject empty/whitespace-only — public surfaces render
+    // display_name ?? full_name, so a saved '' would show a blank coach name.
     if (body.display_name !== undefined && body.display_name !== null) {
       if (typeof body.display_name !== 'string') {
         validationErrors.push('display_name must be a string')
+      } else if (body.display_name.trim().length === 0) {
+        validationErrors.push('display_name cannot be empty')
       } else if (body.display_name.length > 100) {
         validationErrors.push('display_name must be 100 characters or less')
       }
@@ -428,6 +437,7 @@ export async function POST(
       .select(`
         id,
         user_profile_id,
+        display_name,
         bio,
         years_experience,
         dbs_status,
@@ -481,6 +491,7 @@ export async function POST(
       id: updatedProfile.id,
       user_profile_id: updatedProfile.user_profile_id,
       full_name: userProfileData.full_name,
+      display_name: updatedProfile.display_name ?? null,
       avatar_url: userProfileData.avatar_url,
       location_city: userProfileData.location_city,
       location_postcode: userProfileData.location_postcode,

@@ -150,13 +150,18 @@ export function CoachLayoutClient({
           // upload / rename without a page reload.
           avatar_url?: string | null
           full_name?: string
+          display_name?: string | null
         } | null) => {
           if (p?.slug) setCoachSlug(p.slug)
           if (p) {
             setProfileLive(!!p.is_profile_live)
             setProfilePaused(!!p.is_paused)
             setAvatarUrl(p.avatar_url ?? null)
-            if (p.full_name) setCoachName(p.full_name)
+            // BUG-37: chrome shows the public display_name; full_name is the
+            // private account name (Settings only). Same precedence as the
+            // server layout seed (src/app/coach/layout.tsx).
+            const name = p.display_name || p.full_name
+            if (name) setCoachName(name)
           }
         })
         .catch(() => {})

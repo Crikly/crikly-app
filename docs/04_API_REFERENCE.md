@@ -175,6 +175,12 @@ Get a single coach's full public profile. Accepts either a UUID or a human-reada
 **Status: Implemented — CG-01b, L-UX01**
 **Auth: Public — no token required**
 
+> BUG-37: `full_name` in this response is the coach's PUBLIC name —
+> `coach_profiles.display_name`, falling back to `user_profiles.full_name`
+> when no display name is set. Same precedence as GET /api/public/coaches
+> and the booking-confirmation emails. The key name is kept as `full_name`
+> for backward compatibility.
+
 **Response 200:**
 ```json
 {
@@ -240,8 +246,13 @@ Get a single coach's full public profile. Accepts either a UUID or a human-reada
 Create or update the authenticated coach's profile.
 
 **Request:** Coach profile fields (see database schema section 3.4)
+- BUG-37: `display_name` must be non-empty (after trim) when provided — a
+  blank display name would render as a blank coach name on public surfaces.
 
 **Response 201/200:** Updated coach profile object
+- BUG-37: GET and POST responses now include `display_name: string | null`
+  (`coach_profiles.display_name`) alongside `full_name` (the private
+  account name, shown only in Settings as "Account name").
 
 ---
 
