@@ -62,9 +62,14 @@ export default async function CoachLayout({
   if (!userProfile.terms_accepted_at) redirect('/onboarding/terms')
 
   // All guards passed — render the coach chrome.
+  // BUG-37: the chrome shows the coach's public display_name (product rule:
+  // display_name everywhere a coach is visible; full_name only in Settings).
+  // Falls back to full_name for coaches who haven't run wizard step 1 yet.
+  // `||` (not `??`) on purpose: internal chrome must never show a blank name,
+  // unlike the public routes where '' is now rejected at write time.
   return (
     <CoachLayoutClient
-      initialCoachName={userProfile.full_name || ''}
+      initialCoachName={coachProfile?.display_name || userProfile.full_name || ''}
       initialAvatarUrl={userProfile.avatar_url || null}
       hasCoachProfile={!!coachProfile}
       hasWizardProgress={!!coachProfile?.display_name}
