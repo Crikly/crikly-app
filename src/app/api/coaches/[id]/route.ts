@@ -93,6 +93,7 @@ interface CoachDetailRow {
   id: string
   slug: string | null
   user_profile_id: string
+  display_name: string | null
   bio: string | null
   years_experience: number | null
   dbs_status: string
@@ -141,6 +142,7 @@ export async function GET(
         id,
         slug,
         user_profile_id,
+        display_name,
         bio,
         years_experience,
         dbs_status,
@@ -381,7 +383,10 @@ export async function GET(
       {
         id: coach.id,
         slug: coach.slug,
-        full_name: profile.full_name,
+        // BUG-37: public surfaces show the coach's display_name, never the
+        // account holder's name — same precedence as /api/public/coaches and
+        // the webhook confirmation emails. Response key unchanged for consumers.
+        full_name: coach.display_name ?? profile.full_name,
         bio: coach.bio,
         years_experience: coach.years_experience,
         location_city: profile.location_city,

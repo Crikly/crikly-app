@@ -57,12 +57,13 @@ async function callGet(id: string) {
   return GET(request as any, { params: Promise.resolve({ id }) })
 }
 
-function mockCoachProfileQuery(returnId: string) {
+function mockCoachProfileQuery(returnId: string, displayName: string | null = null) {
   const c = makeChain()
   c.maybeSingle.mockResolvedValue({
     data: {
       id: returnId,
       user_profile_id: 'user-profile-uuid',
+      display_name: displayName,
       bio: 'Test bio',
       years_experience: 5,
       dbs_status: 'verified',
@@ -158,5 +159,38 @@ describe('Fix-47 regression: reviews query uses resolved UUID, not raw slug', ()
     const usedId = coachIdCall![1]
     expect(usedId).toBe(COACH_UUID)   // ✅ must be the resolved UUID
     expect(usedId).not.toBe(COACH_SLUG)  // ❌ must NOT be the raw slug
+  })
+})
+
+// ─── BUG-37 regression ────────────────────────────────────────────────────────
+//
+// Public surfaces must show coach_profiles.display_name, never the account
+// holder's user_profiles.full_name (which can differ — e.g. a coach persona on
+// a personal account). The response key stays `full_name` for consumers; only
+// the source changes. Fallback to user_profiles.full_name when display_name is
+// null (coach hasn't completed wizard step 1).
+
+describe('BUG-37 regression: full_name prefers coach display_name', () => {
+  it('returns display_name when set on the coach profile', async () => {
+    mockFrom.mockImplementationOnce(() => mockCoachProfileQuery(COACH_UUID, 'Alex Stuart'))
+    mockAdminFrom.mockImplementationOnce(() => mockUserProfileQuery())
+    mockFrom.mockImplementationOnce(() => mockReviewsQuery())
+
+    const res = await callGet(COACH_UUID)
+    expect(res.status).toBe(200)
+    const data = await res.json()
+    expect(data.full_name).toBe('Alex Stuart')      // ✅ public display name
+    expect(data.full_name).not.toBe('John Doe')     // ❌ not the account name
+  })
+
+  it('falls back to user_profiles.full_name when display_name is null', async () => {
+    mockFrom.mockImplementationOnce(() => mockCoachProfileQuery(COACH_UUID, null))
+    mockAdminFrom.mockImplementationOnce(() => mockUserProfileQuery())
+    mockFrom.mockImplementationOnce(() => mockReviewsQuery())
+
+    const res = await callGet(COACH_UUID)
+    expect(res.status).toBe(200)
+    const data = await res.json()
+    expect(data.full_name).toBe('John Doe')
   })
 })
