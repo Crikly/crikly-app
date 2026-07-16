@@ -16,6 +16,7 @@ interface CoachProfileResponse {
   id: string
   user_profile_id: string
   full_name: string
+  display_name: string | null
   avatar_url: string | null
   location_city: string | null
   location_postcode: string | null
@@ -454,10 +455,10 @@ export function ProfileEdit() {
                   onClick={() => !photoUploading && fileInputRef.current?.click()}
                 >
                   {profile.avatar_url ? (
-                    <img src={profile.avatar_url} alt={profile.full_name} className="w-full h-full object-cover" />
+                    <img src={profile.avatar_url} alt={profile.display_name ?? profile.full_name} className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full bg-brand-50 flex items-center justify-center text-[20px] font-medium text-brand-800">
-                      {getInitials(profile.full_name)}
+                      {getInitials(profile.display_name ?? profile.full_name)}
                     </div>
                   )}
 
@@ -496,7 +497,7 @@ export function ProfileEdit() {
               {/* Coach info */}
               <div className="flex-1 min-w-0">
                 {/* CD-10b: Real coach name */}
-                <h2 className="text-[20px] font-medium text-gray-900 truncate">{profile.full_name}</h2>
+                <h2 className="text-[20px] font-medium text-gray-900 truncate">{profile.display_name ?? profile.full_name}</h2>
                 <div className="text-[13px] text-gray-500 mt-0.5 truncate">
                   {profile.years_experience ? `${profile.years_experience} years experience` : 'Coach'}
                   {profile.location_city && ` · ${profile.location_city}`}
