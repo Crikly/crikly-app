@@ -220,7 +220,9 @@ export function QualificationsStep() {
   return (
     <div className="flex-1 overflow-y-auto bg-transparent font-sans text-gray-900 flex">
       <div className="flex-1 flex justify-center">
-        <div className="w-full max-w-3xl px-8 pt-10">
+        {/* BUG-40: pb-32 clears the lg:hidden fixed bottom nav (CoachLayoutClient)
+            so the save bar stays tappable on mobile; lg:pb-0 keeps desktop unchanged. */}
+        <div className="w-full max-w-3xl px-8 pt-10 pb-32 lg:pb-0">
 
         {/* TOP */}
         <div className="mb-10">

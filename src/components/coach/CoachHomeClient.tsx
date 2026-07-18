@@ -302,21 +302,21 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
         <div className="flex flex-col md:flex-row gap-3">
           <button
             onClick={() => router.push('/coach/schedule?action=new-session')}
-            className="flex-1 h-10 bg-brand-600 text-white rounded-lg text-sm font-medium flex items-center justify-center gap-2 hover:bg-brand-700 transition-colors"
+            className="flex-1 h-12 md:h-10 bg-brand-600 text-white rounded-lg text-sm font-medium flex items-center justify-center gap-2 hover:bg-brand-700 transition-colors"
           >
             <Plus size={16} />
             Create Session
           </button>
           <button
             onClick={() => router.push('/coach/availability')}
-            className="flex-1 h-10 bg-white text-gray-700 border border-gray-200 rounded-lg text-sm font-medium flex items-center justify-center gap-2 hover:bg-neutral-50 transition-colors"
+            className="flex-1 h-12 md:h-10 bg-white text-gray-700 border border-gray-200 rounded-lg text-sm font-medium flex items-center justify-center gap-2 hover:bg-neutral-50 transition-colors"
           >
             <Plus size={16} />
             Add Availability
           </button>
           <button
             onClick={() => router.push('/coach/programmes')}
-            className="flex-1 h-10 bg-white text-gray-700 border border-gray-200 rounded-lg text-sm font-medium flex items-center justify-center gap-2 hover:bg-neutral-50 transition-colors"
+            className="flex-1 h-12 md:h-10 bg-white text-gray-700 border border-gray-200 rounded-lg text-sm font-medium flex items-center justify-center gap-2 hover:bg-neutral-50 transition-colors"
           >
             <Plus size={16} />
             Create Programme
