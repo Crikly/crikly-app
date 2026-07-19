@@ -6,7 +6,7 @@ import Link from 'next/link'
 import {
   Home, Calendar, Inbox, Users, Clock, User,
   TrendingUp, Star, CreditCard, Settings, Share2,
-  X
+  MoreHorizontal, X
 } from 'lucide-react'
 import { CoachRightPanel } from '@/components/coach/CoachRightPanel'
 // DS-RIGHT-PANEL-01: BookingsProvider is now mounted on EVERY coach route
@@ -57,6 +57,18 @@ export function CoachLayoutClient({
 
   const isActive = (path: string) => pathname === path ||
     (path !== '/coach/dashboard' && pathname.startsWith(path))
+
+  // BUG-42: the mobile "More" tab is the entry point for every surface that has
+  // no tab of its own — highlight it while the coach is anywhere inside them.
+  const isMoreSectionActive = [
+    '/coach/more',
+    '/coach/availability',
+    '/coach/profile',
+    '/coach/earnings',
+    '/coach/reviews',
+    '/coach/get-paid',
+    '/coach/settings',
+  ].some(isActive)
 
   const nav = (path: string) => router.push(path)
 
@@ -193,8 +205,13 @@ export function CoachLayoutClient({
   // Format notification badge
   const notificationBadge = notificationCount > 9 ? '9+' : notificationCount.toString()
 
+  // BUG-40b: h-dvh (not h-screen/100vh) — the document never scrolls, so on
+  // mobile the browser chrome never collapses and 100vh leaves the bottom
+  // ~60-100px of the shell permanently clipped offscreen. dvh tracks the
+  // real visible height. flex-col on mobile puts the bottom nav IN FLOW
+  // below <main>, so no page content can ever sit behind it.
   return (
-    <div className="h-screen overflow-hidden overflow-x-hidden bg-white text-gray-900 flex w-full max-w-[1600px] mx-auto">
+    <div className="h-dvh overflow-hidden overflow-x-hidden bg-white text-gray-900 flex flex-col lg:flex-row w-full max-w-[1600px] mx-auto">
       {/* Desktop Sidebar */}
       <aside className="hidden lg:flex w-72 shrink-0 flex-col bg-white border-r border-gray-100 p-6 sticky top-0 h-screen z-10">
         <Link href="/coach/dashboard" className="mb-6 flex justify-center">
@@ -283,24 +300,32 @@ export function CoachLayoutClient({
           universal right-panel command-centre can read sessions everywhere.
           Both <main> and the right panel are inside the same provider. */}
       <BookingsProvider>
-        <main className="flex-1 min-w-0 overflow-y-auto relative bg-white">
+        {/* BUG-40b: min-h-0 — in the mobile flex-col shell, flex items refuse to
+            shrink below their content height without it, which would break the
+            inner scroll and push the bottom nav offscreen. No-op on lg (row). */}
+        <main className="flex-1 min-w-0 min-h-0 overflow-y-auto relative bg-white">
           {children}
         </main>
         {showRightPanel && <CoachRightPanel />}
       </BookingsProvider>
 
-      {/* Mobile Bottom Nav */}
-      <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 pb-6 pt-3 px-6 flex justify-between items-center z-50 shadow-[0_-10px_40px_rgba(0,0,0,0.04)]">
+      {/* Mobile Bottom Nav — BUG-40b: in-flow (shrink-0), NOT fixed. As the last
+          item of the mobile flex-col shell it sits below <main>'s scrollport, so
+          page content and sticky save bars always end above it. z-30 keeps the
+          top shadow above main's content. */}
+      <div className="lg:hidden shrink-0 bg-white border-t border-gray-100 pb-6 pt-3 px-6 flex justify-between items-center z-30 shadow-[0_-10px_40px_rgba(0,0,0,0.04)]">
         <MobileNavItem icon={<Home size={24} />} label="Home" active={isActive('/coach/dashboard')} onClick={() => nav('/coach/dashboard')} />
         <MobileNavItem icon={<Calendar size={24} />} label="Schedule" active={isActive('/coach/schedule')} onClick={() => nav('/coach/schedule')} />
         <MobileNavItem icon={<Inbox size={24} />} label="Bookings" active={isActive('/coach/bookings')} onClick={() => nav('/coach/bookings')} />
         <MobileNavItem icon={<Users size={24} />} label="Programmes" active={isActive('/coach/programmes')} onClick={() => nav('/coach/programmes')} />
-        {/* C-Settings-01-UI: replaces the AF-H-Wave-4 "More" stub now that Settings exists */}
+        {/* BUG-42: "More" hub replaces the Settings tab — Availability, My Profile,
+            Earnings, Reviews, Get Paid and Settings had no mobile entry point.
+            Active whenever the current page lives inside the More section. */}
         <MobileNavItem
-          icon={<Settings size={24} />}
-          label="Settings"
-          active={isActive('/coach/settings')}
-          onClick={() => nav('/coach/settings')}
+          icon={<MoreHorizontal size={24} />}
+          label="More"
+          active={isMoreSectionActive}
+          onClick={() => nav('/coach/more')}
         />
       </div>
 
