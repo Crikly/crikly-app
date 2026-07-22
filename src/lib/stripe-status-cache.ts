@@ -21,6 +21,10 @@ export interface StripeConnectStatus {
   charges_enabled?: boolean
   payouts_enabled?: boolean
   details_submitted?: boolean
+  // BUG-45: real payout destination from Stripe external_accounts —
+  // null until the coach completes onboarding with a bank account.
+  bank_name?: string | null
+  bank_last4?: string | null
 }
 
 const CACHE_KEY = 'crikly:stripe-status'

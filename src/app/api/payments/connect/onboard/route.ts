@@ -80,11 +80,23 @@ export async function GET(_request: NextRequest): Promise<NextResponse> {
     const stripe = getStripe()
     const account = await stripe.accounts.retrieve(stripe_account_id)
 
+    // BUG-45: surface the coach's real payout destination so the Get Paid page
+    // never shows placeholder bank details. accounts.retrieve embeds the first
+    // page of external_accounts; the payout destination is the default bank
+    // account for the currency (fall back to the first bank account). Only
+    // bank_name + last4 leave this route — never full account numbers.
+    const bankAccounts = (account.external_accounts?.data ?? []).filter(
+      (ea): ea is Stripe.BankAccount => ea.object === 'bank_account',
+    )
+    const payoutBank = bankAccounts.find((ba) => ba.default_for_currency) ?? bankAccounts[0] ?? null
+
     return NextResponse.json({
       connected: true,
       charges_enabled: account.charges_enabled,
       payouts_enabled: account.payouts_enabled,
       details_submitted: account.details_submitted,
+      bank_name: payoutBank?.bank_name ?? null,
+      bank_last4: payoutBank?.last4 ?? null,
     })
   } catch (error) {
     if (error instanceof Stripe.errors.StripeInvalidRequestError) {

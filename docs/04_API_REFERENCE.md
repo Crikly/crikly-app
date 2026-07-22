@@ -1,8 +1,8 @@
 # Crikly — API Reference
 
-**Version:** 1.3
+**Version:** 1.4
 **Last Updated:** 22 July 2026
-**Changed:** BUG-44 — new POST /api/webhooks/stripe-connect route for connected-account events (`account.updated` → `stripe_onboarding_complete`; transfer/payout events log-only for Block 0), verified with `STRIPE_CONNECT_WEBHOOK_SECRET`. Previous (1.2): BUG-23 — camp slot granularity: slot-selection wire format (`uuid` / `uuid.N`) + per-slot pricing/capacity on POST /api/guest/programme-enrolments (new 400 `camp_block_unsupported`, 409 `slot_full`); camp branch (`confirm_camp_slot_spots()`) + email session lines in the Stripe webhook; `camp_mode` on programme list/POST responses; roster session lines. Previous (1.1): BUG-19 Phase 1 — `booked_slots` on GET /api/coaches/[id]/availability; slot-validation 409s on POST /api/guest/bookings
+**Changed:** BUG-45 — GET /api/payments/connect/onboard now returns `bank_name` + `bank_last4` from Stripe external_accounts (real payout destination for the Get Paid page). Previous (1.3): BUG-44 — new POST /api/webhooks/stripe-connect route for connected-account events (`account.updated` → `stripe_onboarding_complete`; transfer/payout events log-only for Block 0), verified with `STRIPE_CONNECT_WEBHOOK_SECRET`. Previous (1.2): BUG-23 — camp slot granularity: slot-selection wire format (`uuid` / `uuid.N`) + per-slot pricing/capacity on POST /api/guest/programme-enrolments (new 400 `camp_block_unsupported`, 409 `slot_full`); camp branch (`confirm_camp_slot_spots()`) + email session lines in the Stripe webhook; `camp_mode` on programme list/POST responses; roster session lines. Previous (1.1): BUG-19 Phase 1 — `booked_slots` on GET /api/coaches/[id]/availability; slot-validation 409s on POST /api/guest/bookings
 
 This document is the single source of truth for all API routes.
 Update this file in the same commit as every new or modified route.
@@ -616,9 +616,19 @@ Returns the authenticated coach's current Stripe Connect status.
   "connected": true,
   "charges_enabled": true,
   "payouts_enabled": true,
-  "details_submitted": true
+  "details_submitted": true,
+  "bank_name": "Monzo Bank",
+  "bank_last4": "5678"
 }
 ```
+
+`bank_name` / `bank_last4` (BUG-45): the coach's real payout destination from
+Stripe `external_accounts` — the `default_for_currency` bank account, falling
+back to the first bank account; both `null` when onboarding hasn't attached a
+bank account yet. Only the bank name and last4 ever leave this route — never
+full account or routing numbers. Consumed by the Get Paid page
+(`src/components/coach/GetPaid.tsx`), which shows truthful fallbacks
+("Payouts via Stripe" / "Connected via Stripe") when null.
 
 **Errors:** 401 Unauthorised, 404 coach profile not found, 500 internal
 
