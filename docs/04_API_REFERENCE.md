@@ -1,8 +1,8 @@
 # Crikly — API Reference
 
-**Version:** 1.2
-**Last Updated:** July 2026
-**Changed:** BUG-23 — camp slot granularity: slot-selection wire format (`uuid` / `uuid.N`) + per-slot pricing/capacity on POST /api/guest/programme-enrolments (new 400 `camp_block_unsupported`, 409 `slot_full`); camp branch (`confirm_camp_slot_spots()`) + email session lines in the Stripe webhook; `camp_mode` on programme list/POST responses; roster session lines. Previous (1.1): BUG-19 Phase 1 — `booked_slots` on GET /api/coaches/[id]/availability; slot-validation 409s on POST /api/guest/bookings
+**Version:** 1.3
+**Last Updated:** 22 July 2026
+**Changed:** BUG-44 — new POST /api/webhooks/stripe-connect route for connected-account events (`account.updated` → `stripe_onboarding_complete`; transfer/payout events log-only for Block 0), verified with `STRIPE_CONNECT_WEBHOOK_SECRET`. Previous (1.2): BUG-23 — camp slot granularity: slot-selection wire format (`uuid` / `uuid.N`) + per-slot pricing/capacity on POST /api/guest/programme-enrolments (new 400 `camp_block_unsupported`, 409 `slot_full`); camp branch (`confirm_camp_slot_spots()`) + email session lines in the Stripe webhook; `camp_mode` on programme list/POST responses; roster session lines. Previous (1.1): BUG-19 Phase 1 — `booked_slots` on GET /api/coaches/[id]/availability; slot-validation 409s on POST /api/guest/bookings
 
 This document is the single source of truth for all API routes.
 Update this file in the same commit as every new or modified route.
@@ -793,6 +793,41 @@ stripe-signature   required — verified against STRIPE_WEBHOOK_SECRET
 - Webhook receivers have no Crikly user session — the route uses `createAdminClient()` to write to `coach_profiles`; ownership is implicit in the `stripe_account_id` match.
 - **Card data is never touched.** This route only reads booleans (`charges_enabled`, `payouts_enabled`) from `Stripe.Account`. PCI scope unchanged.
 - Local testing: `stripe listen --forward-to localhost:3000/api/webhooks/stripe` + `stripe trigger account.updated`.
+
+### POST /api/webhooks/stripe-connect
+Receive and process Stripe webhook events from **connected accounts** (coach Stripe accounts). Handles `account.updated`; acknowledges `transfer.created`, `transfer.failed`, `payout.created`, `payout.paid`, and `payout.failed` with a log-only 200 (Block 0 — full payout reconciliation is post-Block-0); every other event type is acknowledged with 200 and ignored.
+**Status: Implemented — BUG-44**
+**Auth: Stripe signature (no Crikly auth — `STRIPE_CONNECT_WEBHOOK_SECRET` is the trust root; never `STRIPE_WEBHOOK_SECRET`)**
+
+**Headers:**
+```
+stripe-signature   required — verified against STRIPE_CONNECT_WEBHOOK_SECRET
+```
+
+**Body:** raw JSON event payload — must NOT be re-serialised before signature verification. The route reads `await request.text()` and passes the unmodified bytes to `stripe.webhooks.constructEvent`.
+
+**Events handled:**
+
+| `event.type` | Action |
+|---|---|
+| `account.updated` | Computes `isComplete = charges_enabled && payouts_enabled` from `event.data.object` (Stripe.Account) and `UPDATE coach_profiles SET stripe_onboarding_complete = isComplete WHERE stripe_account_id = account.id`. Both directions written, so a Stripe-side capability revocation flips the flag back to `false` (BUG-44 ruling A — identical semantics to the platform route's handler; `details_submitted` alone is NOT sufficient). Zero matching rows is an info-log no-op (env mismatch / soft-deleted coach). |
+| `transfer.created` / `transfer.failed` / `payout.created` / `payout.paid` / `payout.failed` | `console.info` log only (event type, `event.account`, object id), no DB writes, returns 200. |
+| any other | `console.info` log only, no DB writes, returns 200. |
+
+**Response 200:** `{ "received": true }` — processed, log-only, or unhandled type.
+
+**Response 400:** missing `stripe-signature` header; signature verification failed; body read failed.
+
+**Response 500:** `STRIPE_CONNECT_WEBHOOK_SECRET` (or the Stripe API key) is not set — configuration error; or the `account.updated` DB update hit a transient failure — Stripe redelivers, and the boolean write is idempotent so retries are always safe.
+
+**Idempotency (BUG-44 ruling B):** no `stripe_webhook_events` ledger on this route for Block 0 — the only DB write is an idempotent boolean update, so redeliveries are harmless by construction. Adopting the shared ledger is a logged follow-up.
+
+**Setup notes:**
+- Register in the Stripe Dashboard (Tekly Solutions, `acct_1TF06pPDhbWKSHdt`) as a **Connect** endpoint — "Listen to events on Connected accounts" — for both test and live modes. Subscribe to `account.updated`, `transfer.created`, `transfer.failed`, `payout.created`, `payout.paid`, `payout.failed`.
+- Webhook receivers have no Crikly user session — the route uses `createAdminClient()`; ownership is implicit in the `stripe_account_id` match.
+- **Card data is never touched.** PCI scope unchanged.
+- Local testing: `stripe listen --forward-connect-to localhost:3000/api/webhooks/stripe-connect --project-name tekly` (prints the `whsec_...` for `STRIPE_CONNECT_WEBHOOK_SECRET` in `.env.local`).
+- Follow-up (logged in BUG-44 Step 0): remove the platform route's duplicate `account.updated` handler once this endpoint is live.
 
 ---
 
