@@ -176,6 +176,9 @@ SUPABASE_SERVICE_ROLE_KEY=          # SECRET — server only
 NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY= # Public — safe in browser
 STRIPE_SECRET_KEY=                  # SECRET — server only
 STRIPE_WEBHOOK_SECRET=              # SECRET — server only
+STRIPE_CONNECT_WEBHOOK_SECRET=      # SECRET — server only (BUG-44). Signs
+                                    # connected-account events delivered to
+                                    # /api/webhooks/stripe-connect
 
 # Cron (BUG-13b)
 CRON_SECRET=                        # SECRET — server only. Guards /api/cron/*;
