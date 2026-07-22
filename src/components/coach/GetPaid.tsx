@@ -12,6 +12,37 @@ import {
   type StripeConnectStatus,
 } from '@/lib/stripe-status-cache'
 
+// BUG-45: real earnings/payout data from GET /api/coaches/earnings (the same
+// endpoint the Earnings page uses). Until Block 1 wires payout transfers the
+// payouts table is empty, so this renders the truthful zero/empty states.
+interface EarningsSummary {
+  total_earned_pence: number
+  pending_pence: number
+}
+
+interface PayoutItem {
+  id: string
+  amount_pence: number
+  status: string
+  scheduled_at: string
+}
+
+interface EarningsResponse {
+  summary: EarningsSummary
+  payouts: PayoutItem[]
+}
+
+function formatPence(pence: number): string {
+  return `£${(pence / 100).toFixed(2)}`
+}
+
+/** ISO timestamp → 'Thu 10 Apr'. Falls back to em dash on parse failure. */
+function formatPayoutDate(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return '—'
+  return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+}
+
 export function GetPaid() {
   const [loading, setLoading] = useState(true)
   const [connecting, setConnecting] = useState(false)
@@ -19,6 +50,9 @@ export function GetPaid() {
   const [stripeStatus, setStripeStatus] = useState<StripeConnectStatus>({ connected: false })
   // CG-03: Banner shown after returning from Stripe onboarding
   const [returnBanner, setReturnBanner] = useState<'success' | 'refresh' | null>(null)
+  // BUG-45: null = earnings fetch failed or not loaded — renders '—' rather
+  // than a misleading £0.00. A loaded-but-empty response renders real zeros.
+  const [earnings, setEarnings] = useState<EarningsResponse | null>(null)
 
   // PERF-04: in-flight guard prevents React strict-mode double-invoke
   // (and any future double-call) from firing two parallel Stripe API
@@ -82,6 +116,15 @@ export function GetPaid() {
     }
 
     fetchStripeStatus()
+
+    // BUG-45: fetch real earnings in parallel — failure leaves earnings null
+    // and the page falls back to the empty states (same pattern as Earnings.tsx).
+    fetch('/api/coaches/earnings')
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((data: EarningsResponse) => setEarnings(data))
+      .catch((err) => {
+        console.error('[GetPaid] Failed to fetch earnings:', err)
+      })
   }, [fetchStripeStatus])
 
   // CG-03: Start or resume Stripe Connect onboarding
@@ -106,6 +149,17 @@ export function GetPaid() {
     stripeStatus.payouts_enabled
 
   const partiallyConnected = stripeStatus.connected && !fullyConnected
+
+  // BUG-45: real payout figures. pending = money earned but not yet released;
+  // upcoming = the individual payout rows still due to move. The endpoint
+  // returns payouts newest-first — re-sort soonest-first so upcomingPayouts[0]
+  // is genuinely the NEXT payout.
+  const pendingPence = earnings?.summary.pending_pence ?? 0
+  const upcomingPayouts = (earnings?.payouts ?? [])
+    .filter((p) => p.status === 'pending' || p.status === 'processing')
+    .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())
+  const hasBankDetails = Boolean(stripeStatus.bank_last4)
+
   return (
     <div className="min-h-screen flex justify-center font-sans p-6 lg:p-10">
       <div className="w-full max-w-3xl flex flex-col gap-8 pb-20">
@@ -227,7 +281,12 @@ export function GetPaid() {
                   <div className="w-2 h-2 rounded-full bg-[#22C55E]" />
                   <span className="text-[13px] font-medium text-gray-900">Stripe Connected</span>
                 </div>
-                <div className="text-[11px] text-gray-400 mt-0.5">Payouts to ****4242 · Lloyds Bank</div>
+                {/* BUG-45: real payout destination from Stripe external_accounts */}
+                <div className="text-[11px] text-gray-400 mt-0.5" data-testid="payout-destination">
+                  {hasBankDetails
+                    ? `Payouts to ****${stripeStatus.bank_last4}${stripeStatus.bank_name ? ` · ${stripeStatus.bank_name}` : ''}`
+                    : 'Payouts via Stripe'}
+                </div>
               </div>
             </div>
           </div>
@@ -235,17 +294,35 @@ export function GetPaid() {
           {/* CF-D09 CHANGE 1: Main section with next payout prominent */}
           <div className="border-t-[0.5px] border-gray-100 pt-3.5">
             <div className="flex items-start gap-8 md:gap-12">
-              {/* Left: Next payout (primary) */}
+              {/* Left: Next payout (primary) — BUG-45: real pending payout sum */}
               <div className="flex-1">
                 <div className="text-[11px] text-gray-400 uppercase tracking-wider mb-1.5">Next payout</div>
-                <div className="text-[28px] font-medium text-[#0077CC] mb-1">£90.00</div>
-                <div className="text-[12px] text-gray-500">Releasing 10 Apr · in 2 days</div>
+                {pendingPence > 0 ? (
+                  <>
+                    <div className="text-[28px] font-medium text-[#0077CC] mb-1" data-testid="next-payout-amount">
+                      {formatPence(pendingPence)}
+                    </div>
+                    <div className="text-[12px] text-gray-500">
+                      {upcomingPayouts[0] ? `Releasing ${formatPayoutDate(upcomingPayouts[0].scheduled_at)}` : 'Releasing soon'}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="text-[20px] font-medium text-gray-400 mb-1" data-testid="next-payout-empty">
+                      No pending payout
+                    </div>
+                    <div className="text-[12px] text-gray-500">Complete sessions to earn</div>
+                  </>
+                )}
               </div>
-              
-              {/* Right: Total earned (secondary) */}
+
+              {/* Right: Total earned (secondary) — BUG-45: real all-time total.
+                  '—' when the earnings fetch failed (never a fake £0.00). */}
               <div className="flex-1">
                 <div className="text-[11px] text-gray-400 mb-1.5">Total earned</div>
-                <div className="text-[20px] font-medium text-gray-900">£1,240.00</div>
+                <div className="text-[20px] font-medium text-gray-900" data-testid="total-earned">
+                  {earnings ? formatPence(earnings.summary.total_earned_pence) : '—'}
+                </div>
               </div>
             </div>
           </div>
@@ -305,35 +382,45 @@ export function GetPaid() {
           </div>
         </div>
 
-        {/* CF-D09 CHANGE 3: Upcoming payouts list with cleaner rows */}
+        {/* CF-D09 CHANGE 3: Upcoming payouts — BUG-45: real payout rows or empty state */}
         <div className="flex flex-col gap-4">
           <h2 className="text-[18px] font-bold text-gray-900">Upcoming payouts</h2>
-          <div className="bg-white border border-[#E2E8F0] rounded-[16px] shadow-sm flex flex-col">
-            <div className="px-4 py-3 flex items-center justify-between border-b-[0.5px] border-gray-100 hover:bg-gray-50 transition-all duration-100">
-              <div>
-                <div className="text-[13px] font-medium text-gray-900">Thu 10 Apr</div>
-                <div className="text-[11px] text-gray-400 mt-0.5">2 sessions · releasing in 2 days</div>
-              </div>
-              <div className="flex flex-col items-end gap-1">
-                <div className="text-[14px] font-medium text-gray-900">£90.00</div>
-                <div className="px-2 py-0.5 bg-[#DCFCE7] text-[#166534] text-[10px] font-medium rounded-full">
-                  Scheduled
-                </div>
-              </div>
+          {upcomingPayouts.length === 0 ? (
+            <div
+              className="bg-white border border-[#E2E8F0] rounded-[16px] shadow-sm px-4 py-8 text-center"
+              data-testid="upcoming-payouts-empty"
+            >
+              <div className="text-[14px] font-medium text-gray-500">No upcoming payouts</div>
+              <div className="text-[12px] text-gray-400 mt-1">Payouts appear here after you complete sessions</div>
             </div>
-            <div className="px-4 py-3 flex items-center justify-between hover:bg-gray-50 transition-all duration-100">
-              <div>
-                <div className="text-[13px] font-medium text-gray-900">Sat 12 Apr</div>
-                <div className="text-[11px] text-gray-400 mt-0.5">1 session · releasing in 4 days</div>
-              </div>
-              <div className="flex flex-col items-end gap-1">
-                <div className="text-[14px] font-medium text-gray-900">£45.00</div>
-                <div className="px-2 py-0.5 bg-[#FEF3C7] text-[#92400E] text-[10px] font-medium rounded-full">
-                  Pending
+          ) : (
+            <div className="bg-white border border-[#E2E8F0] rounded-[16px] shadow-sm flex flex-col" data-testid="upcoming-payouts-list">
+              {upcomingPayouts.map((payout, index) => (
+                <div
+                  key={payout.id}
+                  className={`px-4 py-3 flex items-center justify-between hover:bg-gray-50 transition-all duration-100 ${
+                    index < upcomingPayouts.length - 1 ? 'border-b-[0.5px] border-gray-100' : ''
+                  }`}
+                >
+                  <div>
+                    <div className="text-[13px] font-medium text-gray-900">{formatPayoutDate(payout.scheduled_at)}</div>
+                  </div>
+                  <div className="flex flex-col items-end gap-1">
+                    <div className="text-[14px] font-medium text-gray-900">{formatPence(payout.amount_pence)}</div>
+                    {payout.status === 'processing' ? (
+                      <div className="px-2 py-0.5 bg-[#DCFCE7] text-[#166534] text-[10px] font-medium rounded-full">
+                        Processing
+                      </div>
+                    ) : (
+                      <div className="px-2 py-0.5 bg-[#FEF3C7] text-[#92400E] text-[10px] font-medium rounded-full">
+                        Pending
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
+              ))}
             </div>
-          </div>
+          )}
         </div>
 
         {/* CF-D09 CHANGE 4: Payout account card with balanced CTA */}
@@ -346,14 +433,27 @@ export function GetPaid() {
                   <Building2 size={20} className="text-gray-600" />
                 </div>
                 <div>
-                  <div className="text-[16px] font-bold text-gray-900">Lloyds Bank</div>
-                  <div className="text-[14px] text-gray-500 mt-0.5">Account ending ****4242</div>
+                  {/* BUG-45: real bank details from Stripe external_accounts */}
+                  <div className="text-[16px] font-bold text-gray-900" data-testid="payout-bank-name">
+                    {stripeStatus.bank_name ?? 'Bank account'}
+                  </div>
+                  <div className="text-[14px] text-gray-500 mt-0.5" data-testid="payout-bank-last4">
+                    {hasBankDetails ? `Account ending ****${stripeStatus.bank_last4}` : 'Connected via Stripe'}
+                  </div>
                 </div>
               </div>
-              {/* CF-D09 CHANGE 4: Smaller, right-aligned secondary button */}
-              <button className="px-4 py-1.5 rounded-full border border-gray-200 bg-white text-gray-700 text-[12px] font-medium hover:bg-gray-50 transition-colors outline-none shrink-0">
+              {/* BUG-45: the dead button now opens the coach's Stripe Express
+                  dashboard (one-time login link, same route as Manage Stripe
+                  account below) — bank details are managed on Stripe. */}
+              <a
+                href="/api/payments/connect/login-link"
+                target="_blank"
+                rel="noopener noreferrer"
+                data-testid="update-bank-account"
+                className="px-4 py-1.5 rounded-full border border-gray-200 bg-white text-gray-700 text-[12px] font-medium hover:bg-gray-50 transition-colors outline-none shrink-0 no-underline"
+              >
                 Update bank account
-              </button>
+              </a>
             </div>
           </div>
         </div>
