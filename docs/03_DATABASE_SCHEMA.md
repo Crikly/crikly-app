@@ -1,8 +1,8 @@
 # Crikly — Database Schema
 
-**Version:** 1.4
-**Last Updated:** May 2026
-**Changed:** Migration 031 — CF-PROG-SESSIONS-DB. Adds `group_programmes.camp_mode` (boolean) and `group_programme_sessions.slots` (jsonb), plus a `UNIQUE (group_programme_id, session_date)` constraint that enables UPSERT reconciliation in the programmes PATCH route. Also documents `group_programme_sessions` for the first time (table created in migration 011 but never written into this doc).
+**Version:** 1.5
+**Last Updated:** June 2026
+**Changed:** Migration 20260623120000 — P-00c-DB. Makes `user_profiles.auth_user_id` nullable for provisional/guest users. Adds `user_profiles.is_provisional` (boolean, NOT NULL DEFAULT false) and `user_profiles.provisional_until` (timestamptz). Hardens the public "live coaches" SELECT policy with an `is_provisional = false` guard so provisional rows are never exposed to unauthenticated requests.
 **Maintainer:** Lasith Jayarathne
 **Single source of truth for all database tables.**
 
@@ -57,7 +57,7 @@ One row per registered user. Extends Supabase auth.users.
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
 | id | uuid | NO | gen_random_uuid() | Primary key |
-| auth_user_id | uuid | NO | — | FK → auth.users(id) ON DELETE CASCADE |
+| auth_user_id | uuid | YES | — | FK → auth.users(id) ON DELETE CASCADE. Nullable since P-00c-DB — provisional (guest) users have no auth credentials yet |
 | full_name | text | NO | — | Display name |
 | avatar_url | text | YES | null | Supabase Storage URL |
 | phone | text | YES | null | Optional — for SMS Phase 2 |
@@ -72,6 +72,8 @@ One row per registered user. Extends Supabase auth.users.
 | terms_accepted_at | timestamptz | YES | null | When user accepted T&Cs — required before use |
 | deletion_requested_at | timestamptz | YES | null | GDPR right to deletion request |
 | deleted_at | timestamptz | YES | null | Soft delete |
+| is_provisional | boolean | NO | false | P-00c-DB — marks a guest-created row for the cleanup cron. Provisional rows go through the service-role API only |
+| provisional_until | timestamptz | YES | null | P-00c-DB — set to now() + 6 months at the API layer on creation; read by a future cleanup cron |
 | created_at | timestamptz | NO | now() | |
 | updated_at | timestamptz | NO | now() | Auto-updated |
 
@@ -80,10 +82,13 @@ One row per registered user. Extends Supabase auth.users.
 - INSERT: Own record only
 - UPDATE: Own record only
 - DELETE: Not permitted (soft delete via deleted_at)
+- Public SELECT (live coaches): exposes a row to anonymous clients only when a live coach_profile references it AND is_provisional = false (P-00c-DB hardening — provisional rows never exposed to unauthenticated requests)
 
 **Indexes:**
-- auth_user_id_idx (unique)
+- auth_user_id_idx (unique — Postgres allows multiple NULLs, so many provisional rows coexist)
 - deleted_at_idx (partial — where deleted_at is null)
+
+**Migrations:** 001_create_user_profiles.sql · 20260623120000_provisional_user_support.sql (P-00c-DB: auth_user_id nullable + is_provisional + provisional_until + public-policy guard)
 
 ---
 
@@ -547,7 +552,7 @@ Admin-controlled feature toggles. No deployment needed to enable/disable feature
 Weekly recurring availability pattern for a coach per sport.
 
 **Purpose:** Coach sets their schedule once — it repeats automatically.
-**Migration:** 004_create_availability.sql, 015_coach_schema_gaps.sql
+**Migration:** 004_create_availability.sql, 015_coach_schema_gaps.sql, coach_column_additions (coach_venue_id), 022_add_venue_to_availability_templates (venue_name, venue_address)
 
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
@@ -560,6 +565,9 @@ Weekly recurring availability pattern for a coach per sport.
 | is_active | boolean | NO | true | Coach can pause availability |
 | price_override_pence | integer | YES | null | NULL = use sport default, non-null = override price for this block |
 | session_type_id | uuid | YES | null | FK → coach_session_types(id) — links to specific pricing/duration |
+| venue_name | text | YES | null | Free-text venue label for this block (migration 022). NULL = no venue / resolve via coach_venue_id |
+| venue_address | text | YES | null | Full venue address from autocomplete (migration 022) |
+| coach_venue_id | uuid | YES | null | FK → coach_venues(id) (migration coach_column_additions) — venue-picker path; resolves to coach_venues.name when venue_name is null |
 | created_at | timestamptz | NO | now() | |
 | updated_at | timestamptz | NO | now() | |
 
@@ -632,7 +640,7 @@ The core transaction record. Created on successful payment.
 | commission_pence | integer | NO | — | Commission amount in pence |
 | parent_total_pence | integer | NO | — | coach_price + commission in pence |
 | currency | text | NO | 'GBP' | ISO currency code |
-| status | text | NO | 'confirmed' | 'confirmed', 'completed', 'cancelled_parent', 'cancelled_coach', 'no_show' |
+| status | text | NO | 'confirmed' | 'pending_payment', 'confirmed', 'completed', 'cancelled_parent', 'cancelled_coach', 'no_show' (see migration 032) |
 | messaging_unlocked | boolean | NO | false | True after booking confirmed |
 | promo_code_id | uuid | YES | null | FK → promo_codes(id) — if discount applied |
 | discount_applied_pence | integer | YES | null | Actual discount amount in pence |
@@ -645,6 +653,8 @@ The core transaction record. Created on successful payment.
 | review_requested_at | timestamptz | YES | null | When review reminder was sent to parent/player |
 | group_booking_id | uuid | YES | null | FK → group_bookings(id) if group session |
 | notes_for_coach | text | YES | null | Snapshot from child/player profile at time of booking |
+| participant_name | text | YES | null | Who the session is for, as entered at guest checkout — snapshot, no FK (migration 035, UX-16). Null on pre-UX-16 rows and on logged-in bookings that link child_profile_id. Required for new guest bookings at the API layer. |
+| participant_age | integer | YES | null | Participant age in years at booking time (migration 035, UX-16). CHECK 1–99. Optional — adult players may omit it. |
 | deleted_at | timestamptz | YES | null | Soft delete |
 | created_at | timestamptz | NO | now() | |
 | updated_at | timestamptz | NO | now() | |
@@ -668,7 +678,9 @@ The core transaction record. Created on successful payment.
 - session_date_idx
 - status_idx
 - payout_eligible_at_idx (for payout cron job)
-- (coach_profile_id, session_date, session_start_time) unique constraint
+- (coach_profile_id, session_date, session_start_time) partial unique index
+  WHERE deleted_at IS NULL AND status NOT IN ('cancelled_parent','cancelled_coach','no_show')
+  (replaces plain UNIQUE constraint — migration 034, BUG-13: freed/cancelled/soft-deleted slots no longer block re-booking)
 
 ---
 
@@ -808,23 +820,34 @@ Individual scheduled sessions within a `group_programmes` row. The session list 
 Tracks which children/players are enrolled in group programmes.
 
 **Purpose:** Links participants to recurring programmes, separate from one-off bookings.
-**Migration:** 015_coach_schema_gaps.sql
+**Migration:** 015_coach_schema_gaps.sql; 020 (participant_name); 033_programme_enrolment_payment.sql (guest paid-checkout lifecycle — P-00c-ENROL); 039_add_participant_age_to_enrolments.sql (participant_age, BUG-24/BUG-20)
 
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
 | id | uuid | NO | gen_random_uuid() | Primary key |
-| programme_id | uuid | NO | — | FK → group_programmes(id) |
-| booked_by_user_id | uuid | NO | — | FK → user_profiles(id) — parent or player |
-| child_profile_id | uuid | YES | null | FK → child_profiles(id) — null if player |
-| player_profile_id | uuid | YES | null | FK → player_profiles(id) — null if child |
-| payment_type | text | NO | — | Snapshot of payment type at enrolment |
-| status | text | NO | 'active' | 'active' or 'cancelled' |
+| programme_id | uuid | NO | — | FK → group_programmes(id) (renamed from group_programme_id, migration 015) |
+| booked_by_user_id | uuid | NO | — | FK → user_profiles(id) — parent, player, or provisional guest |
+| child_profile_id | uuid | YES | null | FK → child_profiles(id) — null for guest/player |
+| player_profile_id | uuid | YES | null | FK → player_profiles(id) — null for guest/child |
+| payment_type | text | NO | — | 'platform' or 'offline' (platform = paid via Stripe; offline = coach cash) |
+| payment_model | text | NO | — | 'per_session' or 'block' (maps from programme payment_type 'block_upfront' → 'block') |
+| block_amount_pence | integer | YES | null | Block total in pence (block model only) |
+| sessions_paid_for | integer | YES | null | Count of sessions paid (per_session model) |
+| participant_name | text | YES | null | Who the programme is for — entered at guest checkout (BUG-20, REQUIRED at the API layer for new guest enrolments) or by the coach for offline participants (migration 020) |
+| participant_age | integer | YES | null | Participant age in years at enrolment time, as entered at guest checkout. Optional — adult players may omit it. CHECK 1–99. Mirrors bookings.participant_age (migration 035). (migration 039) |
+| status | text | NO | 'active' | 'active', 'cancelled', 'completed' |
+| payment_status | text | NO | 'pending' | 'pending', 'succeeded', 'failed', 'refunded' (migration 033). Enrolment only holds a spot once 'succeeded'. |
+| enrolment_reference | text | YES | null | CRK-YYYY-XXXXXX human reference (migration 033). UNIQUE when present. |
+| coach_amount_pence | integer | YES | null | Coach fee snapshot in pence (migration 033, BR-01) |
+| commission_pence | integer | YES | null | Platform commission in pence (migration 033, BR-01) |
+| parent_total_pence | integer | YES | null | Total charged to the payer in pence (migration 033) |
+| commission_rate | numeric(5,4) | YES | null | Commission rate snapshot (migration 033) |
+| currency | text | NO | 'GBP' | ISO currency code (migration 033, BR-10) |
 | created_at | timestamptz | NO | now() | |
 | updated_at | timestamptz | NO | now() | |
 
 **Constraints:**
-- UNIQUE(programme_id, booked_by_user_id, child_profile_id)
-- CHECK: Must have either child_profile_id OR player_profile_id, not both
+- Partial UNIQUE (enrolment_reference) WHERE enrolment_reference IS NOT NULL (migration 033)
 
 **RLS Policies:**
 - SELECT: Own enrolments (parent/player who enrolled)
@@ -837,19 +860,111 @@ Tracks which children/players are enrolled in group programmes.
 
 ---
 
-## 7. Module 6 — Payments & Payouts
+### 6.6 group_programme_enrolment_sessions
 
-### 7.1 payment_intents
+Per-session/per-slot record for a `per_session` programme enrolment — one row per **slot** the enrolment paid for.
 
-Tracks Stripe payment intents for every booking.
-
-**Purpose:** Audit trail and reconciliation for all payment activity.
-**Migration:** 006_create_payments.sql
+**Purpose:** Records exactly which sessions — and for camp-mode programmes, which time SLOTS — a guest/parent paid for under the per-session model. Slot identity added by BUG-23 (REQ-P-NEW-01): each camp slot is one session at the per-session price; full day = both slots = 2×.
+**Migration:** 033_programme_enrolment_payment.sql; 040_camp_slot_granularity.sql (slot_index, widened UNIQUE, capacity functions)
 
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
 | id | uuid | NO | gen_random_uuid() | Primary key |
-| booking_id | uuid | NO | — | FK → bookings(id) |
+| enrolment_id | uuid | NO | — | FK → group_programme_enrolments(id) ON DELETE CASCADE |
+| group_programme_session_id | uuid | NO | — | FK → group_programme_sessions(id) |
+| slot_index | integer | NO | 0 | Which time block of the session this row pays for — ordinal into group_programme_sessions.slots; 0 for single-block/non-camp. Mirrors coach_time_claims.slot_index. CHECK 0–19. Legacy pre-040 camp rows pinned to 0 (RAISE NOTICE at migration time — sold as whole-day at 1×). (migration 040) |
+| price_pence | integer | NO | — | Per-SLOT price snapshot in pence (= per-session price, BUG-23 ruling 1; BR-10) |
+| created_at | timestamptz | NO | now() | |
+
+**Constraints:**
+- UNIQUE (enrolment_id, group_programme_session_id, slot_index) — widened in migration 040
+- CHECK (price_pence >= 0); CHECK (slot_index BETWEEN 0 AND 19)
+
+**RLS Policies:**
+- SELECT: Own enrolment (the user who booked) OR the coach who owns the programme
+- INSERT/UPDATE/DELETE: Service role only (no user policies — guest rows created server-side; camp rows via reserve_camp_slot_sessions())
+
+**Indexes:**
+- (enrolment_id, group_programme_session_id, slot_index) — implicit from the UNIQUE constraint
+- group_programme_session_id (reverse lookup)
+
+**Occupancy definition (BUG-23, shared by the three functions below):** a (session, slot) spot is held by a junction row whose enrolment is not cancelled AND is either `payment_status='succeeded'` OR `'pending'` created within the last 15 minutes (BUG-13b SOFT_TTL convention — a live checkout holds its spot; an abandoned one self-expires, no reaper).
+
+---
+
+### 6.7 Programme capacity functions
+
+`increment_programme_spots(p_programme_id uuid) RETURNS boolean` (migration 033). Atomically increments `group_programmes.current_spots` by 1 **only while `current_spots < max_spots`**, and returns whether a spot was taken. Called from the Stripe webhook on **non-camp** programme-enrolment confirmation; a `false` return means the programme filled between checkout and payment confirmation (caller logs + flags for manual refund — P-00c-ENROL S0 decision 3). `SET search_path = public`; EXECUTE granted to `service_role`.
+
+**Camp capacity is PER SLOT** (BUG-23 ruling 3: `max_spots` applies to each (session, slot) independently; camps skip `increment_programme_spots` and `current_spots` stays 0). Three functions, migration 040, all SECURITY DEFINER `SET search_path = ''`:
+
+- `camp_slot_occupancy(p_programme_id uuid) RETURNS TABLE(session_id, slot_index, taken)` — aggregate per-slot taken counts (no PII); feeds the public picker's "N left"/"Full" states. EXECUTE: anon, authenticated, service_role.
+- `reserve_camp_slot_sessions(p_enrolment_id uuid, p_price_pence integer, p_selections jsonb) RETURNS jsonb` — atomic pre-charge reservation: locks the involved session rows FOR UPDATE in sorted-id order (deadlock-safe serialization), counts occupancy per requested pair, inserts the enrolment's junction rows or returns `{ok:false, full:[…]}` so the API can 409 **before any Stripe intent exists**. EXECUTE: service_role only.
+- `confirm_camp_slot_spots(p_enrolment_id uuid) RETURNS boolean` — webhook-time re-check (counts succeeded others under the same lock); `false` → caller logs MANUAL REFUND NEEDED, mirroring increment_programme_spots semantics. EXECUTE: service_role only.
+
+---
+
+### 6.8 coach_time_claims
+
+Canonical ledger of committed coach time — the DB-level double-sell guarantee (BUG-19 Phase 2). One row per way a coach's time is committed: a live 1-on-1 booking (including a `pending_payment` hold) or a scheduled programme-session time block (camp-mode sessions produce one row **per** `slots[]` block via `slot_index`). Two overlapping ACTIVE claims for one coach cannot coexist — enforced by a partial GiST exclusion constraint, not application code.
+
+**Purpose:** Make coach double-selling structurally impossible at the database layer, beneath the BUG-19 Phase 1 app-level guards.
+**Migrations:** 036_coach_time_claims.sql (table, `timerange` type, btree_gist, RLS); 037_coach_time_claims_backfill.sql (backfill + legacy-overlap sweep); 038_coach_time_claims_constraint_triggers.sql (exclusion constraint, sync triggers, cron reconciler).
+
+| Column | Type | Nullable | Default | Notes |
+|---|---|---|---|---|
+| id | uuid | NO | gen_random_uuid() | Primary key |
+| coach_profile_id | uuid | NO | — | FK → coach_profiles(id) ON DELETE CASCADE |
+| claim_date | date | NO | — | Calendar date of the committed time. |
+| start_time | time | NO | — | Block start (wall-clock UK, mirrors the source row). |
+| end_time | time | NO | — | Block end. CHECK end_time > start_time — no midnight crossing. |
+| source_type | text | NO | — | 'booking' \| 'programme_session'. |
+| source_id | uuid | NO | — | Polymorphic pointer to bookings.id or group_programme_sessions.id. **Deliberately no FK** — programme PATCH hard-deletes session rows and a released claim must survive as audit history. |
+| slot_index | integer | NO | 0 | Camp-mode block ordinal within the source session's `slots` array; 0 otherwise. |
+| state | text | NO | 'active' | 'active' (holds time, participates in the exclusion constraint) \| 'released' (audit history — never blocks). |
+| released_at | timestamptz | YES | null | Set exactly when state = 'released' (CHECK release_consistent). |
+| release_reason | text | YES | null | Why the claim stopped holding: source lifecycle reason (e.g. `expired_pending_payment`, `payment_intent_cancelled`, `session_deleted`, `programme_cancelled`, `slot_removed`), `legacy_overlap_backfill` (migration 037 sweep), or `sweep_reconciled` (cron drift reconciler). |
+| created_at | timestamptz | NO | now() | |
+| updated_at | timestamptz | NO | now() | Bump trigger (update_updated_at_column). |
+
+**Custom type:** `timerange` — `CREATE TYPE timerange AS RANGE (subtype = time)` (migration 036). Chosen over tstzrange because every source stores wall-clock date + time, no session crosses midnight, and a Europe/London conversion is not IMMUTABLE. Do not redefine `timerange` in future migrations.
+
+**Constraints:**
+- `uniq_claim_source` UNIQUE (source_type, source_id, slot_index) — the triggers' upsert anchor.
+- `no_overlapping_active_claims` EXCLUDE USING gist (coach_profile_id WITH =, claim_date WITH =, timerange(start_time, end_time) WITH &&) WHERE (state = 'active') — migration 038, requires btree_gist. **Partial**: released claims never block re-claiming freed time (the BUG-13/034 lesson at claim level).
+- CHECKs: valid_source_type, valid_state, valid_time_range, valid_slot_index, release_consistent.
+
+**Sync model (triggers, migration 038 — all SECURITY DEFINER, `SET search_path = ''`):**
+- `sync_booking_claim()` on bookings AFTER INSERT/UPDATE — holding predicate mirrors the migration-034 partial index (`deleted_at IS NULL AND status IN ('pending_payment','confirmed','completed')`). The BUG-13b release write (soft delete) releases the claim in the same transaction; new claims are only created for `session_date >= CURRENT_DATE` so legacy past overlaps can never resurface.
+- `sync_programme_session_claims()` on group_programme_sessions AFTER INSERT/UPDATE/DELETE + shared `reconcile_session_claims(uuid)` — holding predicate mirrors commitments.ts (session 'scheduled', programme in draft/active/full, not soft-deleted); expands camp `slots[]` one claim per block.
+- `sync_programme_claims()` on group_programmes AFTER UPDATE (status / deleted_at changes) — cascades activate/release across the programme's session claims.
+- An overlapping write fails with SQLSTATE **23P01** and rolls back the source write. Handled as 409 in `/api/guest/bookings` (slot_taken) and programmes POST/PATCH ("Conflict detected"); the Stripe webhook's restore-after-release path routes it to the MANUAL REFUND NEEDED log.
+- `reconcile_coach_time_claims() RETURNS integer` — drift reconciler called by GET `/api/cron/release-expired-bookings` each run; releases active claims whose source no longer holds (`sweep_reconciled`). Expected result 0; EXECUTE granted to `service_role` only.
+
+**RLS Policies:**
+- SELECT: owning coach only (join coach_profiles → user_profiles → auth.uid()).
+- INSERT / UPDATE / DELETE: **no policies for any role** — writes happen only via the SECURITY DEFINER triggers and the service-role client (both bypass RLS). Documented-exception per migration 036.
+
+**Indexes:**
+- (coach_profile_id, claim_date) WHERE state = 'active' — coach schedule + reconciler scans.
+- GiST index implicit from the exclusion constraint; BTREE implicit from uniq_claim_source.
+
+---
+
+## 7. Module 6 — Payments & Payouts
+
+### 7.1 payment_intents
+
+Tracks Stripe payment intents for every booking **or programme enrolment**.
+
+**Purpose:** Audit trail and reconciliation for all payment activity.
+**Migration:** 006_create_payments.sql; 033_programme_enrolment_payment.sql (booking_id → nullable, enrolment_id added — P-00c-ENROL)
+
+| Column | Type | Nullable | Default | Notes |
+|---|---|---|---|---|
+| id | uuid | NO | gen_random_uuid() | Primary key |
+| booking_id | uuid | YES | null | FK → bookings(id) ON DELETE RESTRICT. Null for programme-enrolment intents (migration 033). |
+| enrolment_id | uuid | YES | null | FK → group_programme_enrolments(id) ON DELETE RESTRICT (migration 033). Null for 1-to-1 booking intents. |
 | stripe_payment_intent_id | text | NO | — | Stripe PI id e.g. 'pi_...' |
 | amount_pence | integer | NO | — | Total charged to parent |
 | currency | text | NO | 'GBP' | |
@@ -866,6 +981,7 @@ Tracks Stripe payment intents for every booking.
 **Constraints:**
 - UNIQUE(stripe_payment_intent_id)
 - UNIQUE(idempotency_key)
+- CHECK payment_intents_booking_xor_enrolment — exactly one of booking_id / enrolment_id is non-null (migration 033)
 
 **RLS Policies:**
 - SELECT: Parent who made payment, or coach receiving payment, or admin
@@ -932,6 +1048,56 @@ Tracks refunds issued for cancelled bookings.
 **RLS Policies:**
 - SELECT: Parent who received refund, or admin
 - INSERT/UPDATE: Service role only
+
+---
+
+### 7.4 stripe_webhook_events
+
+Event-level idempotency ledger for `POST /api/webhooks/stripe` (BUG-15). One row per Stripe event that passed signature verification; replays terminate at the ledger before any handler runs.
+
+**Purpose:** Never lose an event silently (transient DB failures return 5xx → Stripe redelivers within its ~72h window), never double-process a replay, and bound poisoned events.
+**Migration:** 041_webhook_hardening.sql
+
+| Column | Type | Nullable | Default | Notes |
+|---|---|---|---|---|
+| event_id | text | NO | — | PK — Stripe's globally unique `evt_…` id (no uuid). |
+| event_type | text | NO | — | e.g. payment_intent.succeeded |
+| status | text | NO | 'processing' | 'processing' (in flight; stale > 10 min = retry allowed) · 'processed' (terminal — replays 200 immediately) · 'failed' (awaiting Stripe redelivery). |
+| attempts | integer | NO | 1 | Delivery attempts seen. At ≥ 8 the event is poison-bounded: marked processed + a `payment_alerts` (webhook_poisoned) row. |
+| last_error | text | YES | null | Most recent handler error (retryable failures). |
+| first_seen_at | timestamptz | NO | now() | Prune anchor — the reaper cron deletes rows older than 30 days. |
+| updated_at | timestamptz | NO | now() | Bump trigger. |
+
+**RLS:** enabled, no policies — service-role only (webhook + reaper).
+**Indexes:** (first_seen_at) for the prune scan.
+
+---
+
+### 7.5 payment_alerts
+
+Durable, queryable record of every situation where money needs human attention (BUG-15, refund policy B — manual refund via the Stripe Dashboard; ops email fired on insert when `OPS_ALERT_EMAIL` is set).
+
+**Migration:** 041_webhook_hardening.sql
+
+| Column | Type | Nullable | Default | Notes |
+|---|---|---|---|---|
+| id | uuid | NO | gen_random_uuid() | Primary key |
+| kind | text | NO | — | 'needs_refund' (paid-but-no-spot) · 'restore_conflict' (succeeded-after-release, slot re-taken — BUG-13b/19-P2 path) · 'webhook_poisoned' (attempts cap hit). |
+| booking_id | uuid | YES | null | FK → bookings(id) — restore_conflict alerts. |
+| enrolment_id | uuid | YES | null | FK → group_programme_enrolments(id) — needs_refund alerts. |
+| stripe_payment_intent_id | text | YES | null | The intent holding the parent's money. |
+| amount_pence | integer | YES | null | Charged amount snapshot (integer pence, BR-10). |
+| currency | text | NO | 'GBP' | ISO code. |
+| detail | text | NO | — | Human-readable description incl. what to do. |
+| status | text | NO | 'open' | 'open' \| 'resolved'. CHECK ties resolved_at to status. |
+| created_at | timestamptz | NO | now() | |
+| updated_at | timestamptz | NO | now() | Bump trigger. |
+| resolved_at | timestamptz | YES | null | |
+
+**RLS:** enabled, no policies — service-role only until the admin module defines admin reads. **Never auto-pruned.**
+**Indexes:** partial (created_at) WHERE status='open'; partial FK indexes on booking_id / enrolment_id.
+
+**Function:** `confirm_programme_enrolment(p_enrolment_id uuid, p_intent_id text, p_amount_pence integer, p_currency text) RETURNS jsonb` (migration 041; SECURITY DEFINER, `search_path=''`, service_role only). Atomic confirm-and-claim for the webhook's enrolment path: status-scoped flip (pending→succeeded) + spot claim (camps → `confirm_camp_slot_spots`, regular → `increment_programme_spots`) + on claim failure a `needs_refund` alert row — all one transaction, so a crash rolls back everything and a Stripe redelivery re-runs cleanly (spot claimed exactly once). Returns `{confirmed, spot_claimed}`; `spot_claimed=false` ⇒ the caller suppresses the confirmation email (approved ruling).
 
 ---
 
@@ -1555,6 +1721,25 @@ Migrations must run in this exact order:
 009_create_notifications.sql          → notification_preferences, notifications
 010_create_admin.sql                  → dbs_verifications, disputes,
                                         promo_codes, audit_logs
+...
+036_coach_time_claims.sql             → coach_time_claims, timerange type,
+                                        btree_gist extension (BUG-19 Phase 2)
+037_coach_time_claims_backfill.sql    → backfill + legacy-overlap sweep
+                                        (must run BEFORE 038's constraint)
+038_coach_time_claims_constraint_triggers.sql
+                                      → no_overlapping_active_claims exclusion
+                                        constraint, sync triggers on bookings /
+                                        group_programme_sessions /
+                                        group_programmes, cron reconciler
+039_add_participant_age_to_enrolments.sql
+                                      → participant_age on enrolments (BUG-20)
+040_camp_slot_granularity.sql         → slot_index on the enrolment junction,
+                                        widened UNIQUE, camp_slot_occupancy /
+                                        reserve_camp_slot_sessions /
+                                        confirm_camp_slot_spots (BUG-23)
+041_webhook_hardening.sql             → stripe_webhook_events ledger,
+                                        payment_alerts,
+                                        confirm_programme_enrolment (BUG-15)
 ```
 
 ---

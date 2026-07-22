@@ -7,11 +7,6 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "14.4"
-  }
   graphql_public: {
     Tables: {
       [_ in never]: never
@@ -285,6 +280,8 @@ export type Database = {
           messaging_unlocked: boolean
           notes_for_coach: string | null
           parent_total_pence: number
+          participant_age: number | null
+          participant_name: string | null
           payout_eligible_at: string | null
           player_profile_id: string | null
           promo_code_id: string | null
@@ -323,6 +320,8 @@ export type Database = {
           messaging_unlocked?: boolean
           notes_for_coach?: string | null
           parent_total_pence: number
+          participant_age?: number | null
+          participant_name?: string | null
           payout_eligible_at?: string | null
           player_profile_id?: string | null
           promo_code_id?: string | null
@@ -361,6 +360,8 @@ export type Database = {
           messaging_unlocked?: boolean
           notes_for_coach?: string | null
           parent_total_pence?: number
+          participant_age?: number | null
+          participant_name?: string | null
           payout_eligible_at?: string | null
           player_profile_id?: string | null
           promo_code_id?: string | null
@@ -922,6 +923,62 @@ export type Database = {
           },
         ]
       }
+      coach_time_claims: {
+        Row: {
+          claim_date: string
+          coach_profile_id: string
+          created_at: string
+          end_time: string
+          id: string
+          release_reason: string | null
+          released_at: string | null
+          slot_index: number
+          source_id: string
+          source_type: string
+          start_time: string
+          state: string
+          updated_at: string
+        }
+        Insert: {
+          claim_date: string
+          coach_profile_id: string
+          created_at?: string
+          end_time: string
+          id?: string
+          release_reason?: string | null
+          released_at?: string | null
+          slot_index?: number
+          source_id: string
+          source_type: string
+          start_time: string
+          state?: string
+          updated_at?: string
+        }
+        Update: {
+          claim_date?: string
+          coach_profile_id?: string
+          created_at?: string
+          end_time?: string
+          id?: string
+          release_reason?: string | null
+          released_at?: string | null
+          slot_index?: number
+          source_id?: string
+          source_type?: string
+          start_time?: string
+          state?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coach_time_claims_coach_profile_id_fkey"
+            columns: ["coach_profile_id"]
+            isOneToOne: false
+            referencedRelation: "coach_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       coach_venues: {
         Row: {
           address: string | null
@@ -1319,6 +1376,48 @@ export type Database = {
           },
         ]
       }
+      group_programme_enrolment_sessions: {
+        Row: {
+          created_at: string
+          enrolment_id: string
+          group_programme_session_id: string
+          id: string
+          price_pence: number
+          slot_index: number
+        }
+        Insert: {
+          created_at?: string
+          enrolment_id: string
+          group_programme_session_id: string
+          id?: string
+          price_pence: number
+          slot_index?: number
+        }
+        Update: {
+          created_at?: string
+          enrolment_id?: string
+          group_programme_session_id?: string
+          id?: string
+          price_pence?: number
+          slot_index?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_programme_enrolment_sessi_group_programme_session_id_fkey"
+            columns: ["group_programme_session_id"]
+            isOneToOne: false
+            referencedRelation: "group_programme_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_programme_enrolment_sessions_enrolment_id_fkey"
+            columns: ["enrolment_id"]
+            isOneToOne: false
+            referencedRelation: "group_programme_enrolments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       group_programme_enrolments: {
         Row: {
           block_amount_pence: number | null
@@ -1326,11 +1425,19 @@ export type Database = {
           cancellation_reason: string | null
           cancelled_at: string | null
           child_profile_id: string | null
+          coach_amount_pence: number | null
+          commission_pence: number | null
+          commission_rate: number | null
           created_at: string
+          currency: string
+          enrolment_reference: string | null
           id: string
           joined_at_session_number: number
+          parent_total_pence: number | null
+          participant_age: number | null
           participant_name: string | null
           payment_model: string
+          payment_status: string
           payment_type: string
           player_profile_id: string | null
           programme_id: string
@@ -1345,11 +1452,19 @@ export type Database = {
           cancellation_reason?: string | null
           cancelled_at?: string | null
           child_profile_id?: string | null
+          coach_amount_pence?: number | null
+          commission_pence?: number | null
+          commission_rate?: number | null
           created_at?: string
+          currency?: string
+          enrolment_reference?: string | null
           id?: string
           joined_at_session_number?: number
+          parent_total_pence?: number | null
+          participant_age?: number | null
           participant_name?: string | null
           payment_model: string
+          payment_status?: string
           payment_type: string
           player_profile_id?: string | null
           programme_id: string
@@ -1364,11 +1479,19 @@ export type Database = {
           cancellation_reason?: string | null
           cancelled_at?: string | null
           child_profile_id?: string | null
+          coach_amount_pence?: number | null
+          commission_pence?: number | null
+          commission_rate?: number | null
           created_at?: string
+          currency?: string
+          enrolment_reference?: string | null
           id?: string
           joined_at_session_number?: number
+          parent_total_pence?: number | null
+          participant_age?: number | null
           participant_name?: string | null
           payment_model?: string
+          payment_status?: string
           payment_type?: string
           player_profile_id?: string | null
           programme_id?: string
@@ -1871,14 +1994,75 @@ export type Database = {
           },
         ]
       }
+      payment_alerts: {
+        Row: {
+          amount_pence: number | null
+          booking_id: string | null
+          created_at: string
+          currency: string
+          detail: string
+          enrolment_id: string | null
+          id: string
+          kind: string
+          resolved_at: string | null
+          status: string
+          stripe_payment_intent_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          amount_pence?: number | null
+          booking_id?: string | null
+          created_at?: string
+          currency?: string
+          detail: string
+          enrolment_id?: string | null
+          id?: string
+          kind: string
+          resolved_at?: string | null
+          status?: string
+          stripe_payment_intent_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          amount_pence?: number | null
+          booking_id?: string | null
+          created_at?: string
+          currency?: string
+          detail?: string
+          enrolment_id?: string | null
+          id?: string
+          kind?: string
+          resolved_at?: string | null
+          status?: string
+          stripe_payment_intent_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_alerts_booking_id_fkey"
+            columns: ["booking_id"]
+            isOneToOne: false
+            referencedRelation: "bookings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_alerts_enrolment_id_fkey"
+            columns: ["enrolment_id"]
+            isOneToOne: false
+            referencedRelation: "group_programme_enrolments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payment_intents: {
         Row: {
           amount_pence: number
           application_fee_pence: number
-          booking_id: string
+          booking_id: string | null
           coach_transfer_amount_pence: number
           created_at: string
           currency: string
+          enrolment_id: string | null
           id: string
           idempotency_key: string
           status: string
@@ -1891,10 +2075,11 @@ export type Database = {
         Insert: {
           amount_pence: number
           application_fee_pence: number
-          booking_id: string
+          booking_id?: string | null
           coach_transfer_amount_pence: number
           created_at?: string
           currency?: string
+          enrolment_id?: string | null
           id?: string
           idempotency_key: string
           status?: string
@@ -1907,10 +2092,11 @@ export type Database = {
         Update: {
           amount_pence?: number
           application_fee_pence?: number
-          booking_id?: string
+          booking_id?: string | null
           coach_transfer_amount_pence?: number
           created_at?: string
           currency?: string
+          enrolment_id?: string | null
           id?: string
           idempotency_key?: string
           status?: string
@@ -1926,6 +2112,13 @@ export type Database = {
             columns: ["booking_id"]
             isOneToOne: false
             referencedRelation: "bookings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_intents_enrolment_id_fkey"
+            columns: ["enrolment_id"]
+            isOneToOne: false
+            referencedRelation: "group_programme_enrolments"
             referencedColumns: ["id"]
           },
         ]
@@ -2444,6 +2637,36 @@ export type Database = {
         }
         Relationships: []
       }
+      stripe_webhook_events: {
+        Row: {
+          attempts: number
+          event_id: string
+          event_type: string
+          first_seen_at: string
+          last_error: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          event_id: string
+          event_type: string
+          first_seen_at?: string
+          last_error?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          event_id?: string
+          event_type?: string
+          first_seen_at?: string
+          last_error?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       subscription_tiers: {
         Row: {
           created_at: string
@@ -2573,9 +2796,9 @@ export type Database = {
       }
       user_profiles: {
         Row: {
-          active_role: string
+          active_role: string | null
           auth_provider: string
-          auth_user_id: string
+          auth_user_id: string | null
           avatar_url: string | null
           country_code: string
           created_at: string
@@ -2583,19 +2806,21 @@ export type Database = {
           deletion_requested_at: string | null
           full_name: string
           id: string
+          is_provisional: boolean
           location_city: string | null
           location_lat: number | null
           location_lng: number | null
           location_postcode: string | null
           phone: string | null
+          provisional_until: string | null
           terms_accepted_at: string | null
           updated_at: string
           whatsapp_number: string | null
         }
         Insert: {
-          active_role?: string
+          active_role?: string | null
           auth_provider?: string
-          auth_user_id: string
+          auth_user_id?: string | null
           avatar_url?: string | null
           country_code?: string
           created_at?: string
@@ -2603,19 +2828,21 @@ export type Database = {
           deletion_requested_at?: string | null
           full_name: string
           id?: string
+          is_provisional?: boolean
           location_city?: string | null
           location_lat?: number | null
           location_lng?: number | null
           location_postcode?: string | null
           phone?: string | null
+          provisional_until?: string | null
           terms_accepted_at?: string | null
           updated_at?: string
           whatsapp_number?: string | null
         }
         Update: {
-          active_role?: string
+          active_role?: string | null
           auth_provider?: string
-          auth_user_id?: string
+          auth_user_id?: string | null
           avatar_url?: string | null
           country_code?: string
           created_at?: string
@@ -2623,11 +2850,13 @@ export type Database = {
           deletion_requested_at?: string | null
           full_name?: string
           id?: string
+          is_provisional?: boolean
           location_city?: string | null
           location_lat?: number | null
           location_lng?: number | null
           location_postcode?: string | null
           phone?: string | null
+          provisional_until?: string | null
           terms_accepted_at?: string | null
           updated_at?: string
           whatsapp_number?: string | null
@@ -2701,7 +2930,49 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      camp_slot_occupancy: {
+        Args: { p_programme_id: string }
+        Returns: {
+          session_id: string
+          slot_index: number
+          taken: number
+        }[]
+      }
+      confirm_camp_slot_spots: {
+        Args: { p_enrolment_id: string }
+        Returns: boolean
+      }
+      confirm_programme_enrolment: {
+        Args: {
+          p_amount_pence: number
+          p_currency: string
+          p_enrolment_id: string
+          p_intent_id: string
+        }
+        Returns: Json
+      }
+      increment_programme_spots: {
+        Args: { p_programme_id: string }
+        Returns: boolean
+      }
+      reconcile_coach_time_claims: { Args: never; Returns: number }
+      reconcile_session_claims: {
+        Args: { p_session_id: string }
+        Returns: undefined
+      }
+      reserve_camp_slot_sessions: {
+        Args: {
+          p_enrolment_id: string
+          p_price_pence: number
+          p_selections: Json
+        }
+        Returns: Json
+      }
+      timemultirange: { Args: never; Returns: unknown }
+      user_profile_has_live_coach: {
+        Args: { target_user_profile_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
       [_ in never]: never
@@ -2837,3 +3108,4 @@ export const Constants = {
     Enums: {},
   },
 } as const
+

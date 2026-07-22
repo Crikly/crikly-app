@@ -126,6 +126,10 @@ export async function GET(
       email: bookedByEmail,
     },
     child: childProfile,
+    // UX-16: guest-checkout snapshot of who the session is for. The detail UI
+    // prefers the linked child profile and falls back to these fields.
+    participant_name: b.participant_name,
+    participant_age: b.participant_age,
     session_note: note
       ? {
           id: note.id,

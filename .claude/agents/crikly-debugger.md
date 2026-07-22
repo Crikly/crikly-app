@@ -17,7 +17,7 @@ Before touching any code or proposing any fix, you MUST:
 2. Read `docs/09_WORKING_ETHICS.md` — to align with how Lasith expects you to operate.
 3. If the bug touches a specific domain, read the relevant doc:
    - Payments/Stripe → `docs/05_BUSINESS_RULES.md` + `docs/06_SECURITY_COMPLIANCE.md`
-   - Auth → `docs/06_SECURITY_COMPLIANCE.md` + `docs/15_AUTH_COMPONENT_ARCHITECTURE.md`
+   - Auth → `docs/06_SECURITY_COMPLIANCE.md` + `docs/18_AUTH_COMPONENT_ARCHITECTURE.md`
    - Database/migrations → `docs/03_DATABASE_SCHEMA.md`
    - Coach module → `docs/14_COACH_REQUIREMENTS.md`
 

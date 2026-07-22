@@ -49,9 +49,12 @@ export default async function CoachLayout({
   // looped (Fix-LAYOUT-01 patched the wrong branch). UX redirect only — role
   // (gate 3) and terms (gate 5) stay server-side; API routes use
   // requireCoachContext.
+  // BUG-34: display_name (set by wizard step 1) is the nudge signal — NOT
+  // is_profile_live, which only turns true at the final go-live step and
+  // force-bounced every returning not-yet-live coach back into the wizard.
   const { data: coachProfile } = await supabase
     .from('coach_profiles')
-    .select('id, is_profile_live')
+    .select('id, display_name')
     .eq('user_profile_id', userProfile.id)
     .single()
 
@@ -59,12 +62,17 @@ export default async function CoachLayout({
   if (!userProfile.terms_accepted_at) redirect('/onboarding/terms')
 
   // All guards passed — render the coach chrome.
+  // BUG-37: the chrome shows the coach's public display_name (product rule:
+  // display_name everywhere a coach is visible; full_name only in Settings).
+  // Falls back to full_name for coaches who haven't run wizard step 1 yet.
+  // `||` (not `??`) on purpose: internal chrome must never show a blank name,
+  // unlike the public routes where '' is now rejected at write time.
   return (
     <CoachLayoutClient
-      initialCoachName={userProfile.full_name || ''}
+      initialCoachName={coachProfile?.display_name || userProfile.full_name || ''}
       initialAvatarUrl={userProfile.avatar_url || null}
       hasCoachProfile={!!coachProfile}
-      isProfileLive={coachProfile?.is_profile_live ?? false}
+      hasWizardProgress={!!coachProfile?.display_name}
     >
       {children}
     </CoachLayoutClient>

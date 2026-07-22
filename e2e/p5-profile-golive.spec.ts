@@ -1,9 +1,19 @@
 // TEST-E2E-01 / P5 — Profile + Go Live
 // First-pass: profile edit page loads + Go Live button visible.
-// TEST-E2E-02: T5.3 clicks Go live, asserts the celebration modal appears,
-// reads is_profile_live=true from the DB, then closes the modal. beforeAll
-// + afterAll defensively reset is_profile_live=false so re-runs start clean
-// regardless of prior crashes.
+// TEST-E2E-02: T5.3 clicked Go live on /coach/profile/edit — permanently
+// skipped because the gate contradiction made that path unreachable.
+//
+// TEST-E2E-03: T5.2/T5.3 REWRITTEN against the real go-live path. The old
+// tests targeted the "Go live" button on /coach/profile/edit — dead-by-design:
+// CoachLayoutClient redirects draft coaches (is_profile_live=false) away from
+// every non-onboarding /coach/* page, and ProfileEdit's button only renders in
+// draft state. The product go-live path is the onboarding "Get paid" step
+// (GetPaidStep.tsx): "Skip for now" (or the Stripe-return success param) calls
+// handleGoLive → is_profile_live=true → /coach/dashboard?celebrated=true with
+// the Fix-36 celebration modal. That is what T5.2/T5.3 now pin. This closes
+// the Fix-E2E-02 TODO — the gate logic is correct; the old tests were not.
+// (The unreachable ProfileEdit button itself is flagged separately as a
+// production dead-code observation — not a test concern.)
 
 import { test, expect } from '@playwright/test'
 import { loginAsTestCoach } from './fixtures/auth'
@@ -13,15 +23,15 @@ const TEST_COACH_EMAIL = process.env.TEST_COACH_EMAIL as string
 
 test.describe('P5 — Profile + Go Live', () => {
   // BUG-QA-04 defensive: if a prior P5 run left is_profile_live=true (afterAll
-  // skipped on crash, etc.), T5.2's "Go live button visible" would fail because
-  // the button is hidden when the profile is already live. Reset before each
-  // run.
+  // skipped on crash, etc.), the go-live tests would start from the wrong
+  // state. Reset before each run.
   test.beforeAll(async () => {
     await resetCoachIsProfileLive(TEST_COACH_EMAIL)
   })
 
-  // Restore the seeded state so the next E2E run starts in the same state and
-  // the seed assumption (is_profile_live=false) holds.
+  // Reset to false after P5 completes so the flag is in a known state for the
+  // next run. Specs that need a live coach (P8–P11) set it themselves in their
+  // own beforeAll (BUG-QA-04 pattern), so execution order does not matter.
   test.afterAll(async () => {
     await resetCoachIsProfileLive(TEST_COACH_EMAIL)
   })
@@ -30,44 +40,37 @@ test.describe('P5 — Profile + Go Live', () => {
     await loginAsTestCoach(page)
   })
 
-  test('T5.1: /coach/profile/edit loads (page is reachable from an authed session)', async ({ page }) => {
+  test('T5.1: /coach/profile/edit is gated for a draft coach (no /login bounce)', async ({ page }) => {
     await page.goto('/coach/profile/edit')
-    await expect(page).toHaveURL(/\/coach\/profile\/edit/)
-    // Profile edit chrome is intricate; assert the page settled without
-    // redirecting to /login (which would indicate auth failure) and without
-    // erroring (a non-coach role would redirect to a role-picker).
+    // A draft coach is redirected by the CoachLayoutClient gate to the
+    // onboarding flow — never to /login (that would be an auth failure).
     await expect(page).not.toHaveURL(/\/login/)
+    await page.waitForURL(/\/coach\//, { timeout: 10_000 })
   })
 
-  test('T5.2: Go live button is visible on the profile edit page', async ({ page }) => {
-    await page.goto('/coach/profile/edit')
-    // ProfileEdit.tsx renders the button labelled "Go live" (lowercase l)
-    // or "Going live…" while the action is in-flight. The seed leaves the
-    // coach with is_profile_live=false so the resting label is "Go live".
-    const goLiveBtn = page.getByRole('button', { name: /Go live$/i })
-    await expect(goLiveBtn).toBeVisible()
+  test('T5.2: draft coach reaches the Get Paid step with the go-live affordance', async ({ page }) => {
+    // The onboarding surfaces are exempt from the draft-coach gate, so this is
+    // the reachable go-live path (GetPaidStep — Fix-STRIPE-01 Path B).
+    await page.goto('/coach/onboarding/get-paid')
+    await expect(page.getByRole('heading', { name: 'Get paid' })).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByRole('button', { name: 'Skip for now' })).toBeVisible()
+    await expect(page.getByRole('button', { name: /Connect with Stripe/i }).first()).toBeVisible()
   })
 
-  test('T5.3: clicking Go live flips is_profile_live to true (UI + DB)', async ({ page }) => {
-    await page.goto('/coach/profile/edit')
+  test('T5.3: Skip for now goes live — celebration modal + is_profile_live=true (UI + DB)', async ({ page }) => {
+    await page.goto('/coach/onboarding/get-paid')
+    await expect(page.getByRole('button', { name: 'Skip for now' })).toBeVisible({ timeout: 15_000 })
 
-    // Click Go live.
-    const goLiveBtn = page.getByRole('button', { name: /Go live$/i })
-    await expect(goLiveBtn).toBeVisible()
-    await goLiveBtn.click()
+    // Path B go-live: POST /api/coaches/profile { is_profile_live: true } then
+    // redirect to /coach/dashboard?celebrated=true (Fix-36).
+    await page.getByRole('button', { name: 'Skip for now' }).click()
+    await page.waitForURL(/\/coach\/dashboard/, { timeout: 20_000 })
 
-    // BUG-GO-LIVE-PATH success modal opens with the h2 "You're live! 🎉".
-    // Waiting for it confirms the server-side state flip completed.
-    await expect(page.getByRole('heading', { name: /You're live/i })).toBeVisible({ timeout: 15_000 })
+    // Fix-36 celebration modal confirms the flip completed end-to-end.
+    await expect(page.getByRole('heading', { name: /You're live!/i })).toBeVisible({ timeout: 15_000 })
 
     // ── DB ASSERT ─────────────────────────────────────────────────────
     const isLive = await getCoachIsProfileLive(TEST_COACH_EMAIL)
     expect(isLive).toBe(true)
-
-    // ── TEARDOWN: close the modal cleanly so subsequent tests in this
-    //    describe wouldn't inherit a stuck overlay (defensive — Playwright
-    //    spins up a fresh page per test, but the close also tests that the
-    //    Done button works end-to-end).
-    await page.getByRole('button', { name: 'Done', exact: true }).click()
   })
 })

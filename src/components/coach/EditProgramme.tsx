@@ -1,7 +1,7 @@
 'use client'
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Lock, Check, Calendar, RefreshCw, CreditCard, Layers, Loader2, Sun, Info } from 'lucide-react'
+import { ArrowLeft, Lock, Check, Calendar, RefreshCw, CreditCard, Layers, Loader2, Sun, Info, AlertTriangle } from 'lucide-react'
 import { VenueAutocomplete, type VenueSelection } from '@/components/coach/shared/LocationAutocomplete'
 import { ProgrammeImagePicker } from '@/components/coach/shared/ProgrammeImagePicker'
 import { DatePicker, TimePicker, todayYYYYMMDD } from '@/components/ui'
@@ -206,6 +206,9 @@ export function EditProgramme({ programmeId }: { programmeId: string }) {
   const [saving, setSaving] = useState(false)
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
+  // UX-19: scheduling-conflict 409s get a prominent banner and block Save until
+  // the coach changes something (any form edit clears it).
+  const [conflictError, setConflictError] = useState<string | null>(null)
   const [venueKey, setVenueKey] = useState(0)
 
   const [readOnly, setReadOnly] = useState<ReadOnlyData>({
@@ -364,6 +367,12 @@ export function EditProgramme({ programmeId }: { programmeId: string }) {
 
   const isLocked = readOnly.current_spots > 0
 
+  // UX-19: any edit invalidates a previously reported conflict — the coach
+  // adjusted something, so let them try Save again.
+  useEffect(() => {
+    setConflictError(null)
+  }, [form])
+
   async function handleSave() {
     if (!form.title.trim()) {
       setSaveError('Programme title is required.')
@@ -375,6 +384,7 @@ export function EditProgramme({ programmeId }: { programmeId: string }) {
     }
     setSaving(true)
     setSaveError(null)
+    setConflictError(null)
 
     try {
       const patchBody: Record<string, unknown> = {
@@ -425,8 +435,15 @@ export function EditProgramme({ programmeId }: { programmeId: string }) {
       })
 
       if (!res.ok) {
-        const data = await res.json()
-        setSaveError(data.error || 'Failed to save changes.')
+        const data = (await res.json().catch(() => ({}))) as { error?: string; message?: string }
+        // UX-19: a 409 carries a human-readable `message` explaining what
+        // overlaps and what to do — surface it instead of the constant
+        // "Conflict detected" in `error`.
+        if (res.status === 409) {
+          setConflictError(data.message || data.error || 'Conflict detected')
+        } else {
+          setSaveError(data.error || 'Failed to save changes.')
+        }
         return
       }
 
@@ -715,7 +732,14 @@ export function EditProgramme({ programmeId }: { programmeId: string }) {
                   type="button"
                   role="switch"
                   aria-checked={form.campMode}
-                  onClick={() => update('campMode', !form.campMode)}
+                  onClick={() => {
+                    // BUG-23 (approved ruling): camps are per_session only —
+                    // enabling camp mode forces the payment type.
+                    if (!form.campMode && form.payment_type === 'block_upfront') {
+                      update('payment_type', 'per_session')
+                    }
+                    update('campMode', !form.campMode)
+                  }}
                   className={`w-10 h-6 rounded-full relative flex-shrink-0 transition-colors ${form.campMode ? 'bg-brand-600' : 'bg-[#CBD5E1]'}`}
                 >
                   <span
@@ -728,7 +752,7 @@ export function EditProgramme({ programmeId }: { programmeId: string }) {
                 <div className="bg-brand-50 rounded-md p-3 flex gap-2.5 items-start mb-[18px]">
                   <Info size={16} className="text-brand-600 flex-shrink-0 mt-0.5" />
                   <p className="text-[13px] text-brand-800 m-0 leading-snug">
-                    Parents book the full day. Each day can have multiple time blocks.
+                    Parents can book individual sessions or the full day. Each day can have multiple time blocks, priced per session.
                   </p>
                 </div>
               )}
@@ -815,13 +839,25 @@ export function EditProgramme({ programmeId }: { programmeId: string }) {
                     title="Per session"
                     description="Parents pay for each session."
                   />
-                  <SelectCard
-                    active={form.payment_type === 'block_upfront'}
-                    onClick={() => update('payment_type', 'block_upfront')}
-                    icon={<Layers size={20} strokeWidth={1.8} />}
-                    title="Block upfront"
-                    description="Parents pay for all sessions at once."
-                  />
+                  {/* BUG-23 (approved ruling): camps are per_session only —
+                      block is unavailable while camp mode is on (the API
+                      enforces the same rule against crafted requests). */}
+                  <div className={form.campMode ? 'opacity-50 pointer-events-none' : ''} aria-disabled={form.campMode}>
+                    <SelectCard
+                      active={form.payment_type === 'block_upfront'}
+                      onClick={() => {
+                        if (form.campMode) return
+                        update('payment_type', 'block_upfront')
+                      }}
+                      icon={<Layers size={20} strokeWidth={1.8} />}
+                      title="Block upfront"
+                      description={
+                        form.campMode
+                          ? 'Unavailable in camp mode — parents pay per session.'
+                          : 'Parents pay for all sessions at once.'
+                      }
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -910,6 +946,18 @@ export function EditProgramme({ programmeId }: { programmeId: string }) {
             <p className="text-sm text-red-600 mb-4">{saveError}</p>
           )}
 
+          {/* UX-19: prominent inline conflict alert above the action bar */}
+          {conflictError && (
+            <div
+              role="alert"
+              data-testid="conflict-banner"
+              className="flex items-start gap-2.5 rounded-[10px] bg-danger/10 p-3.5 text-danger mb-4"
+            >
+              <AlertTriangle size={18} className="mt-0.5 flex-shrink-0" aria-hidden="true" />
+              <p className="min-w-0 text-sm font-medium">{conflictError}</p>
+            </div>
+          )}
+
           {/* Bottom action bar */}
           <div className="flex items-center justify-between pt-5 border-t border-[#F1F5F9]">
             <button
@@ -921,7 +969,7 @@ export function EditProgramme({ programmeId }: { programmeId: string }) {
             </button>
             <button
               type="button"
-              disabled={saving || !form.title.trim()}
+              disabled={saving || !form.title.trim() || conflictError !== null}
               onClick={handleSave}
               className="h-12 px-8 rounded-full bg-[#0077CC] hover:bg-[#0066AA] text-white text-[15px] font-medium flex items-center gap-2 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >

@@ -395,13 +395,21 @@ export function GetPaid() {
         </div>
 
         <div className="mt-2">
-          <button className="flex gap-4 p-4 items-start text-left hover:bg-white rounded-xl transition-colors group w-full max-w-lg">
+          {/* BUG-25: opens the coach's one-time Stripe Express dashboard link in
+              a new tab. The server route (GET /api/payments/connect/login-link)
+              303-redirects to the link — the URL never touches client JS. */}
+          <a
+            href="/api/payments/connect/login-link"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex gap-4 p-4 items-start text-left hover:bg-white rounded-xl transition-colors group w-full max-w-lg no-underline"
+          >
             <div className="shrink-0 mt-0.5 text-[#0077CC]"><ExternalLink size={20} /></div>
             <div>
               <div className="text-[16px] font-bold text-[#0077CC] group-hover:underline">Manage Stripe account →</div>
               <div className="text-[13px] text-gray-500 mt-1">View detailed payouts, invoices and settings on Stripe</div>
             </div>
-          </button>
+          </a>
         </div>
         </>
         )}

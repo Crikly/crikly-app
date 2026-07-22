@@ -6,7 +6,7 @@ import Link from 'next/link'
 import {
   Home, Calendar, Inbox, Users, Clock, User,
   TrendingUp, Star, CreditCard, Settings, Share2,
-  X
+  MoreHorizontal, X
 } from 'lucide-react'
 import { CoachRightPanel } from '@/components/coach/CoachRightPanel'
 // DS-RIGHT-PANEL-01: BookingsProvider is now mounted on EVERY coach route
@@ -17,6 +17,7 @@ import { CoachRightPanel } from '@/components/coach/CoachRightPanel'
 import { BookingsProvider } from '@/contexts/BookingsContext'
 import { createClient } from '@/lib/supabase/client'
 import { fetchCoachProfileCached } from '@/lib/onboarding-cache'
+import { shouldNudgeToWizard } from '@/lib/coach-onboarding-gate'
 import { ShareLinkPanel } from '@/components/coach/shared/ShareLinkPanel'
 
 interface CoachLayoutClientProps {
@@ -24,7 +25,9 @@ interface CoachLayoutClientProps {
   initialCoachName: string
   initialAvatarUrl: string | null
   hasCoachProfile: boolean
-  isProfileLive: boolean
+  // BUG-34: wizard step 1 completed (coach_profiles.display_name set) —
+  // replaces isProfileLive as the onboarding-nudge signal.
+  hasWizardProgress: boolean
 }
 
 export function CoachLayoutClient({
@@ -32,7 +35,7 @@ export function CoachLayoutClient({
   initialCoachName,
   initialAvatarUrl,
   hasCoachProfile,
-  isProfileLive,
+  hasWizardProgress,
 }: CoachLayoutClientProps) {
   const router = useRouter()
   const pathname = usePathname()
@@ -54,6 +57,18 @@ export function CoachLayoutClient({
 
   const isActive = (path: string) => pathname === path ||
     (path !== '/coach/dashboard' && pathname.startsWith(path))
+
+  // BUG-42: the mobile "More" tab is the entry point for every surface that has
+  // no tab of its own — highlight it while the coach is anywhere inside them.
+  const isMoreSectionActive = [
+    '/coach/more',
+    '/coach/availability',
+    '/coach/profile',
+    '/coach/earnings',
+    '/coach/reviews',
+    '/coach/get-paid',
+    '/coach/settings',
+  ].some(isActive)
 
   const nav = (path: string) => router.push(path)
 
@@ -147,13 +162,18 @@ export function CoachLayoutClient({
           // upload / rename without a page reload.
           avatar_url?: string | null
           full_name?: string
+          display_name?: string | null
         } | null) => {
           if (p?.slug) setCoachSlug(p.slug)
           if (p) {
             setProfileLive(!!p.is_profile_live)
             setProfilePaused(!!p.is_paused)
             setAvatarUrl(p.avatar_url ?? null)
-            if (p.full_name) setCoachName(p.full_name)
+            // BUG-37: chrome shows the public display_name; full_name is the
+            // private account name (Settings only). Same precedence as the
+            // server layout seed (src/app/coach/layout.tsx).
+            const name = p.display_name || p.full_name
+            if (name) setCoachName(name)
           }
         })
         .catch(() => {})
@@ -170,10 +190,10 @@ export function CoachLayoutClient({
   // later navigation (REQ-C-001, dashboard-first). Reads mount-time props +
   // pathname by design. UX-only gate — role + terms stay server-side; API routes
   // use requireCoachContext.
+  // BUG-34: the nudge keys on wizard progress, not is_profile_live — see
+  // shouldNudgeToWizard for the full rationale.
   useEffect(() => {
-    const incompleteCoach = !hasCoachProfile || !isProfileLive
-    const onOnboarding = pathname.startsWith('/coach/onboarding')
-    if (incompleteCoach && !onOnboarding) {
+    if (shouldNudgeToWizard({ hasCoachProfile, hasWizardProgress, pathname })) {
       router.push('/coach/onboarding/profile')
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -185,8 +205,13 @@ export function CoachLayoutClient({
   // Format notification badge
   const notificationBadge = notificationCount > 9 ? '9+' : notificationCount.toString()
 
+  // BUG-40b: h-dvh (not h-screen/100vh) — the document never scrolls, so on
+  // mobile the browser chrome never collapses and 100vh leaves the bottom
+  // ~60-100px of the shell permanently clipped offscreen. dvh tracks the
+  // real visible height. flex-col on mobile puts the bottom nav IN FLOW
+  // below <main>, so no page content can ever sit behind it.
   return (
-    <div className="h-screen overflow-hidden overflow-x-hidden bg-white text-gray-900 flex w-full max-w-[1600px] mx-auto">
+    <div className="h-dvh overflow-hidden overflow-x-hidden bg-white text-gray-900 flex flex-col lg:flex-row w-full max-w-[1600px] mx-auto">
       {/* Desktop Sidebar */}
       <aside className="hidden lg:flex w-72 shrink-0 flex-col bg-white border-r border-gray-100 p-6 sticky top-0 h-screen z-10">
         <Link href="/coach/dashboard" className="mb-6 flex justify-center">
@@ -275,24 +300,32 @@ export function CoachLayoutClient({
           universal right-panel command-centre can read sessions everywhere.
           Both <main> and the right panel are inside the same provider. */}
       <BookingsProvider>
-        <main className="flex-1 min-w-0 overflow-y-auto relative bg-white">
+        {/* BUG-40b: min-h-0 — in the mobile flex-col shell, flex items refuse to
+            shrink below their content height without it, which would break the
+            inner scroll and push the bottom nav offscreen. No-op on lg (row). */}
+        <main className="flex-1 min-w-0 min-h-0 overflow-y-auto relative bg-white">
           {children}
         </main>
         {showRightPanel && <CoachRightPanel />}
       </BookingsProvider>
 
-      {/* Mobile Bottom Nav */}
-      <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 pb-6 pt-3 px-6 flex justify-between items-center z-50 shadow-[0_-10px_40px_rgba(0,0,0,0.04)]">
+      {/* Mobile Bottom Nav — BUG-40b: in-flow (shrink-0), NOT fixed. As the last
+          item of the mobile flex-col shell it sits below <main>'s scrollport, so
+          page content and sticky save bars always end above it. z-30 keeps the
+          top shadow above main's content. */}
+      <div className="lg:hidden shrink-0 bg-white border-t border-gray-100 pb-6 pt-3 px-6 flex justify-between items-center z-30 shadow-[0_-10px_40px_rgba(0,0,0,0.04)]">
         <MobileNavItem icon={<Home size={24} />} label="Home" active={isActive('/coach/dashboard')} onClick={() => nav('/coach/dashboard')} />
         <MobileNavItem icon={<Calendar size={24} />} label="Schedule" active={isActive('/coach/schedule')} onClick={() => nav('/coach/schedule')} />
         <MobileNavItem icon={<Inbox size={24} />} label="Bookings" active={isActive('/coach/bookings')} onClick={() => nav('/coach/bookings')} />
         <MobileNavItem icon={<Users size={24} />} label="Programmes" active={isActive('/coach/programmes')} onClick={() => nav('/coach/programmes')} />
-        {/* C-Settings-01-UI: replaces the AF-H-Wave-4 "More" stub now that Settings exists */}
+        {/* BUG-42: "More" hub replaces the Settings tab — Availability, My Profile,
+            Earnings, Reviews, Get Paid and Settings had no mobile entry point.
+            Active whenever the current page lives inside the More section. */}
         <MobileNavItem
-          icon={<Settings size={24} />}
-          label="Settings"
-          active={isActive('/coach/settings')}
-          onClick={() => nav('/coach/settings')}
+          icon={<MoreHorizontal size={24} />}
+          label="More"
+          active={isMoreSectionActive}
+          onClick={() => nav('/coach/more')}
         />
       </div>
 

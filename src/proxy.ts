@@ -156,7 +156,10 @@ export default async function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl)
   }
 
-  if (isPublicRoute(pathname) && user && pathname !== '/') {
+  // BUG-33: /reset-password is exempt from the authenticated→/dashboard
+  // bounce — a recovery login IS authenticated, and bouncing it here would
+  // skip the set-new-password screen entirely.
+  if (isPublicRoute(pathname) && user && pathname !== '/' && pathname !== '/reset-password') {
     return NextResponse.redirect(new URL('/dashboard', request.url))
   }
 

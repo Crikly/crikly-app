@@ -59,7 +59,7 @@ export async function GET(request: Request) {
   const todayIso = new Date().toISOString().slice(0, 10)
   const base = supabase
     .from('bookings')
-    .select('id, booking_reference, session_date, session_start_time, session_end_time, session_type, status, sport_id, coach_price_pence, parent_total_pence, currency, booked_by_user_id, child_profile_id, messaging_unlocked, created_at, venue_name')
+    .select('id, booking_reference, session_date, session_start_time, session_end_time, session_type, status, sport_id, coach_price_pence, parent_total_pence, currency, booked_by_user_id, child_profile_id, participant_name, messaging_unlocked, created_at, venue_name')
     .eq('coach_profile_id', coachProfile.id)
     .is('deleted_at', null)
 
@@ -147,7 +147,12 @@ export async function GET(request: Request) {
     booked_by_user_profile_id: b.booked_by_user_id,
     booked_by_name: bookerNameMap[b.booked_by_user_id] ?? null,
     child_profile_id: b.child_profile_id,
-    child_name: b.child_profile_id ? (childNameMap[b.child_profile_id] ?? null) : null,
+    // Display name of who the session is for: linked child profile first, then
+    // the guest-checkout participant snapshot (UX-16). Components fall back to
+    // booked_by_name when both are null (pre-UX-16 guest rows).
+    child_name: b.child_profile_id
+      ? (childNameMap[b.child_profile_id] ?? null)
+      : (b.participant_name ?? null),
     messaging_unlocked: b.messaging_unlocked,
     venue_name: b.venue_name ?? null,
     created_at: b.created_at,

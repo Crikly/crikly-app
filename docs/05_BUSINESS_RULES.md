@@ -1,7 +1,8 @@
 # Crikly — Business Rules
 
-**Version:** 1.0
-**Last Updated:** March 2026
+**Version:** 1.1
+**Last Updated:** July 2026
+**Changed:** Added BR-20 — Coach Scheduling Conflict Rules (BUG-16/17/18).
 
 These rules MUST be enforced in code, not just documented.
 Every rule has an ID. Reference it in code comments and commits.
@@ -199,14 +200,25 @@ Enforced in API route — reject if under 16
 Every booking gets a human-readable reference number.
 
 ```
-Format: CRK-YYYY-NNNN
-Example: CRK-2026-0042
+Format: CRK-YYYY-XXXXXX
+Example: CRK-2026-7F3A9K
 
-YYYY = year of booking
-NNNN = sequential number within that year (zero-padded to 4 digits)
+YYYY   = year of booking
+XXXXXX = 6 random characters from an unambiguous base32 alphabet
+         (Crockford-style, excludes 0/O/1/I)
 ```
 
-Generated in booking creation API route.
+**Why random, not sequential:** a per-year sequence requires a race-safe counter
+and leaks total booking volume to anyone holding a reference. A 6-char random
+suffix (~1.07e9 combinations/year) avoids both. Uniqueness is not enforced at the
+DB level — collisions are astronomically unlikely and references are a
+human-facing convenience, not a primary key (`bookings.id` is the UUID PK).
+
+Generated in the booking creation API route via
+`generateBookingReference()` in `src/lib/booking/guest-checkout.ts`.
+
+> Changed P-00c-API (2026-06-24): was `CRK-YYYY-NNNN` sequential. Approved by
+> Lasith in the P-00c-API plan gate.
 
 ---
 
@@ -360,6 +372,52 @@ coach earns coach_price_pence (normal payout)
 - Coach configures policy when setting up each sport's booking settings
 
 **Source:** REQ-C-070 in docs/14_COACH_REQUIREMENTS.md
+
+---
+
+## BR-20 — Coach Scheduling Conflict Rules
+
+A coach's committed time on any calendar date is the union of: active
+recurring availability blocks (by weekday), ad-hoc availability slots (by
+`specific_date`), group-programme sessions (persisted `group_programme_sessions`
+rows, or — for programmes with no session rows — the recurring `day_of_week`/
+`days_of_week` pattern expanded within `starts_at`/`ends_at`), and confirmed
+1-on-1 bookings (any status except `cancelled_parent`/`cancelled_coach`/
+`no_show`, and not soft-deleted). Overlap is half-open — a slot ending exactly
+when another begins does not conflict.
+
+**Precedence (read side — public calendar):** when a programme session and a
+1-on-1 availability slot overlap on a date, the **programme always wins**. The
+colliding 1-on-1 start slot is suppressed entirely for that date (BUG-16) — it
+does not render, and its calendar dot is not shown.
+
+**Creation guard (write side):** a coach is blocked (HTTP 409) from creating
+anything that overlaps their existing commitments on that date:
+- **Ad-hoc availability slot** — checked against the full commitment set on its
+  `specific_date` (BUG-17). `specific_date` is mandatory for ad-hoc blocks.
+- **Programme session** (create or edit, while the programme is unlocked /
+  `current_spots = 0`) — each session date checked against the full commitment
+  set (BUG-18).
+- **Recurring availability slot** — checked only against other *recurring*
+  blocks on the same weekday, sport-agnostic (Decision B, 30 Jun 2026). It is
+  deliberately NOT blocked against programmes or bookings, since the read-side
+  suppression above already hides any programme collision.
+
+The check is sport-agnostic throughout: a busy interval occupies the coach
+regardless of which sport it belongs to.
+
+**Out of scope (tracked separately as BUG-19):** the cross-table race where two
+parents pay simultaneously via two independent booking paths (1-on-1 vs
+programme enrolment). BR-20 covers single-actor, single-action conflicts only.
+
+**Implementation:** `src/lib/availability/commitments.ts`
+(`getCoachCommitments`, `findFirstConflict`) + `src/lib/availability/overlap.ts`.
+Consumed by `POST`/`PATCH /api/coaches/availability`,
+`POST`/`PATCH /api/coaches/programmes`, and (read side) the coach availability
+calendar's `bookableSlots`.
+
+**Source:** BUG-16 / BUG-17 / BUG-18 (Bug & Fix Log). Decisions A + B confirmed
+by Lasith, 30 Jun 2026.
 
 ---
 

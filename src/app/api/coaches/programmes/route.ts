@@ -4,6 +4,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { requireCoachContext } from '@/lib/auth/require-coach'
 import { PROGRAMME_AGE_GROUPS } from '@/components/coach/programmeConstants'
 import { generateProgrammeSessionDates } from '@/lib/programme-sessions'
+import { getCoachCommitments, findFirstConflict } from '@/lib/availability/commitments'
+import { hhmmToMinutes } from '@/lib/availability/overlap'
 import type { Json } from '@/types/database'
 
 // MIRROR OF programmeConstants.SessionEntry — kept inline so this API route
@@ -103,6 +105,8 @@ interface ProgrammeResponse {
    *  ISO timestamp string or null. ends_at is NOT exposed on the list endpoint
    *  by design — it is internal-only here, returned only on the single-programme GET. */
   starts_at: string | null
+  /** BUG-23: camp programmes render real per-day slot blocks in the coach modal. */
+  camp_mode: boolean
 }
 
 /**
@@ -147,7 +151,7 @@ export async function GET(
     const adminSupabase = createAdminClient()
     let query = adminSupabase
       .from('group_programmes')
-      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address, min_participants, cancellation_window_hours, image_url, age_groups, starts_at')
+      .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address, min_participants, cancellation_window_hours, image_url, age_groups, starts_at, camp_mode')
       .eq('coach_profile_id', coachProfile.id)
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
@@ -191,6 +195,8 @@ export async function GET(
       price_per_session_pence: prog.price_per_session_pence,
       block_price_pence: prog.block_price_pence,
       block_session_count: prog.block_session_count,
+      // BUG-23: the coach modal needs camp_mode to render real slot blocks.
+      camp_mode: prog.camp_mode === true,
       currency: prog.currency,
       status: prog.status,
       created_at: prog.created_at,
@@ -220,7 +226,7 @@ export async function GET(
  */
 export async function POST(
   request: NextRequest
-): Promise<NextResponse<ProgrammeResponse | { error: string; details?: unknown }>> {
+): Promise<NextResponse<ProgrammeResponse | { error: string; details?: unknown; message?: string }>> {
   try {
     const supabase = await createClient()
     
@@ -467,6 +473,17 @@ export async function POST(
       camp_mode: body.campMode === true,
     }
 
+    // BUG-23 (approved ruling): camp programmes are per_session ONLY — a
+    // block price cannot define what a "whole programme" of multi-slot days
+    // covers. The form hides the block option in camp mode; this guards
+    // crafted requests.
+    if (insertData.camp_mode && insertData.payment_type === 'block_upfront') {
+      return NextResponse.json(
+        { error: 'Camp-mode programmes must use per-session payment.' },
+        { status: 400 },
+      )
+    }
+
     if (body.min_participants !== undefined) {
       insertData.min_participants = typeof body.min_participants === 'number' && body.min_participants > 0
         ? body.min_participants
@@ -588,6 +605,34 @@ export async function POST(
     // coach ownership verified above. Bypasses RLS to avoid auth_user_id mapping
     // mismatch on dev DB (same root cause as Fix-19).
     const adminSupabase = createAdminClient()
+
+    // BUG-18: block any session that overlaps a real commitment for this coach on
+    // that date — another programme session or a confirmed 1-on-1 booking. Runs
+    // BEFORE the programme insert so a conflict never leaves an orphan row (no
+    // rollback needed). BUG-30: availability templates are deliberately EXCLUDED —
+    // they are a passive canvas, not a commitment. A programme placed on top of an
+    // availability block is the coach's decision; its sessions then suppress 1-on-1
+    // slots in that window (same sources filter as the guest bookings route).
+    if (sessionDatesBody && sessionDatesBody.length > 0) {
+      for (const entry of sessionDatesBody as SessionEntry[]) {
+        const startMin = hhmmToMinutes(entry.startTime)
+        const endMin = hhmmToMinutes(entry.endTime)
+        const commitments = await getCoachCommitments(adminSupabase, coachProfile.id, entry.date, {
+          sources: ['programme', 'booking'],
+        })
+        const conflict = findFirstConflict(startMin, endMin, commitments)
+        if (conflict) {
+          return NextResponse.json(
+            {
+              error: 'Conflict detected',
+              message: `The session on ${entry.date} (${entry.startTime}–${entry.endTime}) overlaps ${conflict.label} already scheduled for you. Adjust the programme times or dates.`,
+            },
+            { status: 409 },
+          )
+        }
+      }
+    }
+
     const { data: newProgramme, error: insertError } = await adminSupabase
       .from('group_programmes')
       .insert(insertData)
@@ -632,6 +677,20 @@ export async function POST(
           .from('group_programmes')
           .update({ deleted_at: new Date().toISOString() })
           .eq('id', newProgramme.id)
+        // 23P01 = exclusion_violation from the coach_time_claims trigger
+        // (BUG-19 Phase 2): a session overlaps time already committed. The
+        // app-level guard above catches most of these first; the DB backstop
+        // closes the race window — surface it as the same clean 409.
+        if (sessionsError.code === '23P01') {
+          return NextResponse.json(
+            {
+              error: 'Conflict detected',
+              message:
+                'One of these sessions overlaps a booking or programme session already scheduled for you. Adjust the programme times or dates.',
+            },
+            { status: 409 },
+          )
+        }
         return NextResponse.json(
           { error: 'Failed to save programme sessions. Please try again.' },
           { status: 500 },
@@ -650,6 +709,8 @@ export async function POST(
       id: newProgramme.id,
       sport_id: newProgramme.sport_id,
       sport_name: postSportName,
+      // BUG-23: camp_mode comes from insertData (the POST select doesn't project it).
+      camp_mode: insertData.camp_mode === true,
       title: newProgramme.title,
       description: newProgramme.description,
       schedule_type: newProgramme.schedule_type,

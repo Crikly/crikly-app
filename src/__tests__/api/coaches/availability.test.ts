@@ -9,7 +9,20 @@ jest.mock('next/headers', () => ({
   })),
 }))
 
+// BUG-17: the ad-hoc conflict path builds an admin client and calls
+// getCoachCommitments. Stub the admin client (unused once the helper is mocked)
+// and mock getCoachCommitments while keeping the real findFirstConflict.
+jest.mock('@/lib/supabase/admin', () => ({
+  createAdminClient: jest.fn(() => ({})),
+}))
+jest.mock('@/lib/availability/commitments', () => {
+  const actual = jest.requireActual('@/lib/availability/commitments')
+  return { ...actual, getCoachCommitments: jest.fn() }
+})
+
 import { createServerClient } from '@supabase/ssr'
+import type { NextRequest } from 'next/server'
+import { getCoachCommitments } from '@/lib/availability/commitments'
 
 // ─── Mock helpers ─────────────────────────────────────────────────────────────
 
@@ -41,8 +54,7 @@ async function callPost(body: Record<string, unknown>) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return POST(request as any)
+  return POST(request as unknown as NextRequest)
 }
 
 function passAuth() {
@@ -121,41 +133,176 @@ describe('POST /api/coaches/availability — validation', () => {
 
 // ─── Overlap detection ────────────────────────────────────────────────────────
 
-describe('POST /api/coaches/availability — overlap detection', () => {
-  it('returns 409 when new slot overlaps existing slot', async () => {
-    mockGetUser.mockResolvedValue({ data: { user: { id: 'user-123' } }, error: null })
+// Queues exactly the 3 from() calls requireCoachContextOrCreate makes (all via
+// .single). Tests add further .mockImplementationOnce(...) for any query the route
+// makes after auth — queue EXACTLY what the path calls, or leftover onces leak
+// into the next test (jest.clearAllMocks does not drain the once queue).
+function mockAuth() {
+  mockGetUser.mockResolvedValue({ data: { user: { id: 'user-123' } }, error: null })
+  mockFrom
+    .mockImplementationOnce(() => {
+      const c = makeChain()
+      c.single.mockResolvedValue({ data: { id: 'profile-uuid' }, error: null })
+      return c
+    })
+    .mockImplementationOnce(() => {
+      const c = makeChain()
+      c.single.mockResolvedValue({ data: { role: 'coach' }, error: null })
+      return c
+    })
+    .mockImplementationOnce(() => {
+      const c = makeChain()
+      c.single.mockResolvedValue({ data: { id: 'coach-uuid' }, error: null })
+      return c
+    })
+}
 
-    // Per-call mock: auth passes, then overlap check returns a conflict
-    mockFrom
-      .mockImplementationOnce(() => {
-        const c = makeChain()
-        c.single.mockResolvedValue({ data: { id: 'profile-uuid' }, error: null })
-        return c
-      })
-      .mockImplementationOnce(() => {
-        const c = makeChain()
-        c.single.mockResolvedValue({ data: { role: 'coach' }, error: null })
-        return c
-      })
-      .mockImplementationOnce(() => {
-        const c = makeChain()
-        // coach_profiles upsert
-        c.single.mockResolvedValue({ data: { id: 'coach-uuid' }, error: null })
-        return c
-      })
-      .mockImplementationOnce(() => {
-        // availability_templates conflict check — ends with .is('sport_id', null) when no sport_id provided
-        const c = makeChain()
-        c.is = jest.fn(() => Promise.resolve({
-          data: [{ id: 'existing-slot-uuid', start_time: '08:00:00', end_time: '11:00:00', sports: null }],
+describe('POST /api/coaches/availability — recurring overlap (BUG-17, sport-agnostic)', () => {
+  it('returns 409 when a recurring block overlaps another recurring block, regardless of sport', async () => {
+    mockAuth()
+    // Recurring branch query terminates on .neq('is_recurring', false).
+    mockFrom.mockImplementationOnce(() => {
+      const c = makeChain()
+      c.neq = jest.fn(() =>
+        Promise.resolve({
+          data: [{ id: 'existing-slot-uuid', start_time: '08:00:00', end_time: '11:00:00' }],
           error: null,
-        }))
-        return c
-      })
+        }),
+      )
+      return c
+    })
 
     const res = await callPost({ day_of_week: 1, start_time: '09:00', end_time: '10:00' })
     expect(res.status).toBe(409)
     const data = await res.json()
     expect(data.conflicting_block_id).toBe('existing-slot-uuid')
+    // getCoachCommitments must NOT be consulted for recurring creation (Decision B).
+    expect(getCoachCommitments as jest.Mock).not.toHaveBeenCalled()
+  })
+})
+
+describe('POST /api/coaches/availability — ad-hoc conflict (BUG-17, date-scoped)', () => {
+  it('returns 409 when an ad-hoc slot overlaps a committed programme session', async () => {
+    ;(getCoachCommitments as jest.Mock).mockResolvedValue([
+      { startMinutes: 540, endMinutes: 660, source: 'programme', label: 'a programme session' },
+    ])
+    // Ad-hoc path makes no post-auth from() call — the conflict comes from the
+    // (mocked) helper — so only the 3 auth chains are queued.
+    mockAuth()
+
+    const res = await callPost({
+      day_of_week: 1,
+      start_time: '09:00',
+      end_time: '10:00',
+      is_recurring: false,
+      specific_date: '2026-07-06',
+    })
+    expect(res.status).toBe(409)
+    const data = await res.json()
+    expect(data.error).toBe('Conflict detected')
+    expect(data.message).toContain('a programme session')
+    expect(getCoachCommitments as jest.Mock).toHaveBeenCalledWith(
+      expect.anything(),
+      'coach-uuid',
+      '2026-07-06',
+    )
+  })
+
+  it('returns 400 when an ad-hoc block omits specific_date', async () => {
+    passAuth()
+    const res = await callPost({
+      day_of_week: 1,
+      start_time: '09:00',
+      end_time: '10:00',
+      is_recurring: false,
+    })
+    expect(res.status).toBe(400)
+    const data = await res.json()
+    expect(data.details).toEqual(expect.arrayContaining([expect.stringContaining('specific_date is required')]))
+  })
+})
+
+// ─── PATCH conflict detection ───────────────────────────────────────────────────
+
+async function callPatch(blockId: string, body: Record<string, unknown>) {
+  const { PATCH } = await import('@/app/api/coaches/availability/[blockId]/route')
+  const request = new Request(`http://localhost/api/coaches/availability/${blockId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  return PATCH(request as unknown as NextRequest, { params: Promise.resolve({ blockId }) })
+}
+
+// Queues the 4 from() calls the PATCH route makes before the conflict query:
+// requireCoachContext (user_profiles single, then role + coach in parallel) + the
+// existingBlock select. Tests add a 5th once only when the path issues a conflict
+// query (recurring branch).
+function mockPatchAuth(existingBlock: Record<string, unknown>) {
+  mockGetUser.mockResolvedValue({ data: { user: { id: 'user-123' } }, error: null })
+  mockFrom
+    .mockImplementationOnce(() => {
+      const c = makeChain()
+      c.single.mockResolvedValue({ data: { id: 'profile-uuid' }, error: null })
+      return c
+    })
+    .mockImplementationOnce(() => {
+      const c = makeChain()
+      c.single.mockResolvedValue({ data: { role: 'coach' }, error: null })
+      return c
+    })
+    .mockImplementationOnce(() => {
+      const c = makeChain()
+      c.single.mockResolvedValue({ data: { id: 'coach-uuid' }, error: null })
+      return c
+    })
+    .mockImplementationOnce(() => {
+      const c = makeChain()
+      c.single.mockResolvedValue({ data: existingBlock, error: null })
+      return c
+    })
+}
+
+describe('PATCH /api/coaches/availability/[blockId] — conflict (BUG-17)', () => {
+  it('returns 409 when a recurring block edit overlaps another recurring block (sport-agnostic)', async () => {
+    mockPatchAuth({
+      id: 'block-1', sport_id: 'sport-a', day_of_week: 1, start_time: '09:00:00', end_time: '10:00:00', is_recurring: true, specific_date: null,
+    })
+    // Recurring branch conflict query chains two .neq() calls (is_recurring, id);
+    // make the whole chain awaitable via then() so the terminal resolves the data
+    // regardless of which method is last.
+    mockFrom.mockImplementationOnce(() => {
+      const c = makeChain()
+      ;(c as unknown as Record<string, unknown>).then = (resolve: (r: unknown) => void) =>
+        resolve({ data: [{ id: 'other-block', start_time: '08:00:00', end_time: '11:00:00' }], error: null })
+      return c
+    })
+
+    const res = await callPatch('block-1', { start_time: '09:30', end_time: '10:30' })
+    expect(res.status).toBe(409)
+    const data = await res.json()
+    expect(data.conflicting_block_id).toBe('other-block')
+    expect(getCoachCommitments as jest.Mock).not.toHaveBeenCalled()
+  })
+
+  it('returns 409 when an ad-hoc block edit overlaps a committed booking', async () => {
+    ;(getCoachCommitments as jest.Mock).mockResolvedValue([
+      { startMinutes: 600, endMinutes: 660, source: 'booking', label: 'a confirmed booking' },
+    ])
+    // Ad-hoc path makes no conflict-query from() call (helper is mocked).
+    mockPatchAuth({
+      id: 'block-2', sport_id: null, day_of_week: 0, start_time: '09:00:00', end_time: '10:00:00', is_recurring: false, specific_date: '2026-07-05',
+    })
+
+    const res = await callPatch('block-2', { start_time: '10:00', end_time: '11:00' })
+    expect(res.status).toBe(409)
+    const data = await res.json()
+    expect(data.message).toContain('a confirmed booking')
+    expect(getCoachCommitments as jest.Mock).toHaveBeenCalledWith(
+      expect.anything(),
+      'coach-uuid',
+      '2026-07-05',
+      { excludeAvailabilityBlockId: 'block-2' },
+    )
   })
 })

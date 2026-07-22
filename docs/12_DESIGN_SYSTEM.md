@@ -1,8 +1,8 @@
 # Crikly — Design System
 
-**Version:** 1.3
-**Last Updated:** 31 May 2026
-**Changed:** v1.3 (CF-DESIGN-SYS-RECONCILE) — locked 4 decisions: h1 canonical is `text-[28px] font-bold tracking-tight text-gray-900` (was text-2xl/24px/600); card border radius is 14px (was 12px in the Cards block — reconciled with the Border Radius table); primary button hover is brand-700 #0066AA (was brand-800 #0C447C); added Programme badge row (purple). v1.2 (BUG-GO-LIVE-PATH) — added 🎉 celebration emoji exception for one-off success modals (Go Live, first booking, milestones; H1 only, never in nav/labels/buttons/chrome). v1.1 (April 2026) — Card rules, layout backgrounds, interaction patterns, onboarding patterns, no-emoji rule.
+**Version:** 1.4
+**Last Updated:** 2 July 2026
+**Changed:** v1.4 (DOCS-01) — 1-on-1 badge corrected teal→blue (`bg-blue-50` / `text-blue-800` / `border-l-blue-500`) and Ad hoc teal badge row added, matching shipped Schedule.tsx — per Lasith's UX-17 ruling: 1-on-1 = blue, ad hoc = teal. v1.3 (CF-DESIGN-SYS-RECONCILE) — locked 4 decisions: h1 canonical is `text-[28px] font-bold tracking-tight text-gray-900` (was text-2xl/24px/600); card border radius is 14px (was 12px in the Cards block — reconciled with the Border Radius table); primary button hover is brand-700 #0066AA (was brand-800 #0C447C); added Programme badge row (purple). v1.2 (BUG-GO-LIVE-PATH) — added 🎉 celebration emoji exception for one-off success modals (Go Live, first booking, milestones; H1 only, never in nav/labels/buttons/chrome). v1.1 (April 2026) — Card rules, layout backgrounds, interaction patterns, onboarding patterns, no-emoji rule.
 **Applies to:** Web PWA (Tailwind/Next.js) + Flutter Mobile (Phase 2)
 
 Single source of truth for all visual decisions. Every colour, font,
@@ -317,7 +317,8 @@ No "← Dashboard" link at top of any onboarding screen.
 |---|---|---|---|---|
 | DBS verified | #E0F6F8 | #006677 | — | Coach verification |
 | Premium | #E6F3FB | #0C447C | — | Premium tier |
-| 1-on-1 | #E0F6F8 | #0099AA | — | Confirmed 1-on-1 bookings |
+| 1-on-1 | `bg-blue-50` (#EFF6FF) | `text-blue-800` (#1E40AF) | `border-l-blue-500` (#3B82F6, 3px left accent) | Confirmed 1-on-1 bookings (UX-17: 1-on-1 = blue) |
+| Ad hoc | `bg-teal-100` (#CCFBF1) | `text-teal-900` (#134E4A) | `border-l-teal-500` (#14B8A6, 3px left accent) | Ad hoc bookings (UX-17: ad hoc = teal) |
 | Cancelled | #FEE2E2 | #B91C1C | — | Cancelled bookings |
 | Programme | `bg-purple-50` | `text-purple-700` | `border-purple-200` | Programme events on Schedule grid (Tailwind purple-* palette — #FAF5FF / #7E22CE / #E9D5FF) |
 

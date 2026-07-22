@@ -32,6 +32,7 @@ interface CoachProfileResponse {
   id: string
   user_profile_id: string
   full_name: string
+  display_name: string | null
   avatar_url: string | null
   location_city: string | null
   location_postcode: string | null
@@ -97,7 +98,8 @@ export function ProfileStep() {
         const data: CoachProfileResponse = await fetchCoachProfileCached()
         
         // Populate form fields with real data
-        setDisplayName(data.full_name || '')
+        // BUG-37c: pre-fill from coach display_name, fall back to account full_name
+        setDisplayName(data.display_name || data.full_name || '')
         setBio(data.bio || '')
         setBaseLocation(data.location_city || '')
         setLocationPostcode(data.location_postcode ?? null)
@@ -232,10 +234,10 @@ export function ProfileStep() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          full_name: displayName,
-          // Fix-COACH-UX-02: persist the display name to coach_profiles.display_name
-          // (was never sent, so it stayed null). Defaults to full_name since the
-          // field is initialised from user_profiles.full_name.
+          // BUG-37c: the Display name field writes coach_profiles.display_name only.
+          // full_name is no longer sent — user_profiles.full_name is owned by
+          // registration/OAuth and must not be overwritten with the coach's
+          // public display name.
           display_name: displayName,
           bio,
           location_city: baseLocation,
@@ -297,7 +299,9 @@ export function ProfileStep() {
   return (
     <div className="flex-1 overflow-y-auto bg-transparent font-sans text-gray-900 flex">
       <div className="flex-1 flex justify-center">
-        <div className="w-full max-w-3xl px-8 pt-10">
+        {/* BUG-40: pb-32 clears the lg:hidden fixed bottom nav (CoachLayoutClient)
+            so the save bar stays tappable on mobile; lg:pb-0 keeps desktop unchanged. */}
+        <div className="w-full max-w-3xl px-8 pt-10 pb-32 lg:pb-0">
         
         {/* CD-10: Loading state */}
         {loading ? (

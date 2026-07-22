@@ -4,6 +4,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { requireCoachContext } from '@/lib/auth/require-coach'
 import { PROGRAMME_AGE_GROUPS } from '@/components/coach/programmeConstants'
 import { generateProgrammeSessionDates } from '@/lib/programme-sessions'
+import { getCoachCommitments, findFirstConflict } from '@/lib/availability/commitments'
+import { hhmmToMinutes } from '@/lib/availability/overlap'
 import type { Json } from '@/types/database'
 
 // MIRROR OF programmeConstants.SessionEntry — kept inline so this API route
@@ -255,7 +257,7 @@ export async function GET(
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ programmeId: string }> }
-): Promise<NextResponse<ProgrammeResponse | { error: string; details?: unknown }>> {
+): Promise<NextResponse<ProgrammeResponse | { error: string; details?: unknown; message?: string }>> {
   try {
     const { programmeId } = await params
     const supabase = await createClient()
@@ -272,7 +274,7 @@ export async function PATCH(
     // ends_at against the merged (existing ∪ body) state on PATCH.
     const { data: existingProgramme, error: programmeCheckError } = await adminSupabase
       .from('group_programmes')
-      .select('id, status, current_spots, max_spots, schedule_type, days_of_week, day_of_week, session_count, starts_at, ends_at, camp_mode')
+      .select('id, status, current_spots, max_spots, schedule_type, days_of_week, day_of_week, session_count, starts_at, ends_at, camp_mode, payment_type')
       .eq('id', programmeId)
       .eq('coach_profile_id', coachProfile.id)
       .is('deleted_at', null)
@@ -349,6 +351,21 @@ export async function PATCH(
         validationErrors.push('max_spots must be between 2 and 100')
       } else if (body.max_spots < existingProgramme.current_spots) {
         validationErrors.push(`Cannot reduce max_spots below current_spots (${existingProgramme.current_spots})`)
+      } else if (existingProgramme.camp_mode === true) {
+        // BUG-23: camp capacity is per SLOT and current_spots stays 0 — the
+        // counter check above cannot guard camps. Compare against the busiest
+        // slot's real occupancy instead.
+        const { data: occupancy, error: occupancyError } = await adminSupabase.rpc('camp_slot_occupancy', {
+          p_programme_id: programmeId,
+        })
+        if (occupancyError) {
+          console.error('[PATCH /api/coaches/programmes/[programmeId]] occupancy check failed:', occupancyError)
+          return NextResponse.json({ error: 'Failed to update programme' }, { status: 500 })
+        }
+        const busiest = Math.max(0, ...(occupancy ?? []).map((o) => o.taken))
+        if (body.max_spots < busiest) {
+          validationErrors.push(`Cannot reduce max_spots below the busiest slot's enrolment count (${busiest})`)
+        }
       }
     }
 
@@ -538,6 +555,18 @@ export async function PATCH(
     // CF-PROG-SESSIONS-DB: camp_mode is now persisted (was a STUB no-op).
     if (body.campMode !== undefined) updateData.camp_mode = body.campMode === true
 
+    // BUG-23 (approved ruling): camp programmes are per_session ONLY. Check
+    // the EFFECTIVE values (body ∪ existing) so neither toggling camp on a
+    // block programme nor switching a camp to block can slip through.
+    const effectiveCampMode = updateData.camp_mode ?? existingProgramme.camp_mode === true
+    const effectivePaymentType = updateData.payment_type ?? existingProgramme.payment_type
+    if (effectiveCampMode && effectivePaymentType === 'block_upfront') {
+      return NextResponse.json(
+        { error: 'Camp-mode programmes must use per-session payment.' },
+        { status: 400 },
+      )
+    }
+
     // Fix-58-DB-api: populate days_of_week — prefer explicit array, fall back to [day_of_week]
     if (Array.isArray(body.days_of_week) && body.days_of_week.length > 0) {
       updateData.days_of_week = body.days_of_week
@@ -661,6 +690,35 @@ export async function PATCH(
       updateData.ends_at = nextEndsAt ? new Date(nextEndsAt + 'T00:00:00').toISOString() : null
     }
 
+    // BUG-18: block session conflicts BEFORE mutating anything (programme row or
+    // session rows), so a conflict leaves the programme fully unchanged. Only runs
+    // when the programme is unlocked (current_spots === 0) and the form carried a
+    // session list — mirrors the reconciliation guard below. excludeProgrammeId
+    // stops the programme's own existing sessions from self-conflicting.
+    // BUG-30: availability templates are deliberately EXCLUDED — a passive canvas,
+    // not a commitment. Only real commitments (other programmes, bookings) conflict.
+    const patchConflictLocked = (existingProgramme.current_spots as number) > 0
+    if (!patchConflictLocked && sessionDatesBody && sessionDatesBody.length > 0) {
+      for (const entry of sessionDatesBody as SessionEntry[]) {
+        const startMin = hhmmToMinutes(entry.startTime)
+        const endMin = hhmmToMinutes(entry.endTime)
+        const commitments = await getCoachCommitments(adminSupabase, coachProfile.id, entry.date, {
+          excludeProgrammeId: programmeId,
+          sources: ['programme', 'booking'],
+        })
+        const conflict = findFirstConflict(startMin, endMin, commitments)
+        if (conflict) {
+          return NextResponse.json(
+            {
+              error: 'Conflict detected',
+              message: `The session on ${entry.date} (${entry.startTime}–${entry.endTime}) overlaps ${conflict.label} already scheduled for you. Adjust the programme times or dates.`,
+            },
+            { status: 409 },
+          )
+        }
+      }
+    }
+
     // 7. Update programme (adminSupabase already created in step 4)
     const { data: updatedProgramme, error: updateError } = await adminSupabase
       .from('group_programmes')
@@ -672,6 +730,20 @@ export async function PATCH(
 
     if (updateError) {
       console.error('[PATCH /api/coaches/programmes/[programmeId]] update error:', updateError)
+      // 23P01 = exclusion_violation from the coach_time_claims trigger
+      // (BUG-19 Phase 2). A status change here (e.g. reactivating a cancelled
+      // programme) cascades claim reactivation, which the DB rejects when the
+      // time is now committed elsewhere — a clean conflict, not a failure.
+      if (updateError.code === '23P01') {
+        return NextResponse.json(
+          {
+            error: 'Conflict detected',
+            message:
+              'This programme\'s sessions now overlap a booking or another programme scheduled for you. Adjust the times or dates first.',
+          },
+          { status: 409 },
+        )
+      }
       return NextResponse.json({ error: 'Failed to update programme' }, { status: 500 })
     }
 
@@ -679,8 +751,7 @@ export async function PATCH(
     // is not locked (current_spots === 0) AND the body carried a non-empty
     // session_dates array. When current_spots > 0 we silently skip — the UI
     // already hides the SessionCalendar so this is just defence-in-depth.
-    const patchIsLocked = (existingProgramme.current_spots as number) > 0
-    if (!patchIsLocked && sessionDatesBody && sessionDatesBody.length > 0) {
+    if (!patchConflictLocked && sessionDatesBody && sessionDatesBody.length > 0) {
       // Effective camp_mode for slot-write decisions: merged body ∪ existing.
       const effectiveCampMode =
         updateData.camp_mode !== undefined
@@ -735,11 +806,21 @@ export async function PATCH(
         .upsert(sessionRows, { onConflict: 'group_programme_id,session_date' })
       if (sessionUpsertError) {
         console.error('[PATCH /api/coaches/programmes/[programmeId]] session upsert failed:', sessionUpsertError)
+        // 23P01 = exclusion_violation from the coach_time_claims trigger
+        // (BUG-19 Phase 2): an edited session overlaps time already committed
+        // (the app-level guard above races; the DB backstop is authoritative).
+        if (sessionUpsertError.code === '23P01') {
+          return NextResponse.json(
+            {
+              error: 'Conflict detected',
+              message:
+                'One of these sessions overlaps a booking or programme session already scheduled for you. Adjust the programme times or dates.',
+            },
+            { status: 409 },
+          )
+        }
         return NextResponse.json({ error: 'Failed to update programme sessions' }, { status: 500 })
       }
-    } else if (patchIsLocked && body.session_dates !== undefined) {
-      // Audit-only log: a locked programme's incoming session_dates was ignored.
-      console.info(`[PATCH /api/coaches/programmes/${programmeId}] session reconciliation skipped — programme locked (current_spots > 0)`)
     }
 
     // 8. Fetch sport name separately (Fix-65-1 pattern — no nested join)
@@ -826,7 +907,7 @@ export async function DELETE(
     const adminSupabase = createAdminClient()
     const { data: existingProgramme, error: programmeCheckError } = await adminSupabase
       .from('group_programmes')
-      .select('id, status, current_spots')
+      .select('id, status, current_spots, camp_mode')
       .eq('id', programmeId)
       .eq('coach_profile_id', coachProfile.id)
       .is('deleted_at', null)
@@ -836,8 +917,28 @@ export async function DELETE(
       return NextResponse.json({ error: 'Programme not found or access denied' }, { status: 404 })
     }
 
-    // Only allow deletion if draft or no enrolments
-    if (existingProgramme.status !== 'draft' && existingProgramme.current_spots > 0) {
+    // Only allow deletion if draft or no enrolments.
+    //
+    // BUG-23: camp capacity is per SLOT — camps never touch current_spots (it
+    // stays 0), so the counter cannot guard them. Check the enrolments table
+    // directly: any active paid (or coach-added offline) participant blocks
+    // deletion, exactly as current_spots > 0 does for regular programmes.
+    let hasActiveParticipants = existingProgramme.current_spots > 0
+    if (existingProgramme.camp_mode === true && !hasActiveParticipants) {
+      const { count, error: participantCountError } = await adminSupabase
+        .from('group_programme_enrolments')
+        .select('id', { count: 'exact', head: true })
+        .eq('programme_id', programmeId)
+        .eq('status', 'active')
+        .or('payment_status.eq.succeeded,payment_type.eq.offline')
+      if (participantCountError) {
+        console.error('[DELETE /api/coaches/programmes/[programmeId]] participant count failed:', participantCountError)
+        return NextResponse.json({ error: 'Failed to delete programme' }, { status: 500 })
+      }
+      hasActiveParticipants = (count ?? 0) > 0
+    }
+
+    if (existingProgramme.status !== 'draft' && hasActiveParticipants) {
       return NextResponse.json(
         { error: 'Cannot delete a programme with active enrolments. Cancel it instead.' },
         { status: 400 }

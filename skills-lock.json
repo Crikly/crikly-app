@@ -4,17 +4,17 @@
     "stripe-best-practices": {
       "source": "docs.stripe.com",
       "sourceType": "well-known",
-      "computedHash": "4c918c1d768906f7d7815b4b791a520121147479aaae9a451b29854267f60bbf"
+      "computedHash": "73d55e6fa2fe04245ddaaba951811f368acb26a7d013b236acc3084b59f6bbe8"
     },
     "stripe-projects": {
       "source": "docs.stripe.com",
       "sourceType": "well-known",
-      "computedHash": "5f82f044d22f5d23b5ddd8cf0370d173e05d9d82345176e388eb49deeac3af0e"
+      "computedHash": "56cec649e6e1ad41c44b0aeaffee90c84579b025fc13a787051abdec3bbe81d4"
     },
     "upgrade-stripe": {
       "source": "docs.stripe.com",
       "sourceType": "well-known",
-      "computedHash": "a0f0bf709f65ba8d7aa8d55322d030e6b3f16756cb6f0be80463395306305ef3"
+      "computedHash": "46bb3c16878f93b953ed901b950686d64f04f90c67400bf31e1a0d7790d889df"
     }
   }
 }

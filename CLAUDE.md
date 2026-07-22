@@ -1,8 +1,8 @@
 # Crikly — AI Development Context
 
-**Version:** 2.0
-**Last Updated:** April 2026
-**Changed:** Rewritten for Claude Code IDE. Windsurf collaboration model replaced.
+**Version:** 2.1
+**Last Updated:** July 2026
+**Changed:** Environment & Deployment Discipline added. Stripe/Supabase account references corrected. Point-in-time build state removed (Notion Session Handoff is the source of truth). Docs renumbered — auth docs now 17/18, design workflow 19.
 **Maintainer:** Lasith Jayarathne
 **Read this file at the start of every session. It is your briefing.**
 
@@ -128,7 +128,10 @@ Always read the relevant agent file before starting any task.
 | Mobile | Flutter (iOS + Android) | Phase 2 only — not now |
 
 **Node version:** Always use Node 20 LTS. Run `node --version` to verify.
-**Supabase Project:** `https://gzehxfnlfogkhadejowo.supabase.co`
+**Supabase:** two projects — see Environment & Deployment Discipline below. Never confuse them.
+- STAGING: `gzehxfnlfogkhadejowo` → `https://gzehxfnlfogkhadejowo.supabase.co` (staging.crikly.app)
+- PRODUCTION: `smwvtaeivmqaldvrbycm` → `https://smwvtaeivmqaldvrbycm.supabase.co` (crikly.app)
+
 **Production:** `https://crikly.app`
 **GitHub:** `github.com/Crikly/crikly-app`
 
@@ -156,10 +159,12 @@ crikly-app/
 │   ├── 11_UX_PRINCIPLES.md      ← Read before any UI work
 │   ├── 12_DESIGN_SYSTEM.md      ← Read before any UI work
 │   ├── 13_SCREEN_FLOWS.md
-│   ├── 14_AUTH_SCREEN_SPECS.md  ← Auth screen specifications
 │   ├── 14_COACH_REQUIREMENTS.md ← 78 coach requirements
-│   ├── 15_AUTH_COMPONENT_ARCHITECTURE.md ← Auth component architecture
-│   ├── 16_DESIGN_WORKFLOW.md    ← Figma/Claude Design/Windsurf workflow + colour tokens
+│   ├── 15_PARENT_REQUIREMENTS.md ← 75 parent/player requirements
+│   ├── 16_PARENT_IMPLEMENTATION_PLAN.md ← Parent module implementation plan
+│   ├── 17_AUTH_SCREEN_SPECS.md  ← Auth screen specifications
+│   ├── 18_AUTH_COMPONENT_ARCHITECTURE.md ← Auth component architecture
+│   ├── 19_DESIGN_WORKFLOW.md    ← Figma/Claude Design/Windsurf workflow + colour tokens
 │   └── agents/
 │       ├── frontend-developer.md
 │       ├── backend-developer.md
@@ -234,24 +239,20 @@ Database migration           → docs/03_DATABASE_SCHEMA.md
 Security-sensitive work      → docs/06_SECURITY_COMPLIANCE.md
 New feature                  → PRD.md (relevant section only)
 Coach module work            → docs/14_COACH_REQUIREMENTS.md
-Auth screen work             → docs/14_AUTH_SCREEN_SPECS.md + docs/15_AUTH_COMPONENT_ARCHITECTURE.md
-Design workflow / tokens     → docs/16_DESIGN_WORKFLOW.md
+Parent/player module work    → docs/15_PARENT_REQUIREMENTS.md + docs/16_PARENT_IMPLEMENTATION_PLAN.md
+Auth screen work             → docs/17_AUTH_SCREEN_SPECS.md + docs/18_AUTH_COMPONENT_ARCHITECTURE.md
+Design workflow / tokens     → docs/19_DESIGN_WORKFLOW.md
 ```
 
 ---
 
-## Current Build State — April 2026
+## Current Build State
 
-**Active step:** Step 3 — Coach Module (56/60 complete)
-**Active branch:** develop (clean)
-**Next tasks:** CG-01, CG-02, CG-03 (coach go-live)
-**Not deployed to production yet** — single clean release after all coach features complete.
+This file does NOT hold point-in-time state — state in docs rots.
 
-See `docs/10_BUILD_PLAN.md` for the full task list and statuses.
-
-**Blocked tasks (do not touch):**
-- CD-06, CD-07 — depend on Step 5 booking API
-- CD-09 — earnings route doesn't exist yet
+**Source of truth for current state** (active step, current branch, next
+tasks, blocked tasks): the **Notion Session Handoff**. Read it at the
+start of every session. Task list and statuses: `docs/10_BUILD_PLAN.md`.
 
 ---
 
@@ -323,6 +324,63 @@ const data: BookingResponse = response
 async function createBooking(data: CreateBookingInput): Promise<Booking> {
 if (!session?.user) return null
 ```
+
+---
+
+## Environment & Deployment Discipline — Absolute Rules
+
+These rules are absolute. No exceptions, no "helpful" shortcuts.
+
+### The environments
+
+| Environment | Supabase project | URL | Git branch |
+|---|---|---|---|
+| LOCAL | Local Docker stack (`supabase start`) | localhost:3000 | feature/* fix/* docs/* → develop |
+| STAGING | `gzehxfnlfogkhadejowo` | staging.crikly.app | staging |
+| PRODUCTION | `smwvtaeivmqaldvrbycm` | crikly.app | main |
+
+**Promotion path: LOCAL → STAGING → PRODUCTION. No skipping. Ever.**
+Nothing reaches production that has not been validated on staging.
+Nothing reaches staging that has not been validated locally.
+
+### Ownership — Lasith is the SOLE owner of:
+
+```
+→ ALL git pushes (to any remote branch)
+→ ALL merges to staging and main
+→ ALL hosted database pushes (supabase db push against any hosted project)
+→ ALL supabase link changes
+→ ALL Vercel deployments
+→ ALL hosted environment variables
+```
+
+Claude Code NEVER performs any of these on its own initiative — not to
+"unblock", not to "verify", not because it seems obviously safe.
+
+### Database rules
+
+```
+→ Task migrations are LOCAL ONLY: supabase db push --local
+  (or supabase migration up). Never against a hosted project.
+→ The CLI stays linked to STAGING (gzehxfnlfogkhadejowo) by default.
+  Never relink without Lasith's instruction.
+→ Before ANY Lasith-instructed hosted DB operation, Claude Code must
+  first verify and STATE the linked project ref AND list every
+  migration the push would apply (supabase migration list) — then wait
+  for Lasith's confirmation.
+```
+
+### Stripe — the correct account
+
+```
+Account:   Tekly Solutions (acct_1TF06pPDhbWKSHdt)
+CLI:       always pass --project-name tekly
+```
+
+⚠️ A stray account named "Crikly sandbox" exists and previously caused
+silent webhook failures. It is the WRONG account. If any tool, key, or
+dashboard resolves to anything other than Tekly Solutions
+(`acct_1TF06pPDhbWKSHdt`), STOP and flag it to Lasith.
 
 ---
 
@@ -517,17 +575,19 @@ Notion Build Plan: https://www.notion.so/b288473c2a4f47ebad99bf6bf3f7b041
 ## Quick Reference
 
 ```
-Supabase URL:     https://gzehxfnlfogkhadejowo.supabase.co
-Production:       https://crikly.app
-GitHub:           github.com/Crikly/crikly-app
-Vercel:           vercel.com/lasith-projects/crikly-app
-Stripe:           dashboard.stripe.com (Crikly sandbox)
-Notion:           notion.so/b288473c2a4f47ebad99bf6bf3f7b041
+Supabase STAGING:    https://gzehxfnlfogkhadejowo.supabase.co (staging.crikly.app)
+Supabase PRODUCTION: https://smwvtaeivmqaldvrbycm.supabase.co (crikly.app)
+Production:          https://crikly.app
+GitHub:              github.com/Crikly/crikly-app
+Vercel:              vercel.com/lasith-projects/crikly-app
+Stripe:              Tekly Solutions (acct_1TF06pPDhbWKSHdt) — always --project-name tekly
+                     ⚠️ NEVER "Crikly sandbox" — wrong account, caused silent webhook failures
+Notion:              notion.so/b288473c2a4f47ebad99bf6bf3f7b041 (Build Plan + Session Handoff)
 ```
 
 ---
 
-*Crikly CLAUDE.md v2.0 — April 2026*
+*Crikly CLAUDE.md v2.1 — July 2026*
 *Rewritten for Claude Code IDE.*
 *Update this file whenever architecture decisions change.*
 *This file is read automatically by Claude Code at session start.*

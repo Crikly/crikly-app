@@ -91,7 +91,9 @@ interface AvailabilityTemplateRow {
 
 interface CoachDetailRow {
   id: string
+  slug: string | null
   user_profile_id: string
+  display_name: string | null
   bio: string | null
   years_experience: number | null
   dbs_status: string
@@ -138,7 +140,9 @@ export async function GET(
       .from('coach_profiles')
       .select(`
         id,
+        slug,
         user_profile_id,
+        display_name,
         bio,
         years_experience,
         dbs_status,
@@ -378,7 +382,11 @@ export async function GET(
     return NextResponse.json(
       {
         id: coach.id,
-        full_name: profile.full_name,
+        slug: coach.slug,
+        // BUG-37: public surfaces show the coach's display_name, never the
+        // account holder's name — same precedence as /api/public/coaches and
+        // the webhook confirmation emails. Response key unchanged for consumers.
+        full_name: coach.display_name ?? profile.full_name,
         bio: coach.bio,
         years_experience: coach.years_experience,
         location_city: profile.location_city,

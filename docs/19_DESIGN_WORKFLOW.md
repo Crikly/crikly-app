@@ -62,6 +62,6 @@ docs/09_WORKING_ETHICS.md
 docs/12_DESIGN_SYSTEM.md
 docs/11_UX_PRINCIPLES.md
 docs/14_COACH_REQUIREMENTS.md (relevant section only)
-docs/16_DESIGN_WORKFLOW.md
+docs/19_DESIGN_WORKFLOW.md
 
 *Crikly Design Workflow v1.0 — April 2026*

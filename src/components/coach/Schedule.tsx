@@ -59,9 +59,9 @@ function EventBlock({ top, height, type, title, subtitle, sessionId, onCardClick
   // CHANGE 3: Left border accent by status
   switch (type) {
     case 'confirmed':
-      bgClass = 'bg-teal-50'
-      textClass = 'text-teal-800'
-      leftBorderClass = 'border-l-[3px] border-l-teal-600'
+      bgClass = 'bg-blue-50'
+      textClass = 'text-blue-800'
+      leftBorderClass = 'border-l-[3px] border-l-blue-500'
       break
     case 'programme':
       bgClass = 'bg-purple-100'
@@ -400,12 +400,21 @@ export function Schedule() {
         x: centerX,
         y: centerY
       })
+      // BUG-43a: consume the URL intent immediately. With ?action=new-session
+      // still in the URL, every dismissal (X, Cancel, outside tap, Escape)
+      // nulled activePopover, re-ran this effect and re-opened the popover in
+      // the same frame — an inescapable loop that read as "X button broken"
+      // on mobile. Stripping the param means the next run sees action=null.
+      router.replace('/coach/schedule', { scroll: false })
     }
-  }, [searchParams, activePopover])
+  }, [searchParams, activePopover, router])
 
   // CF-D02c FIX 1: Close popover on outside click or Escape
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
+    // BUG-43b: also listen on touchstart — iOS Safari does not reliably fire
+    // mouse-compat events for taps on non-interactive elements, so an outside
+    // tap could fail to dismiss the popovers on mobile.
+    const handleClickOutside = (e: MouseEvent | TouchEvent) => {
       const target = e.target as HTMLElement
       if (!target.closest('.session-popover') && !target.closest('.session-card')) {
         setActivePopover(null)
@@ -419,9 +428,11 @@ export function Schedule() {
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
+    document.addEventListener('touchstart', handleClickOutside, { passive: true })
     document.addEventListener('keydown', handleEscape)
     return () => {
       document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('touchstart', handleClickOutside)
       document.removeEventListener('keydown', handleEscape)
     }
   }, [])
@@ -1418,8 +1429,9 @@ function SessionPopover({
         boxShadow: '0 8px 24px rgba(0,0,0,0.12)'
       }}
     >
-      <button onClick={onClose} className="absolute top-3 right-3 text-gray-400 hover:text-gray-700">
-        <X size={14} />
+      {/* BUG-43a: p-3.5 + 16px icon = 44px touch target (was a bare 14px icon) */}
+      <button aria-label="Close" onClick={onClose} className="absolute top-0 right-0 z-10 p-3.5 text-gray-400 hover:text-gray-700">
+        <X size={16} />
       </button>
       {getPopoverContent()}
     </div>
@@ -1457,8 +1469,9 @@ function CreationPopover({ x, y, source, date, time, onClose }: { x: number; y: 
         boxShadow: '0 8px 24px rgba(0,0,0,0.12)'
       }}
     >
-      <button onClick={onClose} className="absolute top-3 right-3 text-gray-400 hover:text-gray-700">
-        <X size={14} />
+      {/* BUG-43a: p-3.5 + 16px icon = 44px touch target (was a bare 14px icon) */}
+      <button aria-label="Close" onClick={onClose} className="absolute top-0 right-0 z-10 p-3.5 text-gray-400 hover:text-gray-700">
+        <X size={16} />
       </button>
       
       <h3 className="text-[14px] font-medium text-gray-900 mb-3">New session</h3>
@@ -1530,7 +1543,8 @@ function CreationPopover({ x, y, source, date, time, onClose }: { x: number; y: 
       </div>
 
       <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
-        <button onClick={onClose} className="text-[12px] text-gray-500 hover:text-gray-900">
+        {/* BUG-43a: padded + negative margin — ~44px tap area, no layout shift */}
+        <button onClick={onClose} className="text-[12px] text-gray-500 hover:text-gray-900 p-3.5 -m-3.5">
           Cancel
         </button>
         {/* AF-H-11: Create session is disabled until shareable bookable widget exists (CG-BookableWidget-01) */}
@@ -1595,8 +1609,9 @@ function AdHocPopover({
         boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
       }}
     >
-      <button onClick={onClose} className="absolute top-3 right-3 text-gray-400 hover:text-gray-700">
-        <X size={14} />
+      {/* BUG-43a: p-3.5 + 16px icon = 44px touch target (was a bare 14px icon) */}
+      <button aria-label="Close" onClick={onClose} className="absolute top-0 right-0 z-10 p-3.5 text-gray-400 hover:text-gray-700">
+        <X size={16} />
       </button>
       <div className="flex items-start justify-between mb-3">
         <h3 className="text-[15px] font-medium text-gray-900">Ad hoc slot</h3>
