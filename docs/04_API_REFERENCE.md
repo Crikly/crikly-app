@@ -1,8 +1,8 @@
 # Crikly — API Reference
 
-**Version:** 1.4
+**Version:** 1.5
 **Last Updated:** 22 July 2026
-**Changed:** BUG-45 — GET /api/payments/connect/onboard now returns `bank_name` + `bank_last4` from Stripe external_accounts (real payout destination for the Get Paid page). Previous (1.3): BUG-44 — new POST /api/webhooks/stripe-connect route for connected-account events (`account.updated` → `stripe_onboarding_complete`; transfer/payout events log-only for Block 0), verified with `STRIPE_CONNECT_WEBHOOK_SECRET`. Previous (1.2): BUG-23 — camp slot granularity: slot-selection wire format (`uuid` / `uuid.N`) + per-slot pricing/capacity on POST /api/guest/programme-enrolments (new 400 `camp_block_unsupported`, 409 `slot_full`); camp branch (`confirm_camp_slot_spots()`) + email session lines in the Stripe webhook; `camp_mode` on programme list/POST responses; roster session lines. Previous (1.1): BUG-19 Phase 1 — `booked_slots` on GET /api/coaches/[id]/availability; slot-validation 409s on POST /api/guest/bookings
+**Changed:** BUG-38 — coach slug derivation documented on POST /api/coaches/profile: display_name is the slug source, full_name only as fallback when display_name is unset; full_name edits no longer regenerate the slug while a display_name exists. Previous (1.4): BUG-45 — GET /api/payments/connect/onboard now returns `bank_name` + `bank_last4` from Stripe external_accounts (real payout destination for the Get Paid page). Previous (1.3): BUG-44 — new POST /api/webhooks/stripe-connect route for connected-account events (`account.updated` → `stripe_onboarding_complete`; transfer/payout events log-only for Block 0), verified with `STRIPE_CONNECT_WEBHOOK_SECRET`. Previous (1.2): BUG-23 — camp slot granularity: slot-selection wire format (`uuid` / `uuid.N`) + per-slot pricing/capacity on POST /api/guest/programme-enrolments (new 400 `camp_block_unsupported`, 409 `slot_full`); camp branch (`confirm_camp_slot_spots()`) + email session lines in the Stripe webhook; `camp_mode` on programme list/POST responses; roster session lines. Previous (1.1): BUG-19 Phase 1 — `booked_slots` on GET /api/coaches/[id]/availability; slot-validation 409s on POST /api/guest/bookings
 
 This document is the single source of truth for all API routes.
 Update this file in the same commit as every new or modified route.
@@ -253,6 +253,17 @@ Create or update the authenticated coach's profile.
 - BUG-37: GET and POST responses now include `display_name: string | null`
   (`coach_profiles.display_name`) alongside `full_name` (the private
   account name, shown only in Settings as "Account name").
+
+**Slug derivation (BUG-38):** the public URL slug is generated from the
+**effective public name** — `display_name`, falling back to `full_name` only
+when `display_name` is unset (mirrors how public pages render
+`display_name ?? full_name`; the private account name must never leak into
+the URL). Regeneration triggers: `display_name` edited, OR `full_name`
+edited *while `display_name` is null*, OR slug missing. Editing `full_name`
+while a `display_name` exists does NOT touch the slug. Collisions get a
+`-2`/`-3`… suffix (`findUniqueSlug`). Regenerating changes the public URL —
+old slug URLs 404 (no slug-history redirect exists; UUID URLs still resolve
+and redirect to the canonical slug).
 
 ---
 

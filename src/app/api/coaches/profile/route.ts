@@ -477,10 +477,20 @@ export async function POST(
       ? updatedProfile.user_profiles[0]
       : updatedProfile.user_profiles
 
-    // 8. Generate or regenerate slug when name changed or slug is missing
+    // 8. Generate or regenerate slug when the PUBLIC name changed or slug is
+    //    missing. BUG-38: the slug source is the effective public name —
+    //    display_name, falling back to full_name only when display_name is
+    //    unset (locked product rule: display_name everywhere a coach is
+    //    publicly visible; full_name is the private Settings-only account
+    //    name and must never leak into the URL). Editing full_name therefore
+    //    no longer touches the slug while a display_name exists.
     let slug: string | null = updatedProfile.slug ?? null
-    if ((body.full_name !== undefined || !slug) && userProfileData.full_name) {
-      slug = await findUniqueSlug(supabase, userProfileData.full_name, updatedProfile.id)
+    const publicName = updatedProfile.display_name?.trim() || userProfileData.full_name
+    const publicNameChanged =
+      body.display_name !== undefined ||
+      (body.full_name !== undefined && !updatedProfile.display_name)
+    if ((publicNameChanged || !slug) && publicName) {
+      slug = await findUniqueSlug(supabase, publicName, updatedProfile.id)
       await supabase
         .from('coach_profiles')
         .update({ slug })
