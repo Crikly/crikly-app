@@ -254,6 +254,19 @@ Create or update the authenticated coach's profile.
   (`coach_profiles.display_name`) alongside `full_name` (the private
   account name, shown only in Settings as "Account name").
 
+**Go-live guard (C-PAY-03):** `is_profile_live: true` is rejected unless
+Stripe Connect onboarding is complete. When the DB flag is still false but a
+`stripe_account_id` exists, the route live re-checks Stripe
+(`accounts.retrieve` — absorbs the return-redirect vs `account.updated`
+webhook race) and syncs `stripe_onboarding_complete: true` on success; only
+`true` is ever written here — flipping to `false` stays webhook-owned.
+`is_profile_live: false` is never blocked.
+
+**Errors:** 409 `STRIPE_ONBOARDING_INCOMPLETE` (`is_profile_live: true`
+rejected — Stripe Connect onboarding not complete), 502
+`STRIPE_STATUS_CHECK_FAILED` (live Stripe re-check failed — fail closed,
+try again).
+
 **Slug derivation (BUG-38):** the public URL slug is generated from the
 **effective public name** — `display_name`, falling back to `full_name` only
 when `display_name` is unset (mirrors how public pages render

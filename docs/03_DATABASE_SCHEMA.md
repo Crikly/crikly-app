@@ -222,7 +222,7 @@ Verified sports coaches offering sessions.
 | dbs_status | text | NO | 'none' | 'none', 'pending', 'verified', 'expired' |
 | dbs_verified_at | timestamptz | YES | null | When DBS badge was approved |
 | dbs_expires_at | timestamptz | YES | null | Annual renewal date |
-| is_profile_live | boolean | NO | false | Visible in search results |
+| is_profile_live | boolean | NO | false | Visible in search results. C-PAY-03 Guard 1: the API (POST /api/coaches/profile) rejects setting this true unless stripe_onboarding_complete is true (with a live Stripe re-check to absorb webhook lag) |
 | is_paused | boolean | NO | false | Coach-controlled pause — true = hidden from search; existing bookings continue (Migration 027) |
 | subscription_tier_id | uuid | YES | null | FK → subscription_tiers(id) |
 | cancellation_window_hours | integer | NO | 24 | Min hours before session to cancel |
@@ -994,7 +994,7 @@ Tracks Stripe payment intents for every booking **or programme enrolment**.
 Tracks payouts to coaches after session completion.
 
 **Purpose:** Full audit trail of every coach payout.
-**Migration:** 006_create_payments.sql
+**Migration:** 006_create_payments.sql, 043_add_held_payout_status.sql
 
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
@@ -1004,13 +1004,21 @@ Tracks payouts to coaches after session completion.
 | stripe_transfer_id | text | YES | null | Stripe Transfer id 'tr_...' |
 | amount_pence | integer | NO | — | Amount paid to coach in pence |
 | currency | text | NO | 'GBP' | |
-| status | text | NO | 'pending' | 'pending', 'processing', 'paid', 'failed' |
+| status | text | NO | 'pending' | 'pending', 'processing', 'held', 'paid', 'failed' |
 | scheduled_at | timestamptz | NO | — | When payout is due (booking.payout_eligible_at) |
 | processed_at | timestamptz | YES | null | When payout was actually sent |
 | failure_reason | text | YES | null | If payout failed |
+| held_reason | text | YES | null | Why status='held': 'no_stripe_account' or 'stripe_onboarding_incomplete'. Non-null iff status='held' (CHECK held_reason_iff_held) |
 | retry_count | integer | NO | 0 | Number of retry attempts |
 | created_at | timestamptz | NO | now() | |
 | updated_at | timestamptz | NO | now() | |
+
+**Held-payout contract (C-PAY-03, consumed by the C-PAY-02 transfer job):**
+- The job selects due rows `WHERE status IN ('pending', 'held') AND scheduled_at <= now()` — held rows are re-evaluated every run, so release is automatic with no webhook involvement.
+- At transfer time, a coach with no `stripe_account_id` → `status='held'`, `held_reason='no_stripe_account'`; an account with `stripe_onboarding_complete=false` → `status='held'`, `held_reason='stripe_onboarding_incomplete'`.
+- A hold is not a failure: `retry_count` is not incremented and `failure_reason` stays null. The job continues with remaining rows.
+- Release clears `held_reason` in the same UPDATE that leaves 'held' (DB-enforced) and proceeds like a pending row ('held' → 'processing' → 'paid').
+- Account deletion is blocked while any payout is in 'pending', 'processing', or 'held' (`PAYOUT_OWED_STATUSES`, `src/types/domain.ts`).
 
 **RLS Policies:**
 - SELECT: Coach who receives payout, or admin
@@ -1018,6 +1026,7 @@ Tracks payouts to coaches after session completion.
 
 **Indexes:**
 - status_idx (partial — where status = 'pending')
+- status_held_idx (partial — where status = 'held')
 - scheduled_at_idx (for payout cron job)
 - coach_profile_id_idx
 
