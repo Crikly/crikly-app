@@ -861,6 +861,13 @@ export type Database = {
             referencedRelation: "coach_profiles"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "coach_sports_sport_id_fkey"
+            columns: ["sport_id"]
+            isOneToOne: false
+            referencedRelation: "sports"
+            referencedColumns: ["id"]
+          },
         ]
       }
       coach_subscriptions: {
@@ -2131,6 +2138,7 @@ export type Database = {
           created_at: string
           currency: string
           failure_reason: string | null
+          held_reason: string | null
           id: string
           processed_at: string | null
           retry_count: number
@@ -2146,6 +2154,7 @@ export type Database = {
           created_at?: string
           currency?: string
           failure_reason?: string | null
+          held_reason?: string | null
           id?: string
           processed_at?: string | null
           retry_count?: number
@@ -2161,6 +2170,7 @@ export type Database = {
           created_at?: string
           currency?: string
           failure_reason?: string | null
+          held_reason?: string | null
           id?: string
           processed_at?: string | null
           retry_count?: number
@@ -2252,6 +2262,7 @@ export type Database = {
           child_transition_window_days: number
           dbs_fee_currency: string
           dbs_verification_fee_pence: number
+          default_autocomplete_delay_hours: number
           default_cancellation_hours: number
           default_commission_rate: number
           default_max_advance_days: number
@@ -2267,6 +2278,7 @@ export type Database = {
           child_transition_window_days?: number
           dbs_fee_currency?: string
           dbs_verification_fee_pence?: number
+          default_autocomplete_delay_hours?: number
           default_cancellation_hours?: number
           default_commission_rate?: number
           default_max_advance_days?: number
@@ -2282,6 +2294,7 @@ export type Database = {
           child_transition_window_days?: number
           dbs_fee_currency?: string
           dbs_verification_fee_pence?: number
+          default_autocomplete_delay_hours?: number
           default_cancellation_hours?: number
           default_commission_rate?: number
           default_max_advance_days?: number
@@ -2930,6 +2943,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      auto_complete_due_bookings: { Args: never; Returns: number }
       camp_slot_occupancy: {
         Args: { p_programme_id: string }
         Returns: {

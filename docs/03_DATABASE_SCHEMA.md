@@ -1,8 +1,8 @@
 # Crikly — Database Schema
 
-**Version:** 1.5
-**Last Updated:** June 2026
-**Changed:** Migration 20260623120000 — P-00c-DB. Makes `user_profiles.auth_user_id` nullable for provisional/guest users. Adds `user_profiles.is_provisional` (boolean, NOT NULL DEFAULT false) and `user_profiles.provisional_until` (timestamptz). Hardens the public "live coaches" SELECT policy with an `is_provisional = false` guard so provisional rows are never exposed to unauthenticated requests.
+**Version:** 1.6
+**Last Updated:** July 2026
+**Changed:** Migrations 043 + 044 — Block 0.5. C-PAY-03: `payouts.status` gains 'held' + `held_reason` column (held-payout contract for C-PAY-02); `is_profile_live` gated on Stripe onboarding at the API layer. C-PAY-01: `platform_config.default_autocomplete_delay_hours` (default 2) + `auto_complete_due_bookings()` function — confirmed bookings auto-complete after session end and start the BR-03 payout clock.
 **Maintainer:** Lasith Jayarathne
 **Single source of truth for all database tables.**
 
@@ -504,6 +504,7 @@ Global platform configuration values. Single row table.
 | id | uuid | NO | gen_random_uuid() | Primary key |
 | default_commission_rate | numeric(5,4) | NO | 0.1000 | 10% — overridden per country |
 | default_payout_delay_hours | integer | NO | 48 | Hours before coach payout |
+| default_autocomplete_delay_hours | integer | NO | 2 | Hours after session end before a confirmed booking auto-completes (C-PAY-01, migration 044). CHECK >= 0 |
 | default_cancellation_hours | integer | NO | 24 | Default cancellation window |
 | default_min_advance_hours | integer | NO | 24 | Min hours before booking |
 | default_max_advance_days | integer | NO | 56 | Max days ahead to book |
@@ -648,7 +649,7 @@ The core transaction record. Created on successful payment.
 | cancelled_at | timestamptz | YES | null | When cancellation occurred |
 | cancelled_by | text | YES | null | 'parent', 'coach', 'admin' |
 | cancellation_reason | text | YES | null | Optional reason |
-| completed_at | timestamptz | YES | null | When coach marked session complete |
+| completed_at | timestamptz | YES | null | When the session was marked complete (C-PAY-01: set by the auto-completion cron) |
 | payout_eligible_at | timestamptz | YES | null | When payout can be processed (completed_at + delay) |
 | review_requested_at | timestamptz | YES | null | When review reminder was sent to parent/player |
 | group_booking_id | uuid | YES | null | FK → group_bookings(id) if group session |
@@ -663,6 +664,13 @@ The core transaction record. Created on successful payment.
 - booking_reference generated as: CRK-YYYY-NNNN (year + sequential)
 - commission_rate = snapshot from platform_config at booking time (never changes after booking)
 - payout_eligible_at = completed_at + payout_delay_hours from platform_config
+- Auto-completion (C-PAY-01): the hourly cron /api/cron/auto-complete-sessions
+  calls auto_complete_due_bookings() (migration 044) — a confirmed, live
+  booking whose (session_date + session_end_time, UK wall-clock via
+  AT TIME ZONE 'Europe/London') is more than
+  platform_config.default_autocomplete_delay_hours in the past flips to
+  'completed' with completed_at = now() and payout_eligible_at per BR-03.
+  Idempotent; only status = 'confirmed' rows are ever touched.
 - messaging_unlocked = true immediately on creation (booking is auto-confirmed)
 - Only ONE booking can exist for a given coach/date/time slot
 

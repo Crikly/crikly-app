@@ -1,8 +1,8 @@
 # Crikly — API Reference
 
-**Version:** 1.5
-**Last Updated:** 22 July 2026
-**Changed:** BUG-38 — coach slug derivation documented on POST /api/coaches/profile: display_name is the slug source, full_name only as fallback when display_name is unset; full_name edits no longer regenerate the slug while a display_name exists. Previous (1.4): BUG-45 — GET /api/payments/connect/onboard now returns `bank_name` + `bank_last4` from Stripe external_accounts (real payout destination for the Get Paid page). Previous (1.3): BUG-44 — new POST /api/webhooks/stripe-connect route for connected-account events (`account.updated` → `stripe_onboarding_complete`; transfer/payout events log-only for Block 0), verified with `STRIPE_CONNECT_WEBHOOK_SECRET`. Previous (1.2): BUG-23 — camp slot granularity: slot-selection wire format (`uuid` / `uuid.N`) + per-slot pricing/capacity on POST /api/guest/programme-enrolments (new 400 `camp_block_unsupported`, 409 `slot_full`); camp branch (`confirm_camp_slot_spots()`) + email session lines in the Stripe webhook; `camp_mode` on programme list/POST responses; roster session lines. Previous (1.1): BUG-19 Phase 1 — `booked_slots` on GET /api/coaches/[id]/availability; slot-validation 409s on POST /api/guest/bookings
+**Version:** 1.6
+**Last Updated:** 25 July 2026
+**Changed:** Block 0.5 — C-PAY-03: go-live guard on POST /api/coaches/profile (409 `STRIPE_ONBOARDING_INCOMPLETE`, 502 `STRIPE_STATUS_CHECK_FAILED`). C-PAY-01: new GET /api/cron/auto-complete-sessions (hourly; completes confirmed bookings after session end + config delay, starts the BR-03 payout clock). Previous (1.5): BUG-38 — coach slug derivation documented on POST /api/coaches/profile: display_name is the slug source, full_name only as fallback when display_name is unset; full_name edits no longer regenerate the slug while a display_name exists. Previous (1.4): BUG-45 — GET /api/payments/connect/onboard now returns `bank_name` + `bank_last4` from Stripe external_accounts (real payout destination for the Get Paid page). Previous (1.3): BUG-44 — new POST /api/webhooks/stripe-connect route for connected-account events (`account.updated` → `stripe_onboarding_complete`; transfer/payout events log-only for Block 0), verified with `STRIPE_CONNECT_WEBHOOK_SECRET`. Previous (1.2): BUG-23 — camp slot granularity: slot-selection wire format (`uuid` / `uuid.N`) + per-slot pricing/capacity on POST /api/guest/programme-enrolments (new 400 `camp_block_unsupported`, 409 `slot_full`); camp branch (`confirm_camp_slot_spots()`) + email session lines in the Stripe webhook; `camp_mode` on programme list/POST responses; roster session lines. Previous (1.1): BUG-19 Phase 1 — `booked_slots` on GET /api/coaches/[id]/availability; slot-validation 409s on POST /api/guest/bookings
 
 This document is the single source of truth for all API routes.
 Update this file in the same commit as every new or modified route.
@@ -883,6 +883,17 @@ The `pending_payment` reaper (BUG-13b). Releases guest bookings whose checkout w
 **Response 200:** `{ "checked": n, "released": n, "skipped_active": n, "skipped_stripe": n, "errors": n, "claims_reconciled": n, "ledger_pruned": n }` — `claims_reconciled` (BUG-19 P2) counts drift-released coach_time_claims (expected 0); `ledger_pruned` (BUG-15) counts stripe_webhook_events rows older than 30 days deleted this run.
 
 **Phase 2 (BUG-19):** `coach_time_claims` expiry joins this route as a second sweep — same cadence, same cancel-first arbitration for money-bearing holds.
+
+### GET /api/cron/auto-complete-sessions
+Session auto-completion (C-PAY-01). Flips confirmed bookings to `completed` once the session has been over for `platform_config.default_autocomplete_delay_hours` (default 2), stamping `completed_at = now()` and `payout_eligible_at = now() + platform_config.default_payout_delay_hours` (BR-03). This transition is the trigger the C-PAY-02 payout transfer job acts on.
+**Status: Implemented — C-PAY-01**
+**Auth: `Authorization: Bearer $CRON_SECRET`** — same pattern as the reaper; 401 otherwise, 500 if `CRON_SECRET` is unconfigured.
+
+**Schedule:** `0 * * * *` (hourly) via `vercel.json`. Repo config only — activates when deployed with `CRON_SECRET` set (Lasith-owned). Local testing: `curl -H "Authorization: Bearer $CRON_SECRET" localhost:3000/api/cron/auto-complete-sessions`.
+
+**Mechanics:** all logic lives in the DB function `auto_complete_due_bookings()` (migration 044) — one atomic set-based UPDATE; eligibility uses UK wall-clock (`(session_date + session_end_time) AT TIME ZONE 'Europe/London'`, DST-proof); both delay values are read from `platform_config` inside the function (never hardcoded). Idempotent: only `status = 'confirmed' AND deleted_at IS NULL` rows match, so re-runs and overlapping fires are no-ops. No cancelled, no_show, pending_payment, or already-completed booking is ever touched.
+
+**Response 200:** `{ "completed": n }`. **Response 500:** `{ "error": "internal_error" }` (RPC failure — safe to retry next run).
 
 ---
 
