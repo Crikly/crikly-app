@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
+import Stripe from 'stripe'
 import { createClient } from '@/lib/supabase/server'
+import { getStripe } from '@/lib/stripe/client'
 import { requireCoachRole, requireCoachContext } from '@/lib/auth/require-coach'
 
 // ─── Slug helpers ─────────────────────────────────────────────────────────────
@@ -356,6 +358,73 @@ export async function POST(
         { error: 'Validation failed', details: validationErrors },
         { status: 400 }
       )
+    }
+
+    // 3b. C-PAY-03 Guard 1: going live requires completed Stripe onboarding.
+    // A live profile is bookable; a booking with no payout destination would
+    // strand the coach's money (see the held-payout contract, migration 043).
+    // Setting is_profile_live=false is never blocked. This is the ONLY write
+    // path for is_profile_live (Step 0 audit) — guard here covers every caller.
+    if (body.is_profile_live === true) {
+      const { data: liveGate, error: liveGateError } = await supabase
+        .from('coach_profiles')
+        .select('stripe_onboarding_complete, stripe_account_id')
+        .eq('user_profile_id', userProfile.id)
+        .maybeSingle()
+
+      if (liveGateError) {
+        console.error('[POST /api/coaches/profile] go-live gate read error:', liveGateError)
+        return NextResponse.json({ error: 'Failed to verify payment setup' }, { status: 500 })
+      }
+
+      let stripeReady = liveGate?.stripe_onboarding_complete === true
+
+      // The ?success=true return redirect races the account.updated webhook —
+      // the coach is usually back before the flag flips. If an account exists
+      // but the flag is still false, re-check Stripe directly so a legitimate
+      // just-finished onboarding is never rejected. Same semantics as the
+      // webhook (charges_enabled && payouts_enabled); only `true` is written
+      // here — flipping back to false stays webhook-owned.
+      if (!stripeReady && liveGate?.stripe_account_id) {
+        try {
+          const account = await getStripe().accounts.retrieve(liveGate.stripe_account_id)
+          if (account.charges_enabled === true && account.payouts_enabled === true) {
+            const { error: syncError } = await supabase
+              .from('coach_profiles')
+              .update({ stripe_onboarding_complete: true, updated_at: new Date().toISOString() })
+              .eq('user_profile_id', userProfile.id)
+            if (syncError) {
+              // Non-fatal: Stripe says ready, so let go-live proceed — the
+              // webhook will persist the flag on its next delivery.
+              console.error('[POST /api/coaches/profile] stripe_onboarding_complete sync error:', syncError)
+            }
+            stripeReady = true
+          }
+        } catch (stripeErr) {
+          // Fail closed: we cannot confirm a payout destination, so do not go
+          // live. Distinct code so the UI can say "try again" rather than
+          // "connect Stripe".
+          const message = stripeErr instanceof Stripe.errors.StripeError ? stripeErr.message : stripeErr
+          console.error('[POST /api/coaches/profile] Stripe status re-check failed:', message)
+          return NextResponse.json(
+            {
+              error: 'We could not verify your Stripe account status. Please try again in a moment.',
+              code: 'STRIPE_STATUS_CHECK_FAILED',
+            },
+            { status: 502 }
+          )
+        }
+      }
+
+      if (!stripeReady) {
+        return NextResponse.json(
+          {
+            error: 'Connect your Stripe account before going live. Complete payment setup from the Get Paid page.',
+            code: 'STRIPE_ONBOARDING_INCOMPLETE',
+          },
+          { status: 409 }
+        )
+      }
     }
 
     // 4. Update user_profiles if any fields provided

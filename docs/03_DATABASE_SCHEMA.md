@@ -1,8 +1,8 @@
 # Crikly — Database Schema
 
-**Version:** 1.5
-**Last Updated:** June 2026
-**Changed:** Migration 20260623120000 — P-00c-DB. Makes `user_profiles.auth_user_id` nullable for provisional/guest users. Adds `user_profiles.is_provisional` (boolean, NOT NULL DEFAULT false) and `user_profiles.provisional_until` (timestamptz). Hardens the public "live coaches" SELECT policy with an `is_provisional = false` guard so provisional rows are never exposed to unauthenticated requests.
+**Version:** 1.6
+**Last Updated:** July 2026
+**Changed:** Migration 045 — Block 0.5 C-PAY-02: `payouts.booking_id` now UNIQUE (`payouts_booking_id_key`; replaces the non-unique index from 006) — one payout row per booking makes the row UUID a stable Stripe transfer idempotency key, so a double transfer is impossible at the DB layer. Previous: Migrations 043 + 044 — Block 0.5. C-PAY-03: `payouts.status` gains 'held' + `held_reason` column (held-payout contract for C-PAY-02); `is_profile_live` gated on Stripe onboarding at the API layer. C-PAY-01: `platform_config.default_autocomplete_delay_hours` (default 2) + `auto_complete_due_bookings()` function — confirmed bookings auto-complete after session end and start the BR-03 payout clock.
 **Maintainer:** Lasith Jayarathne
 **Single source of truth for all database tables.**
 
@@ -222,7 +222,7 @@ Verified sports coaches offering sessions.
 | dbs_status | text | NO | 'none' | 'none', 'pending', 'verified', 'expired' |
 | dbs_verified_at | timestamptz | YES | null | When DBS badge was approved |
 | dbs_expires_at | timestamptz | YES | null | Annual renewal date |
-| is_profile_live | boolean | NO | false | Visible in search results |
+| is_profile_live | boolean | NO | false | Visible in search results. C-PAY-03 Guard 1: the API (POST /api/coaches/profile) rejects setting this true unless stripe_onboarding_complete is true (with a live Stripe re-check to absorb webhook lag) |
 | is_paused | boolean | NO | false | Coach-controlled pause — true = hidden from search; existing bookings continue (Migration 027) |
 | subscription_tier_id | uuid | YES | null | FK → subscription_tiers(id) |
 | cancellation_window_hours | integer | NO | 24 | Min hours before session to cancel |
@@ -504,6 +504,7 @@ Global platform configuration values. Single row table.
 | id | uuid | NO | gen_random_uuid() | Primary key |
 | default_commission_rate | numeric(5,4) | NO | 0.1000 | 10% — overridden per country |
 | default_payout_delay_hours | integer | NO | 48 | Hours before coach payout |
+| default_autocomplete_delay_hours | integer | NO | 2 | Hours after session end before a confirmed booking auto-completes (C-PAY-01, migration 044). CHECK >= 0 |
 | default_cancellation_hours | integer | NO | 24 | Default cancellation window |
 | default_min_advance_hours | integer | NO | 24 | Min hours before booking |
 | default_max_advance_days | integer | NO | 56 | Max days ahead to book |
@@ -648,7 +649,7 @@ The core transaction record. Created on successful payment.
 | cancelled_at | timestamptz | YES | null | When cancellation occurred |
 | cancelled_by | text | YES | null | 'parent', 'coach', 'admin' |
 | cancellation_reason | text | YES | null | Optional reason |
-| completed_at | timestamptz | YES | null | When coach marked session complete |
+| completed_at | timestamptz | YES | null | When the session was marked complete (C-PAY-01: set by the auto-completion cron) |
 | payout_eligible_at | timestamptz | YES | null | When payout can be processed (completed_at + delay) |
 | review_requested_at | timestamptz | YES | null | When review reminder was sent to parent/player |
 | group_booking_id | uuid | YES | null | FK → group_bookings(id) if group session |
@@ -663,6 +664,13 @@ The core transaction record. Created on successful payment.
 - booking_reference generated as: CRK-YYYY-NNNN (year + sequential)
 - commission_rate = snapshot from platform_config at booking time (never changes after booking)
 - payout_eligible_at = completed_at + payout_delay_hours from platform_config
+- Auto-completion (C-PAY-01): the hourly cron /api/cron/auto-complete-sessions
+  calls auto_complete_due_bookings() (migration 044) — a confirmed, live
+  booking whose (session_date + session_end_time, UK wall-clock via
+  AT TIME ZONE 'Europe/London') is more than
+  platform_config.default_autocomplete_delay_hours in the past flips to
+  'completed' with completed_at = now() and payout_eligible_at per BR-03.
+  Idempotent; only status = 'confirmed' rows are ever touched.
 - messaging_unlocked = true immediately on creation (booking is auto-confirmed)
 - Only ONE booking can exist for a given coach/date/time slot
 
@@ -994,30 +1002,40 @@ Tracks Stripe payment intents for every booking **or programme enrolment**.
 Tracks payouts to coaches after session completion.
 
 **Purpose:** Full audit trail of every coach payout.
-**Migration:** 006_create_payments.sql
+**Migration:** 006_create_payments.sql, 043_add_held_payout_status.sql, 045_payouts_booking_id_unique.sql
 
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
 | id | uuid | NO | gen_random_uuid() | Primary key |
-| booking_id | uuid | NO | — | FK → bookings(id) |
+| booking_id | uuid | NO | — | FK → bookings(id). UNIQUE (migration 045) — one payout row per booking, ever; the row UUID doubles as the Stripe transfer idempotency key (C-PAY-02) |
 | coach_profile_id | uuid | NO | — | FK → coach_profiles(id) |
 | stripe_transfer_id | text | YES | null | Stripe Transfer id 'tr_...' |
 | amount_pence | integer | NO | — | Amount paid to coach in pence |
 | currency | text | NO | 'GBP' | |
-| status | text | NO | 'pending' | 'pending', 'processing', 'paid', 'failed' |
+| status | text | NO | 'pending' | 'pending', 'processing', 'held', 'paid', 'failed' |
 | scheduled_at | timestamptz | NO | — | When payout is due (booking.payout_eligible_at) |
 | processed_at | timestamptz | YES | null | When payout was actually sent |
 | failure_reason | text | YES | null | If payout failed |
+| held_reason | text | YES | null | Why status='held': 'no_stripe_account' or 'stripe_onboarding_incomplete'. Non-null iff status='held' (CHECK held_reason_iff_held) |
 | retry_count | integer | NO | 0 | Number of retry attempts |
 | created_at | timestamptz | NO | now() | |
 | updated_at | timestamptz | NO | now() | |
+
+**Held-payout contract (C-PAY-03, consumed by the C-PAY-02 transfer job):**
+- The job's work queue selects due rows `WHERE status IN ('pending', 'held') OR (status = 'failed' AND retry_count < 5), scheduled_at <= now()` (plus a discovery query for eligible completed bookings with no payout row yet — anti-join). Held rows are re-evaluated every run, so release is automatic with no webhook involvement. Settled rows ('processing'/'paid') and retry-exhausted rows are excluded by the WHERE itself, so they can never crowd out new payouts; retry-exhausted rows are surfaced as a loud `parked` count every run.
+- At transfer time, a coach with no `stripe_account_id` → `status='held'`, `held_reason='no_stripe_account'`; an account with `stripe_onboarding_complete=false` → `status='held'`, `held_reason='stripe_onboarding_incomplete'`.
+- A hold is not a failure: `retry_count` is not incremented and `failure_reason` stays null. The job continues with remaining rows.
+- Release clears `held_reason` in the same UPDATE that leaves 'held' (DB-enforced) and proceeds like a pending row ('held' → 'processing' → 'paid').
+- Account deletion is blocked while any payout is in 'pending', 'processing', or 'held' (`PAYOUT_OWED_STATUSES`, `src/types/domain.ts`).
 
 **RLS Policies:**
 - SELECT: Coach who receives payout, or admin
 - INSERT/UPDATE: Service role only
 
 **Indexes:**
+- booking_id — unique (payouts_booking_id_key, migration 045; replaced the non-unique booking_id_idx from 006)
 - status_idx (partial — where status = 'pending')
+- status_held_idx (partial — where status = 'held')
 - scheduled_at_idx (for payout cron job)
 - coach_profile_id_idx
 

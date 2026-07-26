@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireCoachContext } from '@/lib/auth/require-coach'
+import { PAYOUT_OWED_STATUSES } from '@/types/domain'
 
 /**
  * DELETE /api/coaches/account
@@ -11,7 +12,7 @@ import { requireCoachContext } from '@/lib/auth/require-coach'
  * Order (strict):
  *   1. requireCoachContext — auth + role + coach profile
  *   2. Block if upcoming bookings exist (status confirmed/pending_approval, session_date >= today UTC)
- *   3. Block if pending Stripe payouts exist (status pending/processing — 'in_transit' is not in our enum)
+ *   3. Block if owed Stripe payouts exist (status pending/processing/held — PAYOUT_OWED_STATUSES)
  *   4. Determine is_only_coach (no other active roles on this user)
  *   5+7. Soft-delete coach_profiles (set deleted_at + clear stripe_onboarding_complete in one UPDATE)
  *   6. Deactivate the 'coach' role on user_roles (is_active=false; preserves audit trail per schema doc L102)
@@ -70,14 +71,15 @@ export async function DELETE(): Promise<NextResponse<{ success: true } | { error
       )
     }
 
-    // 3. Block on pending Stripe payouts.
-    // Spec said ('pending','in_transit') but actual payouts.status enum is
-    // ('pending','processing','paid','failed'). Use the two pre-paid states.
+    // 3. Block on payouts still owed to the coach.
+    // C-PAY-03: 'held' counts alongside 'pending'/'processing' — a held payout
+    // is money owed pending Stripe reconnection, so the account must not be
+    // deletable while one exists (PAYOUT_OWED_STATUSES, types/domain.ts).
     const { count: pendingPayoutCount, error: payoutError } = await supabase
       .from('payouts')
       .select('id', { count: 'exact', head: true })
       .eq('coach_profile_id', coachProfile.id)
-      .in('status', ['pending', 'processing'])
+      .in('status', [...PAYOUT_OWED_STATUSES])
     if (payoutError) {
       console.error('[DELETE /api/coaches/account] payouts count error:', payoutError)
       return NextResponse.json({ error: 'Failed to check pending payouts' }, { status: 500 })

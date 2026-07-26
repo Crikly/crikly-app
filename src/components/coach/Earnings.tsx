@@ -17,6 +17,9 @@ interface Transaction {
   type: 'solo' | 'group'
   meta: string
   sport: string
+  // C-PAY-05: gross price − Stripe fee sub-line, null when the booking's
+  // gross price is unavailable.
+  breakdown: string | null
 }
 
 interface PayoutItem {
@@ -25,6 +28,7 @@ interface PayoutItem {
   booking_reference: string | null
   session_date: string | null
   session_type: string | null
+  coach_price_pence: number | null
   amount_pence: number
   currency: string
   status: string
@@ -320,6 +324,9 @@ export function Earnings() {
   const transactions: Transaction[] = paidPeriodPayouts.map((p) => {
     const dateLabel = p.session_date ? formatSessionDate(p.session_date) : '—'
     const statusLabel = p.status.charAt(0).toUpperCase() + p.status.slice(1)
+    // C-PAY-05: the fee is not stored — C-PAY-02 wrote amount_pence as
+    // gross − actual Stripe fee, so derive it back (integer pence).
+    const feePence = p.coach_price_pence !== null ? p.coach_price_pence - p.amount_pence : null
     return {
       id: p.id,
       date: dateLabel,
@@ -328,6 +335,10 @@ export function Earnings() {
       type: p.session_type === 'group' ? 'group' : 'solo',
       meta: `${dateLabel} · ${statusLabel}`,
       sport: '',
+      breakdown:
+        p.coach_price_pence !== null && feePence !== null && feePence >= 0
+          ? `${formatPence(p.coach_price_pence)} − ${formatPence(feePence)} fee`
+          : null,
     }
   })
 
@@ -488,7 +499,15 @@ export function Earnings() {
                           <div className="text-[12px] font-medium text-gray-900 truncate">{tx.name}</div>
                           <div className="text-[10px] text-gray-400 mt-0.5 truncate">{tx.meta}</div>
                         </div>
-                        <div className="text-[12px] font-medium text-[#166534] shrink-0">{tx.amount}</div>
+                        <div className="flex flex-col items-end shrink-0">
+                          <div className="text-[12px] font-medium text-[#166534]">{tx.amount}</div>
+                          {/* C-PAY-05: gross − Stripe fee behind the net figure */}
+                          {tx.breakdown && (
+                            <div className="text-[10px] text-gray-400 mt-0.5" data-testid="transaction-breakdown">
+                              {tx.breakdown}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     ))
                   )}

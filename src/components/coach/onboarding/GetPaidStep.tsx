@@ -31,25 +31,48 @@ export function GetPaidStep() {
   }, [])
 
   // Fix-36: Go live and navigate to dashboard with celebration modal.
-  // Fix-STRIPE-01: this is Path B ("Skip for now") AND the post-Stripe-return
-  // action. It sets ONLY is_profile_live=true — stripe_onboarding_complete is
-  // owned entirely by the Stripe webhook (charges_enabled && payouts_enabled),
-  // never written from the client.
+  // C-PAY-03: this is now ONLY the post-Stripe-return action (Path A). The API
+  // rejects go-live until Stripe onboarding is complete (409
+  // STRIPE_ONBOARDING_INCOMPLETE), re-checking Stripe directly to absorb the
+  // return-redirect vs webhook race. stripe_onboarding_complete itself stays
+  // webhook-owned — never written from the client.
   const handleGoLive = useCallback(async () => {
     setIsGoingLive(true)
+    setError(null)
     try {
-      await fetch('/api/coaches/profile', {
+      const res = await fetch('/api/coaches/profile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ is_profile_live: true })
       })
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as { code?: string } | null
+        if (data?.code === 'STRIPE_ONBOARDING_INCOMPLETE') {
+          setError('Stripe is still verifying your details. You can go live as soon as verification completes — or connect Stripe now if you haven’t yet.')
+        } else if (data?.code === 'STRIPE_STATUS_CHECK_FAILED') {
+          setError('We couldn’t confirm your Stripe account status. Please try again in a moment.')
+        } else {
+          setError('Could not go live. Please try again.')
+        }
+        setIsGoingLive(false)
+        return
+      }
       // AF-P-Wave-1: clear stale profile cache so dashboard reads see is_profile_live: true
       clearCoachProfileCache()
       router.push('/coach/dashboard?celebrated=true')
     } catch (error) {
       console.error('Failed to go live:', error)
+      setError('Could not go live. Please try again.')
       setIsGoingLive(false)
     }
+  }, [router])
+
+  // C-PAY-03 Path B ("Skip for now"): no longer attempts go-live — a profile
+  // cannot be live without a payout destination. The coach lands on the
+  // dashboard still in draft (no celebration modal) and can go live from
+  // there once Stripe setup is complete.
+  const handleSkip = useCallback(() => {
+    router.push('/coach/dashboard')
   }, [router])
 
   // Fix-STRIPE-01 Path A: initiate the REAL Stripe Connect onboarding flow.
@@ -175,11 +198,11 @@ export function GetPaidStep() {
             </button>
             <div className="flex flex-col items-center">
               <button
-                onClick={handleGoLive}
+                onClick={handleSkip}
                 disabled={isGoingLive || connecting}
                 className="text-[13px] text-gray-500 hover:text-gray-900 font-medium transition-colors disabled:opacity-60"
               >
-                {isGoingLive ? 'Going live...' : 'Skip for now'}
+                Skip for now
               </button>
               <p className="text-[10px] text-gray-400 mt-0.5">You can complete this from your dashboard</p>
             </div>

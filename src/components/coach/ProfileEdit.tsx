@@ -81,7 +81,19 @@ export function ProfileEdit() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ is_profile_live: true }),
       })
-      if (!res.ok) throw new Error('Failed')
+      if (!res.ok) {
+        // C-PAY-03 Guard 1: the API rejects go-live until Stripe onboarding is
+        // complete — surface the specific reason instead of a generic failure.
+        const data = (await res.json().catch(() => null)) as { code?: string } | null
+        if (data?.code === 'STRIPE_ONBOARDING_INCOMPLETE') {
+          setGoLiveError('Connect your Stripe account to go live — set up payments from the Get Paid page.')
+        } else if (data?.code === 'STRIPE_STATUS_CHECK_FAILED') {
+          setGoLiveError('We couldn’t confirm your Stripe account status. Please try again in a moment.')
+        } else {
+          setGoLiveError('Could not go live. Please try again.')
+        }
+        return
+      }
       // BUG-GO-LIVE-PATH: reflect new state locally + clear cache.
       // BUG-SIDEBAR-PULSE-STALE: dispatch crikly:profile-updated so the
       // sidebar pulse dot recomputes in-session (was previously frozen
@@ -97,6 +109,15 @@ export function ProfileEdit() {
       setGoingLive(false)
     }
   }
+
+  // C-PAY-03 Guard 1 (client mirror): the API blocks go-live until Stripe
+  // onboarding is complete, so the banner CTA routes to payment setup when
+  // Stripe isn't ready. Prefer the live Stripe status (Fix-45 fetch) over the
+  // DB flag so a coach who just finished onboarding isn't told to set up
+  // payments while the account.updated webhook is still in flight.
+  const stripeReadyForGoLive =
+    (profile?.stripe_onboarding_complete ?? false) ||
+    (stripeConnected && stripeChargesEnabled && stripePayoutsEnabled)
 
   // CD-10b: Fetch profile data on mount
   useEffect(() => {
@@ -427,16 +448,30 @@ export function ProfileEdit() {
               <AlertCircle size={18} className="text-brand-600 shrink-0" />
               <div className="flex-1 min-w-0">
                 <p className="text-[14px] font-medium text-brand-800">Your profile is not live</p>
-                <p className="text-[13px] text-brand-600 mt-0.5">Parents cannot find or book you.</p>
+                <p className="text-[13px] text-brand-600 mt-0.5">
+                  {stripeReadyForGoLive
+                    ? 'Parents cannot find or book you.'
+                    : 'Connect your Stripe account to go live — parents cannot find or book you yet.'}
+                </p>
               </div>
-              <button
-                type="button"
-                onClick={handleGoLive}
-                disabled={goingLive}
-                className="h-9 px-4 rounded-full bg-brand-600 hover:bg-brand-700 text-white text-[13px] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
-              >
-                {goingLive ? 'Going live…' : 'Go live'}
-              </button>
+              {stripeReadyForGoLive ? (
+                <button
+                  type="button"
+                  onClick={handleGoLive}
+                  disabled={goingLive}
+                  className="h-9 px-4 rounded-full bg-brand-600 hover:bg-brand-700 text-white text-[13px] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                >
+                  {goingLive ? 'Going live…' : 'Go live'}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => router.push('/coach/get-paid')}
+                  className="h-9 px-4 rounded-full bg-brand-600 hover:bg-brand-700 text-white text-[13px] font-medium transition-colors shrink-0"
+                >
+                  Set up payments
+                </button>
+              )}
             </div>
           )}
           {goLiveError && (

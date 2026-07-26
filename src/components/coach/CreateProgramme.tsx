@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { ArrowLeft, Check, Loader2, Calendar, RefreshCw, CreditCard, Layers, Sun, Info, AlertTriangle } from 'lucide-react'
 import { VenueAutocomplete, type VenueSelection } from '@/components/coach/shared/LocationAutocomplete'
 import { ProgrammeImagePicker } from '@/components/coach/shared/ProgrammeImagePicker'
+import { PayoutEstimate } from '@/components/coach/shared/PayoutEstimate'
 import { DatePicker, TimePicker, todayYYYYMMDD } from '@/components/ui'
 import { PROGRAMME_AGE_GROUPS, type ProgrammeAgeGroup, ALL_AGES_LABEL, type SessionEntry } from './programmeConstants'
 import { SessionCalendar } from './SessionCalendar'
@@ -1096,6 +1097,8 @@ export function CreateProgramme() {
                     {form.payment_type === 'per_session' ? 'per session.' : 'upfront for all sessions.'}
                   </p>
                 )}
+                {/* C-PAY-04: live payout estimate as the coach types */}
+                <PayoutEstimate pricePence={form.price_pence} className="mt-1.5" />
               </div>
 
               <div className="mb-[22px]">
