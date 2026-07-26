@@ -2,7 +2,7 @@
 
 **Version:** 1.6
 **Last Updated:** July 2026
-**Changed:** Migrations 043 + 044 — Block 0.5. C-PAY-03: `payouts.status` gains 'held' + `held_reason` column (held-payout contract for C-PAY-02); `is_profile_live` gated on Stripe onboarding at the API layer. C-PAY-01: `platform_config.default_autocomplete_delay_hours` (default 2) + `auto_complete_due_bookings()` function — confirmed bookings auto-complete after session end and start the BR-03 payout clock.
+**Changed:** Migration 045 — Block 0.5 C-PAY-02: `payouts.booking_id` now UNIQUE (`payouts_booking_id_key`; replaces the non-unique index from 006) — one payout row per booking makes the row UUID a stable Stripe transfer idempotency key, so a double transfer is impossible at the DB layer. Previous: Migrations 043 + 044 — Block 0.5. C-PAY-03: `payouts.status` gains 'held' + `held_reason` column (held-payout contract for C-PAY-02); `is_profile_live` gated on Stripe onboarding at the API layer. C-PAY-01: `platform_config.default_autocomplete_delay_hours` (default 2) + `auto_complete_due_bookings()` function — confirmed bookings auto-complete after session end and start the BR-03 payout clock.
 **Maintainer:** Lasith Jayarathne
 **Single source of truth for all database tables.**
 
@@ -1002,12 +1002,12 @@ Tracks Stripe payment intents for every booking **or programme enrolment**.
 Tracks payouts to coaches after session completion.
 
 **Purpose:** Full audit trail of every coach payout.
-**Migration:** 006_create_payments.sql, 043_add_held_payout_status.sql
+**Migration:** 006_create_payments.sql, 043_add_held_payout_status.sql, 045_payouts_booking_id_unique.sql
 
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
 | id | uuid | NO | gen_random_uuid() | Primary key |
-| booking_id | uuid | NO | — | FK → bookings(id) |
+| booking_id | uuid | NO | — | FK → bookings(id). UNIQUE (migration 045) — one payout row per booking, ever; the row UUID doubles as the Stripe transfer idempotency key (C-PAY-02) |
 | coach_profile_id | uuid | NO | — | FK → coach_profiles(id) |
 | stripe_transfer_id | text | YES | null | Stripe Transfer id 'tr_...' |
 | amount_pence | integer | NO | — | Amount paid to coach in pence |
@@ -1022,7 +1022,7 @@ Tracks payouts to coaches after session completion.
 | updated_at | timestamptz | NO | now() | |
 
 **Held-payout contract (C-PAY-03, consumed by the C-PAY-02 transfer job):**
-- The job selects due rows `WHERE status IN ('pending', 'held') AND scheduled_at <= now()` — held rows are re-evaluated every run, so release is automatic with no webhook involvement.
+- The job's work queue selects due rows `WHERE status IN ('pending', 'held') OR (status = 'failed' AND retry_count < 5), scheduled_at <= now()` (plus a discovery query for eligible completed bookings with no payout row yet — anti-join). Held rows are re-evaluated every run, so release is automatic with no webhook involvement. Settled rows ('processing'/'paid') and retry-exhausted rows are excluded by the WHERE itself, so they can never crowd out new payouts; retry-exhausted rows are surfaced as a loud `parked` count every run.
 - At transfer time, a coach with no `stripe_account_id` → `status='held'`, `held_reason='no_stripe_account'`; an account with `stripe_onboarding_complete=false` → `status='held'`, `held_reason='stripe_onboarding_incomplete'`.
 - A hold is not a failure: `retry_count` is not incremented and `failure_reason` stays null. The job continues with remaining rows.
 - Release clears `held_reason` in the same UPDATE that leaves 'held' (DB-enforced) and proceeds like a pending row ('held' → 'processing' → 'paid').
@@ -1033,6 +1033,7 @@ Tracks payouts to coaches after session completion.
 - INSERT/UPDATE: Service role only
 
 **Indexes:**
+- booking_id — unique (payouts_booking_id_key, migration 045; replaced the non-unique booking_id_idx from 006)
 - status_idx (partial — where status = 'pending')
 - status_held_idx (partial — where status = 'held')
 - scheduled_at_idx (for payout cron job)
