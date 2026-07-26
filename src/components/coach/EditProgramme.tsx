@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { ArrowLeft, Lock, Check, Calendar, RefreshCw, CreditCard, Layers, Loader2, Sun, Info, AlertTriangle } from 'lucide-react'
 import { VenueAutocomplete, type VenueSelection } from '@/components/coach/shared/LocationAutocomplete'
 import { ProgrammeImagePicker } from '@/components/coach/shared/ProgrammeImagePicker'
+import { PayoutEstimate } from '@/components/coach/shared/PayoutEstimate'
 import { DatePicker, TimePicker, todayYYYYMMDD } from '@/components/ui'
 import { PROGRAMME_AGE_GROUPS, type ProgrammeAgeGroup, ALL_AGES_LABEL, isProgrammeAgeGroup, type SessionEntry } from './programmeConstants'
 import { generateProgrammeSessionDates } from '@/lib/programme-sessions'
@@ -880,6 +881,8 @@ export function EditProgramme({ programmeId }: { programmeId: string }) {
                     {form.payment_type === 'per_session' ? 'per session.' : 'upfront for all sessions.'}
                   </p>
                 )}
+                {/* C-PAY-04: live payout estimate as the coach types */}
+                <PayoutEstimate pricePence={form.price_pence} className="mt-1.5" />
               </div>
 
               {form.payment_type === 'block_upfront' && (

@@ -5,6 +5,8 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { ChevronLeft, ChevronRight, Plus, Check, User, RefreshCw, Users, Ban, X, Calendar, MapPin, PoundSterling, AlertCircle, AlertTriangle, Info } from 'lucide-react'
 import { VenueAutocomplete, type VenueSelection } from '@/components/coach/shared/LocationAutocomplete'
+import { PayoutEstimate } from '@/components/coach/shared/PayoutEstimate'
+import { poundsInputToPence } from '@/lib/payout-estimate'
 import { DatePicker, TimePicker, todayYYYYMMDD } from '@/components/ui'
 // AF-P-Wave-1: sports cache adoption
 import { fetchSportsListCached } from '@/lib/onboarding-cache'
@@ -1120,6 +1122,8 @@ export function Schedule() {
                         />
                       </div>
                       <p className="text-[11px] text-gray-400 mt-1">Leave blank to use your default price for this sport</p>
+                      {/* C-PAY-04: live payout estimate as the coach types */}
+                      <PayoutEstimate pricePence={poundsInputToPence(adHocPrice)} />
                     </div>
 
                     {adHocError && (
