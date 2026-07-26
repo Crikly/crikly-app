@@ -731,6 +731,7 @@ Returns earnings summary and payout history for the authenticated coach.
       "booking_reference": "CRK-2026-0012",
       "session_date": "2026-04-10",
       "session_type": "individual",
+      "coach_price_pence": 5586,
       "amount_pence": 5500,
       "currency": "GBP",
       "status": "paid",
@@ -747,6 +748,7 @@ Returns earnings summary and payout history for the authenticated coach.
 - `summary.this_month_pence` — paid payouts where `processed_at` ≥ first day of current UTC month
 - `summary.last_month_pence` — paid payouts in the prior calendar month
 - `payouts` — max 50 rows, ordered by `scheduled_at DESC`, joined to bookings for reference/date/type
+- `coach_price_pence` — C-PAY-05: gross session price from the booking; `null` if the booking row is missing. The Stripe fee is not stored — C-PAY-02 writes `amount_pence = coach_price_pence − actual Stripe fee`, so clients derive the fee as `coach_price_pence − amount_pence`
 - All money values in pence integers — never decimals
 
 **Errors:** 401 Unauthorised, 403 coach role required, 404 coach profile not found

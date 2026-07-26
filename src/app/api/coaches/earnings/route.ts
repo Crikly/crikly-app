@@ -22,6 +22,10 @@ interface PayoutItem {
   booking_reference: string | null
   session_date: string | null
   session_type: string | null
+  // C-PAY-05: gross session price. The Stripe fee is not stored anywhere —
+  // C-PAY-02 writes amount_pence = coach_price_pence − actual fee, so the UI
+  // derives fee = coach_price_pence − amount_pence.
+  coach_price_pence: number | null
   amount_pence: number
   currency: string
   status: string
@@ -93,12 +97,15 @@ export async function GET(): Promise<NextResponse> {
   const historyRows = allPayouts.slice(0, 50)
   const bookingIds = historyRows.map((p) => p.booking_id)
 
-  const bookingMap: Record<string, Pick<BookingRow, 'booking_reference' | 'session_date' | 'session_type'>> = {}
+  const bookingMap: Record<
+    string,
+    Pick<BookingRow, 'booking_reference' | 'session_date' | 'session_type' | 'coach_price_pence'>
+  > = {}
 
   if (bookingIds.length > 0) {
     const { data: bookings, error: bookingsError } = await supabase
       .from('bookings')
-      .select('id, booking_reference, session_date, session_type')
+      .select('id, booking_reference, session_date, session_type, coach_price_pence')
       .in('id', bookingIds)
 
     if (bookingsError) {
@@ -110,6 +117,7 @@ export async function GET(): Promise<NextResponse> {
         booking_reference: b.booking_reference,
         session_date: b.session_date,
         session_type: b.session_type,
+        coach_price_pence: b.coach_price_pence,
       }
     })
   }
@@ -123,6 +131,7 @@ export async function GET(): Promise<NextResponse> {
       booking_reference: booking?.booking_reference ?? null,
       session_date: booking?.session_date ?? null,
       session_type: booking?.session_type ?? null,
+      coach_price_pence: booking?.coach_price_pence ?? null,
       amount_pence: p.amount_pence,
       currency: p.currency,
       status: p.status,

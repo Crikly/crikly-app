@@ -4,6 +4,8 @@ import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Check, X, Plus } from 'lucide-react'
 import { fetchCoachProfileCached, fetchSportsListCached, fetchCoachSportsCached, clearCoachSportsCache, clearSessionTypesCache } from '@/lib/onboarding-cache'
+import { poundsInputToPence } from '@/lib/payout-estimate'
+import { PayoutEstimate } from '@/components/coach/shared/PayoutEstimate'
 
 interface Sport {
   id: string
@@ -454,7 +456,8 @@ export function PricingStep() {
             </div>
             <div className="flex flex-col gap-4">
               {activePricing.pricingRows.map((row) => (
-                <div key={row.id} className="flex items-center gap-4">
+                <div key={row.id} className="flex flex-col">
+                <div className="flex items-center gap-4">
                   <select
                     value={row.duration}
                     onChange={(e) => updateActiveSport({
@@ -492,6 +495,9 @@ export function PricingStep() {
                   >
                     <X size={20} />
                   </button>
+                </div>
+                {/* C-PAY-04: live payout estimate as the coach types */}
+                <PayoutEstimate pricePence={poundsInputToPence(row.price)} />
                 </div>
               ))}
               <button onClick={addPricingRow} className="mt-2 flex items-center gap-1.5 text-[#0077CC] font-bold text-[14px] hover:text-blue-800 transition-colors w-fit">
