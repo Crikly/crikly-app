@@ -3,6 +3,8 @@ import Stripe from 'stripe'
 import { createClient } from '@/lib/supabase/server'
 import { getStripe } from '@/lib/stripe/client'
 import { requireCoachRole, requireCoachContext } from '@/lib/auth/require-coach'
+import { signApproveToken, APPROVE_TOKEN_TTL_MS } from '@/lib/admin-approve-token'
+import { sendCoachReviewNotification } from '@/lib/resend/coach-lifecycle-emails'
 
 // ─── Slug helpers ─────────────────────────────────────────────────────────────
 
@@ -58,6 +60,9 @@ interface CoachProfileResponse {
   years_experience: number | null
   dbs_status: 'none' | 'pending' | 'verified' | 'expired'
   is_profile_live: boolean
+  // PILOT-01: NULL = draft; set + not live = pending manual approval;
+  // set + live = approved. Drives the "under review" UI state.
+  submitted_for_review_at: string | null
   is_paused: boolean
   stripe_onboarding_complete: boolean
   cancellation_window_hours: number
@@ -105,6 +110,7 @@ export async function GET(): Promise<NextResponse<CoachProfileResponse | { error
         years_experience,
         dbs_status,
         is_profile_live,
+        submitted_for_review_at,
         is_paused,
         stripe_onboarding_complete,
         cancellation_window_hours,
@@ -163,6 +169,7 @@ export async function GET(): Promise<NextResponse<CoachProfileResponse | { error
       years_experience: coachProfile.years_experience,
       dbs_status: coachProfile.dbs_status as 'none' | 'pending' | 'verified' | 'expired',
       is_profile_live: coachProfile.is_profile_live,
+      submitted_for_review_at: coachProfile.submitted_for_review_at ?? null,
       is_paused: coachProfile.is_paused,
       stripe_onboarding_complete: coachProfile.stripe_onboarding_complete,
       cancellation_window_hours: coachProfile.cancellation_window_hours,
@@ -365,10 +372,24 @@ export async function POST(
     // strand the coach's money (see the held-payout contract, migration 043).
     // Setting is_profile_live=false is never blocked. This is the ONLY write
     // path for is_profile_live (Step 0 audit) — guard here covers every caller.
+    //
+    // PILOT-01: during the pilot, `is_profile_live: true` from a client no
+    // longer flips the flag — it SUBMITS the profile for manual review
+    // (submitted_for_review_at = now). Liveness is granted only by the signed
+    // admin approve route. The Stripe guard above-described still gates
+    // submission: a profile that can't take payouts isn't reviewable.
+    // submitForReview outcomes:
+    //   'none'   — request doesn't ask to go live, or profile already live
+    //              (idempotent no-op) or already pending with a still-valid
+    //              approve link (prevents duplicate review emails)
+    //   'submit' — write submitted_for_review_at + notify Lasith (Email 2);
+    //              also covers an EXPIRED pending submission, refreshing the
+    //              timestamp so a fresh 7-day approve link goes out
+    let submitForReview: 'none' | 'submit' = 'none'
     if (body.is_profile_live === true) {
       const { data: liveGate, error: liveGateError } = await supabase
         .from('coach_profiles')
-        .select('stripe_onboarding_complete, stripe_account_id')
+        .select('stripe_onboarding_complete, stripe_account_id, is_profile_live, submitted_for_review_at')
         .eq('user_profile_id', userProfile.id)
         .maybeSingle()
 
@@ -425,6 +446,21 @@ export async function POST(
           { status: 409 }
         )
       }
+
+      // PILOT-01 submission decision (Stripe guard passed). Already-live →
+      // no-op (idempotent; a live coach re-sending the flag changes nothing).
+      // Already-pending with an unexpired approve link → no-op, so repeat
+      // clicks can't spam the review inbox or rotate a link Lasith already
+      // has. Draft, or pending with an EXPIRED link → (re)submit.
+      const alreadyLive = liveGate?.is_profile_live === true
+      const pendingSinceMs = liveGate?.submitted_for_review_at
+        ? Date.parse(liveGate.submitted_for_review_at)
+        : null
+      const pendingLinkStillValid =
+        pendingSinceMs !== null && Date.now() <= pendingSinceMs + APPROVE_TOKEN_TTL_MS
+      if (!alreadyLive && !pendingLinkStillValid) {
+        submitForReview = 'submit'
+      }
     }
 
     // 4. Update user_profiles if any fields provided
@@ -464,6 +500,7 @@ export async function POST(
       travel_radius_miles?: number | null
       requires_manual_approval?: boolean
       is_profile_live?: boolean
+      submitted_for_review_at?: string
       is_paused?: boolean
       updated_at: string
     } = {
@@ -484,8 +521,14 @@ export async function POST(
     if (body.travel_radius_miles !== undefined) coachProfileUpdates.travel_radius_miles = body.travel_radius_miles
     // Fix-AC-14: requires_manual_approval assignment
     if (body.requires_manual_approval !== undefined) coachProfileUpdates.requires_manual_approval = body.requires_manual_approval
-    // BUG-PROFILE-LIVE-WRITE: is_profile_live assignment — was silently dropped (typed object excluded the field, so POST {is_profile_live: true} from GetPaidStep was a no-op)
-    if (body.is_profile_live !== undefined) coachProfileUpdates.is_profile_live = body.is_profile_live
+    // BUG-PROFILE-LIVE-WRITE / PILOT-01: `is_profile_live: true` from a client
+    // no longer writes the flag — it submits for review (see 3b); only the
+    // signed admin approve route grants liveness. `false` still writes
+    // directly (never blocked, C-PAY-03).
+    if (body.is_profile_live === false) coachProfileUpdates.is_profile_live = false
+    if (submitForReview === 'submit') {
+      coachProfileUpdates.submitted_for_review_at = new Date().toISOString()
+    }
     // C-Settings-01-API: is_paused assignment
     if (body.is_paused !== undefined) coachProfileUpdates.is_paused = body.is_paused
 
@@ -511,6 +554,7 @@ export async function POST(
         years_experience,
         dbs_status,
         is_profile_live,
+        submitted_for_review_at,
         is_paused,
         stripe_onboarding_complete,
         cancellation_window_hours,
@@ -578,6 +622,7 @@ export async function POST(
       years_experience: updatedProfile.years_experience,
       dbs_status: updatedProfile.dbs_status as 'none' | 'pending' | 'verified' | 'expired',
       is_profile_live: updatedProfile.is_profile_live,
+      submitted_for_review_at: updatedProfile.submitted_for_review_at ?? null,
       is_paused: updatedProfile.is_paused,
       stripe_onboarding_complete: updatedProfile.stripe_onboarding_complete,
       cancellation_window_hours: updatedProfile.cancellation_window_hours,
@@ -593,6 +638,45 @@ export async function POST(
       slug,
       created_at: updatedProfile.created_at,
       updated_at: updatedProfile.updated_at,
+    }
+
+    // PILOT-01 Email 2: notify the review inbox that a profile is ready.
+    // Signed with the DB round-trip timestamp (updatedProfile, not the JS
+    // string we wrote) so the approve route's recomputation over the same
+    // PostgREST-formatted value matches. Awaited (serverless can kill
+    // un-awaited work after the response) but can never throw or fail the
+    // request — the sender swallows and logs its own errors.
+    if (submitForReview === 'submit' && updatedProfile.submitted_for_review_at) {
+      try {
+        const base = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+        // Throws when ADMIN_APPROVE_SECRET is unset — hence this local
+        // try/catch: a missing secret must cost us the notification email,
+        // never the coach's (already-persisted) submission.
+        const token = signApproveToken(updatedProfile.id, updatedProfile.submitted_for_review_at)
+
+        const { data: sportRows } = await supabase
+          .from('coach_sports')
+          .select('sports ( name )')
+          .eq('coach_profile_id', updatedProfile.id)
+          .eq('is_active', true)
+
+        const sportNames = (sportRows ?? [])
+          .flatMap((row) => (Array.isArray(row.sports) ? row.sports : row.sports ? [row.sports] : []))
+          .map((s) => s.name)
+
+        await sendCoachReviewNotification({
+          coachName: response.display_name || response.full_name,
+          sports: sportNames,
+          location: response.location_city,
+          profileUrl: `${base}/coaches/${response.slug ?? ''}`,
+          approveUrl: `${base}/api/admin/coaches/${updatedProfile.id}/approve?token=${token}`,
+        })
+      } catch (emailErr) {
+        console.error(
+          '[POST /api/coaches/profile] review notification failed:',
+          emailErr instanceof Error ? emailErr.message : emailErr,
+        )
+      }
     }
 
     return NextResponse.json(response, { status: 200 })

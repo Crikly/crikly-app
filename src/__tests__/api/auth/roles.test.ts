@@ -9,6 +9,12 @@ jest.mock('next/headers', () => ({
   })),
 }))
 
+// PILOT-01: Email 1 fires from the coach branch — mock it out so these
+// route-shape tests stay network/env free (covered in roles-welcome-email.test.ts).
+jest.mock('@/lib/resend/coach-lifecycle-emails', () => ({
+  sendCoachWelcomeEmail: jest.fn().mockResolvedValue(true),
+}))
+
 import { createServerClient } from '@supabase/ssr'
 
 const mockGetUser = jest.fn()
@@ -26,6 +32,10 @@ function makeChain() {
     c[m] = jest.fn(() => c)
   }
   c.single = jest.fn().mockResolvedValue({ data: { id: 'profile-123' }, error: null })
+  // PILOT-01: the coach branch probes user_roles with .maybeSingle() (Email 1
+  // first-time check). No row → treated as first-time; the email module is
+  // mocked out below so nothing actually sends.
+  c.maybeSingle = jest.fn().mockResolvedValue({ data: null, error: null })
   return c
 }
 const mockFrom = jest.fn(() => makeChain())
@@ -49,6 +59,7 @@ async function callRoles(body: Record<string, unknown>) {
   jest.resetModules()
   jest.mock('@supabase/ssr', () => ({ createServerClient: jest.fn().mockReturnValue(mockSupabase) }))
   jest.mock('next/headers', () => ({ cookies: jest.fn(() => ({ getAll: () => [], set: jest.fn() })) }))
+  jest.mock('@/lib/resend/coach-lifecycle-emails', () => ({ sendCoachWelcomeEmail: jest.fn().mockResolvedValue(true) }))
   const { POST } = await import('@/app/api/auth/roles/route')
   const request = new Request('http://localhost/api/auth/roles', {
     method: 'POST',
@@ -156,6 +167,11 @@ describe('POST /api/auth/roles — BUG-26 profile recovery', () => {
           )
         }
         return Promise.resolve({ data: { id: 'profile-123' }, error: null })
+      })
+      // PILOT-01: user_roles first-time-coach probe (Email 1) — no row.
+      c.maybeSingle = jest.fn(() => {
+        dbCalls.push({ table, method: 'maybeSingle' })
+        return Promise.resolve({ data: null, error: null })
       })
       return c
     }

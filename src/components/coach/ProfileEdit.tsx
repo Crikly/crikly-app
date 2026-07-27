@@ -9,7 +9,6 @@ import { fetchCoachProfileCached, clearCoachProfileCache } from '@/lib/onboardin
 // GetPaid (PERF-03) and invalidated on Stripe redirect-back; ProfileEdit
 // is a pure reader/writer here.
 import { readStripeStatusCache, writeStripeStatusCache } from '@/lib/stripe-status-cache'
-import { ShareLinkPanel } from '@/components/coach/shared/ShareLinkPanel'
 
 // CD-10b: API response type
 interface CoachProfileResponse {
@@ -24,6 +23,8 @@ interface CoachProfileResponse {
   years_experience: number | null
   dbs_status: 'none' | 'pending' | 'verified' | 'expired'
   is_profile_live: boolean
+  // PILOT-01: set + not live = pending manual approval ("under review")
+  submitted_for_review_at: string | null
   stripe_onboarding_complete: boolean
   cancellation_window_hours: number
   min_advance_hours: number
@@ -94,11 +95,17 @@ export function ProfileEdit() {
         }
         return
       }
-      // BUG-GO-LIVE-PATH: reflect new state locally + clear cache.
-      // BUG-SIDEBAR-PULSE-STALE: dispatch crikly:profile-updated so the
-      // sidebar pulse dot recomputes in-session (was previously frozen
-      // by [] deps on CoachLayoutClient mount fetch).
-      setProfile(prev => prev ? { ...prev, is_profile_live: true } : prev)
+      // PILOT-01: "Go live" now SUBMITS for manual review — the profile is
+      // not live until Lasith approves via the emailed link, so no share
+      // modal here. Reflect the pending state from the API response.
+      // (Cache clear + crikly:profile-updated kept from BUG-GO-LIVE-PATH /
+      // BUG-SIDEBAR-PULSE-STALE so other surfaces re-read fresh state.)
+      const updated = (await res.json().catch(() => null)) as CoachProfileResponse | null
+      setProfile(prev => prev ? {
+        ...prev,
+        is_profile_live: updated?.is_profile_live ?? prev.is_profile_live,
+        submitted_for_review_at: updated?.submitted_for_review_at ?? new Date().toISOString(),
+      } : prev)
       clearCoachProfileCache()
       window.dispatchEvent(new CustomEvent('crikly:profile-updated'))
       setShowLiveModal(true)
@@ -443,7 +450,21 @@ export function ProfileEdit() {
           <>
           {/* FIX-GO-LIVE-BANNER-DESIGN: brand-50 surface, brand-800 heading, brand-600 sub + button.
               Replaces flat white-on-white where Go Live button visually disappeared. */}
+          {/* PILOT-01: three banner states — pending review (submitted, awaiting
+              Lasith's approval), or the original not-live banner with its
+              Go live / Set up payments CTA. Live profiles show no banner. */}
           {!profile.is_profile_live && (
+            profile.submitted_for_review_at ? (
+              <div className="bg-brand-50 border border-brand-100 rounded-xl p-4 flex items-center gap-3 mb-4">
+                <AlertCircle size={18} className="text-brand-600 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[14px] font-medium text-brand-800">Your profile is under review</p>
+                  <p className="text-[13px] text-brand-600 mt-0.5">
+                    We&rsquo;ll be in touch soon — you&rsquo;ll get an email as soon as your profile goes live.
+                  </p>
+                </div>
+              </div>
+            ) : (
             <div className="bg-brand-50 border border-brand-100 rounded-xl p-4 flex items-center gap-3 mb-4">
               <AlertCircle size={18} className="text-brand-600 shrink-0" />
               <div className="flex-1 min-w-0">
@@ -461,7 +482,7 @@ export function ProfileEdit() {
                   disabled={goingLive}
                   className="h-9 px-4 rounded-full bg-brand-600 hover:bg-brand-700 text-white text-[13px] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
                 >
-                  {goingLive ? 'Going live…' : 'Go live'}
+                  {goingLive ? 'Submitting…' : 'Go live'}
                 </button>
               ) : (
                 <button
@@ -473,6 +494,7 @@ export function ProfileEdit() {
                 </button>
               )}
             </div>
+            )
           )}
           {goLiveError && (
             <p className="text-[12px] text-danger mb-4">{goLiveError}</p>
@@ -606,9 +628,11 @@ export function ProfileEdit() {
               <p className="text-[11px] font-medium text-brand-600 mt-1">
                 {profile.is_profile_live
                   ? 'Your profile is live — parents can find and book you'
-                  : profileCompleteness < 100
-                    ? 'Almost there — add your qualifications to build trust with parents'
-                    : 'Profile complete — go live to start receiving bookings'
+                  : profile.submitted_for_review_at
+                    ? 'Your profile is under review — we’ll be in touch soon'
+                    : profileCompleteness < 100
+                      ? 'Almost there — add your qualifications to build trust with parents'
+                      : 'Profile complete — go live to start receiving bookings'
                 }
               </p>
             </div>
@@ -705,8 +729,11 @@ export function ProfileEdit() {
             </button>
           </div>
 
-          {/* BUG-GO-LIVE-PATH: focused sharing moment after Go Live (NOT the onboarding celebration). */}
-          {showLiveModal && profile?.slug && (
+          {/* PILOT-01: was the "You're live! 🎉" share modal (BUG-GO-LIVE-PATH /
+              BUG-GO-LIVE-MODAL-SHARE) — repurposed as the submit-for-review
+              confirmation. No ShareLinkPanel: the public link 404s until
+              Lasith approves, so sharing here would hand out a dead URL. */}
+          {showLiveModal && (
             <div
               className="fixed inset-0 bg-neutral-900/40 z-[100] flex items-center justify-center p-4"
               onClick={() => setShowLiveModal(false)}
@@ -724,19 +751,15 @@ export function ProfileEdit() {
                   <X size={16} />
                 </button>
 
-                <h2 className="text-[20px] font-semibold text-gray-900 mb-2">You&apos;re live! 🎉</h2>
-                <p className="text-[14px] text-gray-600 mb-5">Parents can now find and book you on Crikly.</p>
-
-                {/* BUG-GO-LIVE-MODAL-SHARE: 5-channel share panel replaces the
-                    prior 2-button row (Copy + WhatsApp). ShareLinkPanel renders
-                    its own URL strip so the previous standalone strip (was
-                    monospace neutral-50) is removed to avoid duplication. */}
-                <ShareLinkPanel slug={profile.slug} />
+                <h2 className="text-[20px] font-semibold text-gray-900 mb-2">Your profile is under review</h2>
+                <p className="text-[14px] text-gray-600 mb-5">
+                  We&rsquo;ll be in touch soon — you&rsquo;ll get an email as soon as your profile goes live.
+                </p>
 
                 <button
                   type="button"
                   onClick={() => setShowLiveModal(false)}
-                  className="w-full h-10 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-[13px] font-medium transition-colors mt-5"
+                  className="w-full h-10 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-[13px] font-medium transition-colors"
                 >
                   Done
                 </button>

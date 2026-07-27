@@ -10,6 +10,9 @@ export function GetPaidStep() {
   const router = useRouter()
   const [coachName, setCoachName] = useState<string>('Your name')
   const [isGoingLive, setIsGoingLive] = useState(false)
+  // PILOT-01: profile submitted for manual review — swaps the step content
+  // for the "under review" confirmation instead of the live celebration.
+  const [submitted, setSubmitted] = useState(false)
   // Fix-STRIPE-01: Path A (Connect with Stripe) state — distinct from Path B (Skip).
   const [connecting, setConnecting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -57,9 +60,14 @@ export function GetPaidStep() {
         setIsGoingLive(false)
         return
       }
-      // AF-P-Wave-1: clear stale profile cache so dashboard reads see is_profile_live: true
+      // PILOT-01: "Go live" now submits for manual review — the profile is
+      // NOT live yet, so no ?celebrated=true (that modal congratulates a live
+      // profile). Show the under-review confirmation instead; the coach heads
+      // to the dashboard from there. Cache still cleared (AF-P-Wave-1) so
+      // dashboard reads pick up submitted_for_review_at.
       clearCoachProfileCache()
-      router.push('/coach/dashboard?celebrated=true')
+      setSubmitted(true)
+      setIsGoingLive(false)
     } catch (error) {
       console.error('Failed to go live:', error)
       setError('Could not go live. Please try again.')
@@ -116,6 +124,42 @@ export function GetPaidStep() {
       window.history.replaceState({}, '', '/coach/onboarding/get-paid')
     }
   }, [handleGoLive])
+
+  // PILOT-01: submitted-for-review confirmation replaces the whole step —
+  // Stripe is connected and the profile is with Lasith for approval.
+  if (submitted) {
+    return (
+      <div className="flex-1 overflow-y-auto flex w-full">
+        <div className="flex-1 flex flex-col items-center pt-10 pb-32 min-h-screen bg-white">
+          <div className="w-full max-w-[640px] px-6 page-content-enter">
+            <div className="bg-white border border-gray-100 shadow-sm rounded-[24px] p-8 mt-16 flex flex-col items-center text-center">
+              <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center mb-4">
+                <Check size={22} strokeWidth={3} className="text-green-600" />
+              </div>
+              <h1 className="text-[24px] font-bold text-gray-900 mb-2">Your profile is under review</h1>
+              <p className="text-[15px] text-gray-600 font-medium max-w-[400px] mb-8">
+                We&rsquo;ll be in touch soon — you&rsquo;ll get an email as soon as your profile goes live.
+              </p>
+              <button
+                onClick={() => router.push('/coach/dashboard')}
+                className="bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-bold text-[15px] px-8 py-3.5 transition-colors shadow-sm"
+              >
+                Go to dashboard
+              </button>
+            </div>
+          </div>
+        </div>
+        <OnboardingPreviewPanel
+          coachName={coachName}
+          sport={undefined}
+          location={undefined}
+          availabilityDays={undefined}
+          priceFromPence={undefined}
+          isDbs={false}
+        />
+      </div>
+    )
+  }
 
   return (
     <div className="flex-1 overflow-y-auto flex w-full">

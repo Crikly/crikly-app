@@ -2,7 +2,7 @@
 
 **Version:** 1.7
 **Last Updated:** July 2026
-**Changed:** Migrations 047–051 — P-01 Block 1 parent schema foundations. `child_sports` + `player_sports` junction tables with per-sport `skill_level` replace `child_profiles`/`player_profiles` `sport_ids uuid[]` and profile-level `skill_level` (both dropped — zero rows in every environment; REQ-P-015). Optional `gender` on child + player profiles (REQ-P-012/021). `platform_config.adult_age` (default 18) — supersedes `child_transition_age`, which is now DEPRECATED (REQ-P-017/019). DB-level player minimum-age constraint trigger `enforce_player_min_age()` (REQ-P-017). Reviews gain a 24-hour reviewer edit window (`updated_at` column, UPDATE RLS policy, `guard_review_update()` immutable-field trigger; REQ-P-067). GAP-P-06 (To-Do source) deferred to Block 11. Previous: Migration 045 — Block 0.5 C-PAY-02: `payouts.booking_id` now UNIQUE (`payouts_booking_id_key`; replaces the non-unique index from 006) — one payout row per booking makes the row UUID a stable Stripe transfer idempotency key, so a double transfer is impossible at the DB layer. Previous: Migrations 043 + 044 — Block 0.5. C-PAY-03: `payouts.status` gains 'held' + `held_reason` column (held-payout contract for C-PAY-02); `is_profile_live` gated on Stripe onboarding at the API layer. C-PAY-01: `platform_config.default_autocomplete_delay_hours` (default 2) + `auto_complete_due_bookings()` function — confirmed bookings auto-complete after session end and start the BR-03 payout clock.
+**Changed:** Migrations 047–051 — P-01 Block 1 parent schema foundations. `child_sports` + `player_sports` junction tables with per-sport `skill_level` replace `child_profiles`/`player_profiles` `sport_ids uuid[]` and profile-level `skill_level` (both dropped — zero rows in every environment; REQ-P-015). Optional `gender` on child + player profiles (REQ-P-012/021). `platform_config.adult_age` (default 18) — supersedes `child_transition_age`, which is now DEPRECATED (REQ-P-017/019). DB-level player minimum-age constraint trigger `enforce_player_min_age()` (REQ-P-017). Reviews gain a 24-hour reviewer edit window (`updated_at` column, UPDATE RLS policy, `guard_review_update()` immutable-field trigger; REQ-P-067). GAP-P-06 (To-Do source) deferred to Block 11. Previous: Migration 046 — PILOT-01: `coach_profiles.submitted_for_review_at` (timestamptz NULL) — manual coach approval for the pilot. NULL = draft; set + `is_profile_live=false` = pending Lasith's approval; set + `is_profile_live=true` = live. Backfilled to `updated_at` for already-live coaches; `valid_review_state` CHECK forbids live-without-timestamp; partial index `idx_coach_profiles_pending_review` for the approval queue. Liveness is now granted only by the signed admin approve route (`GET /api/admin/coaches/[id]/approve`). Previous: Migration 045 — Block 0.5 C-PAY-02: `payouts.booking_id` now UNIQUE (`payouts_booking_id_key`; replaces the non-unique index from 006) — one payout row per booking makes the row UUID a stable Stripe transfer idempotency key, so a double transfer is impossible at the DB layer. Previous: Migrations 043 + 044 — Block 0.5. C-PAY-03: `payouts.status` gains 'held' + `held_reason` column (held-payout contract for C-PAY-02); `is_profile_live` gated on Stripe onboarding at the API layer. C-PAY-01: `platform_config.default_autocomplete_delay_hours` (default 2) + `auto_complete_due_bookings()` function — confirmed bookings auto-complete after session end and start the BR-03 payout clock.
 **Maintainer:** Lasith Jayarathne
 **Single source of truth for all database tables.**
 
@@ -274,7 +274,7 @@ Sports an adult player plays, with per-sport skill level (REQ-P-021).
 Verified sports coaches offering sessions.
 
 **Purpose:** All coach-specific data for their public profile and business settings.
-**Migration:** 002_create_profiles.sql
+**Migration:** 002_create_profiles.sql (+ 027 is_paused, 046 submitted_for_review_at)
 
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
@@ -287,7 +287,8 @@ Verified sports coaches offering sessions.
 | dbs_status | text | NO | 'none' | 'none', 'pending', 'verified', 'expired' |
 | dbs_verified_at | timestamptz | YES | null | When DBS badge was approved |
 | dbs_expires_at | timestamptz | YES | null | Annual renewal date |
-| is_profile_live | boolean | NO | false | Visible in search results. C-PAY-03 Guard 1: the API (POST /api/coaches/profile) rejects setting this true unless stripe_onboarding_complete is true (with a live Stripe re-check to absorb webhook lag) |
+| is_profile_live | boolean | NO | false | Visible in search results. C-PAY-03 Guard 1: the API (POST /api/coaches/profile) rejects setting this true unless stripe_onboarding_complete is true (with a live Stripe re-check to absorb webhook lag). PILOT-01: clients can no longer set this true at all — `is_profile_live: true` submits for review instead; only the signed admin approve route grants liveness (same Stripe guard re-checked at approval) |
+| submitted_for_review_at | timestamptz | YES | null | PILOT-01 (Migration 046): NULL = draft; set + not live = pending manual approval; set + live = approved. Signed into the 7-day approve-link HMAC, so re-submission rotates the link. CHECK `valid_review_state`: live rows must have this set |
 | is_paused | boolean | NO | false | Coach-controlled pause — true = hidden from search; existing bookings continue (Migration 027) |
 | subscription_tier_id | uuid | YES | null | FK → subscription_tiers(id) |
 | cancellation_window_hours | integer | NO | 24 | Min hours before session to cancel |
@@ -312,6 +313,7 @@ Verified sports coaches offering sessions.
 **Indexes:**
 - user_profile_id_idx (unique)
 - is_profile_live_idx (partial — where is_profile_live = true)
+- idx_coach_profiles_pending_review (partial — where submitted_for_review_at is not null and is_profile_live = false; Migration 046)
 - dbs_status_idx
 - rating_avg_idx
 
