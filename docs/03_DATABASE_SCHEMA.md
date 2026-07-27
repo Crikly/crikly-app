@@ -1,8 +1,8 @@
 # Crikly — Database Schema
 
-**Version:** 1.6
+**Version:** 1.7
 **Last Updated:** July 2026
-**Changed:** Migration 045 — Block 0.5 C-PAY-02: `payouts.booking_id` now UNIQUE (`payouts_booking_id_key`; replaces the non-unique index from 006) — one payout row per booking makes the row UUID a stable Stripe transfer idempotency key, so a double transfer is impossible at the DB layer. Previous: Migrations 043 + 044 — Block 0.5. C-PAY-03: `payouts.status` gains 'held' + `held_reason` column (held-payout contract for C-PAY-02); `is_profile_live` gated on Stripe onboarding at the API layer. C-PAY-01: `platform_config.default_autocomplete_delay_hours` (default 2) + `auto_complete_due_bookings()` function — confirmed bookings auto-complete after session end and start the BR-03 payout clock.
+**Changed:** Migrations 047–051 — P-01 Block 1 parent schema foundations. `child_sports` + `player_sports` junction tables with per-sport `skill_level` replace `child_profiles`/`player_profiles` `sport_ids uuid[]` and profile-level `skill_level` (both dropped — zero rows in every environment; REQ-P-015). Optional `gender` on child + player profiles (REQ-P-012/021). `platform_config.adult_age` (default 18) — supersedes `child_transition_age`, which is now DEPRECATED (REQ-P-017/019). DB-level player minimum-age constraint trigger `enforce_player_min_age()` (REQ-P-017). Reviews gain a 24-hour reviewer edit window (`updated_at` column, UPDATE RLS policy, `guard_review_update()` immutable-field trigger; REQ-P-067). GAP-P-06 (To-Do source) deferred to Block 11. Previous: Migration 045 — Block 0.5 C-PAY-02: `payouts.booking_id` now UNIQUE (`payouts_booking_id_key`; replaces the non-unique index from 006) — one payout row per booking makes the row UUID a stable Stripe transfer idempotency key, so a double transfer is impossible at the DB layer. Previous: Migrations 043 + 044 — Block 0.5. C-PAY-03: `payouts.status` gains 'held' + `held_reason` column (held-payout contract for C-PAY-02); `is_profile_live` gated on Stripe onboarding at the API layer. C-PAY-01: `platform_config.default_autocomplete_delay_hours` (default 2) + `auto_complete_due_bookings()` function — confirmed bookings auto-complete after session end and start the BR-03 payout clock.
 **Maintainer:** Lasith Jayarathne
 **Single source of truth for all database tables.**
 
@@ -148,25 +148,27 @@ Exists only for users with the 'parent' role.
 Children attached to a parent account. Unlimited per parent.
 
 **Purpose:** Stores child details visible to confirmed coaches.
-**Migration:** 002_create_profiles.sql
+**Migration:** 002_create_profiles.sql; 048 (gender); 050 (sport_ids + skill_level dropped → child_sports)
 
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
 | id | uuid | NO | gen_random_uuid() | Primary key |
 | parent_profile_id | uuid | NO | — | FK → parent_profiles(id) |
 | full_name | text | NO | — | Child's full name |
-| date_of_birth | date | NO | — | Used for age gate and 16→player transition |
-| sport_ids | uuid[] | NO | — | Sports the child is interested in |
-| skill_level | text | NO | — | 'beginner', 'intermediate', 'advanced' |
+| date_of_birth | date | NO | — | Used for age gate and adult-age→player transition (`platform_config.adult_age`) |
+| gender | text | YES | null | 'male', 'female', 'other', 'prefer_not_to_say' (CHECK). Optional — avatar + confirmed-coach session context, never public (REQ-P-012). Migration 048 |
 | medical_notes | text | YES | null | Safety critical — visible to confirmed coaches |
 | notes_for_coach | text | YES | null | Context for coaching sessions |
 | transition_status | text | NO | 'child' | 'child', 'transition_pending', 'transitioned' |
 | transitioned_player_id | uuid | YES | null | FK → player_profiles(id) after transition |
-| transition_initiated_at | timestamptz | YES | null | When 16th birthday transition started |
+| transition_initiated_at | timestamptz | YES | null | When adult-age birthday transition started |
 | passport_privacy | text | NO | 'booking_only' | 'open', 'booking_only', 'private' |
 | deleted_at | timestamptz | YES | null | Soft delete |
 | created_at | timestamptz | NO | now() | |
 | updated_at | timestamptz | NO | now() | |
+
+> Migration 050: `sport_ids uuid[]` and `skill_level` DROPPED — sport membership and per-sport
+> skill now live in `child_sports` (§3.2b). Zero rows existed in any environment at drop time.
 
 **RLS Policies:**
 - ALL: Parent only (auth matches parent_profile_id.user_profile_id.auth_user_id)
@@ -178,29 +180,92 @@ Children attached to a parent account. Unlimited per parent.
 
 ---
 
+### 3.2b child_sports
+
+Sports a child plays, with per-sport skill level. Parent > Child > Sport (REQ-P-015).
+
+**Purpose:** Many-to-many child ↔ sport, carrying per-sport skill. Mirrors coach_sports.
+**Migration:** 050_child_sports_player_sports_junctions.sql
+
+| Column | Type | Nullable | Default | Notes |
+|---|---|---|---|---|
+| id | uuid | NO | gen_random_uuid() | Primary key |
+| child_profile_id | uuid | NO | — | FK → child_profiles(id) ON DELETE CASCADE |
+| sport_id | uuid | NO | — | FK → sports(id) ON DELETE RESTRICT |
+| skill_level | text | NO | — | 'beginner', 'intermediate', 'advanced' (CHECK) |
+| created_at | timestamptz | NO | now() | |
+| updated_at | timestamptz | NO | now() | |
+
+**Constraints:** UNIQUE(child_profile_id, sport_id)
+**No deleted_at:** managed membership rows, mirrors coach_sports — owner may hard-DELETE.
+
+**RLS Policies:**
+- ALL: the child's parent (ownership chain child_profiles → parent_profiles → user_profiles)
+- SELECT (coach): only coaches holding a confirmed/completed, non-deleted booking with the child
+  (deliberately tighter than the migration-002 child_profiles coach policy)
+
+**Indexes:**
+- sport_id_idx (FK support; profile-leading lookups covered by the UNIQUE index)
+
+---
+
 ### 3.3 player_profiles
 
-Adult players (16+) who book coaching for themselves.
+Adult players (`platform_config.adult_age`, default 18+) who book coaching for themselves.
 
 **Purpose:** Player-specific data including their own Training Passport.
-**Migration:** 002_create_profiles.sql
+**Migration:** 002_create_profiles.sql; 048 (gender); 049 (min-age trigger); 050 (sport_ids + skill_level dropped → player_sports)
 
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
 | id | uuid | NO | gen_random_uuid() | Primary key |
 | user_profile_id | uuid | NO | — | FK → user_profiles(id) |
-| date_of_birth | date | NO | — | Must be 16+ to register as player |
-| sport_ids | uuid[] | NO | — | Sports the player is interested in |
-| skill_level | text | NO | — | 'beginner', 'intermediate', 'advanced' |
+| date_of_birth | date | NO | — | Must be `adult_age`+ (default 18) — enforced by `enforce_player_min_age()` constraint trigger (migration 049, REQ-P-017). Was 16+ pre-Block-1 |
+| gender | text | YES | null | 'male', 'female', 'other', 'prefer_not_to_say' (CHECK). Optional (REQ-P-021). Migration 048 |
 | medical_notes | text | YES | null | Shared with confirmed coaches |
 | passport_privacy | text | NO | 'booking_only' | 'open', 'booking_only', 'private' |
 | deleted_at | timestamptz | YES | null | Soft delete |
 | created_at | timestamptz | NO | now() | |
 | updated_at | timestamptz | NO | now() | |
 
+> Migration 050: `sport_ids uuid[]` and `skill_level` DROPPED — now in `player_sports` (§3.3b).
+> Migration 049: `enforce_player_min_age()` — AFTER INSERT/UPDATE OF date_of_birth constraint
+> trigger reading `platform_config.adult_age` (SECURITY DEFINER, empty search_path, fail-safe
+> default 18 if the config row is missing). Binds ALL write paths including service role.
+> Known accepted mismatch: `src/app/api/auth/roles/route.ts` still gates at hardcoded 16 —
+> harmless (no code inserts player_profiles yet); Block 3 follow-up to read `adult_age`.
+
 **RLS Policies:**
 - SELECT/UPDATE: Own record only
 - SELECT (coach): Only coaches with a confirmed booking for this player
+
+---
+
+### 3.3b player_sports
+
+Sports an adult player plays, with per-sport skill level (REQ-P-021).
+
+**Purpose:** Many-to-many player ↔ sport, carrying per-sport skill. Mirrors coach_sports.
+**Migration:** 050_child_sports_player_sports_junctions.sql
+
+| Column | Type | Nullable | Default | Notes |
+|---|---|---|---|---|
+| id | uuid | NO | gen_random_uuid() | Primary key |
+| player_profile_id | uuid | NO | — | FK → player_profiles(id) ON DELETE CASCADE |
+| sport_id | uuid | NO | — | FK → sports(id) ON DELETE RESTRICT |
+| skill_level | text | NO | — | 'beginner', 'intermediate', 'advanced' (CHECK) |
+| created_at | timestamptz | NO | now() | |
+| updated_at | timestamptz | NO | now() | |
+
+**Constraints:** UNIQUE(player_profile_id, sport_id)
+**No deleted_at:** managed membership rows, mirrors coach_sports — owner may hard-DELETE.
+
+**RLS Policies:**
+- ALL: the player themself (ownership chain player_profiles → user_profiles)
+- SELECT (coach): only coaches holding a confirmed/completed, non-deleted booking with the player
+
+**Indexes:**
+- sport_id_idx (FK support; profile-leading lookups covered by the UNIQUE index)
 
 ---
 
@@ -511,8 +576,9 @@ Global platform configuration values. Single row table.
 | dbs_verification_fee_pence | integer | NO | 2999 | £29.99 in pence |
 | dbs_fee_currency | text | NO | 'GBP' | |
 | max_featured_coaches_per_page | integer | NO | 3 | Featured slots in search results |
-| child_transition_age | integer | NO | 16 | Age at which child becomes player |
+| child_transition_age | integer | NO | 16 | ⚠️ DEPRECATED — superseded by `adult_age` (migration 047, REQ-P-019). Kept for type stability; removal is a future cleanup migration |
 | child_transition_window_days | integer | NO | 30 | Days to complete transition |
+| adult_age | integer | NO | 18 | Admin-configurable adult age (migration 047, REQ-P-017/019). Drives player eligibility (`enforce_player_min_age()`), the child→player conversion trigger, and the child/adult boundary. CHECK 16–25 (typo guard) |
 | updated_at | timestamptz | NO | now() | |
 
 **RLS Policies:**
@@ -1188,7 +1254,7 @@ Premium coach feature. Structured reports attached to passport entries.
 Reviews left by parents/players after a session.
 
 **Purpose:** Trust building — visible on coach profile and search results.
-**Migration:** 007_passport.sql (original), 029_reviews_coach_replies.sql (DB-REVIEWS-SCHEMA — column additions, FK loosening, coach SELECT policy)
+**Migration:** 007_passport.sql (original), 029_reviews_coach_replies.sql (DB-REVIEWS-SCHEMA — column additions, FK loosening, coach SELECT policy), 051_reviews_24h_edit_window.sql (REQ-P-067 — updated_at, 24h reviewer edit window, guard trigger)
 
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
@@ -1202,6 +1268,7 @@ Reviews left by parents/players after a session.
 | sport_name | text | NO | 'Unknown' | Snapshot of sport at review time (text not FK). Added in migration 029. |
 | is_visible | boolean | NO | true | Admin can hide inappropriate reviews |
 | created_at | timestamptz | NO | now() | |
+| updated_at | timestamptz | NO | now() | Added migration 051 — auto-updated; edits are now possible within the 24h window |
 
 **Constraints:**
 - UNIQUE(booking_id) — one review per booking (NULL booking_ids are treated as distinct by Postgres, so seeded rows are unconstrained)
@@ -1215,7 +1282,14 @@ Reviews left by parents/players after a session.
 - SELECT (public): all visible reviews — `is_visible = true`
 - SELECT (coach): coach can see own reviews including hidden ones (migration 029)
 - INSERT: authenticated parent/player who made the booking
-- UPDATE: not permitted (reviews are immutable)
+- UPDATE: reviewer only, within 24 hours of `created_at` (migration 051, REQ-P-067) — then
+  locked again (no policy match). NULL-reviewer (seeded) rows never match and stay locked.
+
+**Guard trigger `guard_review_update()` (migration 051):** RLS cannot restrict which columns
+change, so a BEFORE UPDATE trigger blocks authenticated users from changing `booking_id`,
+`coach_profile_id`, `reviewer_user_id`, `created_at` (window reset / re-pointing) or
+`is_visible` (self-unhiding a moderated review). Gated on `auth.uid() IS NOT NULL`: service-role
+writes — FK ON DELETE SET NULL cascades and admin moderation — pass untouched.
 
 **Lifecycle notes (migration 029):**
 - ON DELETE CASCADE on `coach_profile_id` means coach profile deletion vaporises all their reviews + replies. Acceptable for Phase 1; revisit with soft-delete (`BUG-REVIEWS-FK-LIFECYCLE`).
