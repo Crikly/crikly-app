@@ -1,6 +1,7 @@
 'use client'
 import React, { useState, useEffect } from 'react'
-import { Inbox } from 'lucide-react'
+import { Inbox, X } from 'lucide-react'
+import { DatePicker } from '@/components/ui'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -116,7 +117,7 @@ function EarningsSkeleton() {
     <div className="space-y-7 animate-pulse">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {[1, 2, 3].map((i) => (
-          <div key={i} className="bg-white rounded-lg shadow-md p-5 space-y-2">
+          <div key={i} className="bg-white rounded-[12px] shadow-sm p-5 space-y-2">
             <div className="h-3 w-20 bg-gray-100 rounded" />
             <div className="h-8 w-28 bg-gray-200 rounded" />
             <div className="h-3 w-24 bg-gray-100 rounded" />
@@ -131,7 +132,7 @@ function EarningsSkeleton() {
       <div className="space-y-3">
         <div className="h-5 w-32 bg-gray-200 rounded" />
         {[1, 2, 3].map((i) => (
-          <div key={i} className="bg-white rounded-lg shadow-sm p-5 flex items-center justify-between">
+          <div key={i} className="bg-white rounded-[12px] shadow-sm p-5 flex items-center justify-between">
             <div className="space-y-2">
               <div className="h-4 w-28 bg-gray-200 rounded" />
               <div className="h-3 w-36 bg-gray-100 rounded" />
@@ -190,21 +191,21 @@ export function Earnings() {
           <>
             {/* Summary cards */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="bg-white rounded-lg shadow-md p-5 flex flex-col gap-2">
+              <div className="bg-white rounded-[12px] shadow-sm p-5 flex flex-col gap-2">
                 <span className="text-xs font-medium tracking-label uppercase text-neutral-600">This month</span>
                 <span className="text-3xl font-semibold tracking-heading text-neutral-900" data-testid="summary-this-month">
                   {formatPence(summary?.this_month_pence ?? 0)}
                 </span>
                 <span className="text-sm text-neutral-400">Paid out in {monthName}.</span>
               </div>
-              <div className="bg-white rounded-lg shadow-md p-5 flex flex-col gap-2">
+              <div className="bg-white rounded-[12px] shadow-sm p-5 flex flex-col gap-2">
                 <span className="text-xs font-medium tracking-label uppercase text-neutral-600">In clearance</span>
                 <span className="text-3xl font-semibold tracking-heading text-neutral-900" data-testid="summary-in-clearance">
                   {formatPence(summary?.in_clearance_pence ?? 0)}
                 </span>
                 <span className="text-sm text-neutral-400">Inside the 48-hour window.</span>
               </div>
-              <div className="bg-white rounded-lg shadow-md p-5 flex flex-col gap-2">
+              <div className="bg-white rounded-[12px] shadow-sm p-5 flex flex-col gap-2">
                 <span className="text-xs font-medium tracking-label uppercase text-neutral-600">All time</span>
                 <span className="text-3xl font-semibold tracking-heading text-neutral-900" data-testid="summary-all-time">
                   {formatPence(summary?.total_earned_pence ?? 0)}
@@ -233,26 +234,35 @@ export function Earnings() {
                 ))}
               </div>
               <div className="flex items-center gap-2">
-                <label className="flex items-center gap-2 text-sm text-neutral-600">
+                {/* UI-DATE-PICKER: BST-safe Crikly DatePicker, not the
+                    platform-native input (same component as Schedule.tsx) */}
+                <div className="flex items-center gap-2 text-sm text-neutral-600">
                   From
-                  <input
-                    type="date"
-                    value={fromDate}
-                    onChange={(e) => setFromDate(e.target.value)}
-                    className="h-9 px-2.5 border border-neutral-100 rounded-md bg-white text-sm text-neutral-900"
-                    data-testid="filter-from-date"
-                  />
-                </label>
-                <label className="flex items-center gap-2 text-sm text-neutral-600">
+                  <div className="w-48" data-testid="filter-from-date">
+                    <DatePicker value={fromDate} onChange={setFromDate} placeholder="Any date" />
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-neutral-600">
                   To
-                  <input
-                    type="date"
-                    value={toDate}
-                    onChange={(e) => setToDate(e.target.value)}
-                    className="h-9 px-2.5 border border-neutral-100 rounded-md bg-white text-sm text-neutral-900"
-                    data-testid="filter-to-date"
-                  />
-                </label>
+                  <div className="w-48" data-testid="filter-to-date">
+                    <DatePicker value={toDate} onChange={setToDate} placeholder="Any date" />
+                  </div>
+                </div>
+                {/* DatePicker has no built-in clear affordance (unlike the
+                    native input it replaced) — without this a picked range
+                    could only be cleared by reloading the page. */}
+                {(fromDate || toDate) && (
+                  <button
+                    type="button"
+                    aria-label="Clear date range"
+                    data-testid="filter-clear-dates"
+                    onClick={() => { setFromDate(''); setToDate('') }}
+                    className="flex items-center gap-1 text-sm font-medium text-neutral-400 hover:text-neutral-600 transition-colors"
+                  >
+                    <X size={16} />
+                    Clear
+                  </button>
+                )}
               </div>
             </div>
 
@@ -266,7 +276,7 @@ export function Earnings() {
               </div>
 
               {visible.length === 0 ? (
-                <div className="bg-white rounded-lg shadow-sm px-6 py-12 flex flex-col items-center gap-3 text-center">
+                <div className="bg-white rounded-[12px] shadow-sm px-6 py-12 flex flex-col items-center gap-3 text-center">
                   <Inbox size={48} className="text-neutral-400" strokeWidth={1.5} />
                   <span className="text-base font-medium text-neutral-900">{emptyTitle}</span>
                   <span className="text-sm text-neutral-600">Try a different filter or widen the date range.</span>
@@ -280,7 +290,7 @@ export function Earnings() {
                     <div
                       key={tx.id}
                       data-testid="transaction-row"
-                      className="bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow px-5 py-4 flex items-center justify-between gap-6"
+                      className="bg-white rounded-[12px] shadow-sm px-5 py-4 flex items-center justify-between gap-6"
                     >
                       <div className="flex flex-col gap-0.5 min-w-0">
                         <span className="text-[16px] font-medium text-neutral-900">

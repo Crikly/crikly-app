@@ -8,6 +8,24 @@ import React from 'react'
 import { render, screen, fireEvent, within } from '@testing-library/react'
 import '@testing-library/jest-dom'
 
+// UI-DATE-PICKER: the calendar popover is exercised in its own component's
+// tests — here it is stubbed to a plain input so the date-range FILTERING
+// logic stays deterministic (same precedent as EditProgramme-conflict.test).
+jest.mock('@/components/ui', () => ({
+  DatePicker: ({ value, onChange, placeholder }: {
+    value: string
+    onChange: (v: string) => void
+    placeholder?: string
+  }) => (
+    <input
+      data-testid="datepicker-input"
+      value={value}
+      placeholder={placeholder}
+      onChange={(e) => onChange(e.target.value)}
+    />
+  ),
+}))
+
 import { Earnings } from '@/components/coach/Earnings'
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -211,14 +229,21 @@ describe('Earnings — client-side filtering', () => {
     render(<Earnings />)
     await screen.findAllByTestId('transaction-row')
 
-    fireEvent.change(screen.getByTestId('filter-from-date'), { target: { value: '2026-07-20' } })
-    fireEvent.change(screen.getByTestId('filter-to-date'), { target: { value: '2026-07-23' } })
+    const fromPicker = within(screen.getByTestId('filter-from-date')).getByTestId('datepicker-input')
+    const toPicker = within(screen.getByTestId('filter-to-date')).getByTestId('datepicker-input')
+    fireEvent.change(fromPicker, { target: { value: '2026-07-20' } })
+    fireEvent.change(toPicker, { target: { value: '2026-07-23' } })
 
     const rows = screen.getAllByTestId('transaction-row')
     expect(rows).toHaveLength(2) // 23 Jul + 21 Jul
     expect(screen.getByText('CRK-1005')).toBeInTheDocument()
     expect(screen.getByText('CRK-1001')).toBeInTheDocument()
     expect(screen.queryByText('CRK-2001')).not.toBeInTheDocument()
+
+    // Clear affordance resets the range and restores every row
+    fireEvent.click(screen.getByTestId('filter-clear-dates'))
+    expect(screen.getAllByTestId('transaction-row')).toHaveLength(5)
+    expect(screen.queryByTestId('filter-clear-dates')).not.toBeInTheDocument()
   })
 
   it('shows the filter-aware empty state when nothing matches', async () => {
