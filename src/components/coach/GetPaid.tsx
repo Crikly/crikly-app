@@ -1,7 +1,18 @@
 'use client'
 
 import React, { useState, useEffect, useCallback, useRef } from 'react'
-import { Building2, FileText, Info, ExternalLink, ChevronRight, AlertCircle, CheckCircle2, Check } from 'lucide-react'
+import {
+  AlertCircle,
+  AlertTriangle,
+  ArrowRight,
+  CheckCircle2,
+  ChevronRight,
+  Clock,
+  FileText,
+  HelpCircle,
+  Info,
+  Landmark,
+} from 'lucide-react'
 // PERF-03 + PERF-04: 60s TTL cache + in-flight guard for Stripe status.
 // Type moved alongside the cache helpers so the cache and its serialised
 // shape live in one place.
@@ -12,36 +23,9 @@ import {
   type StripeConnectStatus,
 } from '@/lib/stripe-status-cache'
 
-// BUG-45: real earnings/payout data from GET /api/coaches/earnings (the same
-// endpoint the Earnings page uses). Until Block 1 wires payout transfers the
-// payouts table is empty, so this renders the truthful zero/empty states.
-interface EarningsSummary {
-  total_earned_pence: number
-  pending_pence: number
-}
-
-interface PayoutItem {
-  id: string
-  amount_pence: number
-  status: string
-  scheduled_at: string
-}
-
-interface EarningsResponse {
-  summary: EarningsSummary
-  payouts: PayoutItem[]
-}
-
-function formatPence(pence: number): string {
-  return `£${(pence / 100).toFixed(2)}`
-}
-
-/** ISO timestamp → 'Thu 10 Apr'. Falls back to em dash on parse failure. */
-function formatPayoutDate(iso: string): string {
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return '—'
-  return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
-}
+// C-PAY-06: this page is payment setup only — all earnings figures and payout
+// rows moved to the Earnings page's unified transaction list. The earnings
+// fetch, hero card and Upcoming payouts section are gone by design.
 
 export function GetPaid() {
   const [loading, setLoading] = useState(true)
@@ -50,9 +34,6 @@ export function GetPaid() {
   const [stripeStatus, setStripeStatus] = useState<StripeConnectStatus>({ connected: false })
   // CG-03: Banner shown after returning from Stripe onboarding
   const [returnBanner, setReturnBanner] = useState<'success' | 'refresh' | null>(null)
-  // BUG-45: null = earnings fetch failed or not loaded — renders '—' rather
-  // than a misleading £0.00. A loaded-but-empty response renders real zeros.
-  const [earnings, setEarnings] = useState<EarningsResponse | null>(null)
 
   // PERF-04: in-flight guard prevents React strict-mode double-invoke
   // (and any future double-call) from firing two parallel Stripe API
@@ -116,15 +97,6 @@ export function GetPaid() {
     }
 
     fetchStripeStatus()
-
-    // BUG-45: fetch real earnings in parallel — failure leaves earnings null
-    // and the page falls back to the empty states (same pattern as Earnings.tsx).
-    fetch('/api/coaches/earnings')
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-      .then((data: EarningsResponse) => setEarnings(data))
-      .catch((err) => {
-        console.error('[GetPaid] Failed to fetch earnings:', err)
-      })
   }, [fetchStripeStatus])
 
   // CG-03: Start or resume Stripe Connect onboarding
@@ -149,23 +121,15 @@ export function GetPaid() {
     stripeStatus.payouts_enabled
 
   const partiallyConnected = stripeStatus.connected && !fullyConnected
-
-  // BUG-45: real payout figures. pending = money earned but not yet released;
-  // upcoming = the individual payout rows still due to move. The endpoint
-  // returns payouts newest-first — re-sort soonest-first so upcomingPayouts[0]
-  // is genuinely the NEXT payout.
-  const pendingPence = earnings?.summary.pending_pence ?? 0
-  const upcomingPayouts = (earnings?.payouts ?? [])
-    .filter((p) => p.status === 'pending' || p.status === 'processing')
-    .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())
   const hasBankDetails = Boolean(stripeStatus.bank_last4)
 
   return (
     <div className="min-h-screen flex justify-center font-sans p-6 lg:p-10">
-      <div className="w-full max-w-3xl flex flex-col gap-8 pb-20">
+      <div className="w-full max-w-3xl flex flex-col gap-6 pb-20">
 
-        <div>
-          <h1 className="text-[28px] md:text-[32px] font-bold text-gray-900 tracking-tight">Get Paid</h1>
+        <div className="flex flex-col gap-1.5">
+          <h1 className="text-[28px] md:text-[32px] font-bold text-gray-900 tracking-tight">Get paid</h1>
+          <p className="text-base text-neutral-600 m-0">Where your money goes and when it lands.</p>
         </div>
 
         {/* CG-03: Return banners from Stripe onboarding */}
@@ -187,7 +151,7 @@ export function GetPaid() {
         {/* Loading state */}
         {loading ? (
           <div className="py-16 flex flex-col items-center justify-center">
-            <div className="w-8 h-8 border-3 border-gray-200 border-t-[#0077CC] rounded-full animate-spin mb-3" />
+            <div className="w-8 h-8 border-3 border-gray-200 border-t-brand-600 rounded-full animate-spin mb-3" />
             <p className="text-[14px] text-gray-500">Loading payment information...</p>
           </div>
         ) : error ? (
@@ -200,318 +164,170 @@ export function GetPaid() {
             <p className="text-[14px] text-gray-500 mb-6">{error}</p>
             <button
               onClick={() => fetchStripeStatus()}
-              className="bg-[#0077CC] hover:bg-[#0066AA] text-white px-6 py-3 rounded-xl text-[15px] font-bold transition-colors"
+              className="bg-brand-600 hover:bg-brand-700 text-white px-6 py-3 rounded-xl text-[15px] font-bold transition-colors"
             >
               Try Again
             </button>
           </div>
-        ) : !stripeStatus.connected ? (
-          // CG-03: Not connected state — real Connect button
-          <div className="bg-white border border-[#E2E8F0] rounded-[16px] p-8 shadow-sm flex flex-col items-center text-center gap-6">
-            <div className="w-16 h-16 rounded-full bg-[#F0F7FF] flex items-center justify-center">
-              <Building2 size={32} className="text-[#0077CC]" />
-            </div>
-            <div>
-              <h2 className="text-[20px] font-bold text-gray-900 mb-2">Connect your bank account</h2>
-              <p className="text-[14px] text-gray-500 max-w-md">
-                Set up Stripe to receive payments from parents. It takes 2 minutes and payouts are automatic.
-              </p>
-            </div>
-            <button
-              onClick={handleConnectStripe}
-              disabled={connecting}
-              className="bg-[#0077CC] hover:bg-[#0066AA] disabled:opacity-60 disabled:cursor-not-allowed text-white px-8 py-3.5 rounded-xl text-[15px] font-bold transition-colors flex items-center gap-2"
-            >
-              {connecting ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                  Connecting…
-                </>
-              ) : 'Connect with Stripe'}
-            </button>
-            <div className="bg-[#F0F7FF] rounded-lg px-4 py-3 max-w-md">
-              <p className="text-[12px] text-[#0C447C] leading-relaxed">
-                Stripe is trusted by millions of businesses worldwide. Your bank details are encrypted and never stored on Crikly.
-              </p>
-            </div>
-          </div>
-        ) : partiallyConnected ? (
-          // CG-03: Connected but setup incomplete — Finish setup button
-          <div className="bg-white border border-amber-200 rounded-[16px] p-8 shadow-sm flex flex-col items-center text-center gap-6">
-            <div className="w-16 h-16 rounded-full bg-amber-50 flex items-center justify-center">
-              <AlertCircle size={32} className="text-amber-500" />
-            </div>
-            <div>
-              <h2 className="text-[20px] font-bold text-gray-900 mb-2">Almost there — finish your setup</h2>
-              <p className="text-[14px] text-gray-500 max-w-md">
-                Your Stripe account is connected but needs a few more details before you can receive payouts.
-              </p>
-            </div>
-            <button
-              onClick={handleConnectStripe}
-              disabled={connecting}
-              className="bg-amber-500 hover:bg-amber-600 disabled:opacity-60 disabled:cursor-not-allowed text-white px-8 py-3.5 rounded-xl text-[15px] font-bold transition-colors flex items-center gap-2"
-            >
-              {connecting ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                  Loading…
-                </>
-              ) : 'Finish setup'}
-            </button>
-          </div>
         ) : (
-          // CD-11: Connected state (existing UI)
           <>
-
-        {/* CF-D09 CHANGE 1: Stripe hero card with next payout prominent */}
-        <div className="bg-white border border-[#E2E8F0] rounded-[16px] p-6 shadow-sm flex flex-col gap-6">
-          {/* Top row: Stripe Connected status */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-md bg-[#635BFF] flex items-center justify-center shrink-0 shadow-sm">
-                <svg viewBox="0 0 40 40" className="w-10 h-10" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M19.98 40C31.0257 40 40 31.0457 40 20C40 8.9543 31.0257 0 19.98 0C8.9343 0 0 8.9543 0 20C0 31.0457 8.9343 40 19.98 40Z" fill="#635BFF"/>
-                  <path fillRule="evenodd" clipRule="evenodd" d="M19.7891 16.5183C18.2325 16.5183 17.2023 17.2141 17.2023 18.2715C17.2023 19.1764 18.0649 19.6437 19.5539 20.0163L20.8091 20.3168C23.2372 20.8988 24.5901 22.0298 24.5901 24.1687C24.5901 27.2415 22.1769 28.8471 18.4239 28.8471C15.4227 28.8471 13.0644 27.6749 11.5173 26.069L13.7845 23.3644C15.1118 24.7865 16.7171 25.5456 18.5367 25.5456C20.2524 25.5456 21.3653 24.8198 21.3653 23.6335C21.3653 22.6186 20.4776 22.1105 18.6657 21.6669L17.5815 21.3917C14.881 20.7303 13.9189 19.5348 13.9189 17.4385C13.9189 14.5368 16.3262 13.0901 19.6083 13.0901C22.1643 13.0901 24.1205 13.9669 25.6888 15.2639L23.5184 18.069C22.2536 17.0673 20.9324 16.5183 19.7891 16.5183Z" fill="white"/>
-                </svg>
-              </div>
-              <div>
-                {/* CF-D09 CHANGE 1: Green dot + Stripe Connected */}
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-[#22C55E]" />
-                  <span className="text-[13px] font-medium text-gray-900">Stripe Connected</span>
+            {/* Stripe connection status card */}
+            {fullyConnected ? (
+              <div className="bg-white rounded-lg shadow-sm p-6 flex items-center gap-4" data-testid="stripe-status-connected">
+                <div className="w-11 h-11 shrink-0 rounded-full bg-green-100 flex items-center justify-center">
+                  <CheckCircle2 size={22} className="text-success" />
                 </div>
-                {/* BUG-45: real payout destination from Stripe external_accounts */}
-                <div className="text-[11px] text-gray-400 mt-0.5" data-testid="payout-destination">
-                  {hasBankDetails
-                    ? `Payouts to ****${stripeStatus.bank_last4}${stripeStatus.bank_name ? ` · ${stripeStatus.bank_name}` : ''}`
-                    : 'Payouts via Stripe'}
+                <div className="flex flex-col gap-1 flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-success inline-block" />
+                    <span className="text-lg font-medium text-neutral-900">Stripe connected</span>
+                  </div>
+                  <span className="text-sm text-neutral-600" data-testid="payout-destination">
+                    {hasBankDetails
+                      ? `Payouts to ****${stripeStatus.bank_last4}${stripeStatus.bank_name ? ` · ${stripeStatus.bank_name}` : ''}`
+                      : 'Payouts via Stripe'}
+                  </span>
                 </div>
+                <span className="text-xs font-medium tracking-label uppercase text-success bg-green-100 px-2.5 py-1.5 rounded-sm">
+                  Active
+                </span>
               </div>
-            </div>
-          </div>
-
-          {/* CF-D09 CHANGE 1: Main section with next payout prominent */}
-          <div className="border-t-[0.5px] border-gray-100 pt-3.5">
-            <div className="flex items-start gap-8 md:gap-12">
-              {/* Left: Next payout (primary) — BUG-45: real pending payout sum */}
-              <div className="flex-1">
-                <div className="text-[11px] text-gray-400 uppercase tracking-wider mb-1.5">Next payout</div>
-                {pendingPence > 0 ? (
-                  <>
-                    <div className="text-[28px] font-medium text-[#0077CC] mb-1" data-testid="next-payout-amount">
-                      {formatPence(pendingPence)}
-                    </div>
-                    <div className="text-[12px] text-gray-500">
-                      {upcomingPayouts[0] ? `Releasing ${formatPayoutDate(upcomingPayouts[0].scheduled_at)}` : 'Releasing soon'}
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="text-[20px] font-medium text-gray-400 mb-1" data-testid="next-payout-empty">
-                      No pending payout
-                    </div>
-                    <div className="text-[12px] text-gray-500">Complete sessions to earn</div>
-                  </>
-                )}
-              </div>
-
-              {/* Right: Total earned (secondary) — BUG-45: real all-time total.
-                  '—' when the earnings fetch failed (never a fake £0.00). */}
-              <div className="flex-1">
-                <div className="text-[11px] text-gray-400 mb-1.5">Total earned</div>
-                <div className="text-[20px] font-medium text-gray-900" data-testid="total-earned">
-                  {earnings ? formatPence(earnings.summary.total_earned_pence) : '—'}
+            ) : (
+              <div className="bg-white rounded-lg shadow-sm p-6 flex items-center gap-4" data-testid="stripe-status-disconnected">
+                <div className="w-11 h-11 shrink-0 rounded-full bg-amber-100 flex items-center justify-center">
+                  <AlertTriangle size={22} className="text-warning" />
                 </div>
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        {/* CF-D09 CHANGE 2: Payout timeline card */}
-        <div className="bg-white rounded-xl shadow-sm p-4">
-          <div className="mb-3">
-            <h3 className="text-[13px] font-medium text-gray-900">How payouts work</h3>
-            <p className="text-[11px] text-gray-400 mt-0.5">Money moves automatically — here&apos;s the journey</p>
-          </div>
-          
-          {/* 3-step timeline */}
-          <div className="flex items-center w-full mb-3">
-            {/* Step 1: Done */}
-            <div className="flex flex-col items-center">
-              <div className="w-[26px] h-[26px] rounded-full bg-[#DCFCE7] text-[#166534] flex items-center justify-center font-medium">
-                <Check size={14} />
-              </div>
-              <div className="text-[9px] text-gray-500 text-center mt-1.5 leading-tight" style={{ maxWidth: '70px' }}>
-                Session completed
-              </div>
-            </div>
-            
-            {/* Connecting line 1 */}
-            <div className="flex-1 h-[1.5px] bg-[#86EFAC] mx-2" />
-            
-            {/* Step 2: Active */}
-            <div className="flex flex-col items-center">
-              <div className="w-[26px] h-[26px] rounded-full bg-[#0077CC] text-white flex items-center justify-center text-[14px] font-medium">
-                ⟳
-              </div>
-              <div className="text-[9px] text-[#0077CC] font-medium text-center mt-1.5 leading-tight" style={{ maxWidth: '70px' }}>
-                48hr processing
-              </div>
-            </div>
-            
-            {/* Connecting line 2 */}
-            <div className="flex-1 h-[1.5px] bg-[#E2E8F0] mx-2" />
-            
-            {/* Step 3: Future */}
-            <div className="flex flex-col items-center">
-              <div className="w-[26px] h-[26px] rounded-full bg-[#F1F5F9] text-[#94A3B8] flex items-center justify-center text-[14px] font-medium">
-                £
-              </div>
-              <div className="text-[9px] text-gray-400 text-center mt-1.5 leading-tight" style={{ maxWidth: '70px' }}>
-                Released to bank
-              </div>
-            </div>
-          </div>
-          
-          {/* Reassurance note */}
-          <div className="bg-[#F0F7FF] rounded-lg px-3 py-2.5">
-            <p className="text-[11px] text-[#0C447C] leading-relaxed">
-              The 48-hour delay protects both coaches and parents — it gives time to resolve any issues before money moves.
-            </p>
-          </div>
-        </div>
-
-        {/* CF-D09 CHANGE 3: Upcoming payouts — BUG-45: real payout rows or empty state */}
-        <div className="flex flex-col gap-4">
-          <h2 className="text-[18px] font-bold text-gray-900">Upcoming payouts</h2>
-          {upcomingPayouts.length === 0 ? (
-            <div
-              className="bg-white border border-[#E2E8F0] rounded-[16px] shadow-sm px-4 py-8 text-center"
-              data-testid="upcoming-payouts-empty"
-            >
-              <div className="text-[14px] font-medium text-gray-500">No upcoming payouts</div>
-              <div className="text-[12px] text-gray-400 mt-1">Payouts appear here after you complete sessions</div>
-            </div>
-          ) : (
-            <div className="bg-white border border-[#E2E8F0] rounded-[16px] shadow-sm flex flex-col" data-testid="upcoming-payouts-list">
-              {upcomingPayouts.map((payout, index) => (
-                <div
-                  key={payout.id}
-                  className={`px-4 py-3 flex items-center justify-between hover:bg-gray-50 transition-all duration-100 ${
-                    index < upcomingPayouts.length - 1 ? 'border-b-[0.5px] border-gray-100' : ''
-                  }`}
+                <div className="flex flex-col gap-1 flex-1 min-w-0">
+                  <span className="text-lg font-medium text-neutral-900">
+                    {partiallyConnected ? 'Finish your Stripe setup' : 'Stripe not connected'}
+                  </span>
+                  <span className="text-sm text-neutral-600">
+                    {partiallyConnected
+                      ? 'Your Stripe account needs a few more details before payouts can flow.'
+                      : 'Connect Stripe to receive payouts. Sessions stay on hold until you do.'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleConnectStripe}
+                  disabled={connecting}
+                  className="h-btn-desktop px-5 rounded-md bg-brand-600 hover:bg-brand-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-base font-medium transition-colors flex items-center gap-2 shrink-0"
                 >
-                  <div>
-                    <div className="text-[13px] font-medium text-gray-900">{formatPayoutDate(payout.scheduled_at)}</div>
-                  </div>
-                  <div className="flex flex-col items-end gap-1">
-                    <div className="text-[14px] font-medium text-gray-900">{formatPence(payout.amount_pence)}</div>
-                    {payout.status === 'processing' ? (
-                      <div className="px-2 py-0.5 bg-[#DCFCE7] text-[#166534] text-[10px] font-medium rounded-full">
-                        Processing
-                      </div>
-                    ) : (
-                      <div className="px-2 py-0.5 bg-[#FEF3C7] text-[#92400E] text-[10px] font-medium rounded-full">
-                        Pending
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+                  {connecting ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                      Connecting…
+                    </>
+                  ) : partiallyConnected ? 'Finish setup' : 'Connect Stripe'}
+                </button>
+              </div>
+            )}
 
-        {/* CF-D09 CHANGE 4: Payout account card with balanced CTA */}
-        <div className="flex flex-col gap-4">
-          <h2 className="text-[18px] font-bold text-gray-900">Payout account</h2>
-          <div className="bg-white border border-[#E2E8F0] rounded-[16px] p-5 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center shrink-0 border border-gray-100">
-                  <Building2 size={20} className="text-gray-600" />
+            {/* How payouts work — 3-step explainer */}
+            <div className="bg-white rounded-lg shadow-sm p-6 flex flex-col gap-5">
+              <h2 className="text-lg font-medium text-neutral-900 m-0">How payouts work</h2>
+              <div className="grid grid-cols-[1fr_auto_1fr_auto_1fr] items-center gap-4">
+                <div className="flex flex-col items-center gap-2.5 text-center">
+                  <div className="w-12 h-12 rounded-full bg-brand-50 flex items-center justify-center">
+                    <CheckCircle2 size={22} className="text-brand-600" />
+                  </div>
+                  <span className="text-[14px] font-medium text-neutral-900">Session completed</span>
+                  <span className="text-sm text-neutral-600">Money is captured from the parent.</span>
                 </div>
-                <div>
-                  {/* BUG-45: real bank details from Stripe external_accounts */}
-                  <div className="text-[16px] font-bold text-gray-900" data-testid="payout-bank-name">
-                    {stripeStatus.bank_name ?? 'Bank account'}
+                <ArrowRight size={20} className="text-neutral-100" />
+                <div className="flex flex-col items-center gap-2.5 text-center">
+                  <div className="w-12 h-12 rounded-full bg-brand-50 flex items-center justify-center">
+                    <Clock size={22} className="text-brand-600" />
                   </div>
-                  <div className="text-[14px] text-gray-500 mt-0.5" data-testid="payout-bank-last4">
-                    {hasBankDetails ? `Account ending ****${stripeStatus.bank_last4}` : 'Connected via Stripe'}
+                  <span className="text-[14px] font-medium text-neutral-900">48hr processing</span>
+                  <span className="text-sm text-neutral-600">Your payout clears in the background.</span>
+                </div>
+                <ArrowRight size={20} className="text-neutral-100" />
+                <div className="flex flex-col items-center gap-2.5 text-center">
+                  <div className="w-12 h-12 rounded-full bg-brand-50 flex items-center justify-center">
+                    <Landmark size={22} className="text-brand-600" />
                   </div>
+                  <span className="text-[14px] font-medium text-neutral-900">Released to bank</span>
+                  <span className="text-sm text-neutral-600">Sent to your connected account.</span>
                 </div>
               </div>
-              {/* BUG-45: the dead button now opens the coach's Stripe Express
-                  dashboard (one-time login link, same route as Manage Stripe
-                  account below) — bank details are managed on Stripe. */}
+              <div className="bg-neutral-50 rounded-md px-4 py-3.5 flex items-center gap-2.5">
+                <Info size={18} className="text-brand-600 shrink-0" />
+                <span className="text-[14px] text-brand-800">The 48-hour delay protects both coaches and parents.</span>
+              </div>
+            </div>
+
+            {/* Payout account card — Stripe-managed bank details */}
+            {fullyConnected && (
+              <div className="bg-white rounded-lg shadow-sm p-6 flex items-center gap-4">
+                <div className="w-11 h-11 shrink-0 rounded-full bg-slate-50 flex items-center justify-center">
+                  <Landmark size={22} className="text-neutral-600" />
+                </div>
+                <div className="flex flex-col gap-1 flex-1 min-w-0">
+                  <span className="text-xs font-medium tracking-label uppercase text-neutral-600">Payout account</span>
+                  <span className="text-[16px] font-medium text-neutral-900" data-testid="payout-bank-name">
+                    {stripeStatus.bank_name ?? 'Bank account'}
+                  </span>
+                  <span className="text-sm text-neutral-600" data-testid="payout-bank-last4">
+                    {hasBankDetails ? `Account ending ****${stripeStatus.bank_last4}` : 'Connected via Stripe'}
+                  </span>
+                </div>
+                {/* BUG-45: bank details are managed on Stripe — this opens the
+                    coach's Stripe Express dashboard via one-time login link. */}
+                <a
+                  href="/api/payments/connect/login-link"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  data-testid="update-bank-account"
+                  className="h-btn-desktop px-4 rounded-md border-[1.5px] border-brand-600 bg-white text-brand-600 text-base font-medium hover:bg-brand-50 transition-colors flex items-center shrink-0 no-underline"
+                >
+                  Update bank account
+                </a>
+              </div>
+            )}
+
+            {/* Tax section */}
+            <div className="bg-white rounded-lg shadow-sm px-6 py-2 flex flex-col">
+              <div className="pt-4 pb-3">
+                <span className="text-xs font-medium tracking-label uppercase text-neutral-600">Tax</span>
+              </div>
+              {/* AF-M-BATCH-01: tax rows stay disabled until the endpoints exist */}
+              <button
+                disabled
+                aria-disabled="true"
+                className="w-full py-3.5 flex items-center gap-3 border-t border-neutral-100 text-left opacity-50 cursor-not-allowed"
+              >
+                <FileText size={20} className="text-neutral-400 shrink-0" />
+                <span className="flex-1 text-base font-medium text-neutral-900">Annual earnings summary</span>
+                <ChevronRight size={18} className="text-neutral-400 shrink-0" />
+              </button>
+              <button
+                disabled
+                aria-disabled="true"
+                className="w-full py-3.5 flex items-center gap-3 border-t border-neutral-100 text-left opacity-50 cursor-not-allowed"
+              >
+                <HelpCircle size={20} className="text-neutral-400 shrink-0" />
+                <span className="flex-1 text-base font-medium text-neutral-900">Self-assessment guidance</span>
+                <ChevronRight size={18} className="text-neutral-400 shrink-0" />
+              </button>
+            </div>
+
+            {/* Manage Stripe account link */}
+            {fullyConnected && (
+              // BUG-25: opens the coach's one-time Stripe Express dashboard link in
+              // a new tab. The server route (GET /api/payments/connect/login-link)
+              // 303-redirects to the link — the URL never touches client JS.
               <a
                 href="/api/payments/connect/login-link"
                 target="_blank"
                 rel="noopener noreferrer"
-                data-testid="update-bank-account"
-                className="px-4 py-1.5 rounded-full border border-gray-200 bg-white text-gray-700 text-[12px] font-medium hover:bg-gray-50 transition-colors outline-none shrink-0 no-underline"
+                className="inline-flex items-center gap-2 self-start text-base font-medium text-brand-600 hover:text-brand-700 py-1 no-underline"
               >
-                Update bank account
+                Manage Stripe account
+                <ArrowRight size={18} />
               </a>
-            </div>
-          </div>
-        </div>
-
-        {/* CF-D09 CHANGE 5: Tax section with polish */}
-        <div className="flex flex-col gap-4 mt-6">
-          <h2 className="text-[18px] font-bold text-gray-900">Tax</h2>
-          <div className="bg-white rounded-xl shadow-sm flex flex-col overflow-hidden">
-            {/* AF-M-BATCH-01: tax section disabled until endpoints exist */}
-            <button
-              disabled
-              aria-disabled="true"
-              className="w-full px-4 py-3 flex items-center gap-3 border-b-[0.5px] border-gray-100 text-left opacity-50 cursor-not-allowed"
-            >
-              <div className="w-8 h-8 bg-gray-50 rounded-lg flex items-center justify-center shrink-0">
-                <FileText size={16} className="text-gray-600" />
-              </div>
-              <div className="flex-1">
-                <div className="text-[13px] font-medium text-gray-900">Annual earnings summary</div>
-                <div className="text-[11px] text-gray-400 mt-0.5">Download your tax summary for 2025–26</div>
-              </div>
-              <ChevronRight size={18} className="text-gray-300 shrink-0" />
-            </button>
-            <button
-              disabled
-              aria-disabled="true"
-              className="w-full px-4 py-3 flex items-center gap-3 text-left opacity-50 cursor-not-allowed"
-            >
-              <div className="w-8 h-8 bg-gray-50 rounded-lg flex items-center justify-center shrink-0">
-                <Info size={16} className="text-gray-600" />
-              </div>
-              <div className="flex-1">
-                <div className="text-[13px] font-medium text-gray-900">Self-assessment guidance</div>
-                <div className="text-[11px] text-gray-400 mt-0.5">HMRC resources for self-employed coaches</div>
-              </div>
-              <ChevronRight size={18} className="text-gray-300 shrink-0" />
-            </button>
-          </div>
-        </div>
-
-        <div className="mt-2">
-          {/* BUG-25: opens the coach's one-time Stripe Express dashboard link in
-              a new tab. The server route (GET /api/payments/connect/login-link)
-              303-redirects to the link — the URL never touches client JS. */}
-          <a
-            href="/api/payments/connect/login-link"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex gap-4 p-4 items-start text-left hover:bg-white rounded-xl transition-colors group w-full max-w-lg no-underline"
-          >
-            <div className="shrink-0 mt-0.5 text-[#0077CC]"><ExternalLink size={20} /></div>
-            <div>
-              <div className="text-[16px] font-bold text-[#0077CC] group-hover:underline">Manage Stripe account →</div>
-              <div className="text-[13px] text-gray-500 mt-1">View detailed payouts, invoices and settings on Stripe</div>
-            </div>
-          </a>
-        </div>
-        </>
+            )}
+          </>
         )}
 
       </div>

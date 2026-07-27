@@ -710,8 +710,8 @@ Get all reviews for a coach.
 ---
 
 ### GET /api/coaches/earnings
-Returns earnings summary and payout history for the authenticated coach.
-**Status: Implemented — CD-09-api**
+Returns earnings summary, payout history and the unified transaction list for the authenticated coach.
+**Status: Implemented — CD-09-api, extended C-PAY-05 / C-PAY-06**
 **Auth: Required (coach session)**
 
 **Response 200:**
@@ -722,6 +722,7 @@ Returns earnings summary and payout history for the authenticated coach.
     "pending_pence": 5500,
     "this_month_pence": 82500,
     "last_month_pence": 77500,
+    "in_clearance_pence": 6000,
     "currency": "GBP"
   },
   "payouts": [
@@ -738,6 +739,24 @@ Returns earnings summary and payout history for the authenticated coach.
       "scheduled_at": "2026-04-12T10:00:00Z",
       "processed_at": "2026-04-12T10:05:00Z"
     }
+  ],
+  "transactions": [
+    {
+      "id": "uuid",
+      "status": "in_clearance",
+      "session_date": "2026-04-14",
+      "booking_reference": "CRK-2026-0015",
+      "participant_name": "Aarav Shah",
+      "coach_price_pence": 6000,
+      "fee_pence": null,
+      "net_pence": 6000,
+      "currency": "GBP",
+      "payout_eligible_at": "2026-04-16T10:00:00Z",
+      "scheduled_at": null,
+      "processed_at": null,
+      "held_reason": null,
+      "failure_reason": null
+    }
   ]
 }
 ```
@@ -747,8 +766,11 @@ Returns earnings summary and payout history for the authenticated coach.
 - `summary.pending_pence` — sum of payouts with status `pending` or `processing`
 - `summary.this_month_pence` — paid payouts where `processed_at` ≥ first day of current UTC month
 - `summary.last_month_pence` — paid payouts in the prior calendar month
+- `summary.in_clearance_pence` — C-PAY-06: gross sum of completed bookings still inside the BR-03 hold window with no active payout row
 - `payouts` — max 50 rows, ordered by `scheduled_at DESC`, joined to bookings for reference/date/type
 - `coach_price_pence` — C-PAY-05: gross session price from the booking; `null` if the booking row is missing. The Stripe fee is not stored — C-PAY-02 writes `amount_pence = coach_price_pence − actual Stripe fee`, so clients derive the fee as `coach_price_pence − amount_pence`
+- `transactions` — C-PAY-06: unified list, newest `session_date` first. In-clearance bookings (completed, `payout_eligible_at > now()`, no payout row with status `processing`/`paid`/`held` — PostgREST anti-join) carry the gross as `net_pence` with `fee_pence: null`; payout rows carry the real net and derived fee. `status`: `in_clearance` | `transferring` (payout `pending`/`processing`) | `paid` | `failed` | `on_hold` (payout `held`)
+- `participant_name` — coalesce of `child_profiles.full_name` → player's `user_profiles.full_name` → `bookings.participant_name` (migration-035 guest snapshot) → `"Player"`
 - All money values in pence integers — never decimals
 
 **Errors:** 401 Unauthorised, 403 coach role required, 404 coach profile not found
