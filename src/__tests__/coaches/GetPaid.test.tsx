@@ -1,23 +1,20 @@
 /** @jest-environment jsdom */
-// BUG-45: the Get Paid page previously rendered hardcoded stub data
-// (£90.00 next payout, £1,240.00 total, Apr dates, "Lloyds Bank ****4242")
-// regardless of environment. It must now render ONLY real data:
-//   - earnings figures from GET /api/coaches/earnings (payouts table)
-//   - bank details from GET /api/payments/connect/onboard (Stripe
-//     external_accounts via bank_name/bank_last4)
+// C-PAY-06: Get Paid is payment setup only. The earnings fetch, hero figures
+// (Next payout / Total earned) and the Upcoming payouts section moved to the
+// Earnings page's unified transaction list.
 //
 // Covered:
-//   - Empty earnings → "No pending payout · Complete sessions to earn",
-//     £0.00 total, "No upcoming payouts" — and none of the old stub values
-//   - Real earnings → pending sum, payout rows with real dates + status pills
-//   - Earnings fetch failure → '—' total (never a fake £0.00), empty states
-//   - Bank details present → shown in hero subtitle + payout account card
+//   - The page never calls GET /api/coaches/earnings and renders none of the
+//     removed earnings sections
+//   - Connected → status card with real bank destination + Active chip,
+//     payout account card, Update bank account → Stripe login-link route
 //   - Bank details absent → truthful fallbacks ("Payouts via Stripe",
 //     "Bank account" / "Connected via Stripe")
-//   - "Update bank account" links to the real Stripe login-link route
+//   - Not connected → "Stripe not connected" card with Connect Stripe CTA,
+//     no payout account card
 
 import React from 'react'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import '@testing-library/jest-dom'
 
 import { GetPaid } from '@/components/coach/GetPaid'
@@ -33,42 +30,13 @@ const CONNECTED_STATUS = {
   bank_last4: '5678',
 }
 
-const EMPTY_EARNINGS = {
-  summary: { total_earned_pence: 0, pending_pence: 0, this_month_pence: 0, last_month_pence: 0, currency: 'GBP' },
-  payouts: [],
-}
-
-const REAL_EARNINGS = {
-  summary: { total_earned_pence: 12000, pending_pence: 9000, this_month_pence: 0, last_month_pence: 0, currency: 'GBP' },
-  // Newest-first, matching the real endpoint's scheduled_at DESC ordering —
-  // the component must re-sort so the soonest payout renders first.
-  payouts: [
-    { id: 'po-2', amount_pence: 3000, status: 'pending', scheduled_at: '2026-07-25T10:00:00Z' },
-    { id: 'po-1', amount_pence: 6000, status: 'processing', scheduled_at: '2026-07-23T10:00:00Z' },
-    { id: 'po-3', amount_pence: 12000, status: 'paid', scheduled_at: '2026-07-01T10:00:00Z' },
-  ],
-}
-
-function stubFetch(opts: {
-  status?: Record<string, unknown>
-  earnings?: Record<string, unknown>
-  earningsFails?: boolean
-}) {
+function stubFetch(status: Record<string, unknown> = CONNECTED_STATUS) {
   global.fetch = jest.fn((input: RequestInfo | URL) => {
     const url = String(input)
     if (url.includes('/api/payments/connect/onboard')) {
       return Promise.resolve({
         ok: true,
-        json: () => Promise.resolve(opts.status ?? CONNECTED_STATUS),
-      } as Response)
-    }
-    if (url.includes('/api/coaches/earnings')) {
-      if (opts.earningsFails) {
-        return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) } as Response)
-      }
-      return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve(opts.earnings ?? EMPTY_EARNINGS),
+        json: () => Promise.resolve(status),
       } as Response)
     }
     return Promise.reject(new Error(`Unexpected fetch: ${url}`))
@@ -84,94 +52,57 @@ afterEach(() => {
   jest.clearAllMocks()
 })
 
-// ── Empty state (Block 0 truth: no payouts wired yet) ─────────────────────────
+// ── C-PAY-06: earnings removed from this page ─────────────────────────────────
 
-describe('GetPaid — empty earnings (Block 0)', () => {
-  it('shows the no-pending-payout empty state and £0.00 total', async () => {
-    stubFetch({ earnings: EMPTY_EARNINGS })
+describe('GetPaid — payment setup only (C-PAY-06)', () => {
+  it('never fetches earnings and renders none of the removed sections', async () => {
+    stubFetch()
     render(<GetPaid />)
+    await screen.findByTestId('stripe-status-connected')
 
-    expect(await screen.findByTestId('next-payout-empty')).toHaveTextContent('No pending payout')
-    expect(screen.getByText('Complete sessions to earn')).toBeInTheDocument()
-    expect(screen.getByTestId('total-earned')).toHaveTextContent('£0.00')
-    expect(screen.getByTestId('upcoming-payouts-empty')).toHaveTextContent('No upcoming payouts')
+    const fetched = (global.fetch as jest.Mock).mock.calls.map((c) => String(c[0]))
+    expect(fetched.some((url) => url.includes('/api/coaches/earnings'))).toBe(false)
+
+    expect(screen.queryByText(/Next payout/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Total earned/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Upcoming payouts/i)).not.toBeInTheDocument()
   })
 
-  it('renders none of the old hardcoded stub values', async () => {
-    stubFetch({ earnings: EMPTY_EARNINGS })
+  it('shows the payment-setup subtitle and the payout explainer', async () => {
+    stubFetch()
     render(<GetPaid />)
-    await screen.findByTestId('next-payout-empty')
+    await screen.findByTestId('stripe-status-connected')
 
-    expect(screen.queryByText(/£90\.00/)).not.toBeInTheDocument()
-    expect(screen.queryByText(/£1,240\.00/)).not.toBeInTheDocument()
-    expect(screen.queryByText(/£45\.00/)).not.toBeInTheDocument()
-    expect(screen.queryByText(/Lloyds Bank/)).not.toBeInTheDocument()
-    expect(screen.queryByText(/4242/)).not.toBeInTheDocument()
-    expect(screen.queryByText(/10 Apr/)).not.toBeInTheDocument()
-  })
-})
-
-// ── Real earnings data ────────────────────────────────────────────────────────
-
-describe('GetPaid — real earnings data', () => {
-  it('shows the pending payout sum and real upcoming payout rows', async () => {
-    stubFetch({ earnings: REAL_EARNINGS })
-    render(<GetPaid />)
-
-    expect(await screen.findByTestId('next-payout-amount')).toHaveTextContent('£90.00')
-    // Soonest payout drives the release date, even though the endpoint
-    // returns rows newest-first.
-    expect(screen.getByText('Releasing Thu 23 Jul')).toBeInTheDocument()
-    expect(screen.getByTestId('total-earned')).toHaveTextContent('£120.00')
-
-    const list = screen.getByTestId('upcoming-payouts-list')
-    // Re-sorted soonest-first: 23 Jul row renders before 25 Jul.
-    expect(list.textContent?.indexOf('Thu 23 Jul')).toBeLessThan(list.textContent?.indexOf('Sat 25 Jul') ?? -1)
-    expect(list).toHaveTextContent('£60.00')
-    expect(list).toHaveTextContent('£30.00')
-    expect(list).toHaveTextContent('Processing')
-    expect(list).toHaveTextContent('Pending')
-    // Real scheduled_at dates rendered
-    expect(list).toHaveTextContent('Thu 23 Jul')
-    expect(list).toHaveTextContent('Sat 25 Jul')
-    // Paid rows are history, not upcoming
-    expect(list).not.toHaveTextContent('£120.00')
-    expect(screen.queryByTestId('upcoming-payouts-empty')).not.toBeInTheDocument()
+    expect(screen.getByText('Where your money goes and when it lands.')).toBeInTheDocument()
+    expect(screen.getByText('How payouts work')).toBeInTheDocument()
+    expect(screen.getByText('Session completed')).toBeInTheDocument()
+    expect(screen.getByText('48hr processing')).toBeInTheDocument()
+    expect(screen.getByText('Released to bank')).toBeInTheDocument()
   })
 })
 
-// ── Earnings fetch failure ────────────────────────────────────────────────────
+// ── Connected state ───────────────────────────────────────────────────────────
 
-describe('GetPaid — earnings fetch failure', () => {
-  it('shows an em dash for total (never a fake £0.00) and the empty states', async () => {
-    stubFetch({ earningsFails: true })
-    render(<GetPaid />)
-
-    expect(await screen.findByTestId('next-payout-empty')).toHaveTextContent('No pending payout')
-    await waitFor(() => {
-      expect(screen.getByTestId('total-earned')).toHaveTextContent('—')
-    })
-    expect(screen.getByTestId('upcoming-payouts-empty')).toBeInTheDocument()
-  })
-})
-
-// ── Bank details ──────────────────────────────────────────────────────────────
-
-describe('GetPaid — payout account (real Stripe bank details)', () => {
-  it('shows the real bank name and last4 in the hero and the payout account card', async () => {
-    stubFetch({ earnings: EMPTY_EARNINGS })
+describe('GetPaid — connected (real Stripe bank details)', () => {
+  it('shows the connected status card with real bank destination and Active chip', async () => {
+    stubFetch()
     render(<GetPaid />)
 
     expect(await screen.findByTestId('payout-destination')).toHaveTextContent('Payouts to ****5678 · Monzo Bank')
-    expect(screen.getByTestId('payout-bank-name')).toHaveTextContent('Monzo Bank')
+    expect(screen.getByText('Stripe connected')).toBeInTheDocument()
+    expect(screen.getByText('Active')).toBeInTheDocument()
+  })
+
+  it('shows the payout account card with real bank details', async () => {
+    stubFetch()
+    render(<GetPaid />)
+
+    expect(await screen.findByTestId('payout-bank-name')).toHaveTextContent('Monzo Bank')
     expect(screen.getByTestId('payout-bank-last4')).toHaveTextContent('Account ending ****5678')
   })
 
   it('falls back to truthful copy when Stripe returns no bank details', async () => {
-    stubFetch({
-      status: { ...CONNECTED_STATUS, bank_name: null, bank_last4: null },
-      earnings: EMPTY_EARNINGS,
-    })
+    stubFetch({ ...CONNECTED_STATUS, bank_name: null, bank_last4: null })
     render(<GetPaid />)
 
     expect(await screen.findByTestId('payout-destination')).toHaveTextContent('Payouts via Stripe')
@@ -180,11 +111,34 @@ describe('GetPaid — payout account (real Stripe bank details)', () => {
   })
 
   it('links Update bank account to the Stripe Express login-link route', async () => {
-    stubFetch({ earnings: EMPTY_EARNINGS })
+    stubFetch()
     render(<GetPaid />)
 
     const link = await screen.findByTestId('update-bank-account')
     expect(link).toHaveAttribute('href', '/api/payments/connect/login-link')
     expect(link).toHaveAttribute('target', '_blank')
+  })
+})
+
+// ── Not connected state ───────────────────────────────────────────────────────
+
+describe('GetPaid — not connected', () => {
+  it('shows the not-connected card with a Connect Stripe CTA and no payout account card', async () => {
+    stubFetch({ connected: false })
+    render(<GetPaid />)
+
+    expect(await screen.findByTestId('stripe-status-disconnected')).toHaveTextContent('Stripe not connected')
+    expect(screen.getByText('Connect Stripe to receive payouts. Sessions stay on hold until you do.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Connect Stripe' })).toBeInTheDocument()
+    expect(screen.queryByTestId('payout-bank-name')).not.toBeInTheDocument()
+    expect(screen.queryByText('Manage Stripe account')).not.toBeInTheDocument()
+  })
+
+  it('shows Finish setup when connected but charges/payouts are not enabled', async () => {
+    stubFetch({ connected: true, charges_enabled: true, payouts_enabled: false })
+    render(<GetPaid />)
+
+    expect(await screen.findByTestId('stripe-status-disconnected')).toHaveTextContent('Finish your Stripe setup')
+    expect(screen.getByRole('button', { name: 'Finish setup' })).toBeInTheDocument()
   })
 })
