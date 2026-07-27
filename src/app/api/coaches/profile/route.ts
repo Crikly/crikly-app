@@ -3,8 +3,7 @@ import Stripe from 'stripe'
 import { createClient } from '@/lib/supabase/server'
 import { getStripe } from '@/lib/stripe/client'
 import { requireCoachRole, requireCoachContext } from '@/lib/auth/require-coach'
-import { signApproveToken, APPROVE_TOKEN_TTL_MS } from '@/lib/admin-approve-token'
-import { sendCoachReviewNotification } from '@/lib/resend/coach-lifecycle-emails'
+import { sendCoachReviewNotification, sendCoachUnderReviewEmail } from '@/lib/resend/coach-lifecycle-emails'
 
 // ─── Slug helpers ─────────────────────────────────────────────────────────────
 
@@ -373,18 +372,17 @@ export async function POST(
     // Setting is_profile_live=false is never blocked. This is the ONLY write
     // path for is_profile_live (Step 0 audit) — guard here covers every caller.
     //
-    // PILOT-01: during the pilot, `is_profile_live: true` from a client no
+    // PILOT: during the pilot, `is_profile_live: true` from a client no
     // longer flips the flag — it SUBMITS the profile for manual review
-    // (submitted_for_review_at = now). Liveness is granted only by the signed
-    // admin approve route. The Stripe guard above-described still gates
-    // submission: a profile that can't take payouts isn't reviewable.
-    // submitForReview outcomes:
+    // (submitted_for_review_at = now). Liveness is granted only by the
+    // secret-protected admin approve route. The Stripe guard above-described
+    // still gates submission: a profile that can't take payouts isn't
+    // reviewable. submitForReview outcomes:
     //   'none'   — request doesn't ask to go live, or profile already live
-    //              (idempotent no-op) or already pending with a still-valid
-    //              approve link (prevents duplicate review emails)
-    //   'submit' — write submitted_for_review_at + notify Lasith (Email 2);
-    //              also covers an EXPIRED pending submission, refreshing the
-    //              timestamp so a fresh 7-day approve link goes out
+    //              or already pending (both idempotent no-ops — approve links
+    //              don't expire, so a pending submission never needs a resend)
+    //   'submit' — write submitted_for_review_at + email the coach (Email A)
+    //              and the review inbox (Email B)
     let submitForReview: 'none' | 'submit' = 'none'
     if (body.is_profile_live === true) {
       const { data: liveGate, error: liveGateError } = await supabase
@@ -447,18 +445,14 @@ export async function POST(
         )
       }
 
-      // PILOT-01 submission decision (Stripe guard passed). Already-live →
-      // no-op (idempotent; a live coach re-sending the flag changes nothing).
-      // Already-pending with an unexpired approve link → no-op, so repeat
-      // clicks can't spam the review inbox or rotate a link Lasith already
-      // has. Draft, or pending with an EXPIRED link → (re)submit.
+      // Submission decision (Stripe guard passed). Already-live → no-op
+      // (idempotent; a live coach re-sending the flag changes nothing).
+      // Already-pending → no-op, so repeat clicks can't spam the review inbox
+      // — approve links don't expire, so the one Lasith already has stays
+      // good. Draft → submit.
       const alreadyLive = liveGate?.is_profile_live === true
-      const pendingSinceMs = liveGate?.submitted_for_review_at
-        ? Date.parse(liveGate.submitted_for_review_at)
-        : null
-      const pendingLinkStillValid =
-        pendingSinceMs !== null && Date.now() <= pendingSinceMs + APPROVE_TOKEN_TTL_MS
-      if (!alreadyLive && !pendingLinkStillValid) {
+      const alreadyPending = Boolean(liveGate?.submitted_for_review_at)
+      if (!alreadyLive && !alreadyPending) {
         submitForReview = 'submit'
       }
     }
@@ -521,10 +515,10 @@ export async function POST(
     if (body.travel_radius_miles !== undefined) coachProfileUpdates.travel_radius_miles = body.travel_radius_miles
     // Fix-AC-14: requires_manual_approval assignment
     if (body.requires_manual_approval !== undefined) coachProfileUpdates.requires_manual_approval = body.requires_manual_approval
-    // BUG-PROFILE-LIVE-WRITE / PILOT-01: `is_profile_live: true` from a client
+    // BUG-PROFILE-LIVE-WRITE / PILOT: `is_profile_live: true` from a client
     // no longer writes the flag — it submits for review (see 3b); only the
-    // signed admin approve route grants liveness. `false` still writes
-    // directly (never blocked, C-PAY-03).
+    // secret-protected admin approve route grants liveness. `false` still
+    // writes directly (never blocked, C-PAY-03).
     if (body.is_profile_live === false) coachProfileUpdates.is_profile_live = false
     if (submitForReview === 'submit') {
       coachProfileUpdates.submitted_for_review_at = new Date().toISOString()
@@ -640,19 +634,26 @@ export async function POST(
       updated_at: updatedProfile.updated_at,
     }
 
-    // PILOT-01 Email 2: notify the review inbox that a profile is ready.
-    // Signed with the DB round-trip timestamp (updatedProfile, not the JS
-    // string we wrote) so the approve route's recomputation over the same
-    // PostgREST-formatted value matches. Awaited (serverless can kill
-    // un-awaited work after the response) but can never throw or fail the
-    // request — the sender swallows and logs its own errors.
+    // PILOT Emails A + B: confirm to the coach that their profile is under
+    // review, and notify the review inbox with a direct approve link
+    // (?secret= — see src/lib/pilot/coach-approval.ts). Awaited (serverless
+    // can kill un-awaited work after the response) but can never throw or
+    // fail the request — the senders swallow and log their own errors.
     if (submitForReview === 'submit' && updatedProfile.submitted_for_review_at) {
       try {
         const base = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-        // Throws when ADMIN_APPROVE_SECRET is unset — hence this local
-        // try/catch: a missing secret must cost us the notification email,
-        // never the coach's (already-persisted) submission.
-        const token = signApproveToken(updatedProfile.id, updatedProfile.submitted_for_review_at)
+        const coachName = response.display_name || response.full_name
+        const profileUrl = `${base}/coaches/${response.slug ?? ''}`
+
+        if (context.user.email) {
+          await sendCoachUnderReviewEmail({
+            coachEmail: context.user.email,
+            coachName,
+            profileUrl,
+          })
+        } else {
+          console.error('[POST /api/coaches/profile] no email on auth user — under-review email skipped')
+        }
 
         const { data: sportRows } = await supabase
           .from('coach_sports')
@@ -664,16 +665,23 @@ export async function POST(
           .flatMap((row) => (Array.isArray(row.sports) ? row.sports : row.sports ? [row.sports] : []))
           .map((s) => s.name)
 
-        await sendCoachReviewNotification({
-          coachName: response.display_name || response.full_name,
-          sports: sportNames,
-          location: response.location_city,
-          profileUrl: `${base}/coaches/${response.slug ?? ''}`,
-          approveUrl: `${base}/api/admin/coaches/${updatedProfile.id}/approve?token=${token}`,
-        })
+        // A missing ADMIN_APPROVE_SECRET costs us the notification email,
+        // never the coach's (already-persisted) submission.
+        const approveSecret = process.env.ADMIN_APPROVE_SECRET
+        if (approveSecret) {
+          await sendCoachReviewNotification({
+            coachName,
+            sports: sportNames,
+            location: response.location_city,
+            profileUrl,
+            approveUrl: `${base}/api/admin/coaches/${updatedProfile.id}/approve?secret=${encodeURIComponent(approveSecret)}`,
+          })
+        } else {
+          console.error('[POST /api/coaches/profile] ADMIN_APPROVE_SECRET not set — review notification skipped')
+        }
       } catch (emailErr) {
         console.error(
-          '[POST /api/coaches/profile] review notification failed:',
+          '[POST /api/coaches/profile] lifecycle emails failed:',
           emailErr instanceof Error ? emailErr.message : emailErr,
         )
       }

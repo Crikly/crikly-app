@@ -1,24 +1,25 @@
-// C-PAY-03 Guard 1 + PILOT-01: POST /api/coaches/profile with
+// C-PAY-03 Guard 1 + PILOT: POST /api/coaches/profile with
 // is_profile_live=true no longer flips the flag — it SUBMITS the profile for
-// manual review (submitted_for_review_at) once the Stripe guard passes, and
-// notifies the review inbox (Email 2). Liveness is granted only by the signed
-// admin approve route.
+// manual review (submitted_for_review_at) once the Stripe guard passes, then
+// emails the coach (Email A) and the review inbox (Email B, with a
+// ?secret=-protected approve link). Liveness is granted only by the admin
+// approve route.
 //
 // Covered:
 //   - no coach row / no stripe_account_id → 409 STRIPE_ONBOARDING_INCOMPLETE,
 //     nothing written, Stripe never called
 //   - stripe_onboarding_complete=true → SUBMITS for review (writes
-//     submitted_for_review_at, never is_profile_live) + review email with a
-//     signed approve URL
-//   - already live → idempotent no-op: no submission write, no email
-//   - already pending with an unexpired link → no re-submission, no email
-//   - pending but EXPIRED (>7 days) → fresh submission + email
+//     submitted_for_review_at, never is_profile_live) + Emails A and B
+//   - already live → idempotent no-op: no submission write, no emails
+//   - already pending → no re-submission, no emails (approve links don't
+//     expire, so age is irrelevant)
 //   - webhook race: flag=false but Stripe says charges+payouts enabled →
 //     flag synced to true, submission proceeds
 //   - flag=false and Stripe says not enabled → 409
 //   - Stripe re-check throws → 502 STRIPE_STATUS_CHECK_FAILED (fail closed)
 //   - is_profile_live=false is never blocked and skips the gate read entirely
 //   - gate read DB error → 500
+//   - auth user without an email → Email A skipped, Email B still sent
 
 jest.mock('@/lib/supabase/server', () => ({
   createClient: jest.fn(),
@@ -35,13 +36,16 @@ jest.mock('@/lib/stripe/client', () => ({
 
 jest.mock('@/lib/resend/coach-lifecycle-emails', () => ({
   sendCoachReviewNotification: jest.fn().mockResolvedValue(true),
+  sendCoachUnderReviewEmail: jest.fn().mockResolvedValue(true),
 }))
 
 import { createClient } from '@/lib/supabase/server'
 import { requireCoachRole } from '@/lib/auth/require-coach'
 import { getStripe } from '@/lib/stripe/client'
-import { sendCoachReviewNotification } from '@/lib/resend/coach-lifecycle-emails'
-import { signApproveToken } from '@/lib/admin-approve-token'
+import {
+  sendCoachReviewNotification,
+  sendCoachUnderReviewEmail,
+} from '@/lib/resend/coach-lifecycle-emails'
 import { POST } from '@/app/api/coaches/profile/route'
 
 type MockFn = jest.Mock
@@ -49,6 +53,8 @@ type MockFn = jest.Mock
 const COACH_ID = 'coach-uuid-cpay03'
 const PROFILE_ID = 'profile-uuid-cpay03'
 const SUBMITTED_AT = '2026-07-27T10:00:00.000+00:00'
+const SECRET = 'test-approve-secret'
+const COACH_EMAIL = 'coach@example.com'
 
 const GATE_COLS =
   'stripe_onboarding_complete, stripe_account_id, is_profile_live, submitted_for_review_at'
@@ -100,7 +106,7 @@ interface GateRow {
 //   coach_profiles.update({stripe_onboarding_complete}).eq()  (race sync only)
 //   coach_profiles.upsert()                                (on pass)
 //   coach_profiles.select(<full list>).eq().single()       (read-back)
-//   coach_sports.select('sports ( name )').eq().eq()       (Email 2 payload)
+//   coach_sports.select('sports ( name )').eq().eq()       (Email B payload)
 function buildSupabase(opts: {
   gateRow: GateRow | null
   gateError?: { message: string } | null
@@ -184,11 +190,17 @@ function buildSupabase(opts: {
   return { supabase, gateReads, flagUpdates, upserts }
 }
 
-function setup(opts: Parameters<typeof buildSupabase>[0]) {
+function setup(
+  opts: Parameters<typeof buildSupabase>[0],
+  authOpts: { userEmail?: string | null } = {},
+) {
   const built = buildSupabase(opts)
   ;(createClient as MockFn).mockResolvedValue(built.supabase)
   ;(requireCoachRole as MockFn).mockResolvedValue({
-    context: { userProfile: { id: PROFILE_ID } },
+    context: {
+      user: { email: authOpts.userEmail === null ? undefined : (authOpts.userEmail ?? COACH_EMAIL) },
+      userProfile: { id: PROFILE_ID },
+    },
     error: null,
   })
   return built
@@ -208,21 +220,19 @@ function makePost(body: Record<string, unknown>) {
   }) as Parameters<typeof POST>[0]
 }
 
-beforeAll(() => {
-  // Real (pure) token lib runs in-route for the Email 2 approve URL.
-  process.env.ADMIN_APPROVE_SECRET = 'test-approve-secret'
-})
-
 beforeEach(() => {
   jest.clearAllMocks()
+  // The route embeds this directly in the Email B approve URL.
+  process.env.ADMIN_APPROVE_SECRET = SECRET
   ;(sendCoachReviewNotification as MockFn).mockResolvedValue(true)
+  ;(sendCoachUnderReviewEmail as MockFn).mockResolvedValue(true)
   // Default: Stripe must not be reached unless a test opts in.
   ;(getStripe as MockFn).mockImplementation(() => {
     throw new Error('getStripe called unexpectedly')
   })
 })
 
-describe('POST /api/coaches/profile — go-live guard + submit-for-review (C-PAY-03 / PILOT-01)', () => {
+describe('POST /api/coaches/profile — go-live guard + submit-for-review (C-PAY-03 / PILOT)', () => {
   it('rejects submission with no Stripe account at all', async () => {
     const { upserts } = setup({
       gateRow: { stripe_onboarding_complete: false, stripe_account_id: null },
@@ -234,6 +244,7 @@ describe('POST /api/coaches/profile — go-live guard + submit-for-review (C-PAY
     expect(data.code).toBe('STRIPE_ONBOARDING_INCOMPLETE')
     expect(upserts).toEqual([])
     expect(sendCoachReviewNotification).not.toHaveBeenCalled()
+    expect(sendCoachUnderReviewEmail).not.toHaveBeenCalled()
   })
 
   it('rejects submission when no coach profile row exists yet', async () => {
@@ -246,7 +257,7 @@ describe('POST /api/coaches/profile — go-live guard + submit-for-review (C-PAY
     expect(upserts).toEqual([])
   })
 
-  it('submits for review (never writes is_profile_live) and emails a signed approve link', async () => {
+  it('submits for review (never writes is_profile_live) and sends Emails A + B', async () => {
     const { upserts, flagUpdates } = setup({
       gateRow: {
         stripe_onboarding_complete: true,
@@ -259,7 +270,7 @@ describe('POST /api/coaches/profile — go-live guard + submit-for-review (C-PAY
     const res = await POST(makePost({ is_profile_live: true }))
     expect(res.status).toBe(200)
     expect(upserts).toHaveLength(1)
-    // PILOT-01 heart of the change: the flag is never client-settable.
+    // PILOT heart of the change: the flag is never client-settable.
     expect(upserts[0].is_profile_live).toBeUndefined()
     expect(typeof upserts[0].submitted_for_review_at).toBe('string')
     expect(flagUpdates).toEqual([]) // no sync needed
@@ -268,22 +279,72 @@ describe('POST /api/coaches/profile — go-live guard + submit-for-review (C-PAY
     expect(body.is_profile_live).toBe(false)
     expect(body.submitted_for_review_at).toBe(SUBMITTED_AT)
 
+    // Email A — under review, to the coach.
+    expect(sendCoachUnderReviewEmail).toHaveBeenCalledTimes(1)
+    const emailA = (sendCoachUnderReviewEmail as MockFn).mock.calls[0][0] as {
+      coachEmail: string
+      coachName: string
+      profileUrl: string
+    }
+    expect(emailA.coachEmail).toBe(COACH_EMAIL)
+    expect(emailA.coachName).toBe('Coach Smithy')
+    expect(emailA.profileUrl).toContain('/coaches/coach-smithy')
+
+    // Email B — review notification, with the secret-protected approve link.
     expect(sendCoachReviewNotification).toHaveBeenCalledTimes(1)
-    const call = (sendCoachReviewNotification as MockFn).mock.calls[0][0] as {
+    const emailB = (sendCoachReviewNotification as MockFn).mock.calls[0][0] as {
       coachName: string
       sports: string[]
       location: string | null
       approveUrl: string
     }
-    expect(call.coachName).toBe('Coach Smithy')
-    expect(call.sports).toEqual(['Cricket'])
-    expect(call.location).toBe('Leeds')
-    // The approve URL embeds the HMAC over (id, DB round-trip timestamp).
-    const expectedToken = signApproveToken(COACH_ID, SUBMITTED_AT)
-    expect(call.approveUrl).toContain(`/api/admin/coaches/${COACH_ID}/approve?token=${expectedToken}`)
+    expect(emailB.coachName).toBe('Coach Smithy')
+    expect(emailB.sports).toEqual(['Cricket'])
+    expect(emailB.location).toBe('Leeds')
+    expect(emailB.approveUrl).toContain(
+      `/api/admin/coaches/${COACH_ID}/approve?secret=${SECRET}`,
+    )
   })
 
-  it('is idempotent for an already-live coach: no submission write, no email', async () => {
+  it('skips Email A but still sends Email B when the auth user has no email', async () => {
+    setup(
+      {
+        gateRow: {
+          stripe_onboarding_complete: true,
+          stripe_account_id: 'acct_ready',
+          is_profile_live: false,
+          submitted_for_review_at: null,
+        },
+      },
+      { userEmail: null },
+    )
+
+    const res = await POST(makePost({ is_profile_live: true }))
+    expect(res.status).toBe(200)
+    expect(sendCoachUnderReviewEmail).not.toHaveBeenCalled()
+    expect(sendCoachReviewNotification).toHaveBeenCalledTimes(1)
+  })
+
+  it('skips Email B (but persists the submission) when ADMIN_APPROVE_SECRET is unset', async () => {
+    const { upserts } = setup({
+      gateRow: {
+        stripe_onboarding_complete: true,
+        stripe_account_id: 'acct_ready',
+        is_profile_live: false,
+        submitted_for_review_at: null,
+      },
+    })
+    delete process.env.ADMIN_APPROVE_SECRET
+
+    const res = await POST(makePost({ is_profile_live: true }))
+    expect(res.status).toBe(200)
+    expect(upserts).toHaveLength(1)
+    expect(typeof upserts[0].submitted_for_review_at).toBe('string')
+    expect(sendCoachUnderReviewEmail).toHaveBeenCalledTimes(1)
+    expect(sendCoachReviewNotification).not.toHaveBeenCalled()
+  })
+
+  it('is idempotent for an already-live coach: no submission write, no emails', async () => {
     const { upserts } = setup({
       gateRow: {
         stripe_onboarding_complete: true,
@@ -300,9 +361,10 @@ describe('POST /api/coaches/profile — go-live guard + submit-for-review (C-PAY
     expect(upserts[0].is_profile_live).toBeUndefined()
     expect(upserts[0].submitted_for_review_at).toBeUndefined()
     expect(sendCoachReviewNotification).not.toHaveBeenCalled()
+    expect(sendCoachUnderReviewEmail).not.toHaveBeenCalled()
   })
 
-  it('does not re-submit or re-email while a pending approve link is still valid', async () => {
+  it('does not re-submit or re-email while a submission is pending (recent)', async () => {
     const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()
     const { upserts } = setup({
       gateRow: {
@@ -319,9 +381,10 @@ describe('POST /api/coaches/profile — go-live guard + submit-for-review (C-PAY
     expect(upserts).toHaveLength(1)
     expect(upserts[0].submitted_for_review_at).toBeUndefined()
     expect(sendCoachReviewNotification).not.toHaveBeenCalled()
+    expect(sendCoachUnderReviewEmail).not.toHaveBeenCalled()
   })
 
-  it('re-submits with a fresh timestamp + email once the pending link has expired', async () => {
+  it('does not re-submit even for an old pending submission (links never expire)', async () => {
     const eightDaysAgo = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString()
     const { upserts } = setup({
       gateRow: {
@@ -330,13 +393,15 @@ describe('POST /api/coaches/profile — go-live guard + submit-for-review (C-PAY
         is_profile_live: false,
         submitted_for_review_at: eightDaysAgo,
       },
+      updatedProfile: makeUpdatedProfile({ submitted_for_review_at: eightDaysAgo }),
     })
 
     const res = await POST(makePost({ is_profile_live: true }))
     expect(res.status).toBe(200)
     expect(upserts).toHaveLength(1)
-    expect(typeof upserts[0].submitted_for_review_at).toBe('string')
-    expect(sendCoachReviewNotification).toHaveBeenCalledTimes(1)
+    expect(upserts[0].submitted_for_review_at).toBeUndefined()
+    expect(sendCoachReviewNotification).not.toHaveBeenCalled()
+    expect(sendCoachUnderReviewEmail).not.toHaveBeenCalled()
   })
 
   it('absorbs the webhook race: flag false but Stripe says enabled → sync + submit', async () => {
@@ -410,6 +475,7 @@ describe('POST /api/coaches/profile — go-live guard + submit-for-review (C-PAY
     expect(upserts).toHaveLength(1)
     expect(upserts[0].is_profile_live).toBe(false)
     expect(sendCoachReviewNotification).not.toHaveBeenCalled()
+    expect(sendCoachUnderReviewEmail).not.toHaveBeenCalled()
   })
 
   it('returns 500 when the gate read itself fails', async () => {

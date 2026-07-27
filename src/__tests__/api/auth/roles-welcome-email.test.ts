@@ -1,4 +1,4 @@
-// PILOT-01 Email 1: POST /api/auth/roles fires the coach welcome email —
+// Coach welcome email (PERMANENT): POST /api/auth/roles fires it —
 // but ONLY on first-time coach registration (Lasith's clarification: never
 // for parent/player, and re-selecting the coach role must not re-send).
 
@@ -103,7 +103,7 @@ beforeEach(() => {
   ;(sendCoachWelcomeEmail as MockFn).mockResolvedValue(true)
 })
 
-describe('POST /api/auth/roles — coach welcome email (PILOT-01 Email 1)', () => {
+describe('POST /api/auth/roles — coach welcome email (permanent)', () => {
   it('sends the welcome email on FIRST-TIME coach registration', async () => {
     buildSupabase({ existingCoachRole: false })
 

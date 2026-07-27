@@ -1,15 +1,33 @@
-// PILOT-01: the three coach-lifecycle emails for the pilot's manual approval
-// flow. All three senders NEVER throw — they are fire-and-forget side effects
-// of auth/profile/approve responses that must not be able to break them
+// Coach lifecycle emails.
+//
+// PERMANENT: sendCoachWelcomeEmail — fires when a user first selects the Coach
+// role (/api/auth/roles).
+//
+// PILOT (manual approval flow): sendCoachUnderReviewEmail (Email A),
+// sendCoachReviewNotification (Email B) and sendCoachApprovedEmail (Email C).
+// The senders live here — not src/lib/pilot/ — because they are dispatched from
+// permanent routes (/api/coaches/profile); end-of-pilot cleanup removes those
+// call sites along with src/lib/pilot/ (accepted in the PILOT-01-v2 Step 0 plan).
+//
+// All senders NEVER throw — they are fire-and-forget side effects of
+// auth/profile/approve responses that must not be able to break them
 // (sendOpsAlert pattern). Each returns a boolean for tests and logging only.
 //
 // From-address is hello@ (not the bookings@ RESEND_FROM_EMAIL default): these
 // are relationship emails, and replies should land in the founder inbox.
+//
+// Template matches the guest booking-confirmation email (emails.ts
+// guestEmailWrapper): hosted logo image, 560px max-width, system font stack
+// (Gmail strips <head> styles and web fonts — font-family repeated on every
+// text-bearing element), Tekly Solutions footer. Duplicated here rather than
+// exported from emails.ts to keep that file's booking senders untouched.
 
 import { getResend } from './client'
 
 const LIFECYCLE_FROM = 'Crikly <hello@crikly.app>'
 const REVIEW_INBOX = 'hello@crikly.app'
+
+const SANS = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif"
 
 /** Escapes HTML-significant characters (mirrors emails.ts, incl. apostrophe). */
 function escapeHtml(value: string): string {
@@ -21,9 +39,6 @@ function escapeHtml(value: string): string {
     .replaceAll("'", '&#39;')
 }
 
-// Same shell as emails.ts emailWrapper — duplicated here rather than exported
-// from emails.ts to keep that file's booking senders untouched (PILOT-01 must
-// not modify booking email code paths).
 function emailWrapper(bodyHtml: string): string {
   return `<!DOCTYPE html>
 <html lang="en">
@@ -32,31 +47,32 @@ function emailWrapper(bodyHtml: string): string {
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Crikly</title>
 </head>
-<body style="margin:0;padding:0;background:#F8FAFC;font-family:'DM Sans',Arial,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#F8FAFC;padding:32px 16px;">
+<body style="margin:0;padding:0;background:#FFFFFF;font-family:${SANS};">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#FFFFFF;padding:32px 16px;">
     <tr>
       <td align="center">
-        <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;text-align:left;">
 
-          <!-- Header -->
+          <!-- Logo. Hosted image with "Crikly" alt fallback if the client blocks images. -->
           <tr>
-            <td style="background:#0077CC;border-radius:12px 12px 0 0;padding:24px 32px;">
-              <span style="font-family:'DM Sans',Arial,sans-serif;font-size:22px;font-weight:700;color:#FFFFFF;letter-spacing:-0.5px;">Crikly</span>
+            <td style="padding:0 0 24px;">
+              <img src="https://crikly.app/logo.png" alt="Crikly" height="32" style="height:32px;border:0;display:block;" />
             </td>
           </tr>
 
           <!-- Body -->
           <tr>
-            <td style="background:#FFFFFF;padding:32px;border-left:1px solid #E2E8F0;border-right:1px solid #E2E8F0;">
+            <td>
               ${bodyHtml}
             </td>
           </tr>
 
           <!-- Footer -->
           <tr>
-            <td style="background:#F1F5F9;border-radius:0 0 12px 12px;border:1px solid #E2E8F0;border-top:none;padding:16px 32px;text-align:center;">
-              <p style="margin:0;font-size:12px;color:#94A3B8;font-family:'DM Sans',Arial,sans-serif;">
-                © 2026 Crikly · <a href="https://crikly.app" style="color:#94A3B8;text-decoration:none;">crikly.app</a>
+            <td style="padding:32px 0 0;border-top:1px solid #E2E8F0;">
+              <p style="margin:24px 0 0;font-size:12px;color:#94A3B8;line-height:1.6;font-family:${SANS};">
+                Crikly &middot; Tekly Solutions Ltd<br />
+                &copy; 2026 Tekly Solutions Ltd. All rights reserved.
               </p>
             </td>
           </tr>
@@ -72,9 +88,9 @@ function emailWrapper(bodyHtml: string): string {
 function ctaButton(label: string, url: string): string {
   return `<table width="100%" cellpadding="0" cellspacing="0" style="margin-top:24px;">
     <tr>
-      <td align="center">
+      <td>
         <a href="${url}"
-           style="display:inline-block;background:#0077CC;color:#FFFFFF;font-family:'DM Sans',Arial,sans-serif;font-size:15px;font-weight:700;text-decoration:none;padding:14px 32px;border-radius:10px;letter-spacing:-0.2px;">
+           style="display:inline-block;background:#0077CC;color:#FFFFFF;font-family:${SANS};font-size:15px;font-weight:700;text-decoration:none;padding:14px 32px;border-radius:10px;">
           ${label}
         </a>
       </td>
@@ -82,7 +98,19 @@ function ctaButton(label: string, url: string): string {
   </table>`
 }
 
-// ─── Email 1 — coach registration welcome ────────────────────────────────────
+function heading(text: string): string {
+  return `<h1 style="margin:0 0 16px;font-size:24px;font-weight:700;color:#0F172A;font-family:${SANS};letter-spacing:-0.5px;">${text}</h1>`
+}
+
+function paragraph(html: string): string {
+  return `<p style="margin:16px 0 0;font-size:15px;color:#334155;line-height:1.6;font-family:${SANS};">${html}</p>`
+}
+
+function mutedNote(html: string): string {
+  return `<p style="margin:24px 0 0;font-size:13px;color:#94A3B8;line-height:1.6;font-family:${SANS};">${html}</p>`
+}
+
+// ─── Welcome email (PERMANENT) ───────────────────────────────────────────────
 
 export interface CoachWelcomeParams {
   coachEmail: string
@@ -97,32 +125,25 @@ export async function sendCoachWelcomeEmail(
   try {
     const safeName = escapeHtml(params.coachName)
     const body = `
-      <h1 style="margin:0 0 8px;font-size:24px;font-weight:700;color:#0F172A;font-family:'DM Sans',Arial,sans-serif;letter-spacing:-0.5px;">
-        Welcome to Crikly 👋
-      </h1>
-      <p style="margin:0 0 4px;font-size:16px;color:#64748B;font-family:'DM Sans',Arial,sans-serif;">
-        Hi ${safeName},
-      </p>
-      <p style="margin:16px 0 0;font-size:15px;color:#334155;line-height:1.6;font-family:'DM Sans',Arial,sans-serif;">
-        You&rsquo;re registered as a coach on Crikly — great to have you on board.
-      </p>
-      <p style="margin:16px 0 0;font-size:15px;color:#334155;line-height:1.6;font-family:'DM Sans',Arial,sans-serif;">
-        Next step: complete your coaching profile and submit it for review.
-        Once it&rsquo;s approved, your profile goes live and parents and players
-        can find and book you.
-      </p>
-
-      ${ctaButton('Complete your profile', params.dashboardUrl)}
-
-      <p style="margin:24px 0 0;font-size:13px;color:#94A3B8;line-height:1.6;font-family:'DM Sans',Arial,sans-serif;">
-        Questions? Just reply to this email — we read everything.
-      </p>
+      ${heading('Welcome to Crikly 👋')}
+      ${paragraph(`Hi ${safeName},`)}
+      ${paragraph(
+        'Great to have you on board. Crikly connects you with parents and players looking for exactly what you offer — and handles the bookings and payments for you.',
+      )}
+      ${paragraph('Here&rsquo;s how to get your profile ready:')}
+      ${paragraph(
+        '1. <strong>Complete your profile</strong> — your bio, sports and photos<br />' +
+        '2. <strong>Set your availability</strong> — when and where you coach<br />' +
+        '3. <strong>Connect Stripe</strong> — so you get paid, automatically',
+      )}
+      ${ctaButton('Go to your dashboard', params.dashboardUrl)}
+      ${mutedNote('Questions? Just reply to this email — we read everything.')}
     `
 
     const { error } = await getResend().emails.send({
       from: LIFECYCLE_FROM,
       to: params.coachEmail,
-      subject: 'Welcome to Crikly — you’re registered as a coach',
+      subject: 'Welcome to Crikly — let’s get your profile ready',
       html: emailWrapper(body),
     })
 
@@ -137,7 +158,52 @@ export async function sendCoachWelcomeEmail(
   }
 }
 
-// ─── Email 2 — internal review notification (to Lasith) ─────────────────────
+// ─── Email A — profile under review, to coach (PILOT) ────────────────────────
+
+export interface CoachUnderReviewParams {
+  coachEmail: string
+  coachName: string
+  profileUrl: string
+}
+
+/** Fires when the coach submits their profile for review (Go live). Never throws. */
+export async function sendCoachUnderReviewEmail(
+  params: CoachUnderReviewParams,
+): Promise<boolean> {
+  try {
+    const safeName = escapeHtml(params.coachName)
+    const body = `
+      ${heading('Your profile is under review')}
+      ${paragraph(`Hi ${safeName},`)}
+      ${paragraph(
+        'Thanks for submitting your coaching profile — it&rsquo;s now with our team for review.',
+      )}
+      ${paragraph(
+        'We&rsquo;ll check everything over and email you as soon as your profile is live. This usually takes a few days.',
+      )}
+      ${ctaButton('View your profile', params.profileUrl)}
+      ${mutedNote('Questions? Just reply to this email — we read everything.')}
+    `
+
+    const { error } = await getResend().emails.send({
+      from: LIFECYCLE_FROM,
+      to: params.coachEmail,
+      subject: 'Your Crikly profile is under review',
+      html: emailWrapper(body),
+    })
+
+    if (error) {
+      console.error('[sendCoachUnderReviewEmail] Resend error:', error.message)
+      return false
+    }
+    return true
+  } catch (err) {
+    console.error('[sendCoachUnderReviewEmail] failed:', err instanceof Error ? err.message : err)
+    return false
+  }
+}
+
+// ─── Email B — internal review notification, to hello@ (PILOT) ───────────────
 
 export interface CoachReviewNotificationParams {
   coachName: string
@@ -159,30 +225,26 @@ export async function sendCoachReviewNotification(
     const safeLocation = params.location ? escapeHtml(params.location) : 'Not specified'
 
     const body = `
-      <h1 style="margin:0 0 8px;font-size:24px;font-weight:700;color:#0F172A;font-family:'DM Sans',Arial,sans-serif;letter-spacing:-0.5px;">
-        New coach profile ready for review
-      </h1>
-      <p style="margin:16px 0 0;font-size:15px;color:#334155;line-height:1.6;font-family:'DM Sans',Arial,sans-serif;">
-        <strong>${safeName}</strong> has submitted their profile for review.
-      </p>
-      <p style="margin:16px 0 0;font-size:14px;color:#334155;line-height:1.8;font-family:'DM Sans',Arial,sans-serif;">
+      ${heading('New coach profile for review')}
+      ${paragraph(`<strong>${safeName}</strong> has submitted their profile for review.`)}
+      <p style="margin:16px 0 0;font-size:14px;color:#334155;line-height:1.8;font-family:${SANS};">
         Sport(s): <strong>${safeSports}</strong><br />
         Location: <strong>${safeLocation}</strong><br />
         Profile: <a href="${params.profileUrl}" style="color:#0077CC;">${params.profileUrl}</a>
       </p>
-      <p style="margin:16px 0 0;font-size:13px;color:#94A3B8;line-height:1.6;font-family:'DM Sans',Arial,sans-serif;">
-        Note: the profile link only resolves once the coach is live — preview
-        their details in Supabase before approving. The approve link below is
-        valid for 7 days.
-      </p>
-
-      ${ctaButton('Approve & go live', params.approveUrl)}
+      ${mutedNote(
+        'Note: the profile link only resolves once the coach is live — preview their details in Supabase before approving.',
+      )}
+      ${ctaButton('Review profile', params.profileUrl)}
+      ${mutedNote(
+        `Or approve directly: <a href="${params.approveUrl}" style="color:#0077CC;word-break:break-all;">${params.approveUrl}</a>`,
+      )}
     `
 
     const { error } = await getResend().emails.send({
       from: LIFECYCLE_FROM,
       to: REVIEW_INBOX,
-      subject: `New coach profile ready for review: ${params.coachName}`,
+      subject: `New coach profile for review: ${params.coachName}`,
       html: emailWrapper(body),
     })
 
@@ -197,7 +259,7 @@ export async function sendCoachReviewNotification(
   }
 }
 
-// ─── Email 3 — coach approved / profile live ─────────────────────────────────
+// ─── Email C — profile live, to coach (PILOT) ────────────────────────────────
 
 export interface CoachApprovedParams {
   coachEmail: string
@@ -205,39 +267,31 @@ export interface CoachApprovedParams {
   profileUrl: string
 }
 
-/** Fires when Lasith approves the profile via the signed link. Never throws. */
+/** Fires when the approve POST succeeds. Never throws. */
 export async function sendCoachApprovedEmail(
   params: CoachApprovedParams,
 ): Promise<boolean> {
   try {
     const safeName = escapeHtml(params.coachName)
     const body = `
-      <h1 style="margin:0 0 8px;font-size:24px;font-weight:700;color:#0F172A;font-family:'DM Sans',Arial,sans-serif;letter-spacing:-0.5px;">
-        Your profile is live! 🎉
-      </h1>
-      <p style="margin:0 0 4px;font-size:16px;color:#64748B;font-family:'DM Sans',Arial,sans-serif;">
-        Hi ${safeName},
-      </p>
-      <p style="margin:16px 0 0;font-size:15px;color:#334155;line-height:1.6;font-family:'DM Sans',Arial,sans-serif;">
-        Congratulations — your Crikly profile has been approved and is now live.
-        Parents and players can find you and book sessions instantly.
-      </p>
-      <p style="margin:16px 0 0;font-size:15px;color:#334155;line-height:1.6;font-family:'DM Sans',Arial,sans-serif;">
-        Your public profile:
-        <a href="${params.profileUrl}" style="color:#0077CC;">${params.profileUrl}</a>
-      </p>
-      <p style="margin:16px 0 0;font-size:15px;color:#334155;line-height:1.6;font-family:'DM Sans',Arial,sans-serif;">
-        The fastest way to get your first booking: share your profile link with
-        the parents you already coach — WhatsApp works brilliantly for this.
-      </p>
-
+      ${heading('Your profile is live! 🎉')}
+      ${paragraph(`Hi ${safeName},`)}
+      ${paragraph(
+        'Congratulations — your Crikly profile has been approved and is now live. Parents and players can find you and book sessions instantly.',
+      )}
+      ${paragraph(
+        `Your public profile:<br /><a href="${params.profileUrl}" style="color:#0077CC;font-weight:700;word-break:break-all;">${params.profileUrl}</a>`,
+      )}
+      ${paragraph(
+        'The fastest way to get your first booking: share your profile link with the parents you already coach — WhatsApp works brilliantly for this.',
+      )}
       ${ctaButton('View your live profile', params.profileUrl)}
     `
 
     const { error } = await getResend().emails.send({
       from: LIFECYCLE_FROM,
       to: params.coachEmail,
-      subject: 'Your Crikly profile is live!',
+      subject: 'Your Crikly profile is live! 🎉',
       html: emailWrapper(body),
     })
 

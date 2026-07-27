@@ -856,7 +856,7 @@ Lasith can manage the platform, approve DBS, configure everything.
 | L-02e | Supabase connection pool test — 50 concurrent Vercel connections without exhausting pool | @DevOpsEngineer | 🟡 | ⚪ |
 | SCALE-01 | Replace JS coach search filtering with PostGIS + Supabase RPC — trigger: coach count > 200 or L-02b load test fails | @DatabaseArchitect | 🟡 | ⚪ |
 | L-UX01 | Replace UUID with human-readable slug in coach public profile URL — /coaches/lasith-jayarathne | @BackendDeveloper | 🟡 | ✅ |
-| PILOT-01 | Coach approval flow — manual go-live approval (submitted_for_review_at, 3 lifecycle emails, signed admin approve route) | @BackendDeveloper | 🟡 | ✅ |
+| PILOT-01 | Coach approval flow — manual go-live approval (submitted_for_review_at, migration 046). Revised v2: HMAC/expiry dropped for ?secret= approve route (timing-safe), pilot code isolated in src/lib/pilot/, emails redesigned on booking template — permanent welcome + under-review (A) + review notification (B) + profile live (C) | @BackendDeveloper | 🟡 | ✅ |
 | L-03 | Security review — RLS, auth, child data, payments | Manual | 🔴 | ⚪ |
 | L-04 | Write Terms & Conditions | Manual | 🟢 | ⚪ |
 | L-05 | Write Privacy Policy (GDPR compliant) | Manual | 🟢 | ⚪ |
