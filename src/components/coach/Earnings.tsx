@@ -117,7 +117,7 @@ function EarningsSkeleton() {
     <div className="space-y-7 animate-pulse">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {[1, 2, 3].map((i) => (
-          <div key={i} className="bg-white rounded-[12px] shadow-sm p-5 space-y-2">
+          <div key={i} className="bg-white rounded-lg shadow-sm p-5 space-y-2">
             <div className="h-3 w-20 bg-gray-100 rounded" />
             <div className="h-8 w-28 bg-gray-200 rounded" />
             <div className="h-3 w-24 bg-gray-100 rounded" />
@@ -132,7 +132,7 @@ function EarningsSkeleton() {
       <div className="space-y-3">
         <div className="h-5 w-32 bg-gray-200 rounded" />
         {[1, 2, 3].map((i) => (
-          <div key={i} className="bg-white rounded-[12px] shadow-sm p-5 flex items-center justify-between">
+          <div key={i} className="bg-white rounded-lg shadow-sm p-5 flex items-center justify-between">
             <div className="space-y-2">
               <div className="h-4 w-28 bg-gray-200 rounded" />
               <div className="h-3 w-36 bg-gray-100 rounded" />
@@ -191,21 +191,21 @@ export function Earnings() {
           <>
             {/* Summary cards */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="bg-white rounded-[12px] shadow-sm p-5 flex flex-col gap-2">
+              <div className="bg-white rounded-lg shadow-sm p-5 flex flex-col gap-2">
                 <span className="text-xs font-medium tracking-label uppercase text-neutral-600">This month</span>
                 <span className="text-3xl font-semibold tracking-heading text-neutral-900" data-testid="summary-this-month">
                   {formatPence(summary?.this_month_pence ?? 0)}
                 </span>
                 <span className="text-sm text-neutral-400">Paid out in {monthName}.</span>
               </div>
-              <div className="bg-white rounded-[12px] shadow-sm p-5 flex flex-col gap-2">
+              <div className="bg-white rounded-lg shadow-sm p-5 flex flex-col gap-2">
                 <span className="text-xs font-medium tracking-label uppercase text-neutral-600">In clearance</span>
                 <span className="text-3xl font-semibold tracking-heading text-neutral-900" data-testid="summary-in-clearance">
                   {formatPence(summary?.in_clearance_pence ?? 0)}
                 </span>
                 <span className="text-sm text-neutral-400">Inside the 48-hour window.</span>
               </div>
-              <div className="bg-white rounded-[12px] shadow-sm p-5 flex flex-col gap-2">
+              <div className="bg-white rounded-lg shadow-sm p-5 flex flex-col gap-2">
                 <span className="text-xs font-medium tracking-label uppercase text-neutral-600">All time</span>
                 <span className="text-3xl font-semibold tracking-heading text-neutral-900" data-testid="summary-all-time">
                   {formatPence(summary?.total_earned_pence ?? 0)}
@@ -276,7 +276,7 @@ export function Earnings() {
               </div>
 
               {visible.length === 0 ? (
-                <div className="bg-white rounded-[12px] shadow-sm px-6 py-12 flex flex-col items-center gap-3 text-center">
+                <div className="bg-white rounded-lg shadow-sm px-6 py-12 flex flex-col items-center gap-3 text-center">
                   <Inbox size={48} className="text-neutral-400" strokeWidth={1.5} />
                   <span className="text-base font-medium text-neutral-900">{emptyTitle}</span>
                   <span className="text-sm text-neutral-600">Try a different filter or widen the date range.</span>
@@ -290,7 +290,7 @@ export function Earnings() {
                     <div
                       key={tx.id}
                       data-testid="transaction-row"
-                      className="bg-white rounded-[12px] shadow-sm px-5 py-4 flex items-center justify-between gap-6"
+                      className="bg-white rounded-lg shadow-sm px-5 py-4 flex items-center justify-between gap-6"
                     >
                       <div className="flex flex-col gap-0.5 min-w-0">
                         <span className="text-[16px] font-medium text-neutral-900">

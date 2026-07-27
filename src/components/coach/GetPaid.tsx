@@ -173,7 +173,7 @@ export function GetPaid() {
           <>
             {/* Stripe connection status card */}
             {fullyConnected ? (
-              <div className="bg-white rounded-[12px] shadow-sm p-6 flex items-center gap-4" data-testid="stripe-status-connected">
+              <div className="bg-white rounded-lg shadow-sm p-6 flex items-center gap-4" data-testid="stripe-status-connected">
                 <div className="w-11 h-11 shrink-0 rounded-full bg-green-100 flex items-center justify-center">
                   <CheckCircle2 size={22} className="text-success" />
                 </div>
@@ -193,7 +193,7 @@ export function GetPaid() {
                 </span>
               </div>
             ) : (
-              <div className="bg-white rounded-[12px] shadow-sm p-6 flex items-center gap-4" data-testid="stripe-status-disconnected">
+              <div className="bg-white rounded-lg shadow-sm p-6 flex items-center gap-4" data-testid="stripe-status-disconnected">
                 <div className="w-11 h-11 shrink-0 rounded-full bg-amber-100 flex items-center justify-center">
                   <AlertTriangle size={22} className="text-warning" />
                 </div>
@@ -224,7 +224,7 @@ export function GetPaid() {
             )}
 
             {/* How payouts work — 3-step explainer */}
-            <div className="bg-white rounded-[12px] shadow-sm p-6 flex flex-col gap-5">
+            <div className="bg-white rounded-lg shadow-sm p-6 flex flex-col gap-5">
               <h2 className="text-lg font-medium text-neutral-900 m-0">How payouts work</h2>
               <div className="grid grid-cols-[1fr_auto_1fr_auto_1fr] items-center gap-4">
                 <div className="flex flex-col items-center gap-2.5 text-center">
@@ -259,7 +259,7 @@ export function GetPaid() {
 
             {/* Payout account card — Stripe-managed bank details */}
             {fullyConnected && (
-              <div className="bg-white rounded-[12px] shadow-sm p-6 flex items-center gap-4">
+              <div className="bg-white rounded-lg shadow-sm p-6 flex items-center gap-4">
                 <div className="w-11 h-11 shrink-0 rounded-full bg-slate-50 flex items-center justify-center">
                   <Landmark size={22} className="text-neutral-600" />
                 </div>
@@ -287,7 +287,7 @@ export function GetPaid() {
             )}
 
             {/* Tax section */}
-            <div className="bg-white rounded-[12px] shadow-sm px-6 py-2 flex flex-col">
+            <div className="bg-white rounded-lg shadow-sm px-6 py-2 flex flex-col">
               <div className="pt-4 pb-3">
                 <span className="text-xs font-medium tracking-label uppercase text-neutral-600">Tax</span>
               </div>
