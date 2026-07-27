@@ -173,21 +173,47 @@ describe('Earnings — transaction list', () => {
     expect(within(rows[4]).getByText('On hold')).toBeInTheDocument()
   })
 
-  it('shows the gross explainer for in-clearance rows and gross − fee for the rest', async () => {
+  it('shows no fee line on in-clearance rows and gross − fee for the rest', async () => {
     stubFetch()
     render(<Earnings />)
     const rows = await screen.findAllByTestId('transaction-row')
 
-    // In-clearance: gross shown as the amount, no fee yet
+    // In-clearance: gross shown as the amount, no fee line at all — the
+    // page-level clearance note explains fees instead
     const clearanceRow = rows[0]
     expect(within(clearanceRow).getByText('£60.00')).toBeInTheDocument()
-    expect(within(clearanceRow).getByText('Session price · fee applied on transfer')).toBeInTheDocument()
+    expect(within(clearanceRow).queryByText(/fee/)).not.toBeInTheDocument()
     expect(within(clearanceRow).getByText('Releasing 28 Jul')).toBeInTheDocument()
 
     // Paid: net bold figure + derived fee line
     const paidRow = rows[2]
     expect(within(paidRow).getByText('£44.11')).toBeInTheDocument()
     expect(within(paidRow).getByText('£45.00 − £0.89 fee')).toBeInTheDocument()
+  })
+
+  it('shows the clearance fee note only when an in-clearance transaction exists', async () => {
+    stubFetch()
+    render(<Earnings />)
+    await screen.findAllByTestId('transaction-row')
+
+    expect(screen.getByTestId('clearance-fee-note')).toHaveTextContent(
+      'Stripe processing fees are deducted at transfer. Your final payout may vary slightly by card type.',
+    )
+
+    // The note keys off the FULL transaction list, not the filtered view
+    fireEvent.click(screen.getByRole('button', { name: 'Paid' }))
+    expect(screen.getByTestId('clearance-fee-note')).toBeInTheDocument()
+  })
+
+  it('hides the clearance fee note when nothing is in clearance', async () => {
+    stubFetch({
+      ...EARNINGS_RESPONSE,
+      transactions: TRANSACTIONS.filter((t) => t.status !== 'in_clearance'),
+    })
+    render(<Earnings />)
+    await screen.findAllByTestId('transaction-row')
+
+    expect(screen.queryByTestId('clearance-fee-note')).not.toBeInTheDocument()
   })
 
   it('shows the action sub-texts for failed and on-hold rows', async () => {

@@ -85,9 +85,10 @@ function rowSubText(tx: TransactionItem): string | null {
   return null
 }
 
-/** Fee line under the amount — in-clearance rows show the gross explainer. */
+/** Fee line under the amount — in-clearance rows show none (the fee is only
+    known at transfer; the page-level note below the list explains this). */
 function rowFeeLine(tx: TransactionItem): string | null {
-  if (tx.status === 'in_clearance') return 'Session price · fee applied on transfer'
+  if (tx.status === 'in_clearance') return null
   if (tx.coach_price_pence !== null && tx.fee_pence !== null) {
     return `${formatPence(tx.coach_price_pence)} − ${formatPence(tx.fee_pence)} fee`
   }
@@ -316,6 +317,12 @@ export function Earnings() {
                     </div>
                   )
                 })
+              )}
+
+              {allTransactions.some((tx) => tx.status === 'in_clearance') && (
+                <p className="text-sm text-neutral-400 m-0" data-testid="clearance-fee-note">
+                  Stripe processing fees are deducted at transfer. Your final payout may vary slightly by card type.
+                </p>
               )}
             </div>
           </>
