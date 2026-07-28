@@ -1,12 +1,15 @@
-// BUG-49: DELETE /api/coaches/account — booking-history guard.
+// BUG-49: DELETE /api/coaches/account — the four-case deletion contract.
 //
-// bookings.coach_profile_id is ON DELETE RESTRICT, so a coach with ANY
-// booking row (any status, any date) cannot be hard-deleted from auth.users:
-// the auth.users → user_profiles → coach_profiles cascade hits the FK and the
-// whole delete fails. Step 2 must therefore block on any booking at all —
-// the old upcoming-only check (confirmed/pending_approval, future-dated) let
-// history-holding coaches through to a silent step-8 failure: route returned
-// 200, user was logged out, account still existed.
+//   1. Upcoming bookings (confirmed/pending_approval, today onwards) → 409
+//      UPCOMING_BOOKINGS — the coach can act on these (cancel/complete).
+//   2. Owed payouts (pending/processing/held) → 409 PENDING_PAYOUTS.
+//   3. Past-only booking history → step 8's auth.users hard delete FK-fails
+//      (bookings.coach_profile_id is ON DELETE RESTRICT via the
+//      auth.users → user_profiles → coach_profiles cascade) → 500
+//      BOOKING_HISTORY. The old code swallowed this and returned
+//      { success: true }: silent 200, client logged the coach out, account
+//      still alive in auth.users.
+//   4. No activity at all → full deletion succeeds, 200 { success: true }.
 
 jest.mock('@/lib/supabase/server', () => ({
   createClient: jest.fn(),
@@ -32,17 +35,14 @@ const PROFILE_ID = 'profile-uuid-bug49'
 const COACH_ID = 'coach-uuid-bug49'
 
 function buildMocks(opts: {
-  bookingCount?: number
-  bookingError?: { message: string } | null
+  upcomingCount?: number
+  upcomingError?: { message: string } | null
   owedPayoutCount?: number
   otherActiveRoleCount?: number
   stripeAccountId?: string | null
   authDeleteError?: { message: string } | null
 }) {
-  const bookingsEq = jest.fn().mockResolvedValue({
-    count: opts.bookingCount ?? 0,
-    error: opts.bookingError ?? null,
-  })
+  const bookingFilters: Array<{ statuses: unknown; fromDate: unknown }> = []
 
   const supabase = {
     from: jest.fn((table: string) => {
@@ -59,10 +59,24 @@ function buildMocks(opts: {
         }
       }
       if (table === 'bookings') {
-        // BUG-49: the chain is select().eq() and nothing else — if the route
-        // regressed to .in(status)/.gte(date) filtering, this mock would throw
-        // on the missing method.
-        return { select: jest.fn().mockReturnValue({ eq: bookingsEq }) }
+        // Upcoming-only chain: select().eq().in(statuses).gte(session_date).
+        // Captures the filters so tests can assert the guard stays scoped to
+        // upcoming bookings and never regresses to an unfiltered count.
+        return {
+          select: jest.fn().mockReturnValue({
+            eq: jest.fn().mockReturnValue({
+              in: jest.fn((_col: string, statuses: unknown) => ({
+                gte: jest.fn((_dateCol: string, fromDate: unknown) => {
+                  bookingFilters.push({ statuses, fromDate })
+                  return Promise.resolve({
+                    count: opts.upcomingCount ?? 0,
+                    error: opts.upcomingError ?? null,
+                  })
+                }),
+              })),
+            }),
+          }),
+        }
       }
       if (table === 'payouts') {
         return {
@@ -137,44 +151,71 @@ function buildMocks(opts: {
     error: null,
   })
 
-  return { supabase, admin, bookingsEq, softDeletes, roleDeactivations }
+  return { supabase, admin, bookingFilters, softDeletes, roleDeactivations }
 }
 
 beforeEach(() => {
   jest.clearAllMocks()
 })
 
-describe('DELETE /api/coaches/account — booking-history guard (BUG-49)', () => {
-  it('blocks deletion with 409 BOOKING_HISTORY when ANY booking exists', async () => {
-    const { admin, bookingsEq, softDeletes } = buildMocks({ bookingCount: 3 })
+describe('DELETE /api/coaches/account — four-case deletion contract (BUG-49)', () => {
+  // Case 1 — upcoming bookings
+  it('blocks with 409 UPCOMING_BOOKINGS when upcoming sessions exist', async () => {
+    const { admin, bookingFilters, softDeletes } = buildMocks({ upcomingCount: 2 })
 
     const res = await DELETE()
     expect(res.status).toBe(409)
     const data = (await res.json()) as { error: string; code?: string }
-    expect(data.code).toBe('BOOKING_HISTORY')
-    expect(data.error).toContain('booking history')
-    expect(data.error).toContain('hello@crikly.app')
+    expect(data.code).toBe('UPCOMING_BOOKINGS')
+    expect(data.error).toBe('You have upcoming sessions. Please cancel them first.')
 
-    // The count query is unfiltered beyond the coach id — any status, any date.
-    expect(bookingsEq).toHaveBeenCalledWith('coach_profile_id', COACH_ID)
+    // The guard is scoped to upcoming: actionable statuses, today onwards.
+    expect(bookingFilters).toHaveLength(1)
+    expect(bookingFilters[0].statuses).toEqual(['confirmed', 'pending_approval'])
+    expect(typeof bookingFilters[0].fromDate).toBe('string')
 
-    // Nothing destructive happened.
     expect(softDeletes).toEqual([])
     expect(admin.auth.admin.deleteUser).not.toHaveBeenCalled()
   })
 
-  it('blocks even a single historical booking (count = 1)', async () => {
-    const { admin } = buildMocks({ bookingCount: 1 })
+  // Case 2 — owed payouts
+  it('blocks with 409 PENDING_PAYOUTS when owed payouts exist', async () => {
+    const { admin, softDeletes } = buildMocks({ upcomingCount: 0, owedPayoutCount: 1 })
 
     const res = await DELETE()
     expect(res.status).toBe(409)
-    expect(((await res.json()) as { code?: string }).code).toBe('BOOKING_HISTORY')
+    const data = (await res.json()) as { error: string; code?: string }
+    expect(data.code).toBe('PENDING_PAYOUTS')
+    expect(data.error).toBe('You have pending payouts. Please wait for them to clear.')
+    expect(softDeletes).toEqual([])
     expect(admin.auth.admin.deleteUser).not.toHaveBeenCalled()
   })
 
-  it('deletes successfully for a coach with zero bookings (only-coach path)', async () => {
+  // Case 3 — past-only booking history: deleteUser FK-fails → loud 500
+  it('returns 500 BOOKING_HISTORY (not success) when the auth delete FK-fails on past bookings', async () => {
+    const { admin } = buildMocks({
+      upcomingCount: 0,
+      authDeleteError: {
+        message:
+          'update or delete on table "coach_profiles" violates foreign key constraint "bookings_coach_profile_id_fkey"',
+      },
+    })
+
+    const res = await DELETE()
+    expect(res.status).toBe(500)
+    const data = (await res.json()) as { error: string; code?: string; success?: boolean }
+    expect(data.success).toBeUndefined()
+    expect(data.code).toBe('BOOKING_HISTORY')
+    expect(data.error).toBe(
+      'Your account cannot be fully deleted because it has booking history. Please contact hello@crikly.app for assistance.',
+    )
+    expect(admin.auth.admin.deleteUser).toHaveBeenCalledWith(AUTH_USER_ID)
+  })
+
+  // Case 4 — no activity at all
+  it('deletes successfully (200) when there is no activity: soft-delete, role deactivation, auth delete', async () => {
     const { admin, softDeletes, roleDeactivations } = buildMocks({
-      bookingCount: 0,
+      upcomingCount: 0,
       owedPayoutCount: 0,
       otherActiveRoleCount: 0,
     })
@@ -190,19 +231,10 @@ describe('DELETE /api/coaches/account — booking-history guard (BUG-49)', () =>
     expect(admin.auth.admin.deleteUser).toHaveBeenCalledWith(AUTH_USER_ID)
   })
 
-  it('still blocks on owed payouts (409 PENDING_PAYOUTS) when bookings are zero', async () => {
-    const { admin, softDeletes } = buildMocks({ bookingCount: 0, owedPayoutCount: 2 })
-
-    const res = await DELETE()
-    expect(res.status).toBe(409)
-    expect(((await res.json()) as { code?: string }).code).toBe('PENDING_PAYOUTS')
-    expect(softDeletes).toEqual([])
-    expect(admin.auth.admin.deleteUser).not.toHaveBeenCalled()
-  })
-
-  it('does NOT delete auth.users when other active roles exist (multi-role account)', async () => {
+  // Supporting behaviour
+  it('skips the auth delete entirely for multi-role accounts (200, no deleteUser)', async () => {
     const { admin, softDeletes } = buildMocks({
-      bookingCount: 0,
+      upcomingCount: 0,
       otherActiveRoleCount: 1,
     })
 
@@ -212,21 +244,9 @@ describe('DELETE /api/coaches/account — booking-history guard (BUG-49)', () =>
     expect(admin.auth.admin.deleteUser).not.toHaveBeenCalled()
   })
 
-  it('returns 200 when auth delete fails after soft-delete (documented fallback — logged, non-fatal)', async () => {
+  it('returns 500 when the upcoming-bookings count read fails, before any write', async () => {
     const { admin, softDeletes } = buildMocks({
-      bookingCount: 0,
-      authDeleteError: { message: 'unexpected RESTRICT reference' },
-    })
-
-    const res = await DELETE()
-    expect(res.status).toBe(200)
-    expect(softDeletes).toHaveLength(1)
-    expect(admin.auth.admin.deleteUser).toHaveBeenCalledTimes(1)
-  })
-
-  it('returns 500 when the booking count read fails', async () => {
-    const { admin, softDeletes } = buildMocks({
-      bookingError: { message: 'db down' },
+      upcomingError: { message: 'db down' },
     })
 
     const res = await DELETE()

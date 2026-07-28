@@ -11,14 +11,16 @@ import { PAYOUT_OWED_STATUSES } from '@/types/domain'
  *
  * Order (strict):
  *   1. requireCoachContext — auth + role + coach profile
- *   2. Block if ANY booking exists (any status, any date — BUG-49: bookings are
- *      financial records, bookings.coach_profile_id is ON DELETE RESTRICT)
+ *   2. Block if upcoming bookings exist (status confirmed/pending_approval, session_date >= today UTC)
  *   3. Block if owed Stripe payouts exist (status pending/processing/held — PAYOUT_OWED_STATUSES)
  *   4. Determine is_only_coach (no other active roles on this user)
  *   5+7. Soft-delete coach_profiles (set deleted_at + clear stripe_onboarding_complete in one UPDATE)
  *   6. Deactivate the 'coach' role on user_roles (is_active=false; preserves audit trail per schema doc L102)
- *   8. If is_only_coach: auth.admin.deleteUser(auth_user_id). Failure logged, profile already soft-deleted.
- *   9. Return { success: true }
+ *   8. If is_only_coach: auth.admin.deleteUser(auth_user_id). BUG-49: failure
+ *      is a 500 (BOOKING_HISTORY) — past bookings FK-block the hard delete
+ *      (bookings.coach_profile_id is ON DELETE RESTRICT) and the old silent
+ *      { success: true } logged the coach out with the account still alive.
+ *   9. Return { success: true } only when every step genuinely succeeded
  *
  * Idempotency: a second call hits requireCoachContext, which now 404s on the
  * soft-deleted coach_profiles row. No double-deletion possible.
@@ -49,29 +51,26 @@ export async function DELETE(): Promise<NextResponse<{ success: true } | { error
       return NextResponse.json({ error: 'Failed to read coach profile' }, { status: 500 })
     }
 
-    // 2. Block on ANY booking history (BUG-49). Bookings are financial records
-    // and bookings.coach_profile_id is ON DELETE RESTRICT, so a coach with any
-    // booking — completed, cancelled, anything — cannot be hard-deleted at
-    // step 8: the auth.users → user_profiles → coach_profiles cascade hits the
-    // FK and the whole delete fails. The previous upcoming-only check let
-    // history-holding coaches through to that silent step-8 failure (200
-    // returned, account intact). Any-status also subsumes the payouts FK
-    // (every payout row references a booking). Deliberately NO deleted_at
-    // filter: a soft-deleted booking is still a physical row and still blocks
-    // the RESTRICT — do not "fix" this count to exclude them.
-    const { count: bookingCount, error: bookingError } = await supabase
+    // 2. Block on upcoming bookings only — the coach can act on these
+    // (cancel/complete), so a 409 with a next step is right. Past-only booking
+    // history is NOT blocked here; it surfaces at step 8 instead (BUG-49).
+    // session_date is a date column; compare with today's date string (Vercel runs UTC).
+    const today = new Date().toISOString().slice(0, 10)
+    const { count: upcomingCount, error: upcomingError } = await supabase
       .from('bookings')
       .select('id', { count: 'exact', head: true })
       .eq('coach_profile_id', coachProfile.id)
-    if (bookingError) {
-      console.error('[DELETE /api/coaches/account] bookings count error:', bookingError)
-      return NextResponse.json({ error: 'Failed to check booking history' }, { status: 500 })
+      .in('status', ['confirmed', 'pending_approval'])
+      .gte('session_date', today)
+    if (upcomingError) {
+      console.error('[DELETE /api/coaches/account] bookings count error:', upcomingError)
+      return NextResponse.json({ error: 'Failed to check upcoming bookings' }, { status: 500 })
     }
-    if ((bookingCount ?? 0) > 0) {
+    if ((upcomingCount ?? 0) > 0) {
       return NextResponse.json(
         {
-          error: 'Your account cannot be deleted because you have booking history. Please contact hello@crikly.app if you need help.',
-          code: 'BOOKING_HISTORY',
+          error: 'You have upcoming sessions. Please cancel them first.',
+          code: 'UPCOMING_BOOKINGS',
         },
         { status: 409 }
       )
@@ -93,7 +92,7 @@ export async function DELETE(): Promise<NextResponse<{ success: true } | { error
     if ((pendingPayoutCount ?? 0) > 0) {
       return NextResponse.json(
         {
-          error: 'You have pending payouts. Please wait until all payments are transferred.',
+          error: 'You have pending payouts. Please wait for them to clear.',
           code: 'PENDING_PAYOUTS',
         },
         { status: 409 }
@@ -145,17 +144,26 @@ export async function DELETE(): Promise<NextResponse<{ success: true } | { error
     }
 
     // 8. If only-coach, delete the auth.users row entirely.
-    // BUG-49: with step 2 now blocking on ANY booking history, the FK-violation
-    // path that used to fail here silently should be unreachable — kept as a
-    // logged fallback for safety (other RESTRICT references, e.g.
-    // dbs_verifications, could still block). Failure is non-fatal — the coach
-    // profile is soft-deleted, so the user cannot access the coach surface
-    // area regardless. They could still log in but find nothing they own.
+    // BUG-49: this hard delete FK-fails for any coach with past bookings — the
+    // auth.users → user_profiles → coach_profiles cascade hits
+    // bookings.coach_profile_id ON DELETE RESTRICT (booking rows are financial
+    // records and must survive). The old code swallowed that error and
+    // returned { success: true }: silent 200, client logged the coach out,
+    // account still alive. Now any deleteUser failure is a 500 the client
+    // surfaces WITHOUT logging out. The coach profile is already soft-deleted
+    // at this point (steps 5-7), so the coach surface is gone either way;
+    // support (hello@) resolves the remainder manually.
     if (isOnlyCoach) {
       const { error: authDeleteError } = await admin.auth.admin.deleteUser(user.id)
       if (authDeleteError) {
         console.error('[DELETE /api/coaches/account] auth.admin.deleteUser error:', authDeleteError)
-        // Continue — soft-delete already done.
+        return NextResponse.json(
+          {
+            error: 'Your account cannot be fully deleted because it has booking history. Please contact hello@crikly.app for assistance.',
+            code: 'BOOKING_HISTORY',
+          },
+          { status: 500 }
+        )
       }
     }
 
