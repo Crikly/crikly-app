@@ -2,6 +2,7 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import type { Database } from '@/types/database'
+import { sendCoachWelcomeEmail } from '@/lib/resend/coach-lifecycle-emails'
 
 type Role = 'parent' | 'player' | 'coach'
 
@@ -189,6 +190,21 @@ export async function POST(request: Request) {
       )
     }
 
+    // PILOT-01 Email 1: the welcome email must fire only on FIRST-TIME coach
+    // registration, and the upsert below (ignoreDuplicates) makes the row
+    // exist unconditionally — so detect "already a coach" before it runs.
+    // Coach-only check: parent/player selections skip the extra round-trip.
+    let isFirstTimeCoach = false
+    if (role === 'coach') {
+      const { data: existingCoachRole } = await supabase
+        .from('user_roles')
+        .select('id')
+        .eq('user_profile_id', userProfile.id)
+        .eq('role', 'coach')
+        .maybeSingle()
+      isFirstTimeCoach = !existingCoachRole
+    }
+
     // Fix-12: Insert into user_roles table (critical for coach API access)
     // Use upsert to handle case where row already exists
     const { error: roleInsertError } = await supabase
@@ -242,6 +258,22 @@ export async function POST(request: Request) {
 
       if (coachProfileError) {
         console.error('[Fix-ROLES-01] coach_profiles eager-create error:', coachProfileError)
+      }
+
+      // PILOT-01 Email 1: welcome the coach. Awaited (serverless can kill
+      // un-awaited work) but can never throw or fail role selection — the
+      // sender swallows and logs its own errors.
+      if (isFirstTimeCoach && user.email) {
+        const welcomeName =
+          (user.user_metadata?.full_name as string | undefined)?.trim() ||
+          (user.user_metadata?.name as string | undefined)?.trim() ||
+          'there'
+        const base = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+        await sendCoachWelcomeEmail({
+          coachEmail: user.email,
+          coachName: welcomeName,
+          dashboardUrl: `${base}/coach/dashboard`,
+        })
       }
     }
 

@@ -114,7 +114,8 @@ export function PricingStep() {
 
         setSports(rawSports)
 
-        setCoachName(profileData.full_name || '')
+        // UX-01 BUG 2: preview shows the public display_name, not full_name
+        setCoachName(profileData.display_name || profileData.full_name || '')
         if (profileData.avatar_url) {
           setCoachAvatarUrl(profileData.avatar_url)
         }

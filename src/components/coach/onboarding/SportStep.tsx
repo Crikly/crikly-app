@@ -84,7 +84,8 @@ export function SportStep() {
         }
 
         if (profileResult.status === 'fulfilled') {
-          setCoachName(profileResult.value.full_name || 'Your name')
+          // UX-01 BUG 2: preview shows the public display_name, not full_name
+          setCoachName(profileResult.value.display_name || profileResult.value.full_name || 'Your name')
         } else {
           console.warn('[SportStep] Failed to load profile:', profileResult.reason)
         }

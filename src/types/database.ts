@@ -442,13 +442,12 @@ export type Database = {
           date_of_birth: string
           deleted_at: string | null
           full_name: string
+          gender: string | null
           id: string
           medical_notes: string | null
           notes_for_coach: string | null
           parent_profile_id: string
           passport_privacy: string
-          skill_level: string
-          sport_ids: string[]
           transition_initiated_at: string | null
           transition_status: string
           transitioned_player_id: string | null
@@ -459,13 +458,12 @@ export type Database = {
           date_of_birth: string
           deleted_at?: string | null
           full_name: string
+          gender?: string | null
           id?: string
           medical_notes?: string | null
           notes_for_coach?: string | null
           parent_profile_id: string
           passport_privacy?: string
-          skill_level: string
-          sport_ids: string[]
           transition_initiated_at?: string | null
           transition_status?: string
           transitioned_player_id?: string | null
@@ -476,13 +474,12 @@ export type Database = {
           date_of_birth?: string
           deleted_at?: string | null
           full_name?: string
+          gender?: string | null
           id?: string
           medical_notes?: string | null
           notes_for_coach?: string | null
           parent_profile_id?: string
           passport_privacy?: string
-          skill_level?: string
-          sport_ids?: string[]
           transition_initiated_at?: string | null
           transition_status?: string
           transitioned_player_id?: string | null
@@ -501,6 +498,48 @@ export type Database = {
             columns: ["transitioned_player_id"]
             isOneToOne: false
             referencedRelation: "player_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      child_sports: {
+        Row: {
+          child_profile_id: string
+          created_at: string
+          id: string
+          skill_level: string
+          sport_id: string
+          updated_at: string
+        }
+        Insert: {
+          child_profile_id: string
+          created_at?: string
+          id?: string
+          skill_level: string
+          sport_id: string
+          updated_at?: string
+        }
+        Update: {
+          child_profile_id?: string
+          created_at?: string
+          id?: string
+          skill_level?: string
+          sport_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "child_sports_child_profile_id_fkey"
+            columns: ["child_profile_id"]
+            isOneToOne: false
+            referencedRelation: "child_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "child_sports_sport_id_fkey"
+            columns: ["sport_id"]
+            isOneToOne: false
+            referencedRelation: "sports"
             referencedColumns: ["id"]
           },
         ]
@@ -572,6 +611,7 @@ export type Database = {
           slug: string | null
           stripe_account_id: string | null
           stripe_onboarding_complete: boolean
+          submitted_for_review_at: string | null
           subscription_tier_id: string | null
           travel_radius_miles: number | null
           updated_at: string
@@ -606,6 +646,7 @@ export type Database = {
           slug?: string | null
           stripe_account_id?: string | null
           stripe_onboarding_complete?: boolean
+          submitted_for_review_at?: string | null
           subscription_tier_id?: string | null
           travel_radius_miles?: number | null
           updated_at?: string
@@ -640,6 +681,7 @@ export type Database = {
           slug?: string | null
           stripe_account_id?: string | null
           stripe_onboarding_complete?: boolean
+          submitted_for_review_at?: string | null
           subscription_tier_id?: string | null
           travel_radius_miles?: number | null
           updated_at?: string
@@ -2258,6 +2300,7 @@ export type Database = {
       }
       platform_config: {
         Row: {
+          adult_age: number
           child_transition_age: number
           child_transition_window_days: number
           dbs_fee_currency: string
@@ -2274,6 +2317,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          adult_age?: number
           child_transition_age?: number
           child_transition_window_days?: number
           dbs_fee_currency?: string
@@ -2290,6 +2334,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          adult_age?: number
           child_transition_age?: number
           child_transition_window_days?: number
           dbs_fee_currency?: string
@@ -2312,11 +2357,10 @@ export type Database = {
           created_at: string
           date_of_birth: string
           deleted_at: string | null
+          gender: string | null
           id: string
           medical_notes: string | null
           passport_privacy: string
-          skill_level: string
-          sport_ids: string[]
           updated_at: string
           user_profile_id: string
         }
@@ -2324,11 +2368,10 @@ export type Database = {
           created_at?: string
           date_of_birth: string
           deleted_at?: string | null
+          gender?: string | null
           id?: string
           medical_notes?: string | null
           passport_privacy?: string
-          skill_level: string
-          sport_ids: string[]
           updated_at?: string
           user_profile_id: string
         }
@@ -2336,11 +2379,10 @@ export type Database = {
           created_at?: string
           date_of_birth?: string
           deleted_at?: string | null
+          gender?: string | null
           id?: string
           medical_notes?: string | null
           passport_privacy?: string
-          skill_level?: string
-          sport_ids?: string[]
           updated_at?: string
           user_profile_id?: string
         }
@@ -2350,6 +2392,48 @@ export type Database = {
             columns: ["user_profile_id"]
             isOneToOne: false
             referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      player_sports: {
+        Row: {
+          created_at: string
+          id: string
+          player_profile_id: string
+          skill_level: string
+          sport_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          player_profile_id: string
+          skill_level: string
+          sport_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          player_profile_id?: string
+          skill_level?: string
+          sport_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "player_sports_player_profile_id_fkey"
+            columns: ["player_profile_id"]
+            isOneToOne: false
+            referencedRelation: "player_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "player_sports_sport_id_fkey"
+            columns: ["sport_id"]
+            isOneToOne: false
+            referencedRelation: "sports"
             referencedColumns: ["id"]
           },
         ]
@@ -2523,6 +2607,7 @@ export type Database = {
           reviewer_name: string
           reviewer_user_id: string | null
           sport_name: string
+          updated_at: string
         }
         Insert: {
           booking_id?: string | null
@@ -2535,6 +2620,7 @@ export type Database = {
           reviewer_name?: string
           reviewer_user_id?: string | null
           sport_name?: string
+          updated_at?: string
         }
         Update: {
           booking_id?: string | null
@@ -2547,6 +2633,7 @@ export type Database = {
           reviewer_name?: string
           reviewer_user_id?: string | null
           sport_name?: string
+          updated_at?: string
         }
         Relationships: [
           {

@@ -25,8 +25,8 @@ export function BookingPolicyStep() {
         // AF-P-01: cached fetch — returns cached profile if hit, network otherwise
         const data = await fetchCoachProfileCached()
         
-        // Fix-16e: Set coach name
-        setCoachName(data.full_name || 'Your name')
+        // UX-01 BUG 2: preview shows the public display_name, not full_name
+        setCoachName(data.display_name || data.full_name || 'Your name')
         
         // Map cancellation_window_hours to UI string
         if (data.cancellation_window_hours !== undefined) {
