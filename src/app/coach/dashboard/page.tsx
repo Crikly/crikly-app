@@ -166,6 +166,7 @@ export default async function CoachDashboardPage() {
         location_city,
         coach_profiles!inner (
           id,
+          display_name,
           bio,
           cancellation_window_hours,
           stripe_account_id,
@@ -194,8 +195,10 @@ export default async function CoachDashboardPage() {
     const userProfile = joined
     const coachProfile = coachData
 
-    // Coach name + avatar — set immediately after userProfile fetch
-    dashboardData.coachName = userProfile.full_name || ''
+    // Coach name + avatar — set immediately after userProfile fetch.
+    // UX-01 BUG 1: greeting shows display_name (product rule: display_name
+    // everywhere a coach is visible; full_name only in Settings).
+    dashboardData.coachName = coachProfile.display_name || userProfile.full_name || ''
     dashboardData.coachAvatarUrl = userProfile.avatar_url ?? null
 
     // PERF-02: date math hoisted ahead of the Promise.all so all 11

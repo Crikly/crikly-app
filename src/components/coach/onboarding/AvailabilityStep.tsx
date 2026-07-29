@@ -159,7 +159,8 @@ export function AvailabilityStep() {
           fetchCoachSportsCached(),
         ])
 
-        setCoachName(profileData.full_name || 'Your name')
+        // UX-01 BUG 2: preview shows the public display_name, not full_name
+        setCoachName(profileData.display_name || profileData.full_name || 'Your name')
 
         const sports = (sportsData.sports || []).map((s: { sport_id: string; sport_name: string }) => ({
           sport_id: s.sport_id,
@@ -232,6 +233,9 @@ export function AvailabilityStep() {
     setShowAddForm(false)
     setPreselectedDay(null)
     setEditingBlockId(null)
+    // UX-01 BUG 4: the unsaved-block warning refers to the open form — once
+    // the form is saved or cancelled it must not linger in the footer.
+    setConfirmDiscard(false)
   }
   
   const handleEditBlock = (block: ScheduleBlock) => {
@@ -464,6 +468,27 @@ export function AvailabilityStep() {
                             </div>
                           </div>
                         ))}
+                        {/* UX-01 BUG 3: days with existing blocks had no add
+                            affordance — the empty-state row disappears once a
+                            day has a block, and the bottom "Add another block"
+                            button sits below the fold behind the sticky footer.
+                            Same open-form mechanism as the empty-state row. */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPreselectedDay(dayAbbr)
+                            setShowAddForm(true)
+                            setTimeout(() => {
+                              addFormRef.current?.scrollIntoView({
+                                behavior: 'smooth',
+                                block: 'start'
+                              })
+                            }, 50)
+                          }}
+                          className="self-start flex items-center gap-1.5 px-1 py-1 text-[12px] font-medium text-brand-600 hover:text-brand-700 transition-colors"
+                        >
+                          <Plus size={12} /> Add another time on {dayFull}
+                        </button>
                       </div>
                     ) : (
                       <div 
@@ -689,55 +714,59 @@ export function AvailabilityStep() {
               </button>
             )}
             
-            {/* AF-H-25: warn when navigating away with an unsaved Add block form open */}
-            {confirmDiscard && (
-              <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 mb-3 mx-6">
-                <p className="text-[13px] font-medium text-amber-900 mb-1">You have an unsaved block.</p>
-                <p className="text-[12px] text-amber-700 mb-3">Discard it or save it before continuing.</p>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => {
-                      resetForm()
-                      setConfirmDiscard(false)
-                      router.push('/coach/onboarding/policy')
-                    }}
-                    className="px-4 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-md text-[12px] font-medium transition-colors"
-                  >
-                    Discard & continue
-                  </button>
-                  <button
-                    onClick={() => setConfirmDiscard(false)}
-                    className="px-4 py-1.5 bg-white border border-gray-200 text-gray-700 rounded-md text-[12px] font-medium hover:bg-gray-50 transition-colors"
-                  >
-                    Go back
-                  </button>
-                </div>
-              </div>
-            )}
-
             {/* Onboarding footer CTA */}
             <div
-              className="sticky bottom-0 bg-white border-t-[0.5px] border-gray-100 px-6 py-3 flex justify-between items-center"
+              className="sticky bottom-0 bg-white border-t-[0.5px] border-gray-100 px-6 py-3"
               style={{ boxShadow: '0 -2px 8px rgba(0,0,0,0.04)' }}
             >
-              <button
-                onClick={() => router.push('/coach/onboarding/qualifications')}
-                className="text-[13px] text-gray-500 hover:text-gray-900 font-medium transition-colors"
-              >
-                ← Back
-              </button>
-              <button
-                onClick={() => {
-                  if (showAddForm) {
-                    setConfirmDiscard(true)
-                  } else {
-                    router.push('/coach/onboarding/policy')
-                  }
-                }}
-                className="bg-[#0077CC] hover:bg-[#0066AA] text-white rounded-full px-7 py-2.5 text-[13px] font-medium transition-colors"
-              >
-                Save & continue →
-              </button>
+              {/* AF-H-25 + UX-01 BUG 4: the unsaved-block warning lives INSIDE
+                  the sticky footer — rendered in flow after the tall add form
+                  it sat below the fold behind this footer, so clicking Save &
+                  continue looked like a dead button. */}
+              {confirmDiscard && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 mb-3">
+                  <p className="text-[13px] font-medium text-amber-900 mb-1">You have an unsaved block.</p>
+                  <p className="text-[12px] text-amber-700 mb-3">Discard it or save it before continuing.</p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        resetForm()
+                        setConfirmDiscard(false)
+                        router.push('/coach/onboarding/policy')
+                      }}
+                      className="px-4 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-md text-[12px] font-medium transition-colors"
+                    >
+                      Discard & continue
+                    </button>
+                    <button
+                      onClick={() => setConfirmDiscard(false)}
+                      className="px-4 py-1.5 bg-white border border-gray-200 text-gray-700 rounded-md text-[12px] font-medium hover:bg-gray-50 transition-colors"
+                    >
+                      Go back
+                    </button>
+                  </div>
+                </div>
+              )}
+              <div className="flex justify-between items-center">
+                <button
+                  onClick={() => router.push('/coach/onboarding/qualifications')}
+                  className="text-[13px] text-gray-500 hover:text-gray-900 font-medium transition-colors"
+                >
+                  ← Back
+                </button>
+                <button
+                  onClick={() => {
+                    if (showAddForm) {
+                      setConfirmDiscard(true)
+                    } else {
+                      router.push('/coach/onboarding/policy')
+                    }
+                  }}
+                  className="bg-brand-600 hover:bg-brand-700 text-white rounded-full px-7 py-2.5 text-[13px] font-medium transition-colors"
+                >
+                  Save & continue →
+                </button>
+              </div>
             </div>
           </div>
           )}

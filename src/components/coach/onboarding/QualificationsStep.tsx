@@ -78,7 +78,8 @@ export function QualificationsStep() {
           fetchQualifications(),
           fetchCoachProfileCached(),
         ])
-        setCoachName(profileData.full_name || 'Your name')
+        // UX-01 BUG 2: preview shows the public display_name, not full_name
+        setCoachName(profileData.display_name || profileData.full_name || 'Your name')
       } catch (error) {
         console.error('[QualificationsStep] Failed to fetch data:', error)
       } finally {
