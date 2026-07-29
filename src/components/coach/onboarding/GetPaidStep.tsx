@@ -5,6 +5,14 @@ import { ArrowLeft, Check, CheckCircle } from 'lucide-react'
 import { OnboardingPreviewPanel } from '../OnboardingPreviewPanel'
 // AF-P-Wave-1: profile cache adoption + clear after go-live mutation
 import { fetchCoachProfileCached, clearCoachProfileCache } from '@/lib/onboarding-cache'
+// UX-01 BUG 5: real Stripe Connect status — same endpoint + 60s cache as
+// the dashboard GetPaid page, so both surfaces always agree.
+import {
+  readStripeStatusCache,
+  writeStripeStatusCache,
+  clearStripeStatusCache,
+  type StripeConnectStatus,
+} from '@/lib/stripe-status-cache'
 
 export function GetPaidStep() {
   const router = useRouter()
@@ -19,13 +27,43 @@ export function GetPaidStep() {
   // Guards the success-return effect against React strict-mode double-invoke
   // (same pattern as GetPaid.tsx fetchingRef).
   const handledReturnRef = useRef(false)
+  // UX-01 BUG 5: null = status unknown (loading); the connect card only
+  // renders once Stripe has confirmed the coach is NOT ready, so an
+  // already-connected coach never sees "Connect with Stripe" flash.
+  const [stripeStatus, setStripeStatus] = useState<StripeConnectStatus | null>(null)
+  const fetchingStatusRef = useRef(false)
+
+  const fetchStripeStatus = useCallback(async () => {
+    if (fetchingStatusRef.current) return
+    fetchingStatusRef.current = true
+    try {
+      const cached = readStripeStatusCache()
+      if (cached) {
+        setStripeStatus(cached)
+        return
+      }
+      const response = await fetch('/api/payments/connect/onboard')
+      if (!response.ok) throw new Error('Failed to fetch Stripe status')
+      const data: StripeConnectStatus = await response.json()
+      setStripeStatus(data)
+      writeStripeStatusCache(data)
+    } catch (err) {
+      console.error('[GetPaidStep] Failed to fetch Stripe status:', err)
+      // Fall back to the connect card — it is always a safe state to show,
+      // and the go-live API re-checks Stripe server-side anyway.
+      setStripeStatus({ connected: false })
+    } finally {
+      fetchingStatusRef.current = false
+    }
+  }, [])
 
   // AF-P-Wave-1: use cache (was Fix-16e raw fetch)
   useEffect(() => {
     const fetchProfile = async () => {
       try {
         const data = await fetchCoachProfileCached()
-        setCoachName(data?.full_name || 'Your name')
+        // UX-01 BUG 2: preview shows the public display_name, not full_name
+        setCoachName(data?.display_name || data?.full_name || 'Your name')
       } catch (error) {
         console.error('[GetPaidStep] Failed to fetch profile:', error)
       }
@@ -117,13 +155,31 @@ export function GetPaidStep() {
     const params = new URLSearchParams(window.location.search)
     if (params.get('success') === 'true') {
       handledReturnRef.current = true
+      // UX-01 BUG 5: Stripe state changed during the redirect — the cached
+      // snapshot is stale (same busting rule as GetPaid.tsx).
+      clearStripeStatusCache()
       window.history.replaceState({}, '', '/coach/onboarding/get-paid')
       handleGoLive()
     } else if (params.get('refresh') === 'true') {
       handledReturnRef.current = true
+      clearStripeStatusCache()
       window.history.replaceState({}, '', '/coach/onboarding/get-paid')
     }
   }, [handleGoLive])
+
+  // UX-01 BUG 5: fetch status on mount — runs after the return-param effect
+  // above so a just-returned coach never reads the stale cache entry.
+  useEffect(() => {
+    fetchStripeStatus()
+  }, [fetchStripeStatus])
+
+  // Same readiness semantics as the go-live API gate and the Stripe webhook:
+  // charges_enabled && payouts_enabled ⇔ stripe_onboarding_complete.
+  const stripeConnected =
+    stripeStatus?.connected === true &&
+    stripeStatus.charges_enabled === true &&
+    stripeStatus.payouts_enabled === true
+  const statusLoading = stripeStatus === null
 
   // PILOT-01: submitted-for-review confirmation replaces the whole step —
   // Stripe is connected and the profile is with Lasith for approval.
@@ -177,6 +233,48 @@ export function GetPaidStep() {
           </div>
 
           <div className="flex flex-col gap-6">
+            {/* UX-01 BUG 5: three states — checking / already connected / connect */}
+            {statusLoading && (
+              <div className="bg-white border border-gray-100 shadow-sm rounded-[24px] p-8 mb-6">
+                <div className="py-12 flex flex-col items-center justify-center">
+                  <div className="w-8 h-8 border-3 border-gray-200 border-t-brand-600 rounded-full animate-spin mb-3" />
+                  <p className="text-[14px] text-gray-500 font-medium">Checking your payout setup...</p>
+                </div>
+              </div>
+            )}
+
+            {!statusLoading && stripeConnected && (
+              <div className="bg-white border border-gray-100 shadow-sm rounded-[24px] p-8 mb-6" data-testid="stripe-step-connected">
+                <div className="flex flex-col items-center text-center mb-8">
+                  <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center mb-4">
+                    <Check size={22} strokeWidth={3} className="text-green-600" />
+                  </div>
+                  <h2 className="text-[20px] font-bold text-gray-900 mb-2">Stripe connected</h2>
+                  <p className="text-[15px] text-gray-600 font-medium max-w-[320px]">
+                    {stripeStatus?.bank_last4
+                      ? `Payouts go to your bank account ending ${stripeStatus.bank_last4}.`
+                      : 'Your payout account is set up.'}{' '}
+                    You&apos;re ready to accept paid bookings.
+                  </p>
+                </div>
+                <div className="flex flex-col items-center">
+                  <button
+                    onClick={handleGoLive}
+                    disabled={isGoingLive}
+                    className="w-full py-4 bg-brand-600 hover:bg-brand-700 disabled:opacity-60 text-white rounded-xl font-bold text-[16px] transition-colors shadow-sm flex items-center justify-center gap-2 mb-3"
+                  >
+                    {isGoingLive ? 'Submitting…' : 'Go live'} <ArrowLeft size={18} className="rotate-180" />
+                  </button>
+                  {error && (
+                    <p className="text-[13px] text-red-600 font-medium text-center mb-2">{error}</p>
+                  )}
+                  <p className="text-[13px] text-gray-400 font-medium text-center">Your profile is submitted for review — we&apos;ll email you when it goes live.</p>
+                </div>
+              </div>
+            )}
+
+            {!statusLoading && !stripeConnected && (
+            <>
             <div className="bg-white border border-gray-100 shadow-sm rounded-[24px] p-8">
               <div className="flex flex-col items-center text-center mb-8">
                 <div className="mb-4"><span className="text-[40px] font-bold tracking-tighter text-[#635BFF]">stripe</span></div>
@@ -227,6 +325,8 @@ export function GetPaidStep() {
               </div>
               <p className="text-[12px] text-gray-500 font-medium">Payments are processed securely by Stripe.</p>
             </div>
+            </>
+            )}
           </div>
 
           {/* Standard onboarding footer - three-slot pattern */}
@@ -250,13 +350,25 @@ export function GetPaidStep() {
               </button>
               <p className="text-[10px] text-gray-400 mt-0.5">You can complete this from your dashboard</p>
             </div>
-            <button
-              onClick={handleConnectStripe}
-              disabled={connecting || isGoingLive}
-              className="bg-[#0077CC] hover:bg-[#0066AA] disabled:opacity-60 text-white rounded-full px-7 py-2.5 text-[13px] font-medium transition-colors"
-            >
-              {connecting ? 'Connecting…' : 'Connect with Stripe →'}
-            </button>
+            {/* UX-01 BUG 5: primary CTA follows the Stripe state — an
+                already-connected coach goes live instead of re-connecting */}
+            {stripeConnected ? (
+              <button
+                onClick={handleGoLive}
+                disabled={isGoingLive}
+                className="bg-brand-600 hover:bg-brand-700 disabled:opacity-60 text-white rounded-full px-7 py-2.5 text-[13px] font-medium transition-colors"
+              >
+                {isGoingLive ? 'Submitting…' : 'Go live →'}
+              </button>
+            ) : (
+              <button
+                onClick={handleConnectStripe}
+                disabled={connecting || isGoingLive || statusLoading}
+                className="bg-brand-600 hover:bg-brand-700 disabled:opacity-60 text-white rounded-full px-7 py-2.5 text-[13px] font-medium transition-colors"
+              >
+                {connecting ? 'Connecting…' : 'Connect with Stripe →'}
+              </button>
+            )}
           </div>
         </div>
       </div>
