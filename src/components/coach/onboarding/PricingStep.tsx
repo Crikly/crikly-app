@@ -37,7 +37,7 @@ interface PricingRow {
 }
 
 interface SportPricing {
-  sessionTypes: { individual: boolean; group: boolean }
+  sessionTypes: { individual: boolean }
   skillLevels: string[]
   ageGroups: string[]
   pricingRows: PricingRow[]
@@ -64,7 +64,7 @@ const API_TO_UI_AGE: Record<string, string> = {
 }
 
 const defaultSportPricing: SportPricing = {
-  sessionTypes: { individual: true, group: false },
+  sessionTypes: { individual: true },
   skillLevels: [],
   ageGroups: [],
   pricingRows: [{ id: '1', duration: '60 min', price: '' }],
@@ -137,7 +137,6 @@ export function PricingStep() {
             initialPricing[sportName] = {
               sessionTypes: {
                 individual: savedSport.session_types.includes('individual'),
-                group: savedSport.session_types.includes('group'),
               },
               skillLevels: savedSport.skill_levels.map(l =>
                 l.charAt(0).toUpperCase() + l.slice(1)
@@ -237,7 +236,6 @@ export function PricingStep() {
 
         const sessionTypesArray: string[] = []
         if (pricing.sessionTypes.individual) sessionTypesArray.push('individual')
-        if (pricing.sessionTypes.group) sessionTypesArray.push('group')
 
         const skillLevelsArray = pricing.skillLevels.map(l => l.toLowerCase())
 
@@ -264,8 +262,6 @@ export function PricingStep() {
             skill_levels: skillLevelsArray,
             age_groups: ageGroupsArray,
             price_individual_pence: lowestPricePence,
-            price_group_pence: null,
-            max_group_size: null,
             session_duration_minutes: durationMinutes,
           })
         })
@@ -387,7 +383,7 @@ export function PricingStep() {
           <div className="bg-white rounded-xl p-5" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
             <h2 className="text-[18px] font-bold text-gray-900 mb-6">Session types</h2>
             <div className="flex flex-col gap-4">
-              {(['individual', 'group'] as const).map((type) => (
+              {(['individual'] as const).map((type) => (
                 <div
                   key={type}
                   className="flex items-start gap-4 p-4 rounded-xl border border-gray-100 hover:border-blue-100 hover:bg-blue-50/30 transition-colors cursor-pointer"
@@ -399,9 +395,9 @@ export function PricingStep() {
                     {activePricing.sessionTypes[type] && <Check size={16} className="text-white" />}
                   </div>
                   <div className="flex flex-col">
-                    <span className="text-[15px] font-bold text-gray-900 capitalize">{type === 'individual' ? 'Individual' : 'Group'}</span>
+                    <span className="text-[15px] font-bold text-gray-900 capitalize">Individual</span>
                     <span className="text-[14px] text-gray-500 font-medium mt-0.5">
-                      {type === 'individual' ? '1-on-1 sessions with a single player' : 'Sessions with multiple players'}
+                      1-on-1 sessions with a single player
                     </span>
                   </div>
                 </div>
@@ -604,9 +600,7 @@ export function PricingStep() {
               <div className="flex justify-between">
                 <span className="text-[11px] text-gray-500">Session types</span>
                 <span className="text-[11px] text-gray-900 font-medium text-right max-w-[140px]">
-                  {activePricing.sessionTypes.individual && activePricing.sessionTypes.group ? 'Individual · Group' :
-                   activePricing.sessionTypes.individual ? 'Individual' :
-                   activePricing.sessionTypes.group ? 'Group' : 'None'}
+                  {activePricing.sessionTypes.individual ? 'Individual' : 'None'}
                 </span>
               </div>
 
