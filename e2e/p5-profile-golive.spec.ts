@@ -14,6 +14,10 @@
 // the Fix-E2E-02 TODO — the gate logic is correct; the old tests were not.
 // (The unreachable ProfileEdit button itself is flagged separately as a
 // production dead-code observation — not a test concern.)
+//
+// P-02 session fix: T5.3 rewritten again — C-PAY-03 removed go-live from
+// "Skip for now" (draft until Stripe payout destination exists) and PILOT-01
+// made go-live a submit-for-review. T5.3 now pins the draft-preserving skip.
 
 import { test, expect } from '@playwright/test'
 import { loginAsTestCoach } from './fixtures/auth'
@@ -57,20 +61,23 @@ test.describe('P5 — Profile + Go Live', () => {
     await expect(page.getByRole('button', { name: /Connect with Stripe/i }).first()).toBeVisible()
   })
 
-  test('T5.3: Skip for now goes live — celebration modal + is_profile_live=true (UI + DB)', async ({ page }) => {
+  test('T5.3: Skip for now stays draft — dashboard, no celebration, is_profile_live=false (UI + DB)', async ({ page }) => {
+    // C-PAY-03 Path B: "Skip for now" no longer attempts go-live — a profile
+    // cannot be live without a payout destination, and go-live itself is now
+    // a submit-for-review (PILOT-01). handleSkip just routes to the dashboard
+    // with the coach still in draft.
     await page.goto('/coach/onboarding/get-paid')
     await expect(page.getByRole('button', { name: 'Skip for now' })).toBeVisible({ timeout: 15_000 })
 
-    // Path B go-live: POST /api/coaches/profile { is_profile_live: true } then
-    // redirect to /coach/dashboard?celebrated=true (Fix-36).
     await page.getByRole('button', { name: 'Skip for now' }).click()
     await page.waitForURL(/\/coach\/dashboard/, { timeout: 20_000 })
 
-    // Fix-36 celebration modal confirms the flip completed end-to-end.
-    await expect(page.getByRole('heading', { name: /You're live!/i })).toBeVisible({ timeout: 15_000 })
+    // No celebration modal — that congratulates a live profile (Fix-36), and
+    // this coach is still draft.
+    await expect(page.getByRole('heading', { name: /You're live!/i })).not.toBeVisible()
 
     // ── DB ASSERT ─────────────────────────────────────────────────────
     const isLive = await getCoachIsProfileLive(TEST_COACH_EMAIL)
-    expect(isLive).toBe(true)
+    expect(isLive).toBe(false)
   })
 })

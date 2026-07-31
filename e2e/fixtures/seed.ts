@@ -192,6 +192,10 @@ async function main(): Promise<void> {
   //    NOTE: P5 (Go Live) drives its own is_profile_live state via beforeAll/
   //    afterAll in p5-profile-golive.spec.ts and does NOT rely on this seed
   //    value.
+  //
+  //    submitted_for_review_at must be set alongside is_profile_live=true —
+  //    migration 046's valid_review_state CHECK forbids a live coach with a
+  //    NULL review timestamp (PILOT-01 approval-queue invariant).
   const { data: cpRow, error: cpErr } = await supabase
     .from('coach_profiles')
     .upsert(
@@ -199,6 +203,7 @@ async function main(): Promise<void> {
         user_profile_id: userProfileId,
         display_name: 'Test Coach',
         is_profile_live: true,
+        submitted_for_review_at: now,
         updated_at: new Date().toISOString(),
       },
       { onConflict: 'user_profile_id' },
