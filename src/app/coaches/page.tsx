@@ -56,6 +56,10 @@ function CoachesSearchPage() {
   // controlled form input. Reading inline avoids a setState ping-pong on
   // back/forward navigation.
   const queryLocation = searchParams.get('location')?.trim() ?? ''
+  // P-03: persona context arriving from the landing CTAs (?role=parent|player).
+  // Nothing on this page consumes it — it is carried through URL rebuilds so
+  // the auth wall can pre-set the role later (AUTH-FLOW-01).
+  const queryRole = searchParams.get('role')?.trim() ?? ''
 
   const [locationInput, setLocationInput] = useState(queryLocation)
   const [coaches, setCoaches] = useState<PublicCoachListItem[]>([])
@@ -111,17 +115,19 @@ function CoachesSearchPage() {
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
     const trimmed = locationInput.trim()
-    const url = trimmed
-      ? `/coaches?sport=cricket&location=${encodeURIComponent(trimmed)}`
-      : '/coaches?sport=cricket'
-    router.push(url)
+    const params = new URLSearchParams({ sport: 'cricket' })
+    if (trimmed) params.set('location', trimmed)
+    if (queryRole) params.set('role', queryRole)
+    router.push(`/coaches?${params.toString()}`)
   }
 
   // ── Reset — used by the empty-state "Reset search" button ───────────
   const handleReset = useCallback(() => {
     setLocationInput('')
-    router.push('/coaches?sport=cricket')
-  }, [router])
+    const params = new URLSearchParams({ sport: 'cricket' })
+    if (queryRole) params.set('role', queryRole)
+    router.push(`/coaches?${params.toString()}`)
+  }, [router, queryRole])
 
   // ── Load more — appends the next page; preserves existing list ──────
   const handleLoadMore = async () => {
