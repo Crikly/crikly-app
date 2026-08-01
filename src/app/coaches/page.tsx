@@ -11,6 +11,7 @@ import {
   normaliseCoach,
 } from '@/components/public/CoachCard'
 import type { PublicCoachListItem } from '@/components/public/CoachCard'
+import { parseRoleParam, type RoleParam } from '@/lib/auth/role-param'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -57,9 +58,10 @@ function CoachesSearchPage() {
   // back/forward navigation.
   const queryLocation = searchParams.get('location')?.trim() ?? ''
   // P-03: persona context arriving from the landing CTAs (?role=parent|player).
-  // Nothing on this page consumes it — it is carried through URL rebuilds so
-  // the auth wall can pre-set the role later (AUTH-FLOW-01).
+  // Carried through URL rebuilds; P-04-B (AUTH-FLOW-01) now also validates it
+  // and threads it onto the auth-wall links in CoachesPageShell.
   const queryRole = searchParams.get('role')?.trim() ?? ''
+  const roleParam = parseRoleParam(queryRole)
 
   const [locationInput, setLocationInput] = useState(queryLocation)
   const [coaches, setCoaches] = useState<PublicCoachListItem[]>([])
@@ -154,7 +156,7 @@ function CoachesSearchPage() {
   }
 
   return (
-    <CoachesPageShell>
+    <CoachesPageShell roleParam={roleParam}>
       <PageHeaderCopy />
 
       {/* ── Compact search bar ─────────────────────────────────── */}
@@ -252,7 +254,13 @@ function CoachesSearchPage() {
 
 // ─── Shell (nav + footer + main wrapper) ─────────────────────────────────────
 
-function CoachesPageShell({ children }: { children: React.ReactNode }) {
+function CoachesPageShell({
+  children,
+  roleParam = null,
+}: {
+  children: React.ReactNode
+  roleParam?: RoleParam | null
+}) {
   return (
     <div className="min-h-screen bg-transparent">
       {/* ── Nav ─────────────────────────────────────────────────── */}
@@ -268,14 +276,17 @@ function CoachesPageShell({ children }: { children: React.ReactNode }) {
           />
         </Link>
         <div className="flex items-center gap-1.5">
+          {/* P-04-B (AUTH-FLOW-01): carry the validated persona context from
+              the landing CTAs into the auth wall — without this the ?role=
+              chain dies here and the consumption layer is unreachable. */}
           <Link
-            href="/login"
+            href={roleParam ? `/login?role=${roleParam}` : '/login'}
             className="whitespace-nowrap rounded-[10px] px-3.5 py-2.5 text-[15px] font-medium text-neutral-600 no-underline transition-colors hover:bg-neutral-50 hover:text-gray-900"
           >
             Log in
           </Link>
           <Link
-            href="/login"
+            href={roleParam ? `/login?role=${roleParam}` : '/login'}
             className="inline-flex h-11 items-center gap-2 whitespace-nowrap rounded-full bg-brand-600 px-5 text-[15px] font-medium text-white no-underline transition-all hover:bg-brand-700 active:scale-[0.98]"
           >
             Get started

@@ -277,3 +277,37 @@ export async function deleteCampSlotFillers(programmeId: string): Promise<void> 
     .in('id', ids)
   if (enrErr) throw new Error(`[e2e/db] filler enrolment delete failed: ${enrErr.message}`)
 }
+
+/** P14 (P-04-B): seeds the user_profiles row for a freshly-registered
+ *  e2e user, mirroring the /auth/callback seed. Locally
+ *  enable_confirmations=false means the verify-email link (and therefore
+ *  the callback) is never visited, so the row the login gate requires
+ *  would not exist. Same payload + ON CONFLICT DO NOTHING semantics as
+ *  the callback (auth/callback/route.ts). */
+export async function seedUserProfileByEmail(
+  email: string,
+  fullName: string,
+): Promise<void> {
+  let authUserId: string | null = null
+  for (let page = 1; page <= 50; page++) {
+    const { data, error } = await dbAdmin.auth.admin.listUsers({ page, perPage: 100 })
+    if (error) throw new Error(`[e2e/db] listUsers failed: ${error.message}`)
+    const match = data.users.find((u) => u.email?.toLowerCase() === email.toLowerCase())
+    if (match) { authUserId = match.id; break }
+    if (data.users.length < 100) break
+  }
+  if (!authUserId) throw new Error(`[e2e/db] no auth.users row for ${email}`)
+
+  const { error } = await dbAdmin
+    .from('user_profiles')
+    .upsert(
+      {
+        auth_user_id: authUserId,
+        full_name: fullName,
+        avatar_url: null,
+        auth_provider: 'email',
+      },
+      { onConflict: 'auth_user_id', ignoreDuplicates: true },
+    )
+  if (error) throw new Error(`[e2e/db] user_profiles seed failed: ${error.message}`)
+}
