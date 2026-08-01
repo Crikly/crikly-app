@@ -39,10 +39,8 @@ export function TermsAcceptanceForm() {
       }
       // Fix-AUDIT-02: route by canonical role after accepting terms — coaches
       // to their dashboard (NOT /dashboard, which is a redirect-only route).
-      // P-04-PREP-01: parent/player are selectable but have no dashboard yet,
-      // so they land on public browse as an intentional placeholder instead of
-      // looping back to role selection.
-      // TODO P-04: replace with parent dashboard route
+      // P-04-A: parent and player now land on the real parent dashboard
+      // (replaces the P-04-PREP-01 /coaches placeholder).
       const supabase = createClient()
       const {
         data: { user },
@@ -59,7 +57,7 @@ export function TermsAcceptanceForm() {
         activeRole === 'coach'
           ? '/coach/dashboard'
           : activeRole === 'parent' || activeRole === 'player'
-            ? '/coaches'
+            ? '/parent/dashboard'
             : '/onboarding/role'
       )
     } catch {

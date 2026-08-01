@@ -5,8 +5,8 @@ import { createClient } from '@/lib/supabase/server'
 // removed. /dashboard is now a pure router:
 //   - no session              → /login
 //   - active_role === coach   → /coach/dashboard
-//   - parent or player        → /coaches (P-04-PREP-01: intentional placeholder
-//     until the parent dashboard ships)
+//   - parent or player        → /parent/dashboard (P-04-A: replaces the
+//     P-04-PREP-01 /coaches placeholder)
 //   - no role                 → /onboarding/role (/login is avoided here because
 //     the proxy bounces an authenticated user from /login back to /dashboard,
 //     which would loop).
@@ -27,9 +27,8 @@ export default async function DashboardPage() {
     redirect('/coach/dashboard')
   }
 
-  // TODO P-04: replace with parent dashboard route
   if (profile?.active_role === 'parent' || profile?.active_role === 'player') {
-    redirect('/coaches')
+    redirect('/parent/dashboard')
   }
 
   redirect('/onboarding/role')
