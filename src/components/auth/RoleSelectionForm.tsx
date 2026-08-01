@@ -3,122 +3,62 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { RoleCard } from '@/components/auth/RoleCard'
-import type { RoleSelectionData, AuthError } from '@/types/auth'
+import type { RoleSelectionData, AuthError, AuthResponse } from '@/types/auth'
 
 export function RoleSelectionForm() {
   const router = useRouter()
-  const [selectedRole, setSelectedRole] = useState<RoleSelectionData['role'] | null>(null)
+  const [submittingRole, setSubmittingRole] = useState<RoleSelectionData['role'] | null>(null)
   const [apiError, setApiError] = useState<AuthError | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
 
-  const handleContinue = async () => {
-    if (!selectedRole) return
+  // P-04-PREP-01: one-tap advance — tapping a role saves it immediately and
+  // routes on the API's redirect. There is no separate Continue button. The
+  // spinner stays on the tapped card until navigation unmounts the form; it
+  // is only cleared on error so the user can tap again.
+  const handleSelect = async (role: RoleSelectionData['role']) => {
+    if (submittingRole) return
     setApiError(null)
-    setIsLoading(true)
+    setSubmittingRole(role)
     try {
       const res = await fetch('/api/auth/roles', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ role: selectedRole } satisfies RoleSelectionData),
+        body: JSON.stringify({ role } satisfies RoleSelectionData),
       })
-      const data = await res.json()
-      if (!res.ok) {
-        setApiError(data.error ?? { code: 'UNKNOWN_ERROR', message: 'Something went wrong. Please try again.' })
+      const data = (await res.json()) as AuthResponse
+      if (!res.ok || !data.success) {
+        setApiError(
+          'error' in data
+            ? data.error
+            : { code: 'UNKNOWN_ERROR', message: 'Something went wrong. Please try again.' }
+        )
+        setSubmittingRole(null)
         return
       }
-      const redirectTo = data.redirectTo as string | undefined
-      router.push(redirectTo ?? '/dashboard')
+      router.push(data.redirectTo)
     } catch {
       setApiError({ code: 'NETWORK_ERROR', message: 'Connection error. Please try again.' })
-    } finally {
-      setIsLoading(false)
+      setSubmittingRole(null)
     }
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+    <div className="flex flex-col gap-3">
       {apiError && (
         <div
           role="alert"
-          style={{
-            padding: '12px 14px',
-            background: '#FEF2F2',
-            border: '1px solid #FECACA',
-            borderRadius: '8px',
-            fontSize: '13px',
-            color: '#B91C1C',
-          }}
+          className="rounded-lg bg-danger/10 px-3.5 py-3 text-sm text-danger"
         >
           {apiError.message}
         </div>
       )}
 
-      {/* AUTH-JOURNEY-01: Coach is the only live role at launch. Parent and
-          Player are greyed out + "Coming soon" and not selectable. */}
-      <RoleCard
-        role="coach"
-        isSelected={selectedRole === 'coach'}
-        onSelect={setSelectedRole}
-      />
-      <RoleCard
-        role="parent"
-        isSelected={selectedRole === 'parent'}
-        onSelect={setSelectedRole}
-        disabled
-      />
-      <RoleCard
-        role="player"
-        isSelected={selectedRole === 'player'}
-        onSelect={setSelectedRole}
-        disabled
-      />
+      <RoleCard role="parent" onSelect={handleSelect} isSubmitting={submittingRole === 'parent'} />
+      <RoleCard role="player" onSelect={handleSelect} isSubmitting={submittingRole === 'player'} />
+      <RoleCard role="coach" onSelect={handleSelect} isSubmitting={submittingRole === 'coach'} />
 
-      <p style={{
-        textAlign: 'center',
-        fontSize: '11px',
-        color: '#94A3B8',
-        margin: '4px 0 8px',
-        lineHeight: 1.5,
-      }}>
+      <p className="mb-1 mt-1 text-center text-xs leading-normal text-neutral-400">
         Must be 16 or older to register as a player
       </p>
-
-      <button
-        onClick={handleContinue}
-        disabled={!selectedRole || isLoading}
-        data-testid="role-continue"
-        style={{
-          width: '100%',
-          height: '52px',
-          background: !selectedRole ? '#94A3B8' : isLoading ? '#378ADD' : '#0077CC',
-          color: '#fff',
-          border: 'none',
-          borderRadius: '10px',
-          fontSize: '15px',
-          fontWeight: 500,
-          cursor: !selectedRole || isLoading ? 'not-allowed' : 'pointer',
-          fontFamily: 'DM Sans, sans-serif',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: '8px',
-        }}
-        aria-busy={isLoading}
-      >
-        {isLoading && (
-          <div style={{
-            width: '16px',
-            height: '16px',
-            border: '2px solid rgba(255,255,255,0.4)',
-            borderTopColor: '#fff',
-            borderRadius: '50%',
-            animation: 'spin 0.8s linear infinite',
-          }} />
-        )}
-        {isLoading ? 'Saving...' : 'Continue'}
-      </button>
-
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   )
 }
