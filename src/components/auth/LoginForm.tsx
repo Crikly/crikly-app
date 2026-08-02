@@ -4,12 +4,15 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import type { LoginFormData, AuthError } from '@/types/auth'
+import type { RoleParam } from '@/lib/auth/role-param'
 
 interface LoginFormProps {
   onSuccess?: () => void
+  /** P-04-B: pre-validated ?role= from the page — null means absent/invalid. */
+  roleParam?: RoleParam | null
 }
 
-export function LoginForm({ onSuccess }: LoginFormProps = {}) {
+export function LoginForm({ onSuccess, roleParam = null }: LoginFormProps = {}) {
   const router = useRouter()
   const [formData, setFormData] = useState<LoginFormData>({
     email: '',
@@ -48,7 +51,15 @@ export function LoginForm({ onSuccess }: LoginFormProps = {}) {
       }
       // Server returns a role-aware redirect — /onboarding/role when the
       // user hasn't picked a primary_role yet, /dashboard otherwise.
-      router.push(data.redirectTo ?? '/dashboard')
+      // P-04-B: only when the server sends the user to role selection does
+      // the validated ?role= ride along (auto-submitted by the picker). A
+      // stored role always wins — any other redirect drops the param.
+      const redirectTo = data.redirectTo ?? '/dashboard'
+      router.push(
+        redirectTo === '/onboarding/role' && roleParam
+          ? `/onboarding/role?role=${roleParam}`
+          : redirectTo
+      )
     } catch {
       setApiError({ code: 'NETWORK_ERROR', message: 'Connection error. Please check your internet and try again.' })
     } finally {

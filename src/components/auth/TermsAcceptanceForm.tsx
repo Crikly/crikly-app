@@ -53,11 +53,32 @@ export function TermsAcceptanceForm() {
             .single()
         : { data: null }
       const activeRole = profile?.active_role
+
+      // P-04-B: terms acceptance is the once-per-account moment right
+      // after a NEW registration (logins never pass through here), so this
+      // is where the guest-booking check fires — parent/player only. Any
+      // failure degrades to the dashboard: never block the auth path on
+      // the guest scan.
+      let parentDestination = '/parent/dashboard'
+      if (activeRole === 'parent' || activeRole === 'player') {
+        try {
+          const guestRes = await fetch('/api/auth/guest-bookings')
+          if (guestRes.ok) {
+            const guestData = (await guestRes.json()) as { count?: number }
+            if ((guestData.count ?? 0) > 0) {
+              parentDestination = '/parent/link-bookings'
+            }
+          }
+        } catch {
+          // Degrade silently — offer simply not made.
+        }
+      }
+
       router.push(
         activeRole === 'coach'
           ? '/coach/dashboard'
           : activeRole === 'parent' || activeRole === 'player'
-            ? '/parent/dashboard'
+            ? parentDestination
             : '/onboarding/role'
       )
     } catch {

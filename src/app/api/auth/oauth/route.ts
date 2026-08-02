@@ -2,10 +2,11 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import type { Database } from '@/types/database'
+import { parseRoleParam } from '@/lib/auth/role-param'
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json() as { provider?: unknown }
+    const body = await request.json() as { provider?: unknown; role?: unknown }
     const provider = body.provider
 
     if (provider !== 'google' && provider !== 'apple') {
@@ -14,6 +15,11 @@ export async function POST(request: Request) {
         { status: 400 }
       )
     }
+
+    // P-04-B (AUTH-FLOW-01): optional pre-selected role from the landing
+    // CTA chain. Allow-list validated; anything else is silently dropped
+    // (no error — the flow just falls back to the role picker).
+    const roleParam = parseRoleParam(body.role)
 
     const cookieStore = await cookies()
     const supabase = createServerClient<Database>(
@@ -41,10 +47,16 @@ export async function POST(request: Request) {
       process.env.NEXT_PUBLIC_SITE_URL ??
       'http://localhost:3000'
 
+    // P-04-B: the role rides the callback URL — Supabase preserves extra
+    // redirectTo query params through the OAuth round-trip (proven by the
+    // recovery flow's `?type=recovery`, BUG-33). Only the validated value
+    // is ever embedded.
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider,
       options: {
-        redirectTo: `${origin}/auth/callback`,
+        redirectTo: roleParam
+          ? `${origin}/auth/callback?role=${roleParam}`
+          : `${origin}/auth/callback`,
         scopes: provider === 'google' ? 'openid email profile' : undefined,
         // Fix-AUTH-GOOGLE-PROMPT-01: force Google to show the account picker every
         // sign-in so multi-account users can switch (Google otherwise auto-selects

@@ -3056,6 +3056,13 @@ export type Database = {
         Args: { p_programme_id: string }
         Returns: boolean
       }
+      link_provisional_bookings: {
+        Args: {
+          p_provisional_profile_ids: string[]
+          p_target_profile_id: string
+        }
+        Returns: Json
+      }
       reconcile_coach_time_claims: { Args: never; Returns: number }
       reconcile_session_claims: {
         Args: { p_session_id: string }

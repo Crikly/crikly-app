@@ -288,3 +288,89 @@ describe('GET /auth/callback — fill-gaps-only profile writes (BUG-35)', () => 
     consoleSpy.mockRestore()
   })
 })
+
+// P-04-B (AUTH-FLOW-01): the ?role= param carried on the redirectTo URL.
+// Allow-list validated before ANY use; a stored role always beats the URL.
+describe('GET /auth/callback — ?role= param (P-04-B)', () => {
+  beforeEach(() => {
+    mockExchange.mockResolvedValue({ error: null })
+    mockAuthedUser()
+  })
+
+  it('forwards a valid role to the role picker for a brand-new user', async () => {
+    mockSingle.mockResolvedValue({
+      data: null,
+      error: { code: 'PGRST116', message: 'no rows' },
+    })
+    const target = await callCallback('?code=abc&role=parent')
+    expect(target).toBe('/onboarding/role?role=parent')
+  })
+
+  it('forwards a valid role when a row exists but active_role is null', async () => {
+    mockSingle.mockResolvedValue({
+      data: { active_role: null, terms_accepted_at: null, full_name: 'X', avatar_url: null },
+      error: null,
+    })
+    const target = await callCallback('?code=abc&role=player')
+    expect(target).toBe('/onboarding/role?role=player')
+  })
+
+  it('silently drops an invalid role value (validated-null short-circuit)', async () => {
+    mockSingle.mockResolvedValue({
+      data: null,
+      error: { code: 'PGRST116', message: 'no rows' },
+    })
+    const target = await callCallback('?code=abc&role=superadmin')
+    expect(target).toBe('/onboarding/role')
+  })
+
+  it('ignores the param entirely when the user already has a role — stored role wins', async () => {
+    mockSingle.mockResolvedValue({
+      data: {
+        active_role: 'coach',
+        terms_accepted_at: '2026-01-01T00:00:00Z',
+        full_name: 'Test Coach',
+        avatar_url: 'https://cdn.example/photo.png',
+      },
+      error: null,
+    })
+    const target = await callCallback('?code=abc&role=parent')
+    expect(target).toBe('/coach/dashboard')
+  })
+})
+
+// P-04-B stale-branch fix: parent/player with role + terms complete used to
+// bounce to /onboarding/role (pre-dashboard placeholder).
+describe('GET /auth/callback — parent/player routing fix (P-04-B)', () => {
+  it('routes an onboarded parent to /parent/dashboard', async () => {
+    mockExchange.mockResolvedValue({ error: null })
+    mockAuthedUser()
+    mockSingle.mockResolvedValue({
+      data: {
+        active_role: 'parent',
+        terms_accepted_at: '2026-01-01T00:00:00Z',
+        full_name: 'Test Parent',
+        avatar_url: null,
+      },
+      error: null,
+    })
+    const target = await callCallback('?code=abc')
+    expect(target).toBe('/parent/dashboard')
+  })
+
+  it('routes an onboarded player to /parent/dashboard', async () => {
+    mockExchange.mockResolvedValue({ error: null })
+    mockAuthedUser()
+    mockSingle.mockResolvedValue({
+      data: {
+        active_role: 'player',
+        terms_accepted_at: '2026-01-01T00:00:00Z',
+        full_name: 'Test Player',
+        avatar_url: null,
+      },
+      error: null,
+    })
+    const target = await callCallback('?code=abc')
+    expect(target).toBe('/parent/dashboard')
+  })
+})

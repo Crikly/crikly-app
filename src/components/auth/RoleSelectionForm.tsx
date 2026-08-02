@@ -1,23 +1,33 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { Loader2 } from 'lucide-react'
 import { RoleCard } from '@/components/auth/RoleCard'
 import type { RoleSelectionData, AuthError, AuthResponse } from '@/types/auth'
+import type { RoleParam } from '@/lib/auth/role-param'
 
-export function RoleSelectionForm() {
+interface RoleSelectionFormProps {
+  /** P-04-B: allow-list-validated ?role= — auto-submitted on mount when set. */
+  preselectedRole?: RoleParam | null
+}
+
+export function RoleSelectionForm({
+  preselectedRole = null,
+}: RoleSelectionFormProps = {}) {
   const router = useRouter()
-  const [submittingRole, setSubmittingRole] = useState<RoleSelectionData['role'] | null>(null)
+  // P-04-B: with a validated pre-selected role the form mounts already in
+  // the submitting state (spinner instead of cards) — seeding state from
+  // the prop avoids a synchronous setState inside the effect below.
+  const [submittingRole, setSubmittingRole] = useState<RoleSelectionData['role'] | null>(
+    preselectedRole,
+  )
   const [apiError, setApiError] = useState<AuthError | null>(null)
+  const autoSubmitStarted = useRef(false)
 
-  // P-04-PREP-01: one-tap advance — tapping a role saves it immediately and
-  // routes on the API's redirect. There is no separate Continue button. The
-  // spinner stays on the tapped card until navigation unmounts the form; it
-  // is only cleared on error so the user can tap again.
-  const handleSelect = async (role: RoleSelectionData['role']) => {
-    if (submittingRole) return
-    setApiError(null)
-    setSubmittingRole(role)
+  // Shared submit path for both the tapped card and the auto-submit. All
+  // state updates happen after the awaited fetch resolves.
+  const submitRole = async (role: RoleSelectionData['role']) => {
     try {
       const res = await fetch('/api/auth/roles', {
         method: 'POST',
@@ -39,6 +49,44 @@ export function RoleSelectionForm() {
       setApiError({ code: 'NETWORK_ERROR', message: 'Connection error. Please try again.' })
       setSubmittingRole(null)
     }
+  }
+
+  // P-04-PREP-01: one-tap advance — tapping a role saves it immediately and
+  // routes on the API's redirect. There is no separate Continue button. The
+  // spinner stays on the tapped card until navigation unmounts the form; it
+  // is only cleared on error so the user can tap again.
+  const handleSelect = (role: RoleSelectionData['role']) => {
+    if (submittingRole) return
+    setApiError(null)
+    setSubmittingRole(role)
+    void submitRole(role)
+  }
+
+  // P-04-B auto-submit: reuses POST /api/auth/roles unchanged (allow-list,
+  // auth checks, user_roles upsert, coach-profile creation all keep their
+  // single home). On API failure submittingRole clears and the normal
+  // cards render as the fallback.
+  useEffect(() => {
+    if (!preselectedRole || autoSubmitStarted.current) return
+    autoSubmitStarted.current = true
+    void submitRole(preselectedRole)
+    // submitRole is stable for the life of the mount; this effect must run
+    // exactly once per mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preselectedRole])
+
+  // P-04-B: while the pre-selected role is being applied, the picker UI is
+  // skipped entirely — the user sees a brief setting-up state instead.
+  if (preselectedRole && submittingRole === preselectedRole && !apiError) {
+    return (
+      <div
+        className="flex flex-col items-center gap-3 py-10"
+        data-testid="role-autosubmit-loading"
+      >
+        <Loader2 size={22} className="animate-spin text-brand-600" />
+        <p className="text-sm text-neutral-600">Setting up your account…</p>
+      </div>
+    )
   }
 
   return (
