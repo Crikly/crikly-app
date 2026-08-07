@@ -32,6 +32,10 @@ jest.mock('@/lib/resend/send-programme-confirmation', () => ({
   sendProgrammeConfirmation: jest.fn(),
 }))
 
+jest.mock('@/lib/resend/send-new-booking-to-coach', () => ({
+  sendNewBookingNotification: jest.fn(),
+}))
+
 jest.mock('@/lib/resend/send-ops-alert', () => ({
   sendOpsAlert: jest.fn().mockResolvedValue(true),
 }))
@@ -40,6 +44,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getStripe } from '@/lib/stripe/client'
 import { sendBookingConfirmation } from '@/lib/resend/send-booking-confirmation'
 import { sendProgrammeConfirmation } from '@/lib/resend/send-programme-confirmation'
+import { sendNewBookingNotification } from '@/lib/resend/send-new-booking-to-coach'
 import { sendOpsAlert } from '@/lib/resend/send-ops-alert'
 import { POST } from '@/app/api/webhooks/stripe/route'
 
@@ -164,6 +169,10 @@ beforeEach(() => {
   ;(sendBookingConfirmation as jest.Mock).mockResolvedValue(true)
   // sendProgrammeConfirmation is a no-op by default — enrolment tests override this.
   ;(sendProgrammeConfirmation as jest.Mock).mockResolvedValue(true)
+  // CF-NOTIFY-02: coach notification is a no-op by default — its lookups fail
+  // fast against positional mocks (caught by the route's try/catch), so
+  // pre-existing tests are unaffected; the dedicated describe block overrides.
+  ;(sendNewBookingNotification as jest.Mock).mockResolvedValue(true)
 })
 
 // ── Signature verification ────────────────────────────────────────────────────
@@ -954,6 +963,383 @@ function setupEnrolmentMocks(options: {
 
   return { mockFrom, mockRpc, piChain, enrolmentChain, programmeChain, coachChain, intent }
 }
+
+// ── CF-NOTIFY-02: coach new-booking notification ──────────────────────────────
+
+describe('POST /api/webhooks/stripe — coach notification email (CF-NOTIFY-02)', () => {
+  const COACH_BOOKING = {
+    id: BOOKING_ID,
+    booking_reference: 'CRK-2026-TEST01',
+    coach_profile_id: 'coach-profile-uuid-001',
+    session_date: '2026-08-15',
+    session_start_time: '14:00:00',
+    session_end_time: '15:00:00',
+    session_type: 'individual',
+    coach_price_pence: 4000,
+    sport_id: 'sport-cricket-uuid',
+  }
+
+  // intent.amount is the PARENT total (coach price + commission) — the tests
+  // assert the coach email never uses it for the payout line (BR-01).
+  const PARENT_TOTAL = 4400
+
+  /**
+   * Table-keyed from() mock (not positional): the guest email helper and the
+   * coach helper both read coach_profiles/user_profiles, so keying by table
+   * keeps the harness independent of call order.
+   */
+  function setupCoachEmailMocks(options: {
+    bookingUpdateData?: unknown[] | null
+    coachRow?: Record<string, unknown> | null
+    coachUserRow?: Record<string, unknown> | null
+    authEmail?: string | null
+    sportRow?: Record<string, unknown> | null
+    intentMetadata?: Record<string, unknown>
+  } = {}) {
+    const {
+      bookingUpdateData = [COACH_BOOKING],
+      coachRow = { display_name: 'Coach Davies', user_profile_id: 'up-coach-001' },
+      coachUserRow = { full_name: 'Owen Davies', auth_user_id: 'auth-coach-001' },
+      authEmail = 'coach@example.com',
+      sportRow = { name: 'Cricket' },
+      intentMetadata = { booking_id: BOOKING_ID, guest_name: 'Sarah Test' },
+    } = options
+
+    const piChain: Record<string, MockFn> = {}
+    piChain.update = jest.fn().mockReturnValue({
+      eq: jest.fn().mockResolvedValue({ data: null, error: null }),
+    })
+
+    const bookingChain: Record<string, MockFn> = {}
+    bookingChain.update = jest.fn().mockReturnValue({
+      eq: jest.fn().mockReturnValue({
+        eq: jest.fn().mockReturnValue({
+          select: jest.fn().mockResolvedValue({ data: bookingUpdateData, error: null }),
+        }),
+      }),
+    })
+
+    const coachChain = makeChain({ data: coachRow })
+    const userChain = makeChain({ data: coachUserRow })
+    const sportsChain = makeChain({ data: sportRow })
+    // Backstop lookup on the zero-rows branch reads bookings via makeChain —
+    // give it an already-confirmed row so the redelivery test no-ops cleanly.
+    const backstopChain = makeChain({
+      data: {
+        id: BOOKING_ID,
+        status: 'confirmed',
+        deleted_at: null,
+        cancellation_reason: null,
+        booked_by_user_id: 'user-profile-1',
+        booking_reference: 'CRK-2026-TEST01',
+      },
+    })
+
+    let bookingCalls = 0
+    const mockFrom = jest.fn((table: string) => {
+      if (table === 'payment_intents') return piChain
+      if (table === 'bookings') {
+        bookingCalls += 1
+        return bookingCalls === 1 ? bookingChain : backstopChain
+      }
+      if (table === 'coach_profiles') return coachChain
+      if (table === 'user_profiles') return userChain
+      if (table === 'sports') return sportsChain
+      return makeChain()
+    })
+
+    const admin = {
+      ...adminMock(mockFrom),
+      auth: {
+        admin: {
+          getUserById: jest.fn().mockResolvedValue({
+            data: authEmail ? { user: { email: authEmail } } : { user: null },
+            error: null,
+          }),
+        },
+      },
+    }
+    ;(createAdminClient as MockFn).mockReturnValue(admin)
+
+    const intent = {
+      id: 'pi_test_coach_email',
+      status: 'succeeded',
+      amount: PARENT_TOTAL,
+      metadata: intentMetadata,
+      last_payment_error: null,
+    }
+    const event = makeStripeEvent('payment_intent.succeeded', intent)
+    ;(getStripe as MockFn).mockReturnValue({
+      webhooks: { constructEvent: jest.fn().mockReturnValue(event) },
+    })
+
+    return { mockFrom, bookingChain, admin, intent }
+  }
+
+  it('calls sendNewBookingNotification after a successful pending_payment→confirmed transition', async () => {
+    setupCoachEmailMocks()
+
+    const res = await callPost('{}')
+
+    expect(res.status).toBe(200)
+    expect(sendNewBookingNotification).toHaveBeenCalledTimes(1)
+  })
+
+  it('BR-01: passes coachPricePence from the booking row — never intent.amount (parent total)', async () => {
+    setupCoachEmailMocks()
+
+    await callPost('{}')
+
+    const [params] = (sendNewBookingNotification as MockFn).mock.calls[0] as [Record<string, unknown>]
+    expect(params.coachPricePence).toBe(4000)
+    expect(params.coachPricePence).not.toBe(PARENT_TOTAL)
+  })
+
+  it('resolves coachEmail via user_profiles.auth_user_id → auth.admin.getUserById', async () => {
+    const { admin } = setupCoachEmailMocks()
+
+    await callPost('{}')
+
+    expect(admin.auth.admin.getUserById).toHaveBeenCalledWith('auth-coach-001')
+    const [params] = (sendNewBookingNotification as MockFn).mock.calls[0] as [Record<string, unknown>]
+    expect(params.coachEmail).toBe('coach@example.com')
+  })
+
+  it('passes coachName from display_name, parentName from guest_name, sport name, reference and dashboard URL', async () => {
+    setupCoachEmailMocks()
+
+    await callPost('{}')
+
+    const [params] = (sendNewBookingNotification as MockFn).mock.calls[0] as [Record<string, unknown>]
+    expect(params.coachName).toBe('Coach Davies')
+    expect(params.parentName).toBe('Sarah Test')
+    expect(params.sport).toBe('Cricket')
+    expect(params.bookingReference).toBe('CRK-2026-TEST01')
+    expect(params.dashboardUrl).toContain(`/coach/bookings/${BOOKING_ID}`)
+  })
+
+  it('falls back to user_profiles.full_name when display_name is null', async () => {
+    setupCoachEmailMocks({ coachRow: { display_name: null, user_profile_id: 'up-coach-001' } })
+
+    await callPost('{}')
+
+    const [params] = (sendNewBookingNotification as MockFn).mock.calls[0] as [Record<string, unknown>]
+    expect(params.coachName).toBe('Owen Davies')
+  })
+
+  it('fires independently of the guest email — sends even when guest_email metadata is absent', async () => {
+    setupCoachEmailMocks({ intentMetadata: { booking_id: BOOKING_ID, guest_name: 'Sarah Test' } })
+
+    await callPost('{}')
+
+    expect(sendBookingConfirmation).not.toHaveBeenCalled()
+    expect(sendNewBookingNotification).toHaveBeenCalledTimes(1)
+  })
+
+  it('uses "A parent" as parentName fallback when guest_name metadata is absent', async () => {
+    setupCoachEmailMocks({ intentMetadata: { booking_id: BOOKING_ID } })
+
+    await callPost('{}')
+
+    const [params] = (sendNewBookingNotification as MockFn).mock.calls[0] as [Record<string, unknown>]
+    expect(params.parentName).toBe('A parent')
+  })
+
+  it('idempotency: redelivery (booking already confirmed, empty update result) sends NO coach email', async () => {
+    setupCoachEmailMocks({ bookingUpdateData: [] })
+
+    const res = await callPost('{}')
+
+    expect(res.status).toBe(200)
+    expect(sendNewBookingNotification).not.toHaveBeenCalled()
+  })
+
+  it('still returns 200 when sendNewBookingNotification returns false (email failed)', async () => {
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      setupCoachEmailMocks()
+      ;(sendNewBookingNotification as MockFn).mockResolvedValue(false)
+
+      const res = await callPost('{}')
+
+      expect(res.status).toBe(200)
+    } finally {
+      errorSpy.mockRestore()
+    }
+  })
+
+  it('still returns 200 when sendNewBookingNotification throws unexpectedly (never a webhook retry)', async () => {
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      const { admin } = setupCoachEmailMocks()
+      ;(sendNewBookingNotification as MockFn).mockRejectedValue(new Error('Resend exploded'))
+
+      const res = await callPost('{}')
+
+      expect(res.status).toBe(200)
+      // Ledger marked processed, not failed — no Stripe redelivery.
+      const ledgerUpdates = (admin.__ledger.update as MockFn).mock.calls
+      expect(ledgerUpdates[ledgerUpdates.length - 1][0]).toMatchObject({ status: 'processed' })
+    } finally {
+      errorSpy.mockRestore()
+    }
+  })
+
+  it('skips the coach email (still 200) when the coach_profiles lookup returns nothing', async () => {
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      setupCoachEmailMocks({ coachRow: null })
+
+      const res = await callPost('{}')
+
+      expect(res.status).toBe(200)
+      expect(sendNewBookingNotification).not.toHaveBeenCalled()
+    } finally {
+      errorSpy.mockRestore()
+    }
+  })
+
+  it('skips the coach email (still 200) when the coach auth user has no email', async () => {
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      setupCoachEmailMocks({ authEmail: null })
+
+      const res = await callPost('{}')
+
+      expect(res.status).toBe(200)
+      expect(sendNewBookingNotification).not.toHaveBeenCalled()
+    } finally {
+      errorSpy.mockRestore()
+    }
+  })
+
+  it('falls back to the generic sport label when the sports lookup returns nothing', async () => {
+    setupCoachEmailMocks({ sportRow: null })
+
+    await callPost('{}')
+
+    const [params] = (sendNewBookingNotification as MockFn).mock.calls[0] as [Record<string, unknown>]
+    expect(params.sport).toBe('Coaching session')
+  })
+
+  it('fires from the succeeded-after-release restore path too (BUG-13b backstop)', async () => {
+    const piChain: Record<string, MockFn> = {}
+    piChain.update = jest.fn().mockReturnValue({
+      eq: jest.fn().mockResolvedValue({ data: null, error: null }),
+    })
+
+    // Confirm UPDATE matches zero rows → backstop lookup finds a release-marked
+    // row → restore succeeds and returns the widened booking row.
+    const confirmChain: Record<string, MockFn> = {}
+    confirmChain.update = jest.fn().mockReturnValue({
+      eq: jest.fn().mockReturnValue({
+        eq: jest.fn().mockReturnValue({
+          select: jest.fn().mockResolvedValue({ data: [], error: null }),
+        }),
+      }),
+    })
+
+    const lookupChain = makeChain({
+      data: {
+        id: BOOKING_ID,
+        status: 'pending_payment',
+        deleted_at: '2026-07-05T09:00:00.000Z',
+        cancellation_reason: 'expired_pending_payment',
+        booked_by_user_id: 'prov-user-1',
+        booking_reference: 'CRK-2026-TEST01',
+      },
+    })
+
+    const restoreChain: Record<string, MockFn> = {}
+    restoreChain.update = jest.fn().mockReturnValue({
+      eq: jest.fn().mockReturnValue({
+        eq: jest.fn().mockReturnValue({
+          not: jest.fn().mockReturnValue({
+            select: jest.fn().mockResolvedValue({ data: [COACH_BOOKING], error: null }),
+          }),
+        }),
+      }),
+    })
+
+    const profileRestoreChain: Record<string, MockFn> = {}
+    profileRestoreChain.update = jest.fn().mockReturnValue({
+      eq: jest.fn().mockReturnValue({
+        eq: jest.fn().mockResolvedValue({ data: null, error: null }),
+      }),
+    })
+
+    const coachChain = makeChain({ data: { display_name: 'Coach Davies', user_profile_id: 'up-coach-001' } })
+    const coachUserChain = makeChain({ data: { full_name: 'Owen Davies', auth_user_id: 'auth-coach-001' } })
+    const sportsChain = makeChain({ data: { name: 'Cricket' } })
+
+    let bookingsCalls = 0
+    let userProfilesCalls = 0
+    const mockFrom = jest.fn((table: string) => {
+      if (table === 'payment_intents') return piChain
+      if (table === 'bookings') {
+        bookingsCalls += 1
+        if (bookingsCalls === 1) return confirmChain
+        if (bookingsCalls === 2) return lookupChain
+        return restoreChain
+      }
+      if (table === 'user_profiles') {
+        userProfilesCalls += 1
+        return userProfilesCalls === 1 ? profileRestoreChain : coachUserChain
+      }
+      if (table === 'coach_profiles') return coachChain
+      if (table === 'sports') return sportsChain
+      return makeChain()
+    })
+
+    const admin = {
+      ...adminMock(mockFrom),
+      auth: {
+        admin: {
+          getUserById: jest.fn().mockResolvedValue({
+            data: { user: { email: 'coach@example.com' } },
+            error: null,
+          }),
+        },
+      },
+    }
+    ;(createAdminClient as MockFn).mockReturnValue(admin)
+
+    const intent = {
+      id: 'pi_test_restore_coach',
+      status: 'succeeded',
+      amount: PARENT_TOTAL,
+      metadata: { booking_id: BOOKING_ID, guest_name: 'Sarah Test' },
+      last_payment_error: null,
+    }
+    const event = makeStripeEvent('payment_intent.succeeded', intent)
+    ;(getStripe as MockFn).mockReturnValue({
+      webhooks: { constructEvent: jest.fn().mockReturnValue(event) },
+    })
+
+    const res = await callPost('{}')
+
+    expect(res.status).toBe(200)
+    expect(sendNewBookingNotification).toHaveBeenCalledTimes(1)
+    const [params] = (sendNewBookingNotification as MockFn).mock.calls[0] as [Record<string, unknown>]
+    expect(params.coachPricePence).toBe(4000)
+    expect(params.coachEmail).toBe('coach@example.com')
+  })
+
+  it('does NOT fire for enrolment intents (programme path untouched)', async () => {
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      setupCoachEmailMocks({
+        intentMetadata: { enrolment_id: 'enrolment-uuid-001', guest_name: 'Sarah Test' },
+      })
+
+      await callPost('{}')
+
+      expect(sendNewBookingNotification).not.toHaveBeenCalled()
+    } finally {
+      errorSpy.mockRestore()
+    }
+  })
+})
 
 describe('POST /api/webhooks/stripe — handleEnrolmentSucceeded (P-00c-ENROL)', () => {
   it('routes to enrolment path when metadata.enrolment_id is present', async () => {
