@@ -28,41 +28,56 @@ jest.mock('@/lib/supabase/client', () => ({
   createClient: () => ({ auth: { signOut } }),
 }))
 
+// P-04-C: popover simplified to name + email + Settings + Sign out only —
+// role switching lives in the RolePill exclusively (see RolePill.test.tsx).
+
 const baseProps = {
   open: true,
   onClose: jest.fn(),
   name: 'Sarah Carter',
   email: 'sarah@example.com',
-  avatarUrl: null,
-  hasCoachRole: false,
+  settingsHref: '/parent/settings',
 }
 
 describe('ProfilePopover', () => {
   beforeEach(() => jest.clearAllMocks())
 
-  it('renders avatar header with name and email', () => {
+  it('renders header with name and email', () => {
     render(<ProfilePopover {...baseProps} />)
     expect(screen.getByText('Sarah Carter')).toBeInTheDocument()
     expect(screen.getByText('sarah@example.com')).toBeInTheDocument()
-    expect(screen.getByTestId('crikly-avatar')).toBeInTheDocument()
   })
 
-  it('hides "Switch to Coach" for accounts without a coach role', () => {
+  it('contains no role-switching rows (P-04-C: pill owns switching)', () => {
     render(<ProfilePopover {...baseProps} />)
     expect(screen.queryByText('Switch to Coach')).not.toBeInTheDocument()
+    expect(screen.queryByText(/mode/i)).not.toBeInTheDocument()
   })
 
-  it('shows "Switch to Coach" for multi-role accounts and routes to the coach dashboard', () => {
-    render(<ProfilePopover {...baseProps} hasCoachRole />)
-    fireEvent.click(screen.getByText('Switch to Coach'))
-    expect(push).toHaveBeenCalledWith('/coach/dashboard')
-    expect(baseProps.onClose).toHaveBeenCalled()
-  })
-
-  it('routes Settings to /parent/settings', () => {
+  it('routes Settings to the provided settingsHref', () => {
     render(<ProfilePopover {...baseProps} />)
     fireEvent.click(screen.getByText('Settings'))
     expect(push).toHaveBeenCalledWith('/parent/settings')
+    expect(baseProps.onClose).toHaveBeenCalled()
+  })
+
+  it('routes Settings to the coach settings for a coach-context href', () => {
+    render(<ProfilePopover {...baseProps} settingsHref="/coach/settings" />)
+    fireEvent.click(screen.getByText('Settings'))
+    expect(push).toHaveBeenCalledWith('/coach/settings')
+  })
+
+  it('hides the Share profile row without an onShareProfile handler', () => {
+    render(<ProfilePopover {...baseProps} />)
+    expect(screen.queryByText('Share profile')).not.toBeInTheDocument()
+  })
+
+  it('renders Share profile in coach context and fires the handler', () => {
+    const onShareProfile = jest.fn()
+    render(<ProfilePopover {...baseProps} onShareProfile={onShareProfile} />)
+    fireEvent.click(screen.getByText('Share profile'))
+    expect(onShareProfile).toHaveBeenCalled()
+    expect(baseProps.onClose).toHaveBeenCalled()
   })
 
   it('signs out via Supabase and returns to the landing page', async () => {

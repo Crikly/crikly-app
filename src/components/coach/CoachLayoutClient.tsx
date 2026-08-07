@@ -2,10 +2,9 @@
 
 import React, { useState, useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import Link from 'next/link'
 import {
   Home, Calendar, Inbox, Users, Clock, User,
-  TrendingUp, Star, CreditCard, Settings, Share2,
+  TrendingUp, Star, CreditCard, Settings,
   MoreHorizontal, X
 } from 'lucide-react'
 import { CoachRightPanel } from '@/components/coach/CoachRightPanel'
@@ -15,45 +14,39 @@ import { CoachRightPanel } from '@/components/coach/CoachRightPanel'
 // per coach page load (~200ms) — acceptable for the consistency win.
 // Follow-up: PERF-RIGHT-PANEL-DASHBOARD-DEDUPE.
 import { BookingsProvider } from '@/contexts/BookingsContext'
-import { createClient } from '@/lib/supabase/client'
 import { fetchCoachProfileCached } from '@/lib/onboarding-cache'
 import { shouldNudgeToWizard } from '@/lib/coach-onboarding-gate'
 import { ShareLinkPanel } from '@/components/coach/shared/ShareLinkPanel'
 
 interface CoachLayoutClientProps {
   children: React.ReactNode
-  initialCoachName: string
-  initialAvatarUrl: string | null
   hasCoachProfile: boolean
   // BUG-34: wizard step 1 completed (coach_profiles.display_name set) —
   // replaces isProfileLive as the onboarding-nudge signal.
   hasWizardProgress: boolean
 }
 
+// P-04-C: the sidebar chrome (logo, avatar + notification badge, Coach|Parent
+// tabs, share button) moved into the unified AppShell rendered by
+// src/app/coach/layout.tsx. This component now owns ONLY the content
+// navigation + main/right-panel composition + the share modal (still opened
+// via the crikly:open-share-modal event, now dispatched from the shell's
+// account popover as well as the Go Live celebration).
+
 export function CoachLayoutClient({
   children,
-  initialCoachName,
-  initialAvatarUrl,
   hasCoachProfile,
   hasWizardProgress,
 }: CoachLayoutClientProps) {
   const router = useRouter()
   const pathname = usePathname()
   const [isShareModalOpen, setIsShareModalOpen] = useState(false)
-  const [notificationCount, setNotificationCount] = useState(0)
   // AF-H-39: real coach slug from DB (was: name-derived single-replace)
   const [coachSlug, setCoachSlug] = useState('')
   // BUG-GO-LIVE-PATH: profile status drives the My Profile sidebar pulse dot.
   // null = unknown (don't render dot until fetch resolves to avoid flash).
   const [profileLive, setProfileLive] = useState<boolean | null>(null)
   const [profilePaused, setProfilePaused] = useState(false)
-  // Fix-COACH-UX-05: avatar + name held in state (seeded from the server props)
-  // so a photo/name change in ProfileEdit updates the sidebar live, without a
-  // page reload. Updated only by the crikly:profile-updated listener below —
-  // never by the warm-cache mount fetch (which could overwrite the fresh server
-  // prop with a stale cached URL).
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(initialAvatarUrl)
-  const [coachName, setCoachName] = useState(initialCoachName)
 
   const isActive = (path: string) => pathname === path ||
     (path !== '/coach/dashboard' && pathname.startsWith(path))
@@ -77,50 +70,6 @@ export function CoachLayoutClient({
   // mounted CoachRightPanel from inside CoachHomeClient to pass dashboardData
   // as a prop, but the universal panel reads from contexts directly now.
   const showRightPanel = !pathname.includes('/onboarding')
-
-  // Extract initials from coach name (same logic as OnboardingPreviewPanel).
-  // Fix-COACH-UX-05: derived from coachName state so it tracks a live rename.
-  // `?? ''` + filter guards against empty tokens now that coachName is writable
-  // state (an empty token would otherwise yield the literal "undefined").
-  const initials = coachName
-    .split(' ')
-    .map(n => n[0] ?? '')
-    .filter(Boolean)
-    .join('')
-    .toUpperCase()
-    .substring(0, 2) || coachName.charAt(0).toUpperCase() || 'C'
-
-  // Fetch notification count
-  useEffect(() => {
-    const fetchNotificationCount = async () => {
-      try {
-        const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        
-        if (!user) return
-
-        const { data: userProfile } = await supabase
-          .from('user_profiles')
-          .select('id')
-          .eq('auth_user_id', user.id)
-          .single()
-
-        if (!userProfile) return
-
-        const { count } = await supabase
-          .from('notifications')
-          .select('*', { count: 'exact', head: true })
-          .eq('user_profile_id', userProfile.id)
-          .eq('is_read', false)
-
-        setNotificationCount(count || 0)
-      } catch {
-        // Fail silently
-      }
-    }
-
-    fetchNotificationCount()
-  }, [])
 
   // Fix-36b: Listen for custom event to open share modal from celebration modal
   useEffect(() => {
@@ -148,9 +97,11 @@ export function CoachLayoutClient({
   // pulse dot reflects the current is_profile_live + is_paused. Without this,
   // the [] deps fetch above runs once at layout mount and never recomputes,
   // leaving the sidebar dot frozen until full page reload. Matches the
-  // crikly:open-share-modal listener pattern at L86–90. Handler body is a
+  // crikly:open-share-modal listener pattern above. Handler body is a
   // verbatim duplicate of the mount-fetch above — if that shape changes,
   // this handler must change too (drift risk noted in commit body).
+  // P-04-C: avatar/name live-refresh (Fix-COACH-UX-05) moved to AppShell with
+  // the avatar itself — this handler keeps only the pulse-dot + slug reads.
   useEffect(() => {
     const handleProfileUpdated = () => {
       fetchCoachProfileCached()
@@ -158,22 +109,11 @@ export function CoachLayoutClient({
           slug?: string
           is_profile_live?: boolean
           is_paused?: boolean
-          // Fix-COACH-UX-05: avatar + name so the sidebar reflects a photo
-          // upload / rename without a page reload.
-          avatar_url?: string | null
-          full_name?: string
-          display_name?: string | null
         } | null) => {
           if (p?.slug) setCoachSlug(p.slug)
           if (p) {
             setProfileLive(!!p.is_profile_live)
             setProfilePaused(!!p.is_paused)
-            setAvatarUrl(p.avatar_url ?? null)
-            // BUG-37: chrome shows the public display_name; full_name is the
-            // private account name (Settings only). Same precedence as the
-            // server layout seed (src/app/coach/layout.tsx).
-            const name = p.display_name || p.full_name
-            if (name) setCoachName(name)
           }
         })
         .catch(() => {})
@@ -202,67 +142,17 @@ export function CoachLayoutClient({
   // BUG-GO-LIVE-MODAL-SHARE: share URLs derived inside ShareLinkPanel from slug.
   // (Previously profileUrl/whatsappUrl/facebookUrl/emailUrl were derived here.)
 
-  // Format notification badge
-  const notificationBadge = notificationCount > 9 ? '9+' : notificationCount.toString()
-
-  // BUG-40b: h-dvh (not h-screen/100vh) — the document never scrolls, so on
-  // mobile the browser chrome never collapses and 100vh leaves the bottom
-  // ~60-100px of the shell permanently clipped offscreen. dvh tracks the
-  // real visible height. flex-col on mobile puts the bottom nav IN FLOW
+  // BUG-40b: the document never scrolls — the shell fills the viewport and
+  // <main> scrolls internally. flex-col on mobile puts the bottom nav IN FLOW
   // below <main>, so no page content can ever sit behind it.
+  // P-04-C: viewport sizing (h-dvh) moved up to the flex-col wrapper in
+  // src/app/coach/layout.tsx — this shell now fills the height remaining
+  // below the 64px app shell bar (flex-1 min-h-0).
   return (
-    <div className="h-dvh overflow-hidden overflow-x-hidden bg-white text-gray-900 flex flex-col lg:flex-row w-full max-w-[1600px] mx-auto">
-      {/* Desktop Sidebar */}
-      <aside className="hidden lg:flex w-72 shrink-0 flex-col bg-white border-r border-gray-100 p-6 sticky top-0 h-screen z-10">
-        <Link href="/coach/dashboard" className="mb-6 flex justify-center">
-          <img
-            src="/logo.png"
-            alt="Crikly"
-            className="w-36 h-auto object-contain"
-          />
-        </Link>
-
-        <div className="flex flex-col gap-4 mb-8">
-          <div className="flex items-center gap-3 p-2 -mx-2 rounded-xl hover:bg-gray-50 transition-colors border border-transparent hover:border-gray-100">
-            <Link href="/coach/dashboard" className="flex items-center gap-3 flex-1 min-w-0">
-              <div className="relative">
-                {avatarUrl && avatarUrl.trim() !== '' ? (
-                  <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 shadow-sm">
-                    <img src={avatarUrl} alt={coachName} className="w-full h-full object-cover" />
-                  </div>
-                ) : (
-                  <div className="w-10 h-10 bg-[#E6F1FB] rounded-full flex items-center justify-center shrink-0">
-                    <span className="text-[#0C447C] text-[14px] font-bold">{initials}</span>
-                  </div>
-                )}
-                {notificationCount > 0 && (
-                  <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 bg-red-500 rounded-full border-2 border-white flex items-center justify-center text-[10px] font-bold text-white shadow-sm">
-                    {notificationBadge}
-                  </span>
-                )}
-              </div>
-              <p className="text-base font-bold text-gray-900 leading-tight truncate">{coachName}</p>
-            </Link>
-            <button
-              onClick={() => setIsShareModalOpen(true)}
-              className="text-gray-400 hover:text-[#0077CC] transition-colors p-1.5 rounded-md hover:bg-white border border-transparent hover:border-gray-200 hover:shadow-sm group shrink-0"
-            >
-              <Share2 size={14} className="group-hover:scale-110 transition-transform" />
-            </button>
-          </div>
-
-          <div className="bg-gray-100 p-1 rounded-lg flex items-center w-full">
-            <button className="flex-1 bg-white shadow-sm rounded-md py-1.5 text-xs font-bold text-gray-900 transition-all">Coach</button>
-            <button
-              disabled
-              title="Parent module coming soon"
-              className="flex-1 rounded-md py-1.5 text-xs font-bold text-gray-500 opacity-40 cursor-not-allowed transition-all"
-            >
-              Parent
-            </button>
-          </div>
-        </div>
-
+    <div className="flex-1 min-h-0 overflow-hidden overflow-x-clip bg-white text-gray-900 flex flex-col lg:flex-row w-full max-w-[1600px] mx-auto">
+      {/* Desktop Sidebar — P-04-C: pure content navigation. Logo, avatar and
+          the Coach|Parent toggle moved into the AppShell bar above. */}
+      <aside className="hidden lg:flex w-72 shrink-0 flex-col bg-white border-r border-gray-100 p-6 h-full z-10">
         <nav className="flex flex-col gap-6 flex-1 overflow-y-auto pb-6">
           <div className="flex flex-col gap-1.5">
             <SidebarItem icon={<Home size={20} />} label="Home" active={isActive('/coach/dashboard')} onClick={() => nav('/coach/dashboard')} />

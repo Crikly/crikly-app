@@ -16,6 +16,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { PublicHeader } from '@/components/nav/PublicHeader'
+import { AppShell } from '@/components/shell/AppShell'
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import {
   ArrowRight,
@@ -302,9 +303,14 @@ export default function HomePage() {
   return (
     <main className="min-h-screen bg-transparent font-sans text-neutral-900 antialiased">
       {/* ═══ NAV ═════════════════════════════════════════════════════════ */}
+      {/* P-04-C: unified app shell above the landing nav — renders only once
+          an authenticated session resolves (selfFetch), hidden when logged
+          out. The landing nav then hides its own logged-in avatar so the
+          shell is the single identity surface (Decision 3). */}
+      <AppShell context="landing" selfFetch />
       {/* P-00b-Nav: extracted to the shared PublicHeader (same markup + scroll
           behaviour); now reused on the coach profile and any public page. */}
-      <PublicHeader />
+      <PublicHeader hideAuthedIdentity />
 
       {/* ═══ HERO ════════════════════════════════════════════════════════ */}
       <section id="hero" className="relative">

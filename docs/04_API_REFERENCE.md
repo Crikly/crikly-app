@@ -1,8 +1,8 @@
 # Crikly — API Reference
 
-**Version:** 2.0
-**Last Updated:** 1 August 2026
-**Changed:** P-04-B — new GET /api/auth/guest-bookings (unclaimed guest-booking count for the verified session email; degrades to 0, never blocks registration) + POST /api/auth/link-guest-bookings (server-derived atomic transfer via `link_provisional_bookings` RPC, migration 052). AUTH-FLOW-01: POST /api/auth/register and POST /api/auth/oauth accept an optional allow-list-validated `role` that rides the callback redirectTo (invalid values silently dropped). Previous: BUG-49 (final) — DELETE /api/coaches/account: upcoming-only step-2 guard restored (409 `UPCOMING_BOOKINGS`); the fix lives at step 8 — a failed auth.users hard delete (FK-blocked by past booking history, `bookings.coach_profile_id` ON DELETE RESTRICT) now returns 500 `BOOKING_HISTORY` instead of a silent `{ success: true }`. Route documented with the full four-case contract. Supersedes v1.8's any-booking-history 409 approach. Previous: PILOT (revised) — documented GET/POST /api/admin/coaches/[id]/approve: one-click coach approval from the review email, now protected by an `?secret=` query param (timing-safe comparison against `ADMIN_APPROVE_SECRET`; replaces PILOT-01's HMAC token + 7-day expiry). POST /api/coaches/profile submit-for-review now also emails the coach ("under review", Email A) alongside the review-inbox notification (Email B); already-pending submissions are a permanent no-op (links never expire). Previous: Block 0.5 — C-PAY-02: new GET /api/cron/process-coach-payouts (hourly at :05; Stripe Connect transfer per eligible completed booking, amount = coach_price − actual balance_transaction.fee, held-payout contract honoured, idempotent via payout-row-UUID keys + unique booking_id, starvation-proof two-query selection with `parked` visibility). Previous: C-PAY-03: go-live guard on POST /api/coaches/profile (409 `STRIPE_ONBOARDING_INCOMPLETE`, 502 `STRIPE_STATUS_CHECK_FAILED`). C-PAY-01: new GET /api/cron/auto-complete-sessions (hourly; completes confirmed bookings after session end + config delay, starts the BR-03 payout clock). Previous (1.5): BUG-38 — coach slug derivation documented on POST /api/coaches/profile: display_name is the slug source, full_name only as fallback when display_name is unset; full_name edits no longer regenerate the slug while a display_name exists. Previous (1.4): BUG-45 — GET /api/payments/connect/onboard now returns `bank_name` + `bank_last4` from Stripe external_accounts (real payout destination for the Get Paid page). Previous (1.3): BUG-44 — new POST /api/webhooks/stripe-connect route for connected-account events (`account.updated` → `stripe_onboarding_complete`; transfer/payout events log-only for Block 0), verified with `STRIPE_CONNECT_WEBHOOK_SECRET`. Previous (1.2): BUG-23 — camp slot granularity: slot-selection wire format (`uuid` / `uuid.N`) + per-slot pricing/capacity on POST /api/guest/programme-enrolments (new 400 `camp_block_unsupported`, 409 `slot_full`); camp branch (`confirm_camp_slot_spots()`) + email session lines in the Stripe webhook; `camp_mode` on programme list/POST responses; roster session lines. Previous (1.1): BUG-19 Phase 1 — `booked_slots` on GET /api/coaches/[id]/availability; slot-validation 409s on POST /api/guest/bookings
+**Version:** 2.1
+**Last Updated:** 7 August 2026
+**Changed:** P-04-C — new PATCH /api/auth/roles: active_role-only switch between held roles for the app shell role pill (403 `ROLE_NOT_HELD` when the role isn't on the account; zero POST setup side-effects). Previous: P-04-B — new GET /api/auth/guest-bookings (unclaimed guest-booking count for the verified session email; degrades to 0, never blocks registration) + POST /api/auth/link-guest-bookings (server-derived atomic transfer via `link_provisional_bookings` RPC, migration 052). AUTH-FLOW-01: POST /api/auth/register and POST /api/auth/oauth accept an optional allow-list-validated `role` that rides the callback redirectTo (invalid values silently dropped). Previous: BUG-49 (final) — DELETE /api/coaches/account: upcoming-only step-2 guard restored (409 `UPCOMING_BOOKINGS`); the fix lives at step 8 — a failed auth.users hard delete (FK-blocked by past booking history, `bookings.coach_profile_id` ON DELETE RESTRICT) now returns 500 `BOOKING_HISTORY` instead of a silent `{ success: true }`. Route documented with the full four-case contract. Supersedes v1.8's any-booking-history 409 approach. Previous: PILOT (revised) — documented GET/POST /api/admin/coaches/[id]/approve: one-click coach approval from the review email, now protected by an `?secret=` query param (timing-safe comparison against `ADMIN_APPROVE_SECRET`; replaces PILOT-01's HMAC token + 7-day expiry). POST /api/coaches/profile submit-for-review now also emails the coach ("under review", Email A) alongside the review-inbox notification (Email B); already-pending submissions are a permanent no-op (links never expire). Previous: Block 0.5 — C-PAY-02: new GET /api/cron/process-coach-payouts (hourly at :05; Stripe Connect transfer per eligible completed booking, amount = coach_price − actual balance_transaction.fee, held-payout contract honoured, idempotent via payout-row-UUID keys + unique booking_id, starvation-proof two-query selection with `parked` visibility). Previous: C-PAY-03: go-live guard on POST /api/coaches/profile (409 `STRIPE_ONBOARDING_INCOMPLETE`, 502 `STRIPE_STATUS_CHECK_FAILED`). C-PAY-01: new GET /api/cron/auto-complete-sessions (hourly; completes confirmed bookings after session end + config delay, starts the BR-03 payout clock). Previous (1.5): BUG-38 — coach slug derivation documented on POST /api/coaches/profile: display_name is the slug source, full_name only as fallback when display_name is unset; full_name edits no longer regenerate the slug while a display_name exists. Previous (1.4): BUG-45 — GET /api/payments/connect/onboard now returns `bank_name` + `bank_last4` from Stripe external_accounts (real payout destination for the Get Paid page). Previous (1.3): BUG-44 — new POST /api/webhooks/stripe-connect route for connected-account events (`account.updated` → `stripe_onboarding_complete`; transfer/payout events log-only for Block 0), verified with `STRIPE_CONNECT_WEBHOOK_SECRET`. Previous (1.2): BUG-23 — camp slot granularity: slot-selection wire format (`uuid` / `uuid.N`) + per-slot pricing/capacity on POST /api/guest/programme-enrolments (new 400 `camp_block_unsupported`, 409 `slot_full`); camp branch (`confirm_camp_slot_spots()`) + email session lines in the Stripe webhook; `camp_mode` on programme list/POST responses; roster session lines. Previous (1.1): BUG-19 Phase 1 — `booked_slots` on GET /api/coaches/[id]/availability; slot-validation 409s on POST /api/guest/bookings
 
 This document is the single source of truth for all API routes.
 Update this file in the same commit as every new or modified route.
@@ -70,6 +70,31 @@ Add a role to the authenticated user's account.
 ```json
 { "role": "parent", "created_at": "..." }
 ```
+
+---
+
+### PATCH /api/auth/roles
+P-04-C: lightweight switch between roles the account ALREADY holds —
+updates `user_profiles.active_role` only. None of the POST setup
+side-effects run (no `user_roles` upsert, no `coach_profiles` creation,
+no welcome email, no `user_metadata` rewrite). Used by the app shell's
+role pill; adding a NEW role stays on POST.
+
+**Auth:** Required (session). RLS-respecting cookie-scoped client.
+
+**Request:**
+```json
+{ "role": "parent" }
+```
+
+**Response 200:**
+```json
+{ "success": true, "redirectTo": "/parent/dashboard" }
+```
+
+Errors: 400 `VALIDATION_ERROR` (unknown role), 401 `UNAUTHORIZED`,
+403 `ROLE_NOT_HELD` (role not on the account — use POST to add it),
+500 `UNKNOWN_ERROR`.
 
 ---
 

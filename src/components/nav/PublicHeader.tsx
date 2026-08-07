@@ -28,7 +28,16 @@ function useNavScroll() {
 const NAV_LINK_CLASS =
   'whitespace-nowrap rounded-[10px] px-3.5 py-2 text-[15px] font-medium text-neutral-600 no-underline transition-colors hover:bg-neutral-50 hover:text-gray-900'
 
-export function PublicHeader() {
+export function PublicHeader({
+  hideAuthedIdentity = false,
+}: {
+  /**
+   * P-04-C: landing page only — the AppShell above this header carries the
+   * logged-in avatar, so the header suppresses its own (logged-out Log in /
+   * Get started buttons unaffected). Other public pages keep the dropdown.
+   */
+  hideAuthedIdentity?: boolean
+}) {
   const navScrolled = useNavScroll()
   return (
     <header
@@ -55,7 +64,7 @@ export function PublicHeader() {
       </nav>
       {/* Fix-NAV-01: avatar + dropdown when logged in, Log in / Get started
           buttons when logged out (handled inside the component). */}
-      <ProfileDropdown />
+      <ProfileDropdown hideWhenAuthed={hideAuthedIdentity} />
     </header>
   )
 }

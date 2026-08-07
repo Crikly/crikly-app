@@ -2,6 +2,8 @@ import React from 'react'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { CoachLayoutClient } from '@/components/coach/CoachLayoutClient'
+import { AppShell } from '@/components/shell/AppShell'
+import { isShellRole } from '@/components/shell/roles'
 
 // AUTH-FIX-01 (FIX A): server-side role + state guard for /coach/*. The
 // previous layout silently caught errors and rendered the coach chrome
@@ -35,13 +37,14 @@ export default async function CoachLayout({
   if (!userProfile) redirect('/login')
 
   // 3. Has coach role? Parents/players bounce to /dashboard.
-  const { data: roleRow } = await supabase
+  // P-04-C: widened from a coach-only lookup to ALL held roles — the app
+  // shell's role pill needs the full list. Same single round-trip.
+  const { data: roleRows } = await supabase
     .from('user_roles')
     .select('role')
     .eq('user_profile_id', userProfile.id)
-    .eq('role', 'coach')
-    .single()
-  if (!roleRow) redirect('/dashboard')
+  const roles = (roleRows ?? []).map((row) => row.role).filter(isShellRole)
+  if (!roles.includes('coach')) redirect('/dashboard')
 
   // 4. Coach profile — fetched to drive the onboarding-completeness redirect,
   // which now runs CLIENT-SIDE in CoachLayoutClient (Fix-LAYOUT-02). A
@@ -67,14 +70,27 @@ export default async function CoachLayout({
   // Falls back to full_name for coaches who haven't run wizard step 1 yet.
   // `||` (not `??`) on purpose: internal chrome must never show a blank name,
   // unlike the public routes where '' is now rejected at write time.
+  //
+  // P-04-C: the unified app shell sits above the sidebar+content shell. The
+  // h-dvh flex-col wrapper takes over the viewport sizing the client shell
+  // used to own (BUG-40b dvh rationale unchanged) — the client shell now
+  // fills the remaining height below the 64px bar.
   return (
-    <CoachLayoutClient
-      initialCoachName={coachProfile?.display_name || userProfile.full_name || ''}
-      initialAvatarUrl={userProfile.avatar_url || null}
-      hasCoachProfile={!!coachProfile}
-      hasWizardProgress={!!coachProfile?.display_name}
-    >
-      {children}
-    </CoachLayoutClient>
+    <div className="flex h-dvh flex-col">
+      <AppShell
+        context="coach"
+        name={coachProfile?.display_name || userProfile.full_name || ''}
+        email={user.email ?? ''}
+        avatarUrl={userProfile.avatar_url || null}
+        activeRole="coach"
+        roles={roles}
+      />
+      <CoachLayoutClient
+        hasCoachProfile={!!coachProfile}
+        hasWizardProgress={!!coachProfile?.display_name}
+      >
+        {children}
+      </CoachLayoutClient>
+    </div>
   )
 }
