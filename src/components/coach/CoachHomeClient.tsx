@@ -15,6 +15,8 @@ import { fetchCoachProfileCached } from '@/lib/onboarding-cache'
 // CF-PROGRAMMES-IMAGE-PICKER: shared default placeholder for programmes
 // without an image_url (existing programmes pre-dating the picker).
 import { DEFAULT_PROGRAMME_IMAGE } from '@/lib/programme-images'
+// UX-05: public profile photo beside the greeting, tap-to-change
+import { GreetingPhoto } from '@/components/coach/GreetingPhoto'
 
 const upNextUrl = "https://images.unsplash.com/photo-1771909713672-4e351f1f8b62?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjcmlja2V0JTIwdHJhaW5pbmclMjBzcG9ydHN8ZW58MXx8fHwxNzc1NDg3OTc5fDA&ixlib=rb-4.1.0&q=80&w=1080"
 // CF-PROGRAMMES-IMAGE-PICKER: group1Url + group2Url removed — GroupCard now
@@ -98,6 +100,8 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
   const [copied, setCopied] = useState(false)
   // C-Settings-01-UI: pause banner state (cached fetch — no extra round-trip if already warm)
   const [isPaused, setIsPaused] = useState(false)
+  // UX-05: lifted so the desktop + mobile GreetingPhoto mounts stay in sync
+  const [publicPhotoUrl, setPublicPhotoUrl] = useState<string | null>(data.coachAvatarUrl)
   // UI-CARD-FIX: track programmes-row scroll position to show left-edge fade after scroll
   const programmesScrollRef = useRef<HTMLDivElement>(null)
   const [programmesScrolled, setProgrammesScrolled] = useState(false)
@@ -211,23 +215,39 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
           </Link>
         </div>
 
-        {/* Desktop Greeting - CHANGE 1: emoji + subtitle */}
+        {/* Desktop Greeting - CHANGE 1: emoji + subtitle. UX-05: public photo beside greeting */}
         <div className="hidden md:flex justify-between items-end">
-          <div>
-            <p className="text-gray-500 text-sm mb-1.5 font-medium">
-              {new Date().toLocaleDateString('en-GB', {
-                weekday: 'long', day: 'numeric', month: 'long'
-              })}
-            </p>
-            <h1 className="text-[28px] font-bold tracking-tight text-gray-900">{greeting}, {data.coachName.split(' ')[0] || 'Coach'} 👋</h1>
-            <p className="text-sm text-gray-500 mt-1">{getSessionSubtitle()}</p>
+          <div className="flex items-center gap-5">
+            <GreetingPhoto
+              coachName={data.coachName}
+              photoUrl={publicPhotoUrl}
+              onPhotoChange={setPublicPhotoUrl}
+              size={72}
+            />
+            <div>
+              <p className="text-gray-500 text-sm mb-1.5 font-medium">
+                {new Date().toLocaleDateString('en-GB', {
+                  weekday: 'long', day: 'numeric', month: 'long'
+                })}
+              </p>
+              <h1 className="text-[28px] font-bold tracking-tight text-gray-900">{greeting}, {data.coachName.split(' ')[0] || 'Coach'} 👋</h1>
+              <p className="text-sm text-gray-500 mt-1">{getSessionSubtitle()}</p>
+            </div>
           </div>
         </div>
 
-        {/* Mobile Greeting - CHANGE 1: emoji + subtitle */}
-        <div className="md:hidden">
-          <h1 className="text-[28px] font-bold tracking-tight text-gray-900 leading-tight">{greeting}, {data.coachName.split(' ')[0] || 'Coach'} 👋</h1>
-          <p className="text-sm text-gray-500 mt-1">{getSessionSubtitle()}</p>
+        {/* Mobile Greeting - CHANGE 1: emoji + subtitle. UX-05: public photo beside greeting */}
+        <div className="md:hidden flex items-center gap-4">
+          <GreetingPhoto
+            coachName={data.coachName}
+            photoUrl={publicPhotoUrl}
+            onPhotoChange={setPublicPhotoUrl}
+            size={64}
+          />
+          <div className="min-w-0">
+            <h1 className="text-[28px] font-bold tracking-tight text-gray-900 leading-tight">{greeting}, {data.coachName.split(' ')[0] || 'Coach'} 👋</h1>
+            <p className="text-sm text-gray-500 mt-1">{getSessionSubtitle()}</p>
+          </div>
         </div>
 
         {/* CF-D11a: Onboarding completion banner — hidden at 100% (Fix-44) */}
