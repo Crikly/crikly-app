@@ -39,6 +39,14 @@ export interface SlotTemplate {
    * null/absent for a recurring block. Mirrors availability_templates.specific_date.
    */
   specific_date?: string | null
+  /**
+   * BUG-51: the session length of THIS template's sport, resolved server-side
+   * from coach_sports (the availability API joins it per template). null/absent
+   * = sport-agnostic template (sport_id IS NULL) or unresolved — falls back to
+   * the caller's sessionDurationMinutes. Without this, a multi-sport coach's
+   * templates were all strided by one arbitrary sport's duration.
+   */
+  session_duration_minutes?: number | null
 }
 
 export interface GeneratedSlot {
@@ -72,6 +80,13 @@ export interface GeneratedSlot {
    * template — drives the teal "ad hoc" calendar dot. false for recurring slots.
    */
   isAdHoc: boolean
+  /**
+   * BUG-51: this slot's true session length in minutes, inherited from its
+   * source template's sport (or the fallback duration when the template is
+   * sport-agnostic). Slots on the same day can differ when a multi-sport coach
+   * offers different session lengths.
+   */
+  durationMinutes: number
 }
 
 // Fallback session length when a coach's sport carries no duration.
@@ -177,6 +192,12 @@ export function bookableSlots(
   // a 60-min session yields exactly one slot (09:00), not two. Overlapping
   // template ranges are deduped into a single sorted set of start times.
   //
+  // BUG-51: the stride is PER TEMPLATE — each template strides by its own
+  // sport's session length (template.session_duration_minutes), falling back to
+  // the sessionDurationMinutes parameter when the template is sport-agnostic.
+  // A multi-sport coach (Cricket 60 min, Tennis 90 min) previously had every
+  // template strided by whichever sport happened to sort first.
+  //
   // BUG-08 / UX-09: each start time also carries its source template's price
   // override and venue so the picker can price and locate the slot. Business rule
   // forbids overlapping blocks on the same day, so a given start minute maps to
@@ -188,8 +209,12 @@ export function bookableSlots(
   // ONLY — never repeated across weekdays. Each minute also records whether it
   // came from an ad-hoc block so the calendar can render the teal ad-hoc dot.
   const iso = localISODate(date)
-  const stride = sessionDurationMinutes > 0 ? sessionDurationMinutes : DEFAULT_SESSION_MINUTES
-  const minutesMeta = new Map<number, { price: number | null; venue: string | null; isAdHoc: boolean }>()
+  const fallbackStride =
+    sessionDurationMinutes > 0 ? sessionDurationMinutes : DEFAULT_SESSION_MINUTES
+  const minutesMeta = new Map<
+    number,
+    { price: number | null; venue: string | null; isAdHoc: boolean; duration: number }
+  >()
   for (const t of templates) {
     const adHoc = t.is_recurring === false
     if (adHoc) {
@@ -197,23 +222,31 @@ export function bookableSlots(
     } else {
       if (t.day_of_week !== dow) continue
     }
+    const stride =
+      t.session_duration_minutes != null && t.session_duration_minutes > 0
+        ? t.session_duration_minutes
+        : fallbackStride
     const start = toMinutes(t.start_time)
     const end = toMinutes(t.end_time)
     const price = t.price_override_pence ?? null
     const venue = t.venue_name ?? null
     for (let mins = start; mins + stride <= end; mins += stride) {
-      if (!minutesMeta.has(mins)) minutesMeta.set(mins, { price, venue, isAdHoc: adHoc })
+      if (!minutesMeta.has(mins)) {
+        minutesMeta.set(mins, { price, venue, isAdHoc: adHoc, duration: stride })
+      }
     }
   }
 
   const sorted = Array.from(minutesMeta.keys()).sort((a, b) => a - b)
   const out: GeneratedSlot[] = []
   for (const minutes of sorted) {
+    const meta = minutesMeta.get(minutes)
+    const duration = meta?.duration ?? fallbackStride
     if (!clearsMinAdvance(date, minutes, minAdvanceHours, now)) continue
     // BUG-16 / BUG-14: drop any slot that collides with a committed programme
-    // session or a live 1-on-1 booking.
-    if (overlapsAny(minutes, minutes + stride, busyIntervals)) continue
-    const meta = minutesMeta.get(minutes)
+    // session or a live 1-on-1 booking. BUG-51: the collision window is the
+    // slot's OWN length, not a single call-wide stride.
+    if (overlapsAny(minutes, minutes + duration, busyIntervals)) continue
     out.push({
       minutes,
       time: toHHMM(minutes),
@@ -222,6 +255,7 @@ export function bookableSlots(
       pricePence: meta?.price ?? null,
       venueName: meta?.venue ?? null,
       isAdHoc: meta?.isAdHoc ?? false,
+      durationMinutes: duration,
     })
   }
   return out

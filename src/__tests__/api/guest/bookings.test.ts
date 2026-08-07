@@ -106,6 +106,9 @@ const BOOKING_DOW = weekdayOf(BOOKING_DATE)
 // weekday. With a 60-min session this generates slots 09:00 / 10:00 / 11:00 —
 // VALID_BODY.startTime '10:00' is bookable.
 const MEMBERSHIP_TEMPLATE = {
+  // BUG-51: sport-agnostic block — slot generation falls back to the booked
+  // sport's duration, preserving the pre-BUG-51 stride for these fixtures.
+  sport_id: null,
   day_of_week: BOOKING_DOW,
   start_time: '09:00:00',
   end_time: '12:00:00',
@@ -114,13 +117,14 @@ const MEMBERSHIP_TEMPLATE = {
 }
 
 // The reads the 3c validation block performs after the price check, in route
-// order: availability_templates (membership) → blocked_dates → then
-// getCoachCommitments with sources ['programme','booking'] reads
-// group_programmes, group_programme_sessions (only when programmes is
-// non-empty), and bookings. Its availability_templates read is skipped by the
-// sources filter.
+// order: availability_templates (membership) → coach_sports (BUG-51 per-sport
+// durations) → blocked_dates → then getCoachCommitments with sources
+// ['programme','booking'] reads group_programmes, group_programme_sessions
+// (only when programmes is non-empty), and bookings. Its
+// availability_templates read is skipped by the sources filter.
 function makeValidationChains(over: {
   membership?: unknown[]
+  durations?: unknown[]
   blocked?: unknown[]
   programmes?: unknown[]
   sessions?: unknown[]
@@ -129,6 +133,7 @@ function makeValidationChains(over: {
   const programmes = over.programmes ?? []
   const chains = [
     makeListChain({ data: over.membership ?? [MEMBERSHIP_TEMPLATE] }), // availability_templates (3c membership)
+    makeListChain({ data: over.durations ?? [] }),                     // coach_sports durations (BUG-51)
     makeListChain({ data: over.blocked ?? [] }),                       // blocked_dates
     makeListChain({ data: programmes }),                               // group_programmes (commitments)
   ]
@@ -232,13 +237,14 @@ function setupHappyPath() {
   //   3. coach_sports           — sport lookup → returns COACH_SPORT_ROW
   //   4. availability_templates — BUG-09 override lookup (individual only) → []
   //   5. availability_templates — 3c slot-validation membership (BUG-19 Ph 1)
-  //   6. blocked_dates          — 3c
-  //   7. group_programmes       — 3c (getCoachCommitments) → [] (no sessions read)
-  //   8. bookings               — 3c (getCoachCommitments busy read) → []
-  //   9. platform_config        — commission rate → returns PLATFORM_CONFIG_ROW
-  //  10. user_profiles          — insert provisional user → returns PROFILE_ROW
-  //  11. bookings               — insert booking → returns BOOKING_ROW
-  //  12. payment_intents        — insert PI audit row → no error
+  //   6. coach_sports           — 3c per-sport durations (BUG-51) → []
+  //   7. blocked_dates          — 3c
+  //   8. group_programmes       — 3c (getCoachCommitments) → [] (no sessions read)
+  //   9. bookings               — 3c (getCoachCommitments busy read) → []
+  //  10. platform_config        — commission rate → returns PLATFORM_CONFIG_ROW
+  //  11. user_profiles          — insert provisional user → returns PROFILE_ROW
+  //  12. bookings               — insert booking → returns BOOKING_ROW
+  //  13. payment_intents        — insert PI audit row → no error
   //
   // The default BUG-09 availability_templates result is empty, so canonicalPrice
   // falls back to the sport default — keeping the £60 happy-path figures intact.
@@ -257,12 +263,12 @@ function setupHappyPath() {
     .mockReturnValueOnce(coachChain)          // 2. coach_profiles
     .mockReturnValueOnce(sportChain)          // 3. coach_sports
     .mockReturnValueOnce(availTemplatesChain) // 4. availability_templates (BUG-09)
-  for (const c of makeValidationChains()) mockFrom.mockReturnValueOnce(c) // 5–8
+  for (const c of makeValidationChains()) mockFrom.mockReturnValueOnce(c) // 5–9
   mockFrom
-    .mockReturnValueOnce(configChain)         // 9. platform_config
-    .mockReturnValueOnce(profileChain)        // 10. user_profiles insert
-    .mockReturnValueOnce(bookingChain)        // 11. bookings insert
-    .mockReturnValueOnce(piInsertChain)       // 12. payment_intents insert
+    .mockReturnValueOnce(configChain)         // 10. platform_config
+    .mockReturnValueOnce(profileChain)        // 11. user_profiles insert
+    .mockReturnValueOnce(bookingChain)        // 12. bookings insert
+    .mockReturnValueOnce(piInsertChain)       // 13. payment_intents insert
 
   ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom })
 
@@ -353,9 +359,9 @@ describe('POST /api/guest/bookings — happy path', () => {
 
     await callPost(VALID_BODY)
 
-    // The 12th from() call is the payment_intents insert (0-indexed = 11) —
-    // shifted by BUG-09 (index 3) and the four BUG-19 validation reads (4–7).
-    const piInsertChain = (mockFrom as MockFn).mock.results[11].value as Record<string, MockFn>
+    // The 13th from() call is the payment_intents insert (0-indexed = 12) —
+    // shifted by BUG-09 (index 3) and the five BUG-19/BUG-51 validation reads (4–8).
+    const piInsertChain = (mockFrom as MockFn).mock.results[12].value as Record<string, MockFn>
     const piInsertArg = (piInsertChain.insert as MockFn).mock.calls[0][0] as Record<string, unknown>
     expect(piInsertArg.application_fee_pence).toBe(600)
     expect(piInsertArg.coach_transfer_amount_pence).toBe(6000)
@@ -369,7 +375,7 @@ describe('POST /api/guest/bookings — happy path', () => {
 
     await callPost(VALID_BODY)
 
-    const piInsertChain = (mockFrom as MockFn).mock.results[11].value as Record<string, MockFn>
+    const piInsertChain = (mockFrom as MockFn).mock.results[12].value as Record<string, MockFn>
     const piInsertArg = (piInsertChain.insert as MockFn).mock.calls[0][0] as Record<string, unknown>
     expect(typeof piInsertArg.currency).toBe('string')
     expect((piInsertArg.currency as string).length).toBeGreaterThan(0)
@@ -684,9 +690,9 @@ describe('POST /api/guest/bookings — slot taken', () => {
 
     await callPost(VALID_BODY)
 
-    // The 12th from() call (index 11) should be the profile soft-delete update —
-    // shifted by BUG-09 (index 3) and the four BUG-19 validation reads (4–7).
-    const updateChain = (mockFrom as MockFn).mock.results[11].value as Record<string, MockFn>
+    // The 13th from() call (index 12) should be the profile soft-delete update —
+    // shifted by BUG-09 (index 3) and the five BUG-19/BUG-51 validation reads (4–8).
+    const updateChain = (mockFrom as MockFn).mock.results[12].value as Record<string, MockFn>
     expect(updateChain.update).toHaveBeenCalledWith(
       expect.objectContaining({ deleted_at: expect.any(String) })
     )
@@ -1108,13 +1114,13 @@ describe('POST /api/guest/bookings — Stripe failure', () => {
 
     await callPost(VALID_BODY)
 
-    // Shifted by BUG-09 (index 3) and the four BUG-19 validation reads (4–7):
-    // index 11 = booking soft-delete, index 12 = profile soft-delete.
-    const bookingUpdate = (mockFrom as MockFn).mock.results[11].value as Record<string, MockFn>
+    // Shifted by BUG-09 (index 3) and the five BUG-19/BUG-51 validation reads (4–8):
+    // index 12 = booking soft-delete, index 13 = profile soft-delete.
+    const bookingUpdate = (mockFrom as MockFn).mock.results[12].value as Record<string, MockFn>
     expect(bookingUpdate.update).toHaveBeenCalledWith(
       expect.objectContaining({ deleted_at: expect.any(String) })
     )
-    const profileUpdate = (mockFrom as MockFn).mock.results[12].value as Record<string, MockFn>
+    const profileUpdate = (mockFrom as MockFn).mock.results[13].value as Record<string, MockFn>
     expect(profileUpdate.update).toHaveBeenCalledWith(
       expect.objectContaining({ deleted_at: expect.any(String) })
     )
@@ -1320,5 +1326,61 @@ describe('POST /api/guest/bookings — BUG-19/BUG-21 slot validation', () => {
 
     const res = await callPost(VALID_BODY)
     expect(res.status).toBe(200)
+  })
+
+  // ── BUG-51: per-template sport duration parity ─────────────────────────────
+  //
+  // A template belonging to a 90-min sport must be strided at 90 minutes during
+  // validation even when the guest books a 60-min sport — the calendar shows
+  // 09:00/10:30 for that block, so 10:30 must be accepted and the phantom
+  // 60-min-grid slot 10:00 must not exist.
+
+  const TENNIS_SPORT_ID = '33333333-3333-4333-8333-333333333333'
+  const TENNIS_TEMPLATE = { ...MEMBERSHIP_TEMPLATE, sport_id: TENNIS_SPORT_ID }
+  const SPORT_DURATIONS = [
+    { sport_id: VALID_BODY.sportId, session_duration_minutes: 60 },
+    { sport_id: TENNIS_SPORT_ID, session_duration_minutes: 90 },
+  ]
+
+  it('accepts a slot on another sport\'s 90-min grid (BUG-51 read/write parity)', async () => {
+    // 09:00–12:00 Tennis block → slots 09:00, 10:30. Pre-BUG-51 the validation
+    // strided it by the BOOKED sport's 60 min and 10:30 got a false 409.
+    const stripeMock = makeStripeMock()
+    ;(getStripe as MockFn).mockReturnValue(stripeMock)
+
+    const mockFrom = jest.fn()
+      .mockReturnValueOnce(makeChain({ data: null }))
+      .mockReturnValueOnce(makeChain({ data: COACH_ROW }))
+      .mockReturnValueOnce(makeChain({ data: COACH_SPORT_ROW }))
+      .mockReturnValueOnce(makeListChain({ data: [] })) // BUG-09
+    for (const c of makeValidationChains({
+      membership: [TENNIS_TEMPLATE],
+      durations: SPORT_DURATIONS,
+    })) {
+      mockFrom.mockReturnValueOnce(c)
+    }
+    mockFrom
+      .mockReturnValueOnce(makeChain({ data: PLATFORM_CONFIG_ROW }))
+      .mockReturnValueOnce(makeChain({ data: PROFILE_ROW }))
+      .mockReturnValueOnce(makeChain({ data: BOOKING_ROW }))
+      .mockReturnValueOnce(makeChain({ data: null, error: null }))
+    ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom })
+
+    const res = await callPost({ ...VALID_BODY, startTime: '10:30' })
+    expect(res.status).toBe(200)
+  })
+
+  it('409 slot_not_available for a time only the wrong-sport stride would produce', async () => {
+    // 10:00 sits on the booked sport's 60-min grid but NOT on the Tennis
+    // block's own 90-min grid (09:00, 10:30) — the calendar never offered it.
+    const { mockFrom, stripeMock } = setupRejection({
+      membership: [TENNIS_TEMPLATE],
+      durations: SPORT_DURATIONS,
+    })
+    const res = await callPost(VALID_BODY) // startTime 10:00
+    expect(res.status).toBe(409)
+    const data = await res.json() as Record<string, unknown>
+    expect(data.error).toBe('slot_not_available')
+    expectNoMoneyObjects(mockFrom, stripeMock)
   })
 })

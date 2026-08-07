@@ -190,6 +190,32 @@ export async function GET(
       )
     }
 
+    // ── Resolve per-template sport durations (BUG-51) ─────────────────────────
+    // Each template belongs to a sport (or none), and each sport has its own
+    // session length. The client previously strided EVERY template by one
+    // arbitrary sport's duration (coach.sports[0]), so a multi-sport coach's
+    // calendar showed the wrong slot count. Resolve sport_id → duration here so
+    // each availability entry carries its own stride; sport-agnostic templates
+    // (sport_id IS NULL) stay null and the client falls back. coach_sports has
+    // a public-SELECT policy for live coaches, so this read is RLS-safe.
+    const { data: sportRows, error: sportsError } = await supabase
+      .from('coach_sports')
+      .select('sport_id, session_duration_minutes')
+      .eq('coach_profile_id', id)
+      .eq('is_active', true)
+
+    if (sportsError) {
+      console.error('[GET /api/coaches/[id]/availability] coach_sports error:', sportsError)
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    }
+
+    const durationBySport: Record<string, number> = Object.fromEntries(
+      ((sportRows ?? []) as { sport_id: string; session_duration_minutes: number }[]).map(s => [
+        s.sport_id,
+        s.session_duration_minutes,
+      ]),
+    )
+
     // ── Fetch blocked dates (BUG-32) ──────────────────────────────────────────
     // blocked_dates has a coach-only SELECT policy, so the anon client returned
     // [] for guests and blocked days kept rendering bookable slots (the parent
@@ -296,6 +322,11 @@ export async function GET(
       // to (a bare boolean wouldn't). Mirrors the coach-facing availability route.
       is_recurring: t.is_recurring,
       specific_date: t.specific_date,
+      // BUG-51: this template's own sport session length, so slot generation
+      // strides each block by the RIGHT sport's duration. null = sport-agnostic
+      // block (or inactive/unknown sport) — client falls back to its default.
+      session_duration_minutes:
+        t.sport_id !== null ? durationBySport[t.sport_id] ?? null : null,
     }))
 
     const blocked_dates = expandBlockedDates(blocked)

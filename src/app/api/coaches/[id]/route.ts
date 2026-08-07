@@ -283,8 +283,16 @@ export async function GET(
 
     // ── Sports ───────────────────────────────────────────────────────────────
 
+    // BUG-51: deterministic order — the embedded coach_sports join returns rows
+    // in arbitrary PostgREST order, and several consumers (availability page,
+    // /book fallback, profile booking card) read sports[0]. Sort by sport name
+    // (sport_id tiebreak) so "first sport" is stable across requests.
     const sports = (coach.coach_sports ?? [])
       .filter((s: CoachSportRow) => s.is_active && sportMap.has(s.sport_id))
+      .sort((a: CoachSportRow, b: CoachSportRow) => {
+        const byName = sportMap.get(a.sport_id)!.name.localeCompare(sportMap.get(b.sport_id)!.name)
+        return byName !== 0 ? byName : a.sport_id.localeCompare(b.sport_id)
+      })
       .map((s: CoachSportRow) => {
         const sportInfo = sportMap.get(s.sport_id)!
         return {
