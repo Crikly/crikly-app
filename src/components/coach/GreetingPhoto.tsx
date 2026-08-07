@@ -115,7 +115,7 @@ export function GreetingPhoto({ coachName, photoUrl, onPhotoChange, size }: Gree
         onClick={() => setSheetOpen(true)}
         disabled={uploading}
         aria-label="Change your public photo"
-        className="rounded-full shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
+        className="cursor-pointer rounded-full shadow-md focus:outline-none"
         data-testid="greeting-photo-button"
       >
         <CriklyAvatar
