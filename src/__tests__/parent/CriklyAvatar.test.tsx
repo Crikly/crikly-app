@@ -13,11 +13,11 @@ describe('CriklyAvatar', () => {
     )
   })
 
-  it('renders a personas URL for adults and URL-encodes the seed', () => {
+  it('renders a shapes URL for the adult (personas) tier and URL-encodes the seed', () => {
     render(<CriklyAvatar seed="Sarah Carter" style="personas" size={36} />)
     expect(screen.getByRole('img')).toHaveAttribute(
       'src',
-      'https://api.dicebear.com/7.x/personas/svg?seed=Sarah%20Carter',
+      'https://api.dicebear.com/7.x/shapes/svg?seed=Sarah%20Carter',
     )
   })
 

@@ -5,8 +5,8 @@ import { CHILD_IDENTITY_COLOURS } from '@/constants/childIdentity'
 
 // P-04-A: the app-wide avatar. Three tiers in priority order:
 //   1. photoUrl (Supabase Storage upload) when provided
-//   2. DiceBear illustrated avatar — adventurer for children (seed = first
-//      name), personas for adults/coaches (seed = full name)
+//   2. DiceBear illustrated avatar — 'adventurer' tier for children (seed =
+//      first name), 'personas' tier for adults/coaches (seed = full name)
 //   3. coloured-initial circle — network-failure safety net only
 // DiceBear is called via its free URL API (no package, no API key). A raw
 // <img> is deliberate: api.dicebear.com is not in next.config.ts
@@ -18,6 +18,17 @@ import { CHILD_IDENTITY_COLOURS } from '@/constants/childIdentity'
 // cannot be expressed as static Tailwind classes.
 
 const DICEBEAR_BASE = 'https://api.dicebear.com/7.x'
+
+// UX-05 follow-up: the `style` prop is a semantic tier (adventurer =
+// children, personas = adults), not the literal DiceBear collection — the
+// rendered collection is mapped here so an app-wide avatar restyle is a
+// one-line change with no call-site churn. Adults render 'shapes';
+// children stay on 'adventurer' until the replacement style is chosen
+// ('clay' was requested but 404s on every DiceBear version — verified).
+const DICEBEAR_COLLECTION: Record<'adventurer' | 'personas', string> = {
+  adventurer: 'adventurer',
+  personas: 'shapes',
+}
 
 type AvatarTier = 'photo' | 'dicebear' | 'initial'
 
@@ -67,7 +78,7 @@ export function CriklyAvatar({
     setTier(photoUrl ? 'photo' : 'dicebear')
   }
 
-  const dicebearUrl = `${DICEBEAR_BASE}/${style}/svg?seed=${encodeURIComponent(seed)}`
+  const dicebearUrl = `${DICEBEAR_BASE}/${DICEBEAR_COLLECTION[style]}/svg?seed=${encodeURIComponent(seed)}`
   const src = tier === 'photo' && photoUrl ? photoUrl : dicebearUrl
   const label = alt ?? seed
 

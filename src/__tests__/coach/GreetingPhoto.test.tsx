@@ -53,11 +53,11 @@ describe('GreetingPhoto', () => {
     )
   })
 
-  it('falls back to a DiceBear personas avatar seeded with the full name', () => {
+  it('falls back to a DiceBear adult-tier avatar seeded with the full name', () => {
     render(<Harness initialUrl={null} />)
     expect(screen.getByRole('img')).toHaveAttribute(
       'src',
-      'https://api.dicebear.com/7.x/personas/svg?seed=Sarah%20Carter',
+      'https://api.dicebear.com/7.x/shapes/svg?seed=Sarah%20Carter',
     )
   })
 
@@ -146,7 +146,7 @@ describe('GreetingPhoto', () => {
     // Falls back to DiceBear immediately (optimistic)
     expect(screen.getByRole('img')).toHaveAttribute(
       'src',
-      'https://api.dicebear.com/7.x/personas/svg?seed=Sarah%20Carter',
+      'https://api.dicebear.com/7.x/shapes/svg?seed=Sarah%20Carter',
     )
   })
 })
