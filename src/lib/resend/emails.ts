@@ -493,27 +493,37 @@ export async function sendNewBookingToCoach(
     bookingReference, dashboardUrl,
   } = params
 
+  // CF-NOTIFY-02: parentName is guest-form input and coachName/sport come from
+  // the DB — escape everything interpolated into markup (mirrors the guest
+  // templates above).
+  const safeCoach = escapeHtml(coachName)
+  const safeParent = escapeHtml(parentName)
+  const safeSport = escapeHtml(sport)
+  const safeDate = escapeHtml(sessionDate)
+  const safeTime = escapeHtml(sessionTime)
+  const safeRef = escapeHtml(bookingReference)
+
   const body = `
     <h1 style="margin:0 0 8px;font-size:24px;font-weight:700;color:#0F172A;font-family:'DM Sans',Arial,sans-serif;letter-spacing:-0.5px;">
       New booking 🎉
     </h1>
     <p style="margin:0 0 4px;font-size:16px;color:#64748B;font-family:'DM Sans',Arial,sans-serif;">
-      Hi ${coachName},
+      Hi ${safeCoach},
     </p>
     <p style="margin:16px 0 0;font-size:15px;color:#334155;line-height:1.6;font-family:'DM Sans',Arial,sans-serif;">
-      <strong>${parentName}</strong> has booked a session with you. Your payout will be released
+      <strong>${safeParent}</strong> has booked a session with you. Your payout will be released
       48 hours after the session completes.
     </p>
 
     ${bookingSummaryBox([
-      { label: 'Parent',    value: parentName },
-      { label: 'Sport',     value: sport },
-      { label: 'Date',      value: sessionDate },
-      { label: 'Time',      value: sessionTime },
+      { label: 'Parent',    value: safeParent },
+      { label: 'Sport',     value: safeSport },
+      { label: 'Date',      value: safeDate },
+      { label: 'Time',      value: safeTime },
       { label: 'You earn',  value: formatGBP(coachPricePence) },
     ])}
 
-    ${bookingRefBadge(bookingReference)}
+    ${bookingRefBadge(safeRef)}
 
     ${ctaButton('View in dashboard', dashboardUrl)}
 
@@ -523,10 +533,15 @@ export async function sendNewBookingToCoach(
     </p>
   `
 
+  // Subjects are plain text, not HTML — entity-escaping would render literally
+  // (e.g. "O&#39;Brien"). Strip CR/LF instead so guest-form input can never
+  // smuggle header lines into the outbound message.
+  const subjectParent = parentName.replace(/[\r\n]+/g, ' ').trim()
+
   const { error } = await getResend().emails.send({
     from: FROM,
     to: coachEmail,
-    subject: `New booking from ${parentName} — ${sessionDate}`,
+    subject: `New booking from ${subjectParent} — ${sessionDate}`,
     html: emailWrapper(body),
   })
 
