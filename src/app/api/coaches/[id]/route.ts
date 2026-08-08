@@ -351,10 +351,15 @@ export async function GET(
         sort_order: p.sort_order,
       }))
 
-    if (photos.length === 0 && profile.avatar_url) {
-      const avatarUrl = profile.avatar_url.includes('=s96-c')
-        ? profile.avatar_url.replace('=s96-c', '=s400-c')
-        : profile.avatar_url
+    // BUG-56: upscaled avatar is also returned as a top-level field so the
+    // profile page can pin it first in the hero gallery.
+    const avatarUrl = profile.avatar_url
+      ? (profile.avatar_url.includes('=s96-c')
+          ? profile.avatar_url.replace('=s96-c', '=s400-c')
+          : profile.avatar_url)
+      : null
+
+    if (photos.length === 0 && avatarUrl) {
       photos = [{ id: 'avatar', photo_url: avatarUrl, is_primary: true, sort_order: 0 }]
     }
 
@@ -395,6 +400,7 @@ export async function GET(
         // account holder's name — same precedence as /api/public/coaches and
         // the webhook confirmation emails. Response key unchanged for consumers.
         full_name: coach.display_name ?? profile.full_name,
+        avatar_url: avatarUrl,
         bio: coach.bio,
         years_experience: coach.years_experience,
         location_city: profile.location_city,
