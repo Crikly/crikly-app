@@ -76,6 +76,7 @@ interface CoachProfile {
   id: string
   slug: string | null
   full_name: string
+  avatar_url: string | null
   bio: string | null
   years_experience: number | null
   location_city: string | null
@@ -233,8 +234,16 @@ export default async function CoachProfilePage({
   const fromCandidates = [minPrice, minProgrammePrice].filter((v): v is number => v !== null)
   const mobileFromPence = fromCandidates.length > 0 ? Math.min(...fromCandidates) : null
   const primaryPhoto = coach.photos.find(p => p.is_primary) ?? coach.photos[0] ?? null
-  // eslint-disable-next-line react-hooks/purity
-  const galleryPhotos = [...coach.photos].sort(() => Math.random() - 0.5).slice(0, 5)
+  // BUG-56: pin the profile photo (avatar_url) first in the gallery, then the
+  // uploaded photos in their API order (primary first, then sort_order) —
+  // deduped by URL so an avatar that also exists as an upload appears once.
+  const avatarPhoto: Photo | null = coach.avatar_url
+    ? { id: 'avatar', photo_url: coach.avatar_url, is_primary: true, sort_order: -1 }
+    : null
+  const galleryPhotos = (avatarPhoto
+    ? [avatarPhoto, ...coach.photos.filter(p => p.photo_url !== avatarPhoto.photo_url)]
+    : coach.photos
+  ).slice(0, 5)
 
   return (
     <div className="min-h-screen bg-white">
