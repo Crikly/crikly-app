@@ -355,9 +355,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   //     Template membership deliberately ignores sport, matching the calendar
   //     (its availability fetch passes no sport filter) — approved in BUG-19
   //     Phase 1 Step 0. Do not tighten to sport-matched templates here.
+  //
+  //     BUG-51: each template DOES carry its own sport's duration, mirroring the
+  //     availability API — the calendar strides a Tennis block by Tennis's
+  //     session length even when the guest books Cricket, so this validation
+  //     must too or every slot the calendar legitimately shows past the first
+  //     stride would 409 as slot_not_available.
   const { data: allTemplates, error: allTemplatesError } = await supabase
     .from('availability_templates')
-    .select('day_of_week, start_time, end_time, is_recurring, specific_date')
+    .select('sport_id, day_of_week, start_time, end_time, is_recurring, specific_date')
     .eq('coach_profile_id', input.coachId)
     .eq('is_active', true)
 
@@ -365,6 +371,26 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     console.error('[POST /api/guest/bookings] slot-validation template lookup failed:', allTemplatesError)
     return NextResponse.json({ error: 'internal_error' }, { status: 500 })
   }
+
+  // BUG-51: sport_id → session length for ALL the coach's active sports (the
+  // earlier coach_sports read fetched the booked sport only). Same resolution
+  // the availability API performs, so read and write stride identically.
+  const { data: allSportRows, error: allSportsError } = await supabase
+    .from('coach_sports')
+    .select('sport_id, session_duration_minutes')
+    .eq('coach_profile_id', input.coachId)
+    .eq('is_active', true)
+
+  if (allSportsError) {
+    console.error('[POST /api/guest/bookings] coach_sports durations lookup failed:', allSportsError)
+    return NextResponse.json({ error: 'internal_error' }, { status: 500 })
+  }
+
+  const durationBySport: Record<string, number> = Object.fromEntries(
+    ((allSportRows ?? []) as { sport_id: string; session_duration_minutes: number }[]).map(
+      (s) => [s.sport_id, s.session_duration_minutes],
+    ),
+  )
 
   const { data: blockedRows, error: blockedError } = await supabase
     .from('blocked_dates')
@@ -394,6 +420,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   })
 
   interface TemplateMembershipRow {
+    sport_id: string | null
     day_of_week: number
     start_time: string
     end_time: string
@@ -407,6 +434,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     end_time: t.end_time,
     is_recurring: t.is_recurring ?? true,
     specific_date: t.specific_date ? t.specific_date.slice(0, 10) : null,
+    // BUG-51: per-template stride — sport-agnostic templates (null) fall back
+    // to the booked sport's duration passed to bookableSlots below.
+    session_duration_minutes:
+      t.sport_id !== null ? durationBySport[t.sport_id] ?? null : null,
   }))
 
   // Server-local midnight for the session date; bookableSlots does all its
@@ -457,10 +488,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       coachSport.session_duration_minutes,
       [],
     )
-    if (slotsIgnoringBusy.some((s) => s.time === requestedHHMM)) {
+    const wouldExist = slotsIgnoringBusy.find((s) => s.time === requestedHHMM)
+    if (wouldExist) {
+      // BUG-51: diagnose with the slot's OWN duration (its template's sport),
+      // matching the window bookableSlots used to suppress it.
       const conflict = findFirstConflict(
         startMinutes,
-        startMinutes + coachSport.session_duration_minutes,
+        startMinutes + wouldExist.durationMinutes,
         busy,
       )
       return NextResponse.json(
