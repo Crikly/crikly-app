@@ -3,12 +3,15 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { RegisterFormData, AuthError } from '@/types/auth'
+import type { RoleParam } from '@/lib/auth/role-param'
 
 interface RegisterFormProps {
   onSuccess?: () => void
+  /** P-04-B: pre-validated ?role= from the page — null means absent/invalid. */
+  roleParam?: RoleParam | null
 }
 
-export function RegisterForm({ onSuccess }: RegisterFormProps = {}) {
+export function RegisterForm({ onSuccess, roleParam = null }: RegisterFormProps = {}) {
   const router = useRouter()
   const [formData, setFormData] = useState<RegisterFormData>({
     fullName: '',
@@ -43,7 +46,9 @@ export function RegisterForm({ onSuccess }: RegisterFormProps = {}) {
       const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        // P-04-B: the server re-validates role against the allow-list and
+        // rides it on the verify-email link.
+        body: JSON.stringify(roleParam ? { ...formData, role: roleParam } : formData),
       })
       const data = await res.json()
       if (!res.ok) {

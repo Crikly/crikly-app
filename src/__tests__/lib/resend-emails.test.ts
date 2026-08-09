@@ -326,3 +326,101 @@ describe('sendGuestProgrammeConfirmation — participant (BUG-20)', () => {
     expect(html).toContain('&lt;script&gt;')
   })
 })
+
+// ── CF-NOTIFY-02: sendNewBookingToCoach ───────────────────────────────────────
+
+import { sendNewBookingToCoach } from '@/lib/resend/emails'
+import type { NewBookingToCoachParams } from '@/lib/resend/emails'
+
+const BASE_COACH_PARAMS: NewBookingToCoachParams = {
+  coachEmail: 'coach@example.com',
+  coachName: 'Coach Davies',
+  parentName: 'Sarah Test',
+  sport: 'Cricket',
+  sessionDate: 'Saturday, 15 August 2026',
+  sessionTime: '2:00pm – 3:00pm',
+  coachPricePence: 4000,
+  bookingReference: 'CRK-2026-ABC123',
+  dashboardUrl: 'https://crikly.app/coach/bookings/booking-uuid-001',
+}
+
+describe('sendNewBookingToCoach — from/to/subject', () => {
+  it('calls Resend with the coach email as the to address', async () => {
+    await sendNewBookingToCoach(BASE_COACH_PARAMS)
+
+    const [callArg] = mockEmailsSend.mock.calls[0] as [Record<string, unknown>]
+    expect(callArg.to).toBe('coach@example.com')
+  })
+
+  it('subject contains the parent name and session date', async () => {
+    await sendNewBookingToCoach(BASE_COACH_PARAMS)
+
+    const [callArg] = mockEmailsSend.mock.calls[0] as [Record<string, unknown>]
+    expect(callArg.subject).toBe('New booking from Sarah Test — Saturday, 15 August 2026')
+  })
+
+  it('strips CR/LF from the parent name in the subject (header-injection guard)', async () => {
+    await sendNewBookingToCoach({
+      ...BASE_COACH_PARAMS,
+      parentName: 'Sarah\r\nBcc: victim@example.com',
+    })
+
+    const [callArg] = mockEmailsSend.mock.calls[0] as [Record<string, unknown>]
+    const subject = callArg.subject as string
+    expect(subject).not.toContain('\r')
+    expect(subject).not.toContain('\n')
+    expect(subject).toContain('Sarah Bcc: victim@example.com')
+  })
+})
+
+describe('sendNewBookingToCoach — HTML content', () => {
+  function getHtml(): string {
+    const [callArg] = mockEmailsSend.mock.calls[0] as [Record<string, unknown>]
+    return callArg.html as string
+  }
+
+  it('BR-01: renders the coach payout from coachPricePence (4000 → £40.00)', async () => {
+    await sendNewBookingToCoach(BASE_COACH_PARAMS)
+    expect(getHtml()).toContain('£40.00')
+  })
+
+  it('renders the dashboard CTA link', async () => {
+    await sendNewBookingToCoach(BASE_COACH_PARAMS)
+    expect(getHtml()).toContain('https://crikly.app/coach/bookings/booking-uuid-001')
+  })
+
+  it('renders the booking reference', async () => {
+    await sendNewBookingToCoach(BASE_COACH_PARAMS)
+    expect(getHtml()).toContain('CRK-2026-ABC123')
+  })
+
+  it('escapes < > characters in the parent name (guest-form input)', async () => {
+    await sendNewBookingToCoach({
+      ...BASE_COACH_PARAMS,
+      parentName: '<script>alert(1)</script>',
+    })
+    const html = getHtml()
+    expect(html).not.toContain('<script>alert(1)</script>')
+    expect(html).toContain('&lt;script&gt;')
+  })
+
+  it('escapes < > characters in the coach name', async () => {
+    await sendNewBookingToCoach({
+      ...BASE_COACH_PARAMS,
+      coachName: '<img src=x onerror=alert(1)>',
+    })
+    const html = getHtml()
+    expect(html).not.toContain('<img src=x')
+    expect(html).toContain('&lt;img src=x')
+  })
+})
+
+describe('sendNewBookingToCoach — error handling', () => {
+  it('throws when Resend returns an error object', async () => {
+    mockEmailsSend.mockResolvedValue({ data: null, error: { message: 'Invalid API key' } })
+
+    await expect(sendNewBookingToCoach(BASE_COACH_PARAMS)).rejects.toThrow(
+      '[sendNewBookingToCoach] Resend error: Invalid API key',
+    )
+  })
+})

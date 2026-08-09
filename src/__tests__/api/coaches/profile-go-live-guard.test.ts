@@ -288,7 +288,9 @@ describe('POST /api/coaches/profile — go-live guard + submit-for-review (C-PAY
     }
     expect(emailA.coachEmail).toBe(COACH_EMAIL)
     expect(emailA.coachName).toBe('Coach Smithy')
-    expect(emailA.profileUrl).toContain('/coaches/coach-smithy')
+    // BUG-54: CTA must go to the dashboard — the public profile 404s pre-approval.
+    expect(emailA.profileUrl).toContain('/coach/dashboard')
+    expect(emailA.profileUrl).not.toContain('/coaches/')
 
     // Email B — review notification, with the secret-protected approve link.
     expect(sendCoachReviewNotification).toHaveBeenCalledTimes(1)

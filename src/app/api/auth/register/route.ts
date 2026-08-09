@@ -2,6 +2,7 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import type { Database } from '@/types/database'
+import { parseRoleParam } from '@/lib/auth/role-param'
 
 export async function POST(request: Request) {
   try {
@@ -9,11 +10,15 @@ export async function POST(request: Request) {
       fullName?: unknown
       email?: unknown
       password?: unknown
+      role?: unknown
     }
 
     const fullName = typeof body.fullName === 'string' ? body.fullName.trim() : ''
     const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
     const password = typeof body.password === 'string' ? body.password : ''
+    // P-04-B (AUTH-FLOW-01): optional pre-selected role. Allow-list
+    // validated; invalid values are silently dropped, never rejected.
+    const roleParam = parseRoleParam(body.role)
 
     if (!fullName || !email || !password) {
       return NextResponse.json(
@@ -60,7 +65,12 @@ export async function POST(request: Request) {
       password,
       options: {
         data: { full_name: fullName },
-        emailRedirectTo: `${origin}/auth/callback`,
+        // P-04-B: the validated role rides the verify-email link back to
+        // the callback (Supabase preserves extra redirectTo query params —
+        // same mechanism as the recovery flow's ?type=recovery).
+        emailRedirectTo: roleParam
+          ? `${origin}/auth/callback?role=${roleParam}`
+          : `${origin}/auth/callback`,
       },
     })
 

@@ -2,10 +2,11 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Pencil, X, ChevronLeft, ChevronRight, Plus, ChevronDown, AlertTriangle } from 'lucide-react'
+import { Pencil, X, ChevronLeft, ChevronRight, Plus, ChevronDown, AlertTriangle, ArrowRight } from 'lucide-react'
 import { VenueAutocomplete, type VenueSelection } from '@/components/coach/shared/LocationAutocomplete'
 // AF-H-41: pull configured sports from cached helper so new coaches can pick a sport
-import { fetchCoachSportsCached } from '@/lib/onboarding-cache'
+// BUG-55: profile cache reused for the onboarding-incomplete detection below
+import { fetchCoachProfileCached, fetchCoachSportsCached } from '@/lib/onboarding-cache'
 
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December']
 const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
@@ -108,6 +109,28 @@ function formatAdHocDate(dateStr: string): string {
   return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
 }
 
+// BUG-55: the subset of /api/coaches/profile fields needed for the
+// onboarding-incomplete detection — same checks as the dashboard completion
+// banner (dashboard/page.tsx completionChecks) and ProfileEdit.
+interface OnboardingProfileFields {
+  full_name: string | null
+  bio: string | null
+  location_city: string | null
+  avatar_url: string | null
+  cancellation_window_hours: number
+  stripe_onboarding_complete: boolean
+}
+
+// BUG-55: step order + routes must mirror CoachHomeClient's checklist
+const ONBOARDING_STEP_ROUTES = [
+  '/coach/onboarding/profile',
+  '/coach/onboarding/sport',
+  '/coach/onboarding/qualifications',
+  '/coach/onboarding/availability',
+  '/coach/onboarding/policy',
+  '/coach/onboarding/get-paid',
+]
+
 export function AvailabilityManagement() {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<'schedule' | 'blocked'>('schedule')
@@ -120,6 +143,10 @@ export function AvailabilityManagement() {
   const [deleting, setDeleting] = useState<string | null>(null)
   // AF-H-41: configured-sports list, drives dropdown and provides sport_id for POST/PATCH
   const [allSports, setAllSports] = useState<{ sport_id: string; sport_name: string }[]>([])
+  // BUG-55: gate the continue-setup detection until sports resolve — without
+  // this, a late sports fetch reads as "no sports" and transiently flags a
+  // complete coach as incomplete.
+  const [sportsLoading, setSportsLoading] = useState(true)
   // Fix-69-2: inline confirmation + error for availability block delete
   const [deleteBlockConfirmId, setDeleteBlockConfirmId] = useState<string | null>(null)
   const [blockDeleteError, setBlockDeleteError] = useState<string | null>(null)
@@ -134,6 +161,15 @@ export function AvailabilityManagement() {
   // Fix-69-2: inline confirmation + error for blocked date remove
   const [removeBlockedConfirmId, setRemoveBlockedConfirmId] = useState<string | null>(null)
   const [blockedActionError, setBlockedActionError] = useState<string | null>(null)
+  // BUG-55: onboarding-incomplete detection — a coach who lands here directly
+  // (bypassing the wizard) needs a way to continue setup. null = still
+  // loading / fetch failed → no button (non-critical, matches banner pattern).
+  const [profileChecks, setProfileChecks] = useState<{ personal: boolean; policy: boolean; stripe: boolean } | null>(null)
+  const [hasQualifications, setHasQualifications] = useState<boolean | null>(null)
+  // BUG-55: raw availability count (pre recurring-only filter) so the check
+  // matches the dashboard's availability_templates count — a coach with only
+  // ad hoc slots still counts as having availability.
+  const [hasAnyAvailability, setHasAnyAvailability] = useState(false)
   // AF-H-41: use coach's configured sports — was derived from existing scheduleBlocks
   // (empty for new coaches), preventing them adding their first block.
   const availableSports = useMemo(() => allSports.map(s => s.sport_name), [allSports])
@@ -172,6 +208,9 @@ export function AvailabilityManagement() {
         if (!availRes.ok) throw new Error('Failed to fetch availability')
 
         const data = await availRes.json()
+
+        // BUG-55: completion check counts every slot, incl. ad hoc
+        setHasAnyAvailability((data.availability || []).length > 0)
 
         // Transform API data to UI format — filter out ad hoc (is_recurring=false) slots
         const transformed: ScheduleBlock[] = (data.availability || [])
@@ -216,7 +255,53 @@ export function AvailabilityManagement() {
         // Non-critical — dropdown stays empty; coach sees the existing
         // "configure a sport in onboarding first" flow.
       })
+      .finally(() => setSportsLoading(false))
   }, [])
+
+  // BUG-55: fetch the profile fields + qualifications count needed for the
+  // onboarding-incomplete detection. Same 6 checks as the dashboard banner;
+  // sports + availability come from this component's existing state. Any
+  // failure leaves the states null → button simply doesn't render.
+  useEffect(() => {
+    Promise.all([
+      fetchCoachProfileCached(),
+      fetch('/api/coaches/qualifications'),
+    ])
+      .then(async ([profileData, qualsRes]) => {
+        const p = profileData as OnboardingProfileFields
+        setProfileChecks({
+          // Personal info — BUG-QA-03: avatar_url required, must match Dashboard
+          personal: !!(p.full_name && p.bio && p.location_city && p.avatar_url),
+          // BUG-27: 0 = "No cancellations" is a deliberate, complete choice
+          policy: p.cancellation_window_hours >= 0,
+          stripe: !!p.stripe_onboarding_complete,
+        })
+        if (qualsRes.ok) {
+          const qualsData = await qualsRes.json() as { qualifications?: unknown[] }
+          setHasQualifications((qualsData.qualifications ?? []).length > 0)
+        }
+      })
+      .catch(() => {
+        // Non-critical — the continue-setup button just won't show
+      })
+  }, [])
+
+  // BUG-55: first incomplete onboarding step, or null when complete/unknown.
+  // Waits for the availability fetch (loading) so a not-yet-loaded schedule
+  // isn't misread as "no availability".
+  const nextOnboardingRoute = useMemo(() => {
+    if (loading || sportsLoading || !profileChecks || hasQualifications === null) return null
+    const checks = [
+      profileChecks.personal,
+      allSports.length > 0,
+      hasQualifications,
+      hasAnyAvailability,
+      profileChecks.policy,
+      profileChecks.stripe,
+    ]
+    const firstIncomplete = checks.findIndex(c => !c)
+    return firstIncomplete === -1 ? null : ONBOARDING_STEP_ROUTES[firstIncomplete]
+  }, [loading, sportsLoading, profileChecks, hasQualifications, allSports, hasAnyAvailability])
 
   // AF-H-41: once sports load, sync formSport so POST sends a real sport_id
   // (useState only takes initial value on mount; without this, a stale empty
@@ -531,6 +616,26 @@ export function AvailabilityManagement() {
             {loading ? 'Loading...' : scheduleBlocks.length === 0 ? 'No availability blocks yet' : `${scheduleBlocks.length} recurring ${scheduleBlocks.length === 1 ? 'block' : 'blocks'}`}
           </p>
         </div>
+
+        {/* BUG-55: coach landed here with an incomplete onboarding profile —
+            offer a route back into the wizard at the first incomplete step.
+            Hidden entirely once all 6 completion checks pass. */}
+        {nextOnboardingRoute && (
+          <div className="mb-8 p-4 rounded-xl bg-neutral-50 shadow-sm flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-[14px] text-gray-700">
+              <span className="font-semibold text-gray-900">Your profile setup isn&apos;t finished.</span>{' '}
+              Complete the remaining steps to appear in search.
+            </p>
+            <button
+              onClick={() => router.push(nextOnboardingRoute)}
+              className="inline-flex items-center justify-center gap-2 h-11 px-5 shrink-0 bg-brand-600 text-white rounded-lg text-sm font-semibold shadow-sm hover:bg-brand-700 transition-colors"
+              data-testid="continue-setup-cta"
+            >
+              Continue setup
+              <ArrowRight size={16} />
+            </button>
+          </div>
+        )}
         <div className="flex border-b border-gray-100 mb-8">
           {(['schedule', 'blocked'] as const).map(tab => (
             <button key={tab} onClick={() => setActiveTab(tab)} className={`pb-3 px-1 mr-8 font-bold text-[16px] transition-colors border-b-2 capitalize ${activeTab === tab ? 'border-brand-600 text-brand-600' : 'border-transparent text-[#94A3B8] hover:text-gray-600'}`}>

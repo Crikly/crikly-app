@@ -85,3 +85,38 @@ describe('POST /api/auth/register', () => {
     expect(res.status).toBe(500)
   })
 })
+
+// P-04-B (AUTH-FLOW-01): validated ?role= rides the verify-email link.
+describe('POST /api/auth/register — role param (P-04-B)', () => {
+  const validBody = {
+    fullName: 'Test Parent',
+    email: 'parent@example.com',
+    password: 'password123',
+  }
+
+  beforeEach(() => {
+    mockSignUp.mockResolvedValue({
+      data: { user: { id: 'user-1' } },
+      error: null,
+    })
+  })
+
+  it('appends a valid role to emailRedirectTo', async () => {
+    await callRegister({ ...validBody, role: 'parent' })
+    const options = mockSignUp.mock.calls[0][0].options
+    expect(options.emailRedirectTo).toMatch(/\/auth\/callback\?role=parent$/)
+  })
+
+  it('silently drops an invalid role (validated-null short-circuit)', async () => {
+    const res = await callRegister({ ...validBody, role: 'admin"><script>' })
+    expect(res.status).toBe(200)
+    const options = mockSignUp.mock.calls[0][0].options
+    expect(options.emailRedirectTo).toMatch(/\/auth\/callback$/)
+  })
+
+  it('omits the param when no role is sent — behaviour unchanged', async () => {
+    await callRegister(validBody)
+    const options = mockSignUp.mock.calls[0][0].options
+    expect(options.emailRedirectTo).toMatch(/\/auth\/callback$/)
+  })
+})

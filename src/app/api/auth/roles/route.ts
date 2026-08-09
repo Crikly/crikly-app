@@ -8,6 +8,154 @@ type Role = 'parent' | 'player' | 'coach'
 
 const VALID_ROLES: Role[] = ['parent', 'player', 'coach']
 
+// P-04-C: PATCH — lightweight active_role-only switch between roles the user
+// ALREADY holds. The POST below is a full role-setup flow (user_roles upsert,
+// coach_profiles eager-create, welcome email, metadata rewrite) and must not
+// run on every switch — switching is a pure pointer update. Adding a NEW role
+// stays on POST.
+export async function PATCH(request: Request) {
+  try {
+    const body = await request.json() as { role?: unknown }
+    const role = body.role
+
+    if (!role || !VALID_ROLES.includes(role as Role)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'Please select a valid role to switch to.',
+          },
+        },
+        { status: 400 }
+      )
+    }
+
+    const cookieStore = await cookies()
+    const supabase = createServerClient<Database>(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() { return cookieStore.getAll() },
+          setAll(cookiesToSet) {
+            cookiesToSet.forEach(({ name, value, options }) => {
+              cookieStore.set(name, value, options)
+            })
+          },
+        },
+      }
+    )
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+
+    if (authError || !user) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: 'UNAUTHORIZED',
+            message: 'You must be logged in to switch roles.',
+          },
+        },
+        { status: 401 }
+      )
+    }
+
+    const { data: userProfile, error: profileFetchError } = await supabase
+      .from('user_profiles')
+      .select('id')
+      .eq('auth_user_id', user.id)
+      .single()
+
+    if (profileFetchError || !userProfile) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: 'UNKNOWN_ERROR',
+            message: 'Could not load your profile. Please try again.',
+          },
+        },
+        { status: 500 }
+      )
+    }
+
+    // The switch is only valid for a role the account already holds — adding
+    // a role goes through POST (which owns the setup side-effects).
+    const { data: heldRole, error: heldRoleError } = await supabase
+      .from('user_roles')
+      .select('id')
+      .eq('user_profile_id', userProfile.id)
+      .eq('role', role as Role)
+      .maybeSingle()
+
+    if (heldRoleError) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: 'UNKNOWN_ERROR',
+            message: 'Could not verify your roles. Please try again.',
+          },
+        },
+        { status: 500 }
+      )
+    }
+
+    if (!heldRole) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: 'ROLE_NOT_HELD',
+            message: 'You have not added this role to your account yet.',
+          },
+        },
+        { status: 403 }
+      )
+    }
+
+    const { error: updateError } = await supabase
+      .from('user_profiles')
+      .update({
+        active_role: role as Role,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('auth_user_id', user.id)
+
+    if (updateError) {
+      console.error('active_role switch error:', updateError)
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: 'UNKNOWN_ERROR',
+            message: 'Could not switch roles. Please try again.',
+          },
+        },
+        { status: 500 }
+      )
+    }
+
+    return NextResponse.json({
+      success: true,
+      redirectTo: role === 'coach' ? '/coach/dashboard' : '/parent/dashboard',
+    })
+  } catch {
+    return NextResponse.json(
+      {
+        success: false,
+        error: {
+          code: 'UNKNOWN_ERROR',
+          message: 'Unexpected error. Please try again.',
+        },
+      },
+      { status: 500 }
+    )
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json() as { role?: unknown }

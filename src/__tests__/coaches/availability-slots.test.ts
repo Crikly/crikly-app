@@ -226,3 +226,72 @@ describe('bookableSlots — booked-slot suppression (BUG-14)', () => {
     expect(slots.map(s => s.time)).toEqual(['09:00', '11:00', '12:00', '14:00'])
   })
 })
+
+describe('bookableSlots — per-template sport duration (BUG-51)', () => {
+  it('a 2-hour window with a 60-min sport yields exactly 2 slots', () => {
+    const cricket = sunday({ start_time: '09:00', end_time: '11:00', session_duration_minutes: 60 })
+    const slots = bookableSlots(SUNDAY, [cricket], new Set(), 0, 60, NOW, 60)
+    expect(slots.map(s => s.time)).toEqual(['09:00', '10:00'])
+    expect(slots.every(s => s.durationMinutes === 60)).toBe(true)
+  })
+
+  it('strides each template by ITS OWN sport duration, not the call-wide fallback', () => {
+    // Cricket 60 min (09:00–11:00) + Tennis 90 min (12:00–15:00) on one day.
+    // Pre-BUG-51, a 60-min call-wide stride wrongly gave Tennis 12:00/13:00/14:00.
+    const slots = bookableSlots(
+      SUNDAY,
+      [
+        sunday({ start_time: '09:00', end_time: '11:00', session_duration_minutes: 60 }),
+        sunday({ start_time: '12:00', end_time: '15:00', session_duration_minutes: 90 }),
+      ],
+      new Set(),
+      0,
+      60,
+      NOW,
+      60,
+    )
+    expect(slots.map(s => s.time)).toEqual(['09:00', '10:00', '12:00', '13:30'])
+    const byTime = Object.fromEntries(slots.map(s => [s.time, s.durationMinutes]))
+    expect(byTime['09:00']).toBe(60)
+    expect(byTime['12:00']).toBe(90)
+    expect(byTime['13:30']).toBe(90)
+  })
+
+  it('falls back to the sessionDurationMinutes param for sport-agnostic templates', () => {
+    // No session_duration_minutes on the template → the caller's 90 applies.
+    const agnostic = sunday({ start_time: '09:00', end_time: '12:00' })
+    const slots = bookableSlots(SUNDAY, [agnostic], new Set(), 0, 60, NOW, 90)
+    expect(slots.map(s => s.time)).toEqual(['09:00', '10:30'])
+    expect(slots[0].durationMinutes).toBe(90)
+  })
+
+  it('treats null and non-positive template durations as absent (fallback)', () => {
+    const nullDur = sunday({ start_time: '09:00', end_time: '11:00', session_duration_minutes: null })
+    const zeroDur = sunday({ start_time: '09:00', end_time: '11:00', session_duration_minutes: 0 })
+    expect(bookableSlots(SUNDAY, [nullDur], new Set(), 0, 60, NOW, 60)).toHaveLength(2)
+    expect(bookableSlots(SUNDAY, [zeroDur], new Set(), 0, 60, NOW, 60)).toHaveLength(2)
+  })
+
+  it('an ad-hoc block splits by its own sport duration', () => {
+    const adHoc = sunday({
+      start_time: '09:00',
+      end_time: '12:00',
+      is_recurring: false,
+      specific_date: '2026-01-04',
+      session_duration_minutes: 90,
+    })
+    const slots = bookableSlots(SUNDAY, [adHoc], new Set(), 0, 60, NOW, 60)
+    expect(slots.map(s => s.time)).toEqual(['09:00', '10:30'])
+    expect(slots.every(s => s.isAdHoc && s.durationMinutes === 90)).toBe(true)
+  })
+
+  it('suppresses a busy collision using the slot OWN length, not the fallback', () => {
+    // 90-min slot at 12:00 runs to 13:30; a 13:00–14:00 booking overlaps it even
+    // though a 60-min window (12:00–13:00) would not.
+    const tennis = sunday({ start_time: '12:00', end_time: '13:30', session_duration_minutes: 90 })
+    const slots = bookableSlots(SUNDAY, [tennis], new Set(), 0, 60, NOW, 60, [
+      { startMinutes: 13 * 60, endMinutes: 14 * 60 },
+    ])
+    expect(slots).toHaveLength(0)
+  })
+})

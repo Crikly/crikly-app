@@ -50,6 +50,7 @@ import type Stripe from 'stripe'
 import { getStripe } from '@/lib/stripe/client'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendBookingConfirmation } from '@/lib/resend/send-booking-confirmation'
+import { sendNewBookingNotification } from '@/lib/resend/send-new-booking-to-coach'
 import { sendProgrammeConfirmation } from '@/lib/resend/send-programme-confirmation'
 import { sendOpsAlert } from '@/lib/resend/send-ops-alert'
 import { addMinutesToTime } from '@/lib/booking/guest-checkout'
@@ -416,7 +417,7 @@ async function handlePaymentIntentSucceeded(intent: Stripe.PaymentIntent): Promi
     .eq('id', bookingId)
     .eq('status', 'pending_payment')
     .select(
-      'id, booking_reference, coach_profile_id, session_date, session_start_time, session_end_time, session_type',
+      'id, booking_reference, coach_profile_id, session_date, session_start_time, session_end_time, session_type, coach_price_pence, sport_id',
     )
 
   if (bookingError) {
@@ -445,6 +446,14 @@ async function handlePaymentIntentSucceeded(intent: Stripe.PaymentIntent): Promi
   } catch (err) {
     console.error(`[Stripe Webhook] confirmation email crashed for ${bookingId}:`, err)
   }
+
+  // CF-NOTIFY-02: coach notification — same single-fire guard, same PERMANENT
+  // failure semantics. A crash here must never reach the dispatcher.
+  try {
+    await sendNewBookingToCoachEmail(adminSupabase, confirmed[0], intent)
+  } catch (err) {
+    console.error(`[Stripe Webhook] coach notification email crashed for ${bookingId}:`, err)
+  }
 }
 
 /** Booking row shape needed to build the confirmation email. */
@@ -456,6 +465,8 @@ interface ConfirmedBookingRow {
   session_start_time: string
   session_end_time: string
   session_type: string
+  coach_price_pence: number
+  sport_id: string
 }
 
 /**
@@ -528,6 +539,89 @@ async function sendGuestBookingConfirmationEmail(
 }
 
 /**
+ * CF-NOTIFY-02 — coach new-booking notification. Fires exactly once, gated by
+ * the same pending_payment transition as the guest confirmation above (a
+ * redelivery no-ops at the confirm guard). Every lookup is best-effort:
+ * failures log and skip — PERMANENT semantics, never a retryable 500. Email
+ * failure never affects the webhook response: sendNewBookingNotification
+ * swallows and returns a boolean.
+ */
+async function sendNewBookingToCoachEmail(
+  adminSupabase: SupabaseAdminClient,
+  booking: ConfirmedBookingRow,
+  intent: Stripe.PaymentIntent,
+): Promise<void> {
+  const { data: coach, error: coachError } = await adminSupabase
+    .from('coach_profiles')
+    .select('display_name, user_profile_id')
+    .eq('id', booking.coach_profile_id)
+    .maybeSingle()
+
+  if (coachError || !coach?.user_profile_id) {
+    console.error(
+      `[Stripe Webhook] coach lookup failed for booking ${booking.id} — coach email skipped:`,
+      coachError ?? 'no user_profile_id',
+    )
+    return
+  }
+
+  const { data: coachUser, error: coachUserError } = await adminSupabase
+    .from('user_profiles')
+    .select('full_name, auth_user_id')
+    .eq('id', coach.user_profile_id)
+    .maybeSingle()
+
+  if (coachUserError || !coachUser?.auth_user_id) {
+    console.error(
+      `[Stripe Webhook] coach user lookup failed for booking ${booking.id} — coach email skipped:`,
+      coachUserError ?? 'no auth_user_id',
+    )
+    return
+  }
+
+  const { data: authUser, error: authUserError } = await adminSupabase.auth.admin.getUserById(
+    coachUser.auth_user_id,
+  )
+  const coachEmail = authUser?.user?.email
+  if (!coachEmail) {
+    console.error(
+      `[Stripe Webhook] no email for coach — coach email skipped for booking ${booking.id}:`,
+      authUserError ?? 'user has no email',
+    )
+    return
+  }
+
+  // Sport display name — non-fatal; a lookup miss falls back to a generic label.
+  let sportName = 'Coaching session'
+  const { data: sport } = await adminSupabase
+    .from('sports')
+    .select('name')
+    .eq('id', booking.sport_id)
+    .maybeSingle()
+  if (sport?.name) sportName = sport.name
+
+  const base = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+
+  const sent = await sendNewBookingNotification({
+    coachEmail,
+    coachName: coach.display_name?.trim() || coachUser.full_name || 'Coach',
+    parentName: intent.metadata?.guest_name || 'A parent',
+    sport: sportName,
+    sessionDate: formatSessionDate(booking.session_date),
+    sessionTime: formatSessionTime(booking.session_start_time, booking.session_end_time),
+    // BR-01: the coach's "You earn" line is coach_price_pence — never
+    // intent.amount, which is the parent total including commission.
+    coachPricePence: booking.coach_price_pence,
+    bookingReference: booking.booking_reference,
+    dashboardUrl: `${base}/coach/bookings/${booking.id}`,
+  })
+
+  if (!sent) {
+    console.error(`[Stripe Webhook] coach notification email failed for booking ${booking.id}`)
+  }
+}
+
+/**
  * BUG-13b defence-in-depth: payment_intent.succeeded arrived for a booking the
  * release path already freed (soft-deleted, status still 'pending_payment',
  * cancellation_reason holding a release marker). By design this cannot happen —
@@ -577,7 +671,7 @@ async function restoreReleasedBookingIfPaid(
     .eq('id', bookingId)
     .eq('status', 'pending_payment')
     .not('deleted_at', 'is', null)
-    .select('id, booking_reference, coach_profile_id, session_date, session_start_time, session_end_time, session_type')
+    .select('id, booking_reference, coach_profile_id, session_date, session_start_time, session_end_time, session_type, coach_price_pence, sport_id')
 
   // BUG-15 (review fix): only a constraint violation IS the permanent
   // conflict — any other restore failure is transient and must retry.
@@ -647,6 +741,14 @@ async function restoreReleasedBookingIfPaid(
     await sendGuestBookingConfirmationEmail(adminSupabase, restored[0], intent)
   } catch (err) {
     console.error(`[Stripe Webhook] restore confirmation email crashed for ${bookingId}:`, err)
+  }
+
+  // CF-NOTIFY-02: the restored booking is as real to the coach as a normal
+  // confirm — notify them here too. Same PERMANENT failure semantics.
+  try {
+    await sendNewBookingToCoachEmail(adminSupabase, restored[0], intent)
+  } catch (err) {
+    console.error(`[Stripe Webhook] restore coach notification email crashed for ${bookingId}:`, err)
   }
 }
 

@@ -24,7 +24,7 @@ test.describe('P7 — RBAC: route protection', () => {
     await expect(page).toHaveURL(/\/login/)
   })
 
-  test('T7.3: parent-role user navigating to /coach/dashboard lands on /dashboard', async ({
+  test('T7.3: parent-role user navigating to /coach/dashboard lands on /parent/dashboard', async ({
     page,
   }) => {
     const email = process.env.TEST_PARENT_EMAIL
@@ -52,17 +52,14 @@ test.describe('P7 — RBAC: route protection', () => {
 
     // Manually navigate to /coach/dashboard. The coach layout guard bounces a
     // user with no coach role to /dashboard (coach/layout.tsx), and /dashboard
-    // then routes any non-coach active_role to /onboarding/role — the parent
-    // module has no dashboard yet in Block 0, so role selection is today's
-    // terminal destination ((dashboard)/dashboard/page.tsx).
+    // routes a parent/player active_role to /parent/dashboard (P-04-A — the
+    // real parent dashboard replaced the P-04-PREP-01 /coaches placeholder).
     //
-    // TEST-E2E-03: the original /\/dashboard$/ expectation predated that
-    // second hop and had never actually run (env-var skip). The invariant
-    // under test is unchanged — a parent must never land on a /coach/*
-    // surface. Revisit the terminal URL when the parent dashboard ships.
+    // The invariant under test is unchanged — a parent must never land on a
+    // /coach/* surface.
     await page.goto('/coach/dashboard')
-    await page.waitForURL(/\/onboarding\/role$/, { timeout: 10000 })
-    await expect(page).toHaveURL(/\/onboarding\/role$/)
+    await page.waitForURL(/\/parent\/dashboard$/, { timeout: 10000 })
+    await expect(page).toHaveURL(/\/parent\/dashboard$/)
     await expect(page).not.toHaveURL(/\/coach\//)
   })
 })
