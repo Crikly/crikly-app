@@ -24,7 +24,7 @@ function emailWrapper(bodyHtml: string): string {
 
           <!-- Header -->
           <tr>
-            <td style="background:#0077CC;border-radius:12px 12px 0 0;padding:24px 32px;">
+            <td style="background:#FFFFFF;border-radius:12px 12px 0 0;padding:24px 32px;">
               <a href="https://crikly.app" style="display:inline-block;">
                 <img src="https://crikly.app/logo.png" height="32" alt="Crikly" style="display:block;margin-bottom:16px;border:0;">
               </a>
