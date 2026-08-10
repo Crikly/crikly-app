@@ -37,9 +37,10 @@ export function TermsAcceptanceForm() {
         })
         return
       }
-      // Fix-AUDIT-02: route by canonical role after accepting terms — coaches to
-      // their dashboard, anyone without a coach role back to role selection
-      // (NOT /dashboard, which is now a redirect-only route).
+      // Fix-AUDIT-02: route by canonical role after accepting terms — coaches
+      // to their dashboard (NOT /dashboard, which is a redirect-only route).
+      // P-04-A: parent and player now land on the real parent dashboard
+      // (replaces the P-04-PREP-01 /coaches placeholder).
       const supabase = createClient()
       const {
         data: { user },
@@ -51,7 +52,35 @@ export function TermsAcceptanceForm() {
             .eq('auth_user_id', user.id)
             .single()
         : { data: null }
-      router.push(profile?.active_role === 'coach' ? '/coach/dashboard' : '/onboarding/role')
+      const activeRole = profile?.active_role
+
+      // P-04-B: terms acceptance is the once-per-account moment right
+      // after a NEW registration (logins never pass through here), so this
+      // is where the guest-booking check fires — parent/player only. Any
+      // failure degrades to the dashboard: never block the auth path on
+      // the guest scan.
+      let parentDestination = '/parent/dashboard'
+      if (activeRole === 'parent' || activeRole === 'player') {
+        try {
+          const guestRes = await fetch('/api/auth/guest-bookings')
+          if (guestRes.ok) {
+            const guestData = (await guestRes.json()) as { count?: number }
+            if ((guestData.count ?? 0) > 0) {
+              parentDestination = '/parent/link-bookings'
+            }
+          }
+        } catch {
+          // Degrade silently — offer simply not made.
+        }
+      }
+
+      router.push(
+        activeRole === 'coach'
+          ? '/coach/dashboard'
+          : activeRole === 'parent' || activeRole === 'player'
+            ? parentDestination
+            : '/onboarding/role'
+      )
     } catch {
       setApiError({
         code: 'NETWORK_ERROR',

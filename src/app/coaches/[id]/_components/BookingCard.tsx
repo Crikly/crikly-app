@@ -276,7 +276,7 @@ export function BookingCard({ coachId, sports, priceFrom, ratingAvg, ratingCount
         className="flex items-center justify-center w-full h-12 rounded-xl bg-[#0077CC] text-white font-semibold hover:bg-[#005fa3] transition-colors"
         data-testid="desktop-book-cta"
       >
-        Book a session
+        Book next available
       </Link>
 
       {/* Next available */}

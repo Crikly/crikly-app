@@ -16,6 +16,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { PublicHeader } from '@/components/nav/PublicHeader'
+import { AppShell } from '@/components/shell/AppShell'
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import {
   ArrowRight,
@@ -302,9 +303,14 @@ export default function HomePage() {
   return (
     <main className="min-h-screen bg-transparent font-sans text-neutral-900 antialiased">
       {/* ═══ NAV ═════════════════════════════════════════════════════════ */}
+      {/* P-04-C: unified app shell above the landing nav — renders only once
+          an authenticated session resolves (selfFetch), hidden when logged
+          out. The landing nav then hides its own logged-in avatar so the
+          shell is the single identity surface (Decision 3). */}
+      <AppShell context="landing" selfFetch />
       {/* P-00b-Nav: extracted to the shared PublicHeader (same markup + scroll
           behaviour); now reused on the coach profile and any public page. */}
-      <PublicHeader />
+      <PublicHeader hideAuthedIdentity />
 
       {/* ═══ HERO ════════════════════════════════════════════════════════ */}
       <section id="hero" className="relative">
@@ -520,7 +526,7 @@ export default function HomePage() {
             </p>
             <PersonaList items={['Browse coaches near you', 'Book single sessions or whole programmes', 'Pay once, securely — no cash on the day']} />
             <Link
-              href="/register"
+              href="/coaches?sport=cricket&role=parent"
               className="mt-auto inline-flex h-12 items-center justify-center gap-2 rounded-[12px] border-[1.5px] border-brand-600 bg-white text-[15px] font-medium text-brand-600 no-underline transition-all hover:bg-brand-50 active:scale-[0.98]"
             >
               Find a coach for my child
@@ -542,7 +548,7 @@ export default function HomePage() {
             </p>
             <PersonaList items={['Coaches for every level', 'Evening & weekend availability', 'Reschedule free up to 48 hours before']} />
             <Link
-              href="/register"
+              href="/coaches?sport=cricket&role=player"
               className="mt-auto inline-flex h-12 items-center justify-center gap-2 rounded-[12px] border-[1.5px] border-brand-600 bg-white text-[15px] font-medium text-brand-600 no-underline transition-all hover:bg-brand-50 active:scale-[0.98]"
             >
               Book a session for me
@@ -722,7 +728,7 @@ export default function HomePage() {
                 <ArrowRight size={18} strokeWidth={2.2} />
               </Link>
               <Link
-                href="/register"
+                href="/coaches?sport=cricket"
                 className="inline-flex h-14 items-center gap-2 rounded-full border border-white/[0.28] bg-white/[0.10] px-7 text-base font-medium text-white no-underline transition-all hover:bg-white/[0.18] active:scale-[0.98]"
               >
                 I&apos;m looking for a coach

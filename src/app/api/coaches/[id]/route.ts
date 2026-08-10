@@ -283,8 +283,16 @@ export async function GET(
 
     // ── Sports ───────────────────────────────────────────────────────────────
 
+    // BUG-51: deterministic order — the embedded coach_sports join returns rows
+    // in arbitrary PostgREST order, and several consumers (availability page,
+    // /book fallback, profile booking card) read sports[0]. Sort by sport name
+    // (sport_id tiebreak) so "first sport" is stable across requests.
     const sports = (coach.coach_sports ?? [])
       .filter((s: CoachSportRow) => s.is_active && sportMap.has(s.sport_id))
+      .sort((a: CoachSportRow, b: CoachSportRow) => {
+        const byName = sportMap.get(a.sport_id)!.name.localeCompare(sportMap.get(b.sport_id)!.name)
+        return byName !== 0 ? byName : a.sport_id.localeCompare(b.sport_id)
+      })
       .map((s: CoachSportRow) => {
         const sportInfo = sportMap.get(s.sport_id)!
         return {
@@ -343,10 +351,15 @@ export async function GET(
         sort_order: p.sort_order,
       }))
 
-    if (photos.length === 0 && profile.avatar_url) {
-      const avatarUrl = profile.avatar_url.includes('=s96-c')
-        ? profile.avatar_url.replace('=s96-c', '=s400-c')
-        : profile.avatar_url
+    // BUG-56: upscaled avatar is also returned as a top-level field so the
+    // profile page can pin it first in the hero gallery.
+    const avatarUrl = profile.avatar_url
+      ? (profile.avatar_url.includes('=s96-c')
+          ? profile.avatar_url.replace('=s96-c', '=s400-c')
+          : profile.avatar_url)
+      : null
+
+    if (photos.length === 0 && avatarUrl) {
       photos = [{ id: 'avatar', photo_url: avatarUrl, is_primary: true, sort_order: 0 }]
     }
 
@@ -387,6 +400,7 @@ export async function GET(
         // account holder's name — same precedence as /api/public/coaches and
         // the webhook confirmation emails. Response key unchanged for consumers.
         full_name: coach.display_name ?? profile.full_name,
+        avatar_url: avatarUrl,
         bio: coach.bio,
         years_experience: coach.years_experience,
         location_city: profile.location_city,

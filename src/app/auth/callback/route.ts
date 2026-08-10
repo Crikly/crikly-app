@@ -2,11 +2,18 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import type { Database } from '@/types/database'
+import { parseRoleParam } from '@/lib/auth/role-param'
 
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url)
   const code = requestUrl.searchParams.get('code')
   const origin = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'
+
+  // P-04-B (AUTH-FLOW-01): pre-selected role carried through the auth
+  // round-trip on the redirectTo URL (set by /api/auth/oauth and
+  // /api/auth/register). Allow-list validated here before ANY use; an
+  // invalid value behaves exactly as if the param were absent.
+  const roleParam = parseRoleParam(requestUrl.searchParams.get('role'))
 
   // BUG-33: forgot-password sends redirectTo `/auth/callback?type=recovery`,
   // and Supabase's verify endpoint preserves that param when it appends the
@@ -173,15 +180,24 @@ export async function GET(request: Request) {
 
   let redirectTo: string
   if (!userProfile || !userProfile.active_role) {
-    redirectTo = '/onboarding/role'
+    // P-04-B: a validated pre-selected role is forwarded to the role
+    // picker, which auto-submits it through POST /api/auth/roles (the
+    // single home of role-write logic). The callback itself never writes
+    // roles. A user who ALREADY has an active_role never reaches this
+    // branch — their stored role always wins over the URL param.
+    redirectTo = roleParam
+      ? `/onboarding/role?role=${roleParam}`
+      : '/onboarding/role'
   } else if (!userProfile.terms_accepted_at) {
     redirectTo = '/onboarding/terms'
   } else if (userProfile.active_role === 'coach') {
     redirectTo = '/coach/dashboard'
   } else {
-    // No supported non-coach role yet. Send to role selection (NOT /login,
-    // which would loop via the proxy's session→/dashboard redirect).
-    redirectTo = '/onboarding/role'
+    // P-04-B: parent/player with role + terms complete land on the parent
+    // dashboard (P-04-A). This branch previously bounced them back to
+    // /onboarding/role — a stale placeholder from before the dashboard
+    // existed.
+    redirectTo = '/parent/dashboard'
   }
 
   return NextResponse.redirect(new URL(redirectTo, origin))

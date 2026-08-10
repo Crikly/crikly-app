@@ -646,10 +646,12 @@ export async function POST(
         const profileUrl = `${base}/coaches/${response.slug ?? ''}`
 
         if (context.user.email) {
+          // BUG-54: the public profile URL 404s until is_profile_live=true, so
+          // Email A's CTA points at the dashboard (pending-review status) instead.
           await sendCoachUnderReviewEmail({
             coachEmail: context.user.email,
             coachName,
-            profileUrl,
+            profileUrl: `${base}/coach/dashboard`,
           })
         } else {
           console.error('[POST /api/coaches/profile] no email on auth user — under-review email skipped')

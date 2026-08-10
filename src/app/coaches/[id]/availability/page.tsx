@@ -115,6 +115,9 @@ export default async function CoachAvailabilityPage({
     fetchProgrammeSchedule(coach.id),
   ])
 
+  // BUG-51: sports are name-sorted by the coach API, so [0] is deterministic.
+  // Its duration is only the FALLBACK stride — each template now carries its
+  // own sport's session_duration_minutes from the availability API.
   const sport = coach.sports[0] ?? null
   const minPrice = getMinIndividualPrice(coach.sports)
   const firstName = coach.full_name.split(' ')[0]

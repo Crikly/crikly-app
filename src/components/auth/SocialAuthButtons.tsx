@@ -1,16 +1,22 @@
 'use client'
 
+import type { RoleParam } from '@/lib/auth/role-param'
+
 interface SocialAuthButtonsProps {
   mode: 'register' | 'login'
+  /** P-04-B: pre-validated ?role= from the page — null means absent/invalid. */
+  roleParam?: RoleParam | null
 }
 
-export function SocialAuthButtons({ mode }: SocialAuthButtonsProps) {
+export function SocialAuthButtons({ mode, roleParam = null }: SocialAuthButtonsProps) {
   const handleOAuth = async (provider: 'google' | 'apple') => {
     try {
       const res = await fetch('/api/auth/oauth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider }),
+        // P-04-B: the server re-validates role and threads it onto the
+        // OAuth redirectTo so it survives the round-trip.
+        body: JSON.stringify(roleParam ? { provider, role: roleParam } : { provider }),
       })
       const data = await res.json() as { success: boolean; url?: string }
       if (data.success && data.url) {

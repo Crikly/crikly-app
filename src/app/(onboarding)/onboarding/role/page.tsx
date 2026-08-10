@@ -1,11 +1,22 @@
 import { AuthSplitShell } from '@/components/auth/AuthSplitShell'
 import { RoleSelectionForm } from '@/components/auth/RoleSelectionForm'
+import { parseRoleParam } from '@/lib/auth/role-param'
 
 export const metadata = {
   title: 'How will you use Crikly?',
 }
 
-export default function RoleSelectionPage() {
+// P-04-B (AUTH-FLOW-01): a validated ?role= forwarded by /auth/callback or
+// the login form is auto-submitted by RoleSelectionForm — the picker UI is
+// skipped. Invalid/missing → normal picker, unchanged.
+export default async function RoleSelectionPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>
+}) {
+  const params = await searchParams
+  const preselectedRole = parseRoleParam(params.role)
+
   return (
     <AuthSplitShell>
       {/* Step 1 of 2 — progress bar (inline styles preserved from prior design) */}
@@ -37,7 +48,7 @@ export default function RoleSelectionPage() {
         How will you use Crikly? You can add more roles from your account later.
       </p>
 
-      <RoleSelectionForm />
+      <RoleSelectionForm preselectedRole={preselectedRole} />
     </AuthSplitShell>
   )
 }
