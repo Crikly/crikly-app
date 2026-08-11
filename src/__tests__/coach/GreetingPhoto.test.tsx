@@ -61,9 +61,13 @@ describe('GreetingPhoto', () => {
     )
   })
 
-  it('shows the "Your public photo" label', () => {
+  it('shows no idle label under the avatar (UI-FIX: tap + sheet is self-explanatory)', () => {
     render(<Harness initialUrl={null} />)
-    expect(screen.getByText('Your public photo', { selector: 'span' })).toBeInTheDocument()
+    expect(
+      screen.queryByText('Your public photo', { selector: 'span' }),
+    ).not.toBeInTheDocument()
+    // Upload-progress feedback only appears while an upload is in flight.
+    expect(screen.queryByText('Uploading…')).not.toBeInTheDocument()
   })
 
   it('opens the sheet on tap with only "Upload a photo" when no photo exists', () => {
