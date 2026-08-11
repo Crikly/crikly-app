@@ -55,9 +55,11 @@ export default async function CoachLayout({
   // BUG-34: display_name (set by wizard step 1) is the nudge signal — NOT
   // is_profile_live, which only turns true at the final go-live step and
   // force-bounced every returning not-yet-live coach back into the wizard.
+  // BUG-58: is_profile_live + is_paused folded into the same query so the
+  // shell popover's My Profile badge costs no extra round-trip.
   const { data: coachProfile } = await supabase
     .from('coach_profiles')
-    .select('id, display_name')
+    .select('id, display_name, is_profile_live, is_paused')
     .eq('user_profile_id', userProfile.id)
     .single()
 
@@ -84,6 +86,16 @@ export default async function CoachLayout({
         avatarUrl={userProfile.avatar_url || null}
         activeRole="coach"
         roles={roles}
+        // BUG-58: the popover header shows the account full_name, never the
+        // public display_name the shell avatar uses.
+        fullName={userProfile.full_name || ''}
+        coachStatus={
+          coachProfile?.is_paused
+            ? 'paused'
+            : coachProfile?.is_profile_live
+              ? 'live'
+              : null
+        }
       />
       <CoachLayoutClient
         hasCoachProfile={!!coachProfile}

@@ -28,14 +28,17 @@ jest.mock('@/lib/supabase/client', () => ({
   createClient: () => ({ auth: { signOut } }),
 }))
 
-// P-04-C: popover simplified to name + email + Settings + Sign out only —
-// role switching lives in the RolePill exclusively (see RolePill.test.tsx).
+// P-04-C: role switching lives in the RolePill exclusively (see
+// RolePill.test.tsx). BUG-58: rows brought to ProfileDropdown parity —
+// Dashboard, Settings, My Profile (coach, Live/Paused badge), Share profile
+// (coach), Sign out.
 
 const baseProps = {
   open: true,
   onClose: jest.fn(),
   name: 'Sarah Carter',
   email: 'sarah@example.com',
+  dashboardHref: '/parent/dashboard',
   settingsHref: '/parent/settings',
 }
 
@@ -65,6 +68,38 @@ describe('ProfilePopover', () => {
     render(<ProfilePopover {...baseProps} settingsHref="/coach/settings" />)
     fireEvent.click(screen.getByText('Settings'))
     expect(push).toHaveBeenCalledWith('/coach/settings')
+  })
+
+  it('routes Dashboard to the active role dashboardHref (BUG-58)', () => {
+    render(<ProfilePopover {...baseProps} />)
+    fireEvent.click(screen.getByText('Dashboard'))
+    expect(push).toHaveBeenCalledWith('/parent/dashboard')
+    expect(baseProps.onClose).toHaveBeenCalled()
+  })
+
+  it('hides My Profile without a myProfileStatus prop (parent/player)', () => {
+    render(<ProfilePopover {...baseProps} />)
+    expect(screen.queryByText('My Profile')).not.toBeInTheDocument()
+  })
+
+  it('shows My Profile with a Live badge and routes to the profile editor', () => {
+    render(<ProfilePopover {...baseProps} myProfileStatus="live" />)
+    expect(screen.getByText('Live')).toBeInTheDocument()
+    fireEvent.click(screen.getByText('My Profile'))
+    expect(push).toHaveBeenCalledWith('/coach/profile/edit')
+  })
+
+  it('shows a Paused badge for a paused coach profile', () => {
+    render(<ProfilePopover {...baseProps} myProfileStatus="paused" />)
+    expect(screen.getByText('My Profile')).toBeInTheDocument()
+    expect(screen.getByText('Paused')).toBeInTheDocument()
+  })
+
+  it('shows My Profile without a badge when status is null (not yet live)', () => {
+    render(<ProfilePopover {...baseProps} myProfileStatus={null} />)
+    expect(screen.getByText('My Profile')).toBeInTheDocument()
+    expect(screen.queryByText('Live')).not.toBeInTheDocument()
+    expect(screen.queryByText('Paused')).not.toBeInTheDocument()
   })
 
   it('hides the Share profile row without an onShareProfile handler', () => {
