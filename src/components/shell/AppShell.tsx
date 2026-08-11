@@ -18,7 +18,8 @@ import { LANDING_NAV_LINKS } from '@/constants/landing-nav'
 
 // P-04-C (Screen 01): the unified 64px app shell bar — the ONE identity +
 // role-switching surface across every authenticated page. Logo left, role
-// pill centre-left, avatar right. Sits above the coach sidebar, above the
+// pill + avatar right (UI-FIX: the pill is an identity control, grouped with
+// the avatar — not next to the logo). Sits above the coach sidebar, above the
 // parent links, above everything. 64px, white, 1px #F1F5F9 bottom border.
 // (Height raised 48→64px, text lockup swapped for logo.png, and pill scaled
 // up per Lasith's post-review adjustments.)
@@ -254,24 +255,20 @@ export function AppShell({
   return (
     <header
       data-testid="app-shell"
-      className={`flex h-16 shrink-0 items-center gap-2.5 border-b border-slate-100 bg-white px-3.5 md:gap-3.5 md:px-5 ${className}`}
+      className={`relative flex h-16 shrink-0 items-center gap-2.5 border-b border-slate-100 bg-white px-3.5 md:gap-3.5 md:px-5 ${className}`}
     >
-      <Link
-        href={SHELL_ROLE_META[identity.activeRole].dashboardHref}
-        aria-label="Crikly home"
-        className="no-underline"
-      >
+      {/* UI-FIX: logo always returns to the landing page — never a dashboard
+          (Dashboard lives in the account popover). */}
+      <Link href="/" aria-label="Crikly home" className="no-underline">
         <Image
           src="/logo.png"
           alt="Crikly"
-          width={120}
-          height={32}
-          className="h-8 w-auto"
+          width={150}
+          height={40}
+          className="h-10 w-auto"
           priority
         />
       </Link>
-
-      <RolePill activeRole={identity.activeRole} roles={identity.roles} />
 
       {context === 'parent' && (
         <nav
@@ -296,11 +293,15 @@ export function AppShell({
 
       {/* BUG-59: on the landing page the shell replaces the PublicHeader for
           logged-in users, so it carries the marketing links (same /#…
-          targets). Hash links — no active-state highlight to compute. */}
+          targets). Hash links — no active-state highlight to compute.
+          UI-FIX: absolutely centred (matches PublicHeader) so the links sit
+          in the true middle regardless of logo/pill widths either side.
+          md: breakpoint (not sm:) — same as PublicHeader, and below 768px
+          the centred links would collide with the pill+avatar cluster. */}
       {context === 'landing' && (
         <nav
           aria-label="Primary"
-          className="ml-3 hidden items-center gap-6 sm:flex"
+          className="absolute left-1/2 hidden -translate-x-1/2 items-center gap-6 md:flex"
         >
           {LANDING_NAV_LINKS.map((link) => (
             <Link
@@ -314,48 +315,53 @@ export function AppShell({
         </nav>
       )}
 
-      <div ref={avatarRef} className="relative ml-auto">
-        <button
-          type="button"
-          onClick={() => setPopoverOpen((v) => !v)}
-          aria-haspopup="menu"
-          aria-expanded={popoverOpen}
-          aria-label="Account menu"
-          data-testid="parent-nav-avatar"
-          className="relative flex items-center justify-center rounded-full transition-opacity hover:opacity-90"
-        >
-          <CriklyAvatar
-            seed={shownName}
-            style="personas"
-            size={32}
-            photoUrl={shownAvatarUrl}
-            alt={shownName}
+      {/* UI-FIX: role pill grouped with the avatar on the right — both are
+          account/identity controls. */}
+      <div className="ml-auto flex items-center gap-2.5 md:gap-3.5">
+        <RolePill activeRole={identity.activeRole} roles={identity.roles} />
+        <div ref={avatarRef} className="relative">
+          <button
+            type="button"
+            onClick={() => setPopoverOpen((v) => !v)}
+            aria-haspopup="menu"
+            aria-expanded={popoverOpen}
+            aria-label="Account menu"
+            data-testid="parent-nav-avatar"
+            className="relative flex items-center justify-center rounded-full transition-opacity hover:opacity-90"
+          >
+            <CriklyAvatar
+              seed={shownName}
+              style="personas"
+              size={40}
+              photoUrl={shownAvatarUrl}
+              alt={shownName}
+            />
+            {context === 'coach' && notificationCount > 0 && (
+              <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full border-2 border-white bg-red-500 px-0.5 text-xs font-bold leading-none text-white shadow-sm">
+                {notificationBadge}
+              </span>
+            )}
+          </button>
+          <ProfilePopover
+            open={popoverOpen}
+            onClose={() => setPopoverOpen(false)}
+            name={identity.fullName || shownName}
+            email={identity.email}
+            dashboardHref={SHELL_ROLE_META[identity.activeRole].dashboardHref}
+            settingsHref={settingsHref}
+            myProfileStatus={
+              identity.activeRole === 'coach' ? identity.coachStatus : undefined
+            }
+            onShareProfile={
+              context === 'coach'
+                ? () =>
+                    window.dispatchEvent(
+                      new CustomEvent('crikly:open-share-modal'),
+                    )
+                : undefined
+            }
           />
-          {context === 'coach' && notificationCount > 0 && (
-            <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full border-2 border-white bg-red-500 px-0.5 text-xs font-bold leading-none text-white shadow-sm">
-              {notificationBadge}
-            </span>
-          )}
-        </button>
-        <ProfilePopover
-          open={popoverOpen}
-          onClose={() => setPopoverOpen(false)}
-          name={identity.fullName || shownName}
-          email={identity.email}
-          dashboardHref={SHELL_ROLE_META[identity.activeRole].dashboardHref}
-          settingsHref={settingsHref}
-          myProfileStatus={
-            identity.activeRole === 'coach' ? identity.coachStatus : undefined
-          }
-          onShareProfile={
-            context === 'coach'
-              ? () =>
-                  window.dispatchEvent(
-                    new CustomEvent('crikly:open-share-modal'),
-                  )
-              : undefined
-          }
-        />
+        </div>
       </div>
     </header>
   )
