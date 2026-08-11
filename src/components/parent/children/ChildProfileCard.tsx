@@ -38,11 +38,15 @@ export function ChildProfileCard({ child }: ChildProfileCardProps) {
   useGSAP(
     () => {
       if (prefersReduced || !rootRef.current) return
+      // clearProps must list ONLY the tweened properties. 'all' wipes the
+      // whole inline style attribute on completion — which deleted the
+      // React-set identity-colour background off the hero (transparent
+      // banner, white-on-white text/back link).
       gsap.from('[data-child-hero]', {
         xPercent: -100,
         duration: 0.3,
         ease: 'power2.out',
-        clearProps: 'all',
+        clearProps: 'transform',
       })
       gsap.from('[data-child-avatar]', {
         y: -24,
@@ -50,7 +54,7 @@ export function ChildProfileCard({ child }: ChildProfileCardProps) {
         duration: 0.45,
         delay: 0.15,
         ease: 'back.out(1.6)',
-        clearProps: 'all',
+        clearProps: 'transform,opacity',
       })
       gsap.from('[data-child-section]', {
         y: 24,
@@ -59,7 +63,7 @@ export function ChildProfileCard({ child }: ChildProfileCardProps) {
         stagger: 0.1,
         delay: 0.2,
         ease: 'power2.out',
-        clearProps: 'all',
+        clearProps: 'transform,opacity',
       })
     },
     { scope: rootRef },

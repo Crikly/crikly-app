@@ -114,13 +114,15 @@ export function ChildForm({ mode, sports, colour, initial }: ChildFormProps) {
   useGSAP(
     () => {
       if (prefersReduced || !rootRef.current) return
+      // clearProps scoped to the tweened properties only — 'all' wipes the
+      // whole inline style attribute (see the ChildProfileCard hero bug).
       gsap.from('[data-form-row]', {
         y: 16,
         opacity: 0,
         duration: 0.35,
         stagger: 0.06,
         ease: 'power2.out',
-        clearProps: 'all',
+        clearProps: 'transform,opacity',
       })
     },
     { scope: rootRef },
@@ -133,7 +135,7 @@ export function ChildForm({ mode, sports, colour, initial }: ChildFormProps) {
       gsap.fromTo(
         avatarRef.current,
         { opacity: 0.3 },
-        { opacity: 1, duration: 0.2, ease: 'power1.out' },
+        { opacity: 1, duration: 0.2, ease: 'power1.out', clearProps: 'opacity' },
       )
     },
     { scope: rootRef, dependencies: [firstName], revertOnUpdate: false },
@@ -250,7 +252,9 @@ export function ChildForm({ mode, sports, colour, initial }: ChildFormProps) {
         />
       </div>
 
-      <div data-form-row>
+      {/* DOB + gender share a row from sm up (approved Screen 08 layout);
+          the 375px mobile design stacks them. */}
+      <div data-form-row className="grid grid-cols-1 gap-6 sm:grid-cols-[1fr_auto] sm:gap-5">
         <Input
           label="Date of birth"
           type="date"
@@ -260,34 +264,33 @@ export function ChildForm({ mode, sports, colour, initial }: ChildFormProps) {
           error={dobError ?? undefined}
           data-testid="child-dob-input"
         />
+        <fieldset className="flex flex-col gap-1.5">
+          <legend className="tracking-label mb-1.5 text-xs font-semibold uppercase text-[#64748B]">
+            Gender <span className="font-normal normal-case tracking-normal text-neutral-400">optional</span>
+          </legend>
+          <div className="flex flex-wrap gap-2">
+            {GENDER_OPTIONS.map((option) => {
+              const active = gender === option.value
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  aria-pressed={active}
+                  data-testid={`gender-${option.value}`}
+                  onClick={() => setGender(active ? null : option.value)}
+                  className={`min-h-[44px] rounded-md px-4 text-base font-medium transition-all duration-150 ${
+                    active
+                      ? 'bg-neutral-900 text-white shadow-sm'
+                      : 'bg-white text-neutral-600 shadow-sm hover:shadow-md'
+                  }`}
+                >
+                  {option.label}
+                </button>
+              )
+            })}
+          </div>
+        </fieldset>
       </div>
-
-      <fieldset data-form-row className="flex flex-col gap-1.5">
-        <legend className="tracking-label mb-1.5 text-xs font-semibold uppercase text-[#64748B]">
-          Gender <span className="font-normal normal-case tracking-normal text-neutral-400">optional</span>
-        </legend>
-        <div className="flex flex-wrap gap-2">
-          {GENDER_OPTIONS.map((option) => {
-            const active = gender === option.value
-            return (
-              <button
-                key={option.value}
-                type="button"
-                aria-pressed={active}
-                data-testid={`gender-${option.value}`}
-                onClick={() => setGender(active ? null : option.value)}
-                className={`min-h-[44px] rounded-md px-4 text-base font-medium transition-all duration-150 ${
-                  active
-                    ? 'bg-neutral-900 text-white shadow-sm'
-                    : 'bg-white text-neutral-600 shadow-sm hover:shadow-md'
-                }`}
-              >
-                {option.label}
-              </button>
-            )
-          })}
-        </div>
-      </fieldset>
 
       <fieldset data-form-row className="flex flex-col gap-1.5">
         <legend className="tracking-label mb-1.5 text-xs font-semibold uppercase text-[#64748B]">

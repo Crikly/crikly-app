@@ -88,6 +88,24 @@ test.describe('P16 — P-07 child profiles', () => {
     await page.waitForURL(/\/parent\/children\/[0-9a-f-]{36}$/, { timeout: 15000 })
     await expect(page.getByRole('heading', { level: 1 })).toContainText(KID_NAME)
     await expect(page.getByText(`Age ${expectedAge(KID_DOB)}`)).toBeVisible()
+
+    // Regression (P-07 fix 1/2): the identity-colour header must KEEP its
+    // React-set inline background after the GSAP entrance settles — a
+    // clearProps:'all' tween once wiped it (transparent banner, invisible
+    // white back link). Poll until the animation is done, then assert.
+    const hero = page.locator('[data-child-hero]')
+    await expect
+      .poll(
+        async () =>
+          hero.evaluate((el) => getComputedStyle(el).backgroundColor),
+        { timeout: 5000 },
+      )
+      .not.toBe('rgba(0, 0, 0, 0)')
+    await expect(page.getByTestId('child-card-back')).toBeVisible()
+    await expect(page.getByTestId('child-card-back')).toHaveAttribute(
+      'href',
+      '/parent/dashboard',
+    )
     await expect(page.getByTestId('next-session-row')).toContainText('No sessions yet')
     await expect(page.getByTestId('find-coach-link')).toContainText(
       `Find a coach for ${KID_NAME}`,
