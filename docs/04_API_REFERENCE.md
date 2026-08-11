@@ -1,8 +1,8 @@
 # Crikly — API Reference
 
-**Version:** 2.2
-**Last Updated:** 7 August 2026
-**Changed:** BUG-51 — GET /api/coaches/[id]/availability entries gain `session_duration_minutes` (the template's own sport session length from `coach_sports`, `null` for sport-agnostic blocks) so slot generation strides each block by the RIGHT sport's duration; POST /api/guest/bookings slot validation resolves the same per-template durations (read/write parity); GET /api/coaches/[id] `sports` array now deterministically name-sorted (`sport_id` tiebreak). Previous: P-04-C — new PATCH /api/auth/roles: active_role-only switch between held roles for the app shell role pill (403 `ROLE_NOT_HELD` when the role isn't on the account; zero POST setup side-effects). Previous: P-04-B — new GET /api/auth/guest-bookings (unclaimed guest-booking count for the verified session email; degrades to 0, never blocks registration) + POST /api/auth/link-guest-bookings (server-derived atomic transfer via `link_provisional_bookings` RPC, migration 052). AUTH-FLOW-01: POST /api/auth/register and POST /api/auth/oauth accept an optional allow-list-validated `role` that rides the callback redirectTo (invalid values silently dropped). Previous: BUG-49 (final) — DELETE /api/coaches/account: upcoming-only step-2 guard restored (409 `UPCOMING_BOOKINGS`); the fix lives at step 8 — a failed auth.users hard delete (FK-blocked by past booking history, `bookings.coach_profile_id` ON DELETE RESTRICT) now returns 500 `BOOKING_HISTORY` instead of a silent `{ success: true }`. Route documented with the full four-case contract. Supersedes v1.8's any-booking-history 409 approach. Previous: PILOT (revised) — documented GET/POST /api/admin/coaches/[id]/approve: one-click coach approval from the review email, now protected by an `?secret=` query param (timing-safe comparison against `ADMIN_APPROVE_SECRET`; replaces PILOT-01's HMAC token + 7-day expiry). POST /api/coaches/profile submit-for-review now also emails the coach ("under review", Email A) alongside the review-inbox notification (Email B); already-pending submissions are a permanent no-op (links never expire). Previous: Block 0.5 — C-PAY-02: new GET /api/cron/process-coach-payouts (hourly at :05; Stripe Connect transfer per eligible completed booking, amount = coach_price − actual balance_transaction.fee, held-payout contract honoured, idempotent via payout-row-UUID keys + unique booking_id, starvation-proof two-query selection with `parked` visibility). Previous: C-PAY-03: go-live guard on POST /api/coaches/profile (409 `STRIPE_ONBOARDING_INCOMPLETE`, 502 `STRIPE_STATUS_CHECK_FAILED`). C-PAY-01: new GET /api/cron/auto-complete-sessions (hourly; completes confirmed bookings after session end + config delay, starts the BR-03 payout clock). Previous (1.5): BUG-38 — coach slug derivation documented on POST /api/coaches/profile: display_name is the slug source, full_name only as fallback when display_name is unset; full_name edits no longer regenerate the slug while a display_name exists. Previous (1.4): BUG-45 — GET /api/payments/connect/onboard now returns `bank_name` + `bank_last4` from Stripe external_accounts (real payout destination for the Get Paid page). Previous (1.3): BUG-44 — new POST /api/webhooks/stripe-connect route for connected-account events (`account.updated` → `stripe_onboarding_complete`; transfer/payout events log-only for Block 0), verified with `STRIPE_CONNECT_WEBHOOK_SECRET`. Previous (1.2): BUG-23 — camp slot granularity: slot-selection wire format (`uuid` / `uuid.N`) + per-slot pricing/capacity on POST /api/guest/programme-enrolments (new 400 `camp_block_unsupported`, 409 `slot_full`); camp branch (`confirm_camp_slot_spots()`) + email session lines in the Stripe webhook; `camp_mode` on programme list/POST responses; roster session lines. Previous (1.1): BUG-19 Phase 1 — `booked_slots` on GET /api/coaches/[id]/availability; slot-validation 409s on POST /api/guest/bookings
+**Version:** 2.3
+**Last Updated:** 11 August 2026
+**Changed:** P-07 — Child Profile Routes section fleshed out from placeholder: full CRUD contract for GET/POST /api/children and GET/PATCH/DELETE /api/children/[id] (shared ChildResponse shape, under-16 DOB rule, per-sport skill via child_sports replacement semantics, lazy parent_profiles creation, soft delete). Previous: BUG-51 — GET /api/coaches/[id]/availability entries gain `session_duration_minutes` (the template's own sport session length from `coach_sports`, `null` for sport-agnostic blocks) so slot generation strides each block by the RIGHT sport's duration; POST /api/guest/bookings slot validation resolves the same per-template durations (read/write parity); GET /api/coaches/[id] `sports` array now deterministically name-sorted (`sport_id` tiebreak). Previous: P-04-C — new PATCH /api/auth/roles: active_role-only switch between held roles for the app shell role pill (403 `ROLE_NOT_HELD` when the role isn't on the account; zero POST setup side-effects). Previous: P-04-B — new GET /api/auth/guest-bookings (unclaimed guest-booking count for the verified session email; degrades to 0, never blocks registration) + POST /api/auth/link-guest-bookings (server-derived atomic transfer via `link_provisional_bookings` RPC, migration 052). AUTH-FLOW-01: POST /api/auth/register and POST /api/auth/oauth accept an optional allow-list-validated `role` that rides the callback redirectTo (invalid values silently dropped). Previous: BUG-49 (final) — DELETE /api/coaches/account: upcoming-only step-2 guard restored (409 `UPCOMING_BOOKINGS`); the fix lives at step 8 — a failed auth.users hard delete (FK-blocked by past booking history, `bookings.coach_profile_id` ON DELETE RESTRICT) now returns 500 `BOOKING_HISTORY` instead of a silent `{ success: true }`. Route documented with the full four-case contract. Supersedes v1.8's any-booking-history 409 approach. Previous: PILOT (revised) — documented GET/POST /api/admin/coaches/[id]/approve: one-click coach approval from the review email, now protected by an `?secret=` query param (timing-safe comparison against `ADMIN_APPROVE_SECRET`; replaces PILOT-01's HMAC token + 7-day expiry). POST /api/coaches/profile submit-for-review now also emails the coach ("under review", Email A) alongside the review-inbox notification (Email B); already-pending submissions are a permanent no-op (links never expire). Previous: Block 0.5 — C-PAY-02: new GET /api/cron/process-coach-payouts (hourly at :05; Stripe Connect transfer per eligible completed booking, amount = coach_price − actual balance_transaction.fee, held-payout contract honoured, idempotent via payout-row-UUID keys + unique booking_id, starvation-proof two-query selection with `parked` visibility). Previous: C-PAY-03: go-live guard on POST /api/coaches/profile (409 `STRIPE_ONBOARDING_INCOMPLETE`, 502 `STRIPE_STATUS_CHECK_FAILED`). C-PAY-01: new GET /api/cron/auto-complete-sessions (hourly; completes confirmed bookings after session end + config delay, starts the BR-03 payout clock). Previous (1.5): BUG-38 — coach slug derivation documented on POST /api/coaches/profile: display_name is the slug source, full_name only as fallback when display_name is unset; full_name edits no longer regenerate the slug while a display_name exists. Previous (1.4): BUG-45 — GET /api/payments/connect/onboard now returns `bank_name` + `bank_last4` from Stripe external_accounts (real payout destination for the Get Paid page). Previous (1.3): BUG-44 — new POST /api/webhooks/stripe-connect route for connected-account events (`account.updated` → `stripe_onboarding_complete`; transfer/payout events log-only for Block 0), verified with `STRIPE_CONNECT_WEBHOOK_SECRET`. Previous (1.2): BUG-23 — camp slot granularity: slot-selection wire format (`uuid` / `uuid.N`) + per-slot pricing/capacity on POST /api/guest/programme-enrolments (new 400 `camp_block_unsupported`, 409 `slot_full`); camp branch (`confirm_camp_slot_spots()`) + email session lines in the Stripe webhook; `camp_mode` on programme list/POST responses; roster session lines. Previous (1.1): BUG-19 Phase 1 — `booked_slots` on GET /api/coaches/[id]/availability; slot-validation 409s on POST /api/guest/bookings
 
 This document is the single source of truth for all API routes.
 Update this file in the same commit as every new or modified route.
@@ -489,19 +489,79 @@ Four-case contract (BUG-49):
 
 ## Child Profile Routes
 
+Built in P-07. All routes require an authenticated user holding the
+`parent` role (`user_roles`); access is scoped to the caller's own
+children (RLS "Parents can manage own children" + an explicit
+`parent_profile_id` filter, defence in depth). Every response shape
+below is the shared `ChildResponse`:
+
+```json
+{
+  "id": "uuid",
+  "full_name": "Kiran",
+  "date_of_birth": "2017-03-14",
+  "age": 9,
+  "gender": "male | female | other | prefer_not_to_say | null",
+  "medical_notes": "string | null",
+  "sports": [
+    { "sport_id": "uuid", "sport_name": "Cricket", "skill_level": "beginner" }
+  ],
+  "created_at": "timestamptz",
+  "updated_at": "timestamptz"
+}
+```
+
+Shared validation (`src/lib/children/child-api.ts`): `full_name`
+required on create (≤100 chars, trimmed); `date_of_birth` required on
+create — real `YYYY-MM-DD` date, in the past, **age under 16** (16+ get
+the Player-account error copy, BR-09); `gender` optional (migration-048
+enum, `null` clears); `medical_notes` optional (≤500 chars, empty
+clears to `null`); `sports` optional — `[{ sport_id, skill_level }]`,
+skill in `beginner|intermediate|advanced` (per-sport skill, REQ-P-015),
+no duplicate sports, every `sport_id` must be an active row in `sports`.
+
+**Errors (all routes):** 401 unauthenticated · 403 no parent role ·
+400 `{ error: 'Validation failed', details: string[] }` · 500 on DB failure.
+
 ### GET /api/children
-Get all child profiles for the authenticated parent.
+The parent's children (soft-deleted excluded), ordered `created_at`
+ascending — the order the identity-colour palette derives from
+(`src/constants/childIdentity.ts`). A parent with no `parent_profiles`
+row yet gets `{ "children": [] }`, not a 404.
+
+**Response 200:** `{ "children": ChildResponse[] }`
 
 ### POST /api/children
-Create a new child profile.
+Create a child plus its `child_sports` rows. Creates the caller's
+`parent_profiles` row lazily on first child (REQ-P-005). A failed
+`child_sports` insert rolls back the just-created child row
+(best-effort — supabase-js has no transactions).
 
-**Request:** Child profile fields (see database schema section 3.2)
+**Request:** `{ full_name, date_of_birth, gender?, medical_notes?, sports? }`
+**Response 201:** `ChildResponse`
 
 ### GET /api/children/[id]
-Get a single child profile.
+One owned child. **404** for a non-UUID id, an unowned child, or a
+soft-deleted child.
+
+**Response 200:** `ChildResponse`
 
 ### PATCH /api/children/[id]
-Update a child profile.
+Partial update — only provided fields are validated and written. When
+`sports` is present the child's `child_sports` rows are **replaced**
+(`[]` clears all); a failed replacement restores the previous rows
+best-effort. Coach booking views read `child_profiles` live, so edits
+surface immediately (REQ-P-014).
+
+**Request:** any subset of the POST fields
+**Response 200:** `ChildResponse` (updated)
+
+### DELETE /api/children/[id]
+Soft delete (`deleted_at = now()`) — never a hard DELETE. `child_sports`
+rows remain; the child disappears from every read via the `deleted_at`
+filter and past bookings keep their FK. Repeat deletes 404.
+
+**Response 200:** `{ "success": true }`
 
 ---
 

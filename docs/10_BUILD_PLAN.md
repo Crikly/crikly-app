@@ -686,7 +686,7 @@ Parents manage child profiles, search coaches, players manage their own profiles
 
 | ID | Task | Agent | Risk | Branch | Status |
 |---|---|---|---|---|---|
-| P-07 | Create CRUD /api/children — child profiles | @BackendDeveloper | 🟡 | feature/parent | ⚪ |
+| P-07 | Create CRUD /api/children — child profiles | @BackendDeveloper | 🟡 | feature/p-07-child-profiles | 🟡 |
 | P-08 | Create CRUD /api/players/profile — player profiles (16+ gate) | @BackendDeveloper | 🟡 | feature/player | ⚪ |
 | P-09 | Create GET /api/coaches — search with all filters + sorting (built as CG-01, CG-01b in Step 3) | @BackendDeveloper | 🟡 | feature/search | ⚪ |
 | P-10 | Create GET /api/coaches/[id] — full public profile (built as CG-01, CG-01b in Step 3) | @BackendDeveloper | 🟢 | feature/search | ⚪ |
