@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { Plus } from 'lucide-react'
 import { gsap } from 'gsap'
 import { CriklyAvatar } from '@/components/ui/CriklyAvatar'
@@ -9,7 +10,10 @@ import type { ChildSummary } from './types'
 // P-04-A (Screen 06): child bubbles at the bottom of the hero, overlapping
 // the white content below. Active child gets a 3px identity ring + bold
 // name; inactive 1.5px + normal weight. The + bubble routes to the P-07
-// add-child screen (placeholder page until P-07 ships).
+// add-child screen.
+// P-07 (Screen 07): tapping the ALREADY-ACTIVE bubble opens that child's
+// profile card; tapping an inactive bubble keeps the P-04 behaviour of
+// switching the dashboard context.
 
 interface ChildBubbleRowProps {
   childrenList: ChildSummary[]
@@ -24,10 +28,16 @@ export function ChildBubbleRow({
   onSelect,
   prefersReduced,
 }: ChildBubbleRowProps) {
+  const router = useRouter()
+
   const handleTap = (
     childId: string,
     event: React.MouseEvent<HTMLButtonElement>,
   ) => {
+    if (childId === activeChildId) {
+      router.push(`/parent/children/${childId}`)
+      return
+    }
     // Scale pulse 1 → 1.08 → 1 on the tapped bubble (200ms total).
     if (!prefersReduced) {
       gsap.fromTo(
@@ -91,7 +101,7 @@ export function ChildBubbleRow({
         {/* 61px = 56px avatar + 2px gap + 1.5px ring, so the dashed circle
             aligns with the ringed CriklyAvatar bubbles beside it. */}
         <span className="flex h-[61px] w-[61px] items-center justify-center rounded-full border-[1.5px] border-dashed border-neutral-400 bg-white">
-          <Plus size={22} className="text-neutral-400" />
+          <Plus size={22} className="text-neutral-400" aria-hidden />
         </span>
         <span className="text-sm text-neutral-600">Add child</span>
       </Link>
