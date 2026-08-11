@@ -46,16 +46,7 @@ function initials(name: string): string {
     .join('')
 }
 
-export function ProfileDropdown({
-  hideWhenAuthed = false,
-}: {
-  /**
-   * P-04-C: set on the landing page, where the AppShell above the header is
-   * the single logged-in identity surface — this component then renders
-   * nothing once a session resolves instead of a duplicate avatar.
-   */
-  hideWhenAuthed?: boolean
-}) {
+export function ProfileDropdown() {
   const router = useRouter()
   const [state, setState] = useState<AuthState>('loading')
   const [view, setView] = useState<ProfileView | null>(null)
@@ -169,9 +160,8 @@ export function ProfileDropdown({
     }
   }
 
-  // P-04-C: on the landing page the AppShell carries the logged-in identity —
-  // render nothing here once the session resolves.
-  if (hideWhenAuthed && state === 'logged-in') return null
+  // BUG-60: the old landing-page hideWhenAuthed prop is gone — PublicHeader
+  // now suppresses itself entirely when a session resolves there.
 
   // Logged-out (and the brief-approved default while auth resolves): the
   // original Log in / Get started buttons, markup-identical to page.tsx.
