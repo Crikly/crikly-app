@@ -28,9 +28,19 @@ jest.mock('next/navigation', () => ({
 // fetch and the landing selfFetch both bail out early, keeping the Supabase
 // mock minimal. Individual tests override where identity resolution matters.
 const mockGetUser = jest.fn().mockResolvedValue({ data: { user: null } })
+// BUG-60: selfFetch mode subscribes to auth changes so sign-out on the
+// landing page tears the shell down.
+const mockUnsubscribe = jest.fn()
+const mockOnAuthStateChange = jest.fn(() => ({
+  data: { subscription: { unsubscribe: mockUnsubscribe } },
+}))
 jest.mock('@/lib/supabase/client', () => ({
   createClient: () => ({
-    auth: { getUser: mockGetUser, signOut: jest.fn() },
+    auth: {
+      getUser: mockGetUser,
+      signOut: jest.fn(),
+      onAuthStateChange: mockOnAuthStateChange,
+    },
     from: jest.fn(),
   }),
 }))
@@ -77,6 +87,29 @@ describe('AppShell', () => {
     expect(screen.queryByText('Find a coach')).not.toBeInTheDocument()
   })
 
+  it('shows the marketing links only in landing context (BUG-59)', () => {
+    const { rerender } = render(
+      <AppShell context="landing" activeRole="parent" {...identity} />,
+    )
+    expect(screen.getByText('How it works')).toBeInTheDocument()
+    expect(screen.getByText('Activities')).toBeInTheDocument()
+    expect(screen.getByText('For coaches')).toBeInTheDocument()
+    expect(screen.queryByText('Find a coach')).not.toBeInTheDocument()
+
+    rerender(<AppShell context="parent" activeRole="parent" {...identity} />)
+    expect(screen.queryByText('How it works')).not.toBeInTheDocument()
+
+    rerender(
+      <AppShell
+        context="coach"
+        activeRole="coach"
+        {...identity}
+        roles={['coach']}
+      />,
+    )
+    expect(screen.queryByText('How it works')).not.toBeInTheDocument()
+  })
+
   it('opens the account popover with name, email and role-aware Settings', () => {
     render(<AppShell context="parent" activeRole="parent" {...identity} />)
     fireEvent.click(screen.getByTestId('parent-nav-avatar'))
@@ -109,6 +142,39 @@ describe('AppShell', () => {
     render(<AppShell context="parent" activeRole="parent" {...identity} />)
     fireEvent.click(screen.getByTestId('parent-nav-avatar'))
     expect(screen.queryByText('Share profile')).not.toBeInTheDocument()
+  })
+
+  it('popover Dashboard routes to the active role dashboard (BUG-58)', () => {
+    render(<AppShell context="parent" activeRole="parent" {...identity} />)
+    fireEvent.click(screen.getByTestId('parent-nav-avatar'))
+    fireEvent.click(screen.getByText('Dashboard'))
+    expect(push).toHaveBeenCalledWith('/parent/dashboard')
+  })
+
+  it('coach context: popover shows full_name + My Profile with status badge (BUG-58)', () => {
+    render(
+      <AppShell
+        context="coach"
+        activeRole="coach"
+        {...identity}
+        roles={['coach']}
+        name="Coach Sarah"
+        fullName="Sarah Carter"
+        coachStatus="live"
+      />,
+    )
+    fireEvent.click(screen.getByTestId('parent-nav-avatar'))
+    // Popover header shows the account full_name, not the display_name.
+    expect(screen.getByText('Sarah Carter')).toBeInTheDocument()
+    expect(screen.getByText('Live')).toBeInTheDocument()
+    fireEvent.click(screen.getByText('My Profile'))
+    expect(push).toHaveBeenCalledWith('/coach/profile/edit')
+  })
+
+  it('parent context: popover has no My Profile row', () => {
+    render(<AppShell context="parent" activeRole="parent" {...identity} />)
+    fireEvent.click(screen.getByTestId('parent-nav-avatar'))
+    expect(screen.queryByText('My Profile')).not.toBeInTheDocument()
   })
 
   it('selfFetch (landing): renders nothing while logged out', async () => {

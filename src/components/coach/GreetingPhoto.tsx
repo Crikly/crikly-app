@@ -126,9 +126,13 @@ export function GreetingPhoto({ coachName, photoUrl, onPhotoChange, size }: Gree
           alt={`${coachName || 'Coach'} — your public photo`}
         />
       </button>
-      <span className="mt-1.5 text-xs font-medium text-gray-400 whitespace-nowrap">
-        {uploading ? 'Uploading…' : 'Your public photo'}
-      </span>
+      {/* UI-FIX: no idle label — the tap gesture + sheet is self-explanatory.
+          The span only appears as upload-progress feedback. */}
+      {uploading && (
+        <span className="mt-1.5 text-xs font-medium text-gray-400 whitespace-nowrap">
+          Uploading…
+        </span>
+      )}
       {error && (
         <span role="alert" className="mt-0.5 text-xs text-danger whitespace-nowrap">
           {error}
