@@ -115,6 +115,53 @@ function nextProgrammeOccurrence(
   return null
 }
 
+// BUG-66: session times are stored as naive UK wall-clock (Europe/London) —
+// session_date is DATE, session_start_time is TIME, no timezone. Parsing them
+// with `new Date('YYYY-MM-DDTHH:mm:ss')` (or building a Date via setHours)
+// interprets that wall-clock in SERVER-local time — UTC on Vercel — so during
+// BST the epoch lands 1h late and the countdown badge reads 1h too long.
+// These helpers resolve the true instant via the Europe/London offset at that
+// date, staying correct across the BST/GMT switch. Used ONLY for the
+// countdown epoch and the booking-vs-programme soonest comparison — display
+// strings still come from the raw DB values / naive Date components.
+const LONDON_PARTS_FMT = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Europe/London',
+  hourCycle: 'h23',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+})
+
+function londonWallClockToMs(y: number, mo: number, d: number, h: number, mi: number): number {
+  const guess = Date.UTC(y, mo - 1, d, h, mi)
+  const parts = LONDON_PARTS_FMT.formatToParts(new Date(guess))
+  const get = (type: Intl.DateTimeFormatPartTypes): number =>
+    Number(parts.find(p => p.type === type)?.value ?? 0)
+  const shownAsUtc = Date.UTC(get('year'), get('month') - 1, get('day'), get('hour'), get('minute'))
+  return guess - (shownAsUtc - guess)
+}
+
+// Booking rows: 'YYYY-MM-DD' + 'HH:MM[:SS]' straight from the DB.
+function londonSessionToMs(dateStr: string, timeStr: string): number {
+  const [y, mo, d] = dateStr.split('-').map(Number)
+  const [h, mi] = timeStr.split(':').map(Number)
+  return londonWallClockToMs(y, mo, d, h, mi)
+}
+
+// Programme occurrences: a naive Date whose local components hold the
+// intended UK wall-clock (set via setHours in nextProgrammeOccurrence).
+function londonNaiveDateToMs(naive: Date): number {
+  return londonWallClockToMs(
+    naive.getFullYear(),
+    naive.getMonth() + 1,
+    naive.getDate(),
+    naive.getHours(),
+    naive.getMinutes(),
+  )
+}
+
 export default async function CoachDashboardPage() {
   const supabase = await createClient()
   
@@ -368,8 +415,9 @@ export default async function CoachDashboardPage() {
     // next occurrence. Tie-break: equal datetime favours the booking
     // (booking has a real person attached; programme is generic).
     const upNextBooking = upNextResult.data
+    // BUG-66: corrected Europe/London epoch — see londonSessionToMs above.
     const bookingDateTime = upNextBooking
-      ? new Date(`${upNextBooking.session_date}T${upNextBooking.session_start_time}`)
+      ? new Date(londonSessionToMs(upNextBooking.session_date, upNextBooking.session_start_time))
       : null
 
     const programmesForUpNext = programmesResult.data ?? []
@@ -385,15 +433,21 @@ export default async function CoachDashboardPage() {
       | { kind: 'booking'; datetime: Date }
       | { kind: 'programme'; datetime: Date; occurrence: ProgrammeOccurrence }
       | null
+    // BUG-66: compare and count down on corrected Europe/London epochs.
+    // The occurrence keeps its naive Date — the display strings below
+    // (getHours/getMinutes) read the UK wall-clock from it unchanged.
+    const earliestProgrammeMs = earliestProgramme
+      ? londonNaiveDateToMs(earliestProgramme.datetime)
+      : null
     let chosen: ChosenSession = null
-    if (bookingDateTime && earliestProgramme) {
-      chosen = bookingDateTime.getTime() <= earliestProgramme.datetime.getTime()
+    if (bookingDateTime && earliestProgramme && earliestProgrammeMs !== null) {
+      chosen = bookingDateTime.getTime() <= earliestProgrammeMs
         ? { kind: 'booking', datetime: bookingDateTime }
-        : { kind: 'programme', datetime: earliestProgramme.datetime, occurrence: earliestProgramme }
+        : { kind: 'programme', datetime: new Date(earliestProgrammeMs), occurrence: earliestProgramme }
     } else if (bookingDateTime) {
       chosen = { kind: 'booking', datetime: bookingDateTime }
-    } else if (earliestProgramme) {
-      chosen = { kind: 'programme', datetime: earliestProgramme.datetime, occurrence: earliestProgramme }
+    } else if (earliestProgramme && earliestProgrammeMs !== null) {
+      chosen = { kind: 'programme', datetime: new Date(earliestProgrammeMs), occurrence: earliestProgramme }
     }
 
     if (chosen?.kind === 'booking' && upNextBooking) {
@@ -419,7 +473,9 @@ export default async function CoachDashboardPage() {
       }
     } else if (chosen?.kind === 'programme') {
       const occ = chosen.occurrence
-      const startsInMinutes = Math.floor((occ.datetime.getTime() - Date.now()) / (1000 * 60))
+      // BUG-66: chosen.datetime carries the corrected epoch; occ.datetime
+      // stays naive and is only used for the wall-clock display strings.
+      const startsInMinutes = Math.floor((chosen.datetime.getTime() - Date.now()) / (1000 * 60))
       const startHours = String(occ.datetime.getHours()).padStart(2, '0')
       const startMins = String(occ.datetime.getMinutes()).padStart(2, '0')
       const endDateTime = new Date(occ.datetime.getTime() + occ.durationMinutes * 60 * 1000)
