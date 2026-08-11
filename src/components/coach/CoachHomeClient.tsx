@@ -190,30 +190,9 @@ export function CoachHomeClient({ data }: CoachHomeClientProps) {
           </div>
         )}
 
-        {/* Mobile Top Bar */}
-        <div className="flex justify-between items-center md:hidden mb-2">
-          <Link href="/coach/dashboard">
-            <img
-              src="/logo.png"
-              alt="Crikly"
-              className="h-7 w-auto object-contain"
-            />
-          </Link>
-          <Link href="/coach/dashboard" className="relative">
-            {data.coachAvatarUrl && data.coachAvatarUrl.trim() !== '' ? (
-              <img src={data.coachAvatarUrl} alt={data.coachName || 'Coach'} className="w-10 h-10 rounded-full object-cover shadow-sm border border-gray-100" />
-            ) : (
-              <div className="w-10 h-10 rounded-full bg-brand-600 text-white flex items-center justify-center text-[14px] font-bold shadow-sm border border-gray-100">
-                {(data.coachName || 'C').charAt(0).toUpperCase()}
-              </div>
-            )}
-            {data.pendingApprovalsCount > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 bg-red-500 rounded-full border-2 border-white flex items-center justify-center text-[10px] font-bold text-white shadow-sm">
-                {data.pendingApprovalsCount > 9 ? '9+' : data.pendingApprovalsCount}
-              </span>
-            )}
-          </Link>
-        </div>
+        {/* BUG-64: mobile top bar (logo + avatar) removed — the AppShell above
+            carries global navigation on every viewport; the duplicate row
+            caused a double header on mobile. */}
 
         {/* Desktop Greeting - CHANGE 1: emoji + subtitle. UX-05: public photo beside greeting */}
         <div className="hidden md:flex justify-between items-end">
