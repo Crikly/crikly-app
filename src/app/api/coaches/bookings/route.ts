@@ -67,7 +67,7 @@ export async function GET(request: Request) {
   if (tab === 'today') {
     filtered = base.eq('session_date', todayIso)
   } else if (tab === 'upcoming') {
-    filtered = base.gt('session_date', todayIso).eq('status', 'confirmed')
+    filtered = base.gte('session_date', todayIso).eq('status', 'confirmed')
   } else if (tab === 'past') {
     filtered = base.in('status', ['completed', 'no_show'])
   } else if (tab === 'pending_approval') {

@@ -68,7 +68,7 @@ export async function GET() {
       .select(SELECT)
       .eq('coach_profile_id', coachProfile.id)
       .is('deleted_at', null)
-      .gt('session_date', todayIso)
+      .gte('session_date', todayIso)
       .eq('status', 'confirmed')
       .order('session_date', { ascending: true })
       .order('session_start_time', { ascending: true })
