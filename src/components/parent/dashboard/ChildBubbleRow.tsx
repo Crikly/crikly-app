@@ -75,7 +75,7 @@ export function ChildBubbleRow({
             <CriklyAvatar
               seed={child.firstName}
               style="adventurer"
-              size={56}
+              size={64}
               ringColor={child.colour}
               ringWidth={active ? 3 : 1.5}
               alt={child.fullName}
@@ -98,9 +98,9 @@ export function ChildBubbleRow({
         aria-label="Add child"
         className="flex flex-col items-center gap-2 no-underline"
       >
-        {/* 61px = 56px avatar + 2px gap + 1.5px ring, so the dashed circle
+        {/* 69px = 64px avatar + 2px gap + 1.5px ring, so the dashed circle
             aligns with the ringed CriklyAvatar bubbles beside it. */}
-        <span className="flex h-[61px] w-[61px] items-center justify-center rounded-full border-[1.5px] border-dashed border-neutral-400 bg-white">
+        <span className="flex h-[69px] w-[69px] items-center justify-center rounded-full border-[1.5px] border-dashed border-neutral-400 bg-white">
           <Plus size={22} className="text-neutral-400" aria-hidden />
         </span>
         <span className="text-sm text-neutral-600">Add child</span>
