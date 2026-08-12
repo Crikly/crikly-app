@@ -72,14 +72,20 @@ export function ChildBubbleRow({
             onClick={(event) => handleTap(child.id, event)}
             className="flex flex-col items-center gap-2"
           >
-            <CriklyAvatar
-              seed={child.firstName}
-              style="adventurer"
-              size={64}
-              ringColor={child.colour}
-              ringWidth={active ? 3 : 1.5}
-              alt={child.fullName}
-            />
+            {/* P-07 fix: DiceBear adventurer SVGs are transparent, so the
+                dark hero gradient bled through the avatar interior. White
+                disc under the avatar — same wrapper pattern as
+                ChildProfileCard's overlapping avatar. */}
+            <span className="inline-block rounded-full bg-white">
+              <CriklyAvatar
+                seed={child.firstName}
+                style="adventurer"
+                size={64}
+                ringColor={child.colour}
+                ringWidth={active ? 3 : 1.5}
+                alt={child.fullName}
+              />
+            </span>
             <span
               className={`text-sm text-neutral-900 ${
                 active ? 'font-bold' : 'font-regular'
