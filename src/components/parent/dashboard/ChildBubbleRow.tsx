@@ -100,7 +100,11 @@ export function ChildBubbleRow({
       >
         {/* 69px = 64px avatar + 2px gap + 1.5px ring, so the dashed circle
             aligns with the ringed CriklyAvatar bubbles beside it. */}
-        <span className="flex h-[69px] w-[69px] items-center justify-center rounded-full border-[1.5px] border-dashed border-neutral-400 bg-white">
+        {/* P-07 fix: solid 2px border (dashed 1.5px let the dark hero
+            gradient show through the dash gaps at the perimeter, reading
+            as a non-solid disc) + explicit bg-white so the circle stays a
+            clean white disc over any background. */}
+        <span className="flex h-[69px] w-[69px] items-center justify-center rounded-full border-2 border-solid border-neutral-300 bg-white">
           <Plus size={22} className="text-neutral-400" aria-hidden />
         </span>
         <span className="text-sm text-neutral-600">Add child</span>
