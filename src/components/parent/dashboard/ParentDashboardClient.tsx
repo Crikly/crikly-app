@@ -101,10 +101,13 @@ export function ParentDashboardClient({ data }: ParentDashboardClientProps) {
         prefersReduced={prefersReduced}
       />
 
+      {/* P-07 fix: pt-20 (was pt-16) — the bubble row now floats 32px below
+          the hero edge (design geometry), so the content needs the extra
+          headroom to keep clear daylight under the bubble labels. */}
       <div
         ref={contentRef}
         className={`mx-auto flex max-w-5xl flex-col gap-10 px-4 md:px-8 ${
-          data.playerMode ? 'pt-8' : 'pt-16'
+          data.playerMode ? 'pt-8' : 'pt-20'
         }`}
       >
         <div data-dash-row>
