@@ -271,9 +271,13 @@ export function AppShell({
       </Link>
 
       {context === 'parent' && (
+        // P-07 fix: absolutely centred (same pattern as the landing nav
+        // below / PublicHeader) instead of left-aligned beside the logo.
+        // md: breakpoint for the same reason as landing — below 768px the
+        // centred links collide with the pill+avatar cluster.
         <nav
           aria-label="Primary"
-          className="ml-3 hidden items-center gap-6 sm:flex"
+          className="absolute left-1/2 hidden -translate-x-1/2 items-center gap-6 md:flex"
         >
           {PARENT_LINKS.map((link) => (
             <Link

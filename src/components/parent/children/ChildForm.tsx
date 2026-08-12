@@ -324,7 +324,10 @@ export function ChildForm({ mode, sports, colour, initial }: ChildFormProps) {
           <legend className="tracking-label mb-1.5 text-xs font-semibold uppercase text-[#64748B]">
             Skill level
           </legend>
-          <div className="flex flex-wrap gap-2">
+          {/* P-07 fix: three equal-width pills on one row — px-4 flex-wrap
+              made "Advanced" wrap at 375px and disappear behind the fixed
+              CTA bar. flex-1 keeps them inside the container at any width. */}
+          <div className="flex gap-2">
             {SKILL_OPTIONS.map((option) => {
               const active = skill === option
               return (
@@ -334,7 +337,7 @@ export function ChildForm({ mode, sports, colour, initial }: ChildFormProps) {
                   aria-pressed={active}
                   data-testid={`skill-${option}`}
                   onClick={() => setSkill(option)}
-                  className={`min-h-[44px] rounded-md px-4 text-base font-medium transition-all duration-150 ${
+                  className={`min-h-[44px] flex-1 rounded-md px-2 text-center text-base font-medium transition-all duration-150 sm:flex-none sm:px-4 ${
                     active
                       ? 'text-white shadow-sm'
                       : 'bg-white text-neutral-600 shadow-sm hover:shadow-md'
