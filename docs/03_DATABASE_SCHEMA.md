@@ -335,7 +335,8 @@ Sports a coach offers, with per-sport pricing and settings.
 | skill_levels | text[] | NO | — | ['beginner', 'intermediate', 'advanced'] |
 | price_individual_pence | integer | YES | null | Price in pence for 1-on-1 session |
 | price_group_pence | integer | YES | null | Price in pence per person for group |
-| max_group_size | integer | YES | null | Max participants in a group session |
+| max_group_size | integer | YES | null | Coach's group-size cap (2–6, API-enforced — CF-PRICE-01) |
+| group_price_tiers | jsonb | YES | null | Group size ("2".."6") → TOTAL price in integer pence, e.g. `{"2": 4500, "3": 5500}`. NULL = group not offered. Sizes absent from the map are unavailable. Deep validation at API layer; DB CHECK enforces object type only. Migration 053 |
 | session_duration_minutes | integer | NO | 60 | Default session length |
 | currency | text | NO | 'GBP' | ISO currency code |
 | is_active | boolean | NO | true | Coach can deactivate a sport |
@@ -344,6 +345,7 @@ Sports a coach offers, with per-sport pricing and settings.
 
 **Constraints:**
 - UNIQUE(coach_profile_id, sport_id)
+- CHECK: group_price_tiers IS NULL OR jsonb_typeof(group_price_tiers) = 'object' (migration 053)
 
 **RLS Policies:**
 - SELECT: Public (when coach profile is live)
