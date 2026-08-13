@@ -1,22 +1,26 @@
 /** @jest-environment jsdom */
-// CF-PRICE-01 Phase 3: group session pricing on the coach onboarding pricing
-// screen.
+// CF-PRICE-01 Phase 3 (+ UX redesign): group session pricing on the coach
+// onboarding pricing screen. Accordion layout: each session type is a
+// self-contained card (checkbox header + pricing rows inline); the Group card
+// collapses to its header when unchecked. There is no max-group-size picker —
+// max_group_size is derived at save time from the highest priced tier.
 //
 // Covered:
-//   - Group checkbox unchecked / group card hidden for a coach with no saved
-//     group data
+//   - Group checkbox unchecked / group section collapsed for a coach with no
+//     saved group data
 //   - CRITICAL (Lasith): a legacy pre-P-02 row with 'group' in session_types
 //     but group_price_tiers: null renders the checkbox UNCHECKED — checked
 //     state derives from group_price_tiers !== null, never session_types
-//   - Saved group_price_tiers + max_group_size render checked, correct max
-//     size, and correct tier rows
-//   - Checking/unchecking the Group checkbox reveals/hides the section and
+//   - Saved group_price_tiers render checked with correct tier rows
+//   - Checking/unchecking the Group checkbox expands/collapses the card and
 //     seeds a single 2-player row
-//   - "+ Add N-player price" adds the next tier, disappears once every size
-//     up to the cap is priced, and lowering the cap trims rows above it
+//   - "+ Add N-player price" adds the next size up to 6 and disappears once
+//     every size has a row
 //   - Remove (x) is disabled on the last remaining tier row
-//   - Save payload shape for group checked vs unchecked
-//   - Save is blocked (no POST) when group is checked with no priced tier
+//   - Save payload shape for group checked (max_group_size derived from the
+//     highest priced tier) vs unchecked (explicit nulls)
+//   - Save is blocked (no POST) when group is checked with no priced tier, or
+//     with a tier under the £1.00 floor
 //   - Individual pricing default render is unaffected (light regression)
 
 import React from 'react'
@@ -173,12 +177,10 @@ afterEach(() => {
 
 async function renderLoaded(): Promise<void> {
   render(<PricingStep />)
-  // The right-hand "YOUR OFFER" summary panel renders a plain <span>Session
-  // types</span> label unconditionally (outside the loading gate), so a
-  // plain findByText('Session types') resolves against that immediately and
-  // races ahead of the real load. The <h2> heading only renders once
-  // `loading` is false — wait for that specifically.
-  await screen.findByRole('heading', { name: 'Session types' })
+  // Wait on the Individual card's subtitle — it only renders once `loading`
+  // is false, and (unlike "Session types") has no duplicate in the always-on
+  // right-hand summary panel.
+  await screen.findByText('1-on-1 sessions with a single player')
 }
 
 function sessionTypeBox(label: 'Individual' | 'Group'): HTMLElement {
@@ -198,9 +200,16 @@ function clickSessionType(label: 'Individual' | 'Group'): void {
   fireEvent.click(screen.getByText(label, { selector: 'span.capitalize' }))
 }
 
+// The Group accordion card — located from its checkbox label span.
 function groupCard(): HTMLElement {
-  return screen.getByText('Group session pricing').closest('.rounded-xl') as HTMLElement
+  return screen
+    .getByText('Group', { selector: 'span.capitalize' })
+    .closest('.rounded-xl') as HTMLElement
 }
+
+// The expanded group section is identifiable by its helper line; when the
+// card is collapsed (checkbox unchecked) this text is absent.
+const GROUP_SECTION_TEXT = 'Set the total price for each group size you offer'
 
 function tierRow(card: HTMLElement, size: number): HTMLElement {
   const label = within(card).getByText(`${size} players`, { selector: 'div' })
@@ -212,13 +221,14 @@ function tierRow(card: HTMLElement, size: number): HTMLElement {
 // ── 1. No saved group data ──────────────────────────────────────────────────
 
 describe('PricingStep — group checkbox default state (no saved group data)', () => {
-  it('renders the Group checkbox unchecked and hides the group pricing card', async () => {
+  it('renders the Group checkbox unchecked with the card collapsed to its header', async () => {
     setUpCoachSports(NO_SAVED_SPORTS.sports)
     await renderLoaded()
 
     expect(screen.getByText('Group', { selector: 'span.capitalize' })).toBeInTheDocument()
+    expect(screen.getByText('Sessions with 2–6 players')).toBeInTheDocument()
     expect(isSessionTypeChecked('Group')).toBe(false)
-    expect(screen.queryByText('Group session pricing')).not.toBeInTheDocument()
+    expect(screen.queryByText(GROUP_SECTION_TEXT)).not.toBeInTheDocument()
   })
 })
 
@@ -230,37 +240,20 @@ describe('PricingStep — legacy row: group_price_tiers is the source of truth (
     await renderLoaded()
 
     expect(isSessionTypeChecked('Group')).toBe(false)
-    expect(screen.queryByText('Group session pricing')).not.toBeInTheDocument()
-  })
-})
-
-// ── 2b. Legacy out-of-range max_group_size is clamped ───────────────────────
-
-describe('PricingStep — legacy out-of-range max_group_size (pre-tightening 2-50 era)', () => {
-  it('clamps a saved max_group_size of 20 to 6 when the coach enables group', async () => {
-    setUpCoachSports([{ ...LEGACY_GROUP_SPORT, max_group_size: 20 }])
-    await renderLoaded()
-
-    // Legacy row renders unchecked (tiers null); enabling group must show a
-    // valid in-range cap, not an invalid controlled-select value of 20.
-    clickSessionType('Group')
-
-    expect((screen.getByLabelText('Max group size') as HTMLSelectElement).value).toBe('6')
+    expect(screen.queryByText(GROUP_SECTION_TEXT)).not.toBeInTheDocument()
   })
 })
 
 // ── 3. Saved tiers render checked with correct rows ─────────────────────────
 
 describe('PricingStep — saved group_price_tiers renders checked state', () => {
-  it('renders checked, max size 4, and two tier rows with the correct prices', async () => {
+  it('renders checked with two tier rows and the correct prices', async () => {
     setUpCoachSports([SAVED_GROUP_SPORT])
     await renderLoaded()
 
     expect(isSessionTypeChecked('Group')).toBe(true)
 
     const card = groupCard()
-    expect((screen.getByLabelText('Max group size') as HTMLSelectElement).value).toBe('4')
-
     within(card).getByText('2 players', { selector: 'div' })
     within(card).getByText('3 players', { selector: 'div' })
 
@@ -274,53 +267,42 @@ describe('PricingStep — saved group_price_tiers renders checked state', () => 
 // ── 4. Checking/unchecking reveals/hides the section ────────────────────────
 
 describe('PricingStep — toggling the Group checkbox', () => {
-  it('reveals the section seeded with one 2-player row, and hides it again on uncheck', async () => {
+  it('expands the card seeded with one 2-player row, and collapses it again on uncheck', async () => {
     setUpCoachSports(NO_SAVED_SPORTS.sports)
     await renderLoaded()
 
-    expect(screen.queryByText('Group session pricing')).not.toBeInTheDocument()
+    expect(screen.queryByText(GROUP_SECTION_TEXT)).not.toBeInTheDocument()
 
     clickSessionType('Group')
 
     expect(isSessionTypeChecked('Group')).toBe(true)
-    const card = screen.getByText('Group session pricing').closest('.rounded-xl') as HTMLElement
-    within(card).getByText('2 players', { selector: 'div' })
+    expect(screen.getByText(GROUP_SECTION_TEXT)).toBeInTheDocument()
+    within(groupCard()).getByText('2 players', { selector: 'div' })
 
     clickSessionType('Group')
 
     expect(isSessionTypeChecked('Group')).toBe(false)
-    expect(screen.queryByText('Group session pricing')).not.toBeInTheDocument()
+    expect(screen.queryByText(GROUP_SECTION_TEXT)).not.toBeInTheDocument()
   })
 })
 
-// ── 5. Add-tier link + max-size trim ────────────────────────────────────────
+// ── 5. Add-tier link progresses to 6 with no cap ────────────────────────────
 
-describe('PricingStep — adding tier rows and trimming by max group size', () => {
-  it('adds the next size via the link, hides the link once the cap is fully priced, and trims on cap decrease', async () => {
+describe('PricingStep — adding tier rows up to the maximum of 6', () => {
+  it('offers the next unpriced size each time and hides the link once all sizes have rows', async () => {
     setUpCoachSports([GROUP_ONE_TIER_SPORT])
     await renderLoaded()
 
     const card = groupCard()
 
-    // Only size 2 is priced; cap is 4 → link offers 3 next.
-    expect(within(card).getByRole('button', { name: 'Add 3-player price' })).toBeInTheDocument()
+    // Only size 2 has a row → link offers 3, then 4, 5, 6 — no cap picker.
+    for (const size of [3, 4, 5, 6]) {
+      fireEvent.click(within(card).getByRole('button', { name: `Add ${size}-player price` }))
+      within(card).getByText(`${size} players`, { selector: 'div' })
+    }
 
-    fireEvent.click(within(card).getByRole('button', { name: 'Add 3-player price' }))
-    within(card).getByText('3 players', { selector: 'div' })
-    expect(within(card).getByRole('button', { name: 'Add 4-player price' })).toBeInTheDocument()
-
-    fireEvent.click(within(card).getByRole('button', { name: 'Add 4-player price' }))
-    within(card).getByText('4 players', { selector: 'div' })
-
-    // Every size up to the cap (2, 3, 4) now has a row — link disappears.
+    // Every size 2–6 now has a row — the link disappears.
     expect(within(card).queryByRole('button', { name: /Add \d-player price/ })).not.toBeInTheDocument()
-
-    // Lowering the cap to 2 trims rows above it.
-    fireEvent.change(screen.getByLabelText('Max group size'), { target: { value: '2' } })
-
-    within(card).getByText('2 players', { selector: 'div' })
-    expect(within(card).queryByText('3 players', { selector: 'div' })).not.toBeInTheDocument()
-    expect(within(card).queryByText('4 players', { selector: 'div' })).not.toBeInTheDocument()
   })
 })
 
@@ -343,7 +325,7 @@ describe('PricingStep — remove button on the last remaining tier row', () => {
 // ── 7. Save payload shape ───────────────────────────────────────────────────
 
 describe('PricingStep — save payload', () => {
-  it('sends session_types with group, max_group_size, and group_price_tiers when group is checked', async () => {
+  it('sends session_types with group, a DERIVED max_group_size, and group_price_tiers when group is checked', async () => {
     setUpCoachSports([SAVED_GROUP_SPORT])
     global.fetch = jest.fn().mockResolvedValue({ ok: true } as Response)
     await renderLoaded()
@@ -360,8 +342,30 @@ describe('PricingStep — save payload', () => {
       group_price_tiers: Record<string, number> | null
     }
     expect(body.session_types).toContain('group')
-    expect(body.max_group_size).toBe(4)
+    // Derived from the highest priced tier (2 and 3 → 3), NOT the fixture's
+    // stored max_group_size of 4 — the coach never sets the cap manually.
+    expect(body.max_group_size).toBe(3)
     expect(body.group_price_tiers).toEqual({ '2': 4500, '3': 5500 })
+  })
+
+  it('derives max_group_size from the highest key of SPARSE tiers (2 and 4 -> 4)', async () => {
+    setUpCoachSports([{ ...SAVED_GROUP_SPORT, group_price_tiers: { '2': 4500, '4': 7000 } }])
+    global.fetch = jest.fn().mockResolvedValue({ ok: true } as Response)
+    await renderLoaded()
+
+    fireEvent.click(screen.getByRole('button', { name: /Save & continue/ }))
+
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1))
+
+    const [, init] = (global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit]
+    const body = JSON.parse(init.body as string) as {
+      max_group_size: number | null
+      group_price_tiers: Record<string, number> | null
+    }
+    // Gap-independent: derived via Math.max over the payload keys, never from
+    // row position or count.
+    expect(body.max_group_size).toBe(4)
+    expect(body.group_price_tiers).toEqual({ '2': 4500, '4': 7000 })
   })
 
   it('sends null max_group_size and group_price_tiers, and omits group from session_types, when group is unchecked', async () => {

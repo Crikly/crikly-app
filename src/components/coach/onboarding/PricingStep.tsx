@@ -52,7 +52,6 @@ interface SportPricing {
   skillLevels: string[]
   ageGroups: string[]
   pricingRows: PricingRow[]
-  maxGroupSize: number
   groupTierRows: GroupTierRow[]
 }
 
@@ -76,7 +75,8 @@ const API_TO_UI_AGE: Record<string, string> = {
   'adults': 'Adults (17+)',
 }
 
-// CF-PRICE-01: sizes a coach can cap a group at (2–6, from the shared module)
+// CF-PRICE-01: group sizes a tier can be priced at (2–6, from the shared
+// module) — there is no coach-set cap; max_group_size is derived at save time
 const GROUP_SIZE_OPTIONS = Array.from(
   { length: GROUP_SIZE_MAX - GROUP_SIZE_MIN + 1 },
   (_, i) => GROUP_SIZE_MIN + i,
@@ -92,7 +92,6 @@ const defaultSportPricing: SportPricing = {
   skillLevels: [],
   ageGroups: [],
   pricingRows: [{ id: '1', duration: '60 min', price: '' }],
-  maxGroupSize: GROUP_SIZE_MAX,
   groupTierRows: [],
 }
 
@@ -193,15 +192,9 @@ export function PricingStep() {
                     price: (savedSport.price_individual_pence / 100).toFixed(0),
                   }]
                 : [{ id: '1', duration: '60 min', price: '' }],
-              // Clamp to the 2–6 range: rows saved before the CF-PRICE-01
-              // tightening can carry caps up to 50, which would render an
-              // invalid controlled <select> and 400 on save if untouched.
-              maxGroupSize:
-                savedSport.max_group_size !== null &&
-                savedSport.max_group_size >= GROUP_SIZE_MIN &&
-                savedSport.max_group_size <= GROUP_SIZE_MAX
-                  ? savedSport.max_group_size
-                  : GROUP_SIZE_MAX,
+              // CF-PRICE-01 UX: max_group_size is no longer coach-facing —
+              // it is derived at save time from the highest priced tier, so
+              // the saved value is not hydrated into state at all.
               groupTierRows: tierRows,
             }
           })
@@ -258,11 +251,12 @@ export function PricingStep() {
 
   // ── CF-PRICE-01: group pricing handlers ────────────────────────────────────
 
-  // Lowest group size not yet priced, within the coach's cap — what the
-  // "+ Add X-player price" link offers next. null = every size is priced.
+  // Lowest group size (2–6) not yet priced — what the "+ Add X-player price"
+  // link offers next. null = every size has a row. There is no coach-set cap:
+  // max_group_size is derived from the highest priced tier at save time.
   const nextGroupSize = (pricing: SportPricing): number | null => {
     const used = pricing.groupTierRows.map(r => r.size)
-    const next = GROUP_SIZE_OPTIONS.find(s => s <= pricing.maxGroupSize && !used.includes(s))
+    const next = GROUP_SIZE_OPTIONS.find(s => !used.includes(s))
     return next ?? null
   }
 
@@ -276,15 +270,6 @@ export function PricingStep() {
         enabling && activePricing.groupTierRows.length === 0
           ? [{ id: `tier-${GROUP_SIZE_MIN}`, size: GROUP_SIZE_MIN, price: '' }]
           : activePricing.groupTierRows,
-    })
-  }
-
-  const setMaxGroupSize = (max: number) => {
-    updateActiveSport({
-      maxGroupSize: max,
-      // Tiers above the new cap are invalid (API rejects keys > cap) — trim
-      // them rather than block the picker.
-      groupTierRows: activePricing.groupTierRows.filter(r => r.size <= max),
     })
   }
 
@@ -387,6 +372,14 @@ export function PricingStep() {
           }
         }
 
+        // CF-PRICE-01 UX: max_group_size is never coach-set — it is the
+        // highest priced tier (coach prices 2 and 4 → cap 4). The guard above
+        // ensures at least one priced tier exists when group is checked.
+        const derivedMaxGroupSize =
+          groupTiersPayload && Object.keys(groupTiersPayload).length > 0
+            ? Math.max(...Object.keys(groupTiersPayload).map(Number))
+            : null
+
         const skillLevelsArray = pricing.skillLevels.map(l => l.toLowerCase())
 
         const ageGroupsArray = pricing.ageGroups.map(g =>
@@ -414,7 +407,7 @@ export function PricingStep() {
             price_individual_pence: lowestPricePence,
             session_duration_minutes: durationMinutes,
             // CF-PRICE-01: group pricing — nulls clear, map saves atomically
-            max_group_size: pricing.sessionTypes.group ? pricing.maxGroupSize : null,
+            max_group_size: derivedMaxGroupSize,
             group_price_tiers: groupTiersPayload,
           })
         })
@@ -532,37 +525,151 @@ export function PricingStep() {
             <p className="text-[13px] text-gray-500 mb-4">Setting up: {activeSport || 'Cricket'}</p>
           )}
 
-          {/* CF-D12 CHANGE 2D: Session types */}
+          {/* CF-PRICE-01 UX: accordion session-type cards — each card is
+              self-contained: checkbox header + its pricing rows inline. The
+              separate "Session types" heading and standalone pricing cards
+              are gone; the cards themselves are the section. */}
+
+          {/* Individual card — pricing rows always visible (individual
+              behaviour unchanged: rows were never gated on the checkbox). */}
           <div className="bg-white rounded-xl p-5" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
-            <h2 className="text-[18px] font-bold text-gray-900 mb-6">Session types</h2>
-            <div className="flex flex-col gap-4">
-              {/* CF-PRICE-01: Group checkbox restored (removed as dead in P-02,
-                  now wired to real tier pricing below) — same visual pattern
-                  as Individual. */}
-              {(['individual', 'group'] as const).map((type) => (
-                <div
-                  key={type}
-                  className="flex items-start gap-4 p-4 rounded-xl border border-gray-100 hover:border-blue-100 hover:bg-blue-50/30 transition-colors cursor-pointer"
-                  onClick={() =>
-                    type === 'group'
-                      ? toggleGroupSessions()
-                      : updateActiveSport({
-                          sessionTypes: { ...activePricing.sessionTypes, [type]: !activePricing.sessionTypes[type] }
-                        })
-                  }
-                >
-                  <div className={`mt-0.5 w-6 h-6 rounded-md flex items-center justify-center shrink-0 border transition-colors ${activePricing.sessionTypes[type] ? 'bg-[#0077CC] border-[#0077CC]' : 'bg-white border-gray-300'}`}>
-                    {activePricing.sessionTypes[type] && <Check size={16} className="text-white" />}
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="text-[15px] font-bold text-gray-900 capitalize">{type === 'individual' ? 'Individual' : 'Group'}</span>
-                    <span className="text-[14px] text-gray-500 font-medium mt-0.5">
-                      {type === 'individual' ? '1-on-1 sessions with a single player' : 'Sessions with multiple players'}
-                    </span>
-                  </div>
-                </div>
-              ))}
+            <div
+              className="flex items-start gap-4 cursor-pointer"
+              onClick={() => updateActiveSport({
+                sessionTypes: { ...activePricing.sessionTypes, individual: !activePricing.sessionTypes.individual }
+              })}
+            >
+              <div className={`mt-0.5 w-6 h-6 rounded-md flex items-center justify-center shrink-0 border transition-colors ${activePricing.sessionTypes.individual ? 'bg-[#0077CC] border-[#0077CC]' : 'bg-white border-gray-300'}`}>
+                {activePricing.sessionTypes.individual && <Check size={16} className="text-white" />}
+              </div>
+              <div className="flex flex-col">
+                <span className="text-[15px] font-bold text-gray-900 capitalize">Individual</span>
+                <span className="text-[14px] text-gray-500 font-medium mt-0.5">
+                  1-on-1 sessions with a single player
+                </span>
+              </div>
             </div>
+
+            <div className="mt-5">
+              <p className="text-[12px] text-gray-500 mb-4">Set your price for each session length</p>
+              <div className="flex flex-col gap-4">
+                {activePricing.pricingRows.map((row) => (
+                  <div key={row.id} className="flex flex-col">
+                  <div className="flex items-center gap-4">
+                    <select
+                      value={row.duration}
+                      onChange={(e) => updateActiveSport({
+                        pricingRows: activePricing.pricingRows.map(r =>
+                          r.id === row.id ? { ...r, duration: e.target.value } : r
+                        )
+                      })}
+                      className="w-[90px] text-[14px] font-medium text-gray-900 border border-gray-200 rounded-lg px-2 py-2 bg-white focus:border-[#0077CC] focus:ring-1 focus:ring-[#0077CC] outline-none"
+                    >
+                      {DURATION_OPTIONS.map(d => (
+                        <option key={d} value={d}>{d}</option>
+                      ))}
+                    </select>
+                    <div className="flex-1 relative">
+                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                        <span className="text-gray-500 font-bold">£</span>
+                      </div>
+                      <input
+                        type="number"
+                        value={row.price}
+                        onChange={(e) => updateActiveSport({
+                          pricingRows: activePricing.pricingRows.map(r =>
+                            r.id === row.id ? { ...r, price: e.target.value } : r
+                          )
+                        })}
+                        placeholder="0.00"
+                        className="w-full pl-8 pr-4 py-3 rounded-xl border border-gray-200 text-[15px] font-medium text-gray-900 placeholder:text-gray-300 focus:border-[#0077CC] focus:ring-1 focus:ring-[#0077CC] outline-none transition-all"
+                      />
+                    </div>
+                    <div className="text-[15px] text-gray-500 font-medium whitespace-nowrap hidden sm:block w-[80px]">per session</div>
+                    <button
+                      onClick={() => removePricingRow(row.id)}
+                      disabled={activePricing.pricingRows.length === 1}
+                      className="p-2 text-gray-400 hover:text-red-500 transition-colors rounded-lg hover:bg-red-50 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:text-gray-400 disabled:hover:bg-transparent"
+                    >
+                      <X size={20} />
+                    </button>
+                  </div>
+                  {/* C-PAY-04: live payout estimate as the coach types */}
+                  <PayoutEstimate pricePence={poundsInputToPence(row.price)} />
+                  </div>
+                ))}
+                <button onClick={addPricingRow} className="mt-2 flex items-center gap-1.5 text-[#0077CC] font-bold text-[14px] hover:text-blue-800 transition-colors w-fit">
+                  <Plus size={16} />
+                  Add another duration
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Group card — collapsed to header when unchecked; expands to its
+              tier rows inline when checked. Prices are the TOTAL for the
+              group, not per head. No max-size picker: the cap is derived at
+              save time from the highest priced tier. */}
+          <div className="bg-white rounded-xl p-5" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+            <div className="flex items-start gap-4 cursor-pointer" onClick={toggleGroupSessions}>
+              <div className={`mt-0.5 w-6 h-6 rounded-md flex items-center justify-center shrink-0 border transition-colors ${activePricing.sessionTypes.group ? 'bg-[#0077CC] border-[#0077CC]' : 'bg-white border-gray-300'}`}>
+                {activePricing.sessionTypes.group && <Check size={16} className="text-white" />}
+              </div>
+              <div className="flex flex-col">
+                <span className="text-[15px] font-bold text-gray-900 capitalize">Group</span>
+                <span className="text-[14px] text-gray-500 font-medium mt-0.5">
+                  Sessions with 2–6 players
+                </span>
+              </div>
+            </div>
+
+            {activePricing.sessionTypes.group && (
+              <div className="mt-5">
+                <p className="text-[12px] text-gray-500 mb-4">Set the total price for each group size you offer</p>
+                <div className="flex flex-col gap-4">
+                  {activePricing.groupTierRows.map((row) => (
+                    <div key={row.id} className="flex flex-col">
+                      <div className="flex items-center gap-4">
+                        <div className="w-[90px] text-[14px] font-medium text-gray-900 px-2 py-2">
+                          {row.size} players
+                        </div>
+                        <div className="flex-1 relative">
+                          <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                            <span className="text-gray-500 font-bold">£</span>
+                          </div>
+                          <input
+                            type="number"
+                            value={row.price}
+                            onChange={(e) => updateActiveSport({
+                              groupTierRows: activePricing.groupTierRows.map(r =>
+                                r.id === row.id ? { ...r, price: e.target.value } : r
+                              )
+                            })}
+                            placeholder="0.00"
+                            className="w-full pl-8 pr-4 py-3 rounded-xl border border-gray-200 text-[15px] font-medium text-gray-900 placeholder:text-gray-300 focus:border-[#0077CC] focus:ring-1 focus:ring-[#0077CC] outline-none transition-all"
+                          />
+                        </div>
+                        <div className="text-[15px] text-gray-500 font-medium whitespace-nowrap hidden sm:block w-[80px]">total</div>
+                        <button
+                          onClick={() => removeGroupTierRow(row.id)}
+                          disabled={activePricing.groupTierRows.length === 1}
+                          className="p-2 text-gray-400 hover:text-red-500 transition-colors rounded-lg hover:bg-red-50 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:text-gray-400 disabled:hover:bg-transparent"
+                        >
+                          <X size={20} />
+                        </button>
+                      </div>
+                      <PayoutEstimate pricePence={poundsInputToPence(row.price)} />
+                    </div>
+                  ))}
+                  {nextGroupSize(activePricing) !== null && (
+                    <button onClick={addGroupTierRow} className="mt-2 flex items-center gap-1.5 text-[#0077CC] font-bold text-[14px] hover:text-blue-800 transition-colors w-fit">
+                      <Plus size={16} />
+                      Add {nextGroupSize(activePricing)}-player price
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Skill levels */}
@@ -604,137 +711,6 @@ export function PricingStep() {
               ))}
             </div>
           </div>
-
-          {/* 1-on-1 pricing */}
-          <div className="bg-white rounded-xl p-5" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
-            <div className="mb-4">
-              <h2 className="text-[13px] font-medium text-gray-900">1-on-1 session pricing</h2>
-              <p className="text-[12px] text-gray-500 mt-1">Set your price for each session length</p>
-            </div>
-            <div className="flex flex-col gap-4">
-              {activePricing.pricingRows.map((row) => (
-                <div key={row.id} className="flex flex-col">
-                <div className="flex items-center gap-4">
-                  <select
-                    value={row.duration}
-                    onChange={(e) => updateActiveSport({
-                      pricingRows: activePricing.pricingRows.map(r =>
-                        r.id === row.id ? { ...r, duration: e.target.value } : r
-                      )
-                    })}
-                    className="w-[90px] text-[14px] font-medium text-gray-900 border border-gray-200 rounded-lg px-2 py-2 bg-white focus:border-[#0077CC] focus:ring-1 focus:ring-[#0077CC] outline-none"
-                  >
-                    {DURATION_OPTIONS.map(d => (
-                      <option key={d} value={d}>{d}</option>
-                    ))}
-                  </select>
-                  <div className="flex-1 relative">
-                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                      <span className="text-gray-500 font-bold">£</span>
-                    </div>
-                    <input
-                      type="number"
-                      value={row.price}
-                      onChange={(e) => updateActiveSport({
-                        pricingRows: activePricing.pricingRows.map(r =>
-                          r.id === row.id ? { ...r, price: e.target.value } : r
-                        )
-                      })}
-                      placeholder="0.00"
-                      className="w-full pl-8 pr-4 py-3 rounded-xl border border-gray-200 text-[15px] font-medium text-gray-900 placeholder:text-gray-300 focus:border-[#0077CC] focus:ring-1 focus:ring-[#0077CC] outline-none transition-all"
-                    />
-                  </div>
-                  <div className="text-[15px] text-gray-500 font-medium whitespace-nowrap hidden sm:block w-[80px]">per session</div>
-                  <button
-                    onClick={() => removePricingRow(row.id)}
-                    disabled={activePricing.pricingRows.length === 1}
-                    className="p-2 text-gray-400 hover:text-red-500 transition-colors rounded-lg hover:bg-red-50 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:text-gray-400 disabled:hover:bg-transparent"
-                  >
-                    <X size={20} />
-                  </button>
-                </div>
-                {/* C-PAY-04: live payout estimate as the coach types */}
-                <PayoutEstimate pricePence={poundsInputToPence(row.price)} />
-                </div>
-              ))}
-              <button onClick={addPricingRow} className="mt-2 flex items-center gap-1.5 text-[#0077CC] font-bold text-[14px] hover:text-blue-800 transition-colors w-fit">
-                <Plus size={16} />
-                Add another duration
-              </button>
-            </div>
-          </div>
-
-          {/* CF-PRICE-01: Group session pricing — only when Group is checked.
-              Rows mirror the 1-on-1 pattern: size label where the duration
-              select sits, £ input, live payout estimate, remove ×. Prices are
-              the TOTAL for the group, not per head. */}
-          {activePricing.sessionTypes.group && (
-            <div className="bg-white rounded-xl p-5" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
-              <div className="mb-4">
-                <h2 className="text-[13px] font-medium text-gray-900">Group session pricing</h2>
-                <p className="text-[12px] text-gray-500 mt-1">Set the total price for each group size you offer</p>
-              </div>
-
-              <div className="flex items-center gap-4 mb-5">
-                <label htmlFor="max-group-size" className="text-[14px] font-medium text-gray-900">
-                  Max group size
-                </label>
-                <select
-                  id="max-group-size"
-                  value={activePricing.maxGroupSize}
-                  onChange={(e) => setMaxGroupSize(Number.parseInt(e.target.value, 10))}
-                  className="w-[90px] text-[14px] font-medium text-gray-900 border border-gray-200 rounded-lg px-2 py-2 bg-white focus:border-[#0077CC] focus:ring-1 focus:ring-[#0077CC] outline-none"
-                >
-                  {GROUP_SIZE_OPTIONS.map(s => (
-                    <option key={s} value={s}>{s} players</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex flex-col gap-4">
-                {activePricing.groupTierRows.map((row) => (
-                  <div key={row.id} className="flex flex-col">
-                    <div className="flex items-center gap-4">
-                      <div className="w-[90px] text-[14px] font-medium text-gray-900 px-2 py-2">
-                        {row.size} players
-                      </div>
-                      <div className="flex-1 relative">
-                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                          <span className="text-gray-500 font-bold">£</span>
-                        </div>
-                        <input
-                          type="number"
-                          value={row.price}
-                          onChange={(e) => updateActiveSport({
-                            groupTierRows: activePricing.groupTierRows.map(r =>
-                              r.id === row.id ? { ...r, price: e.target.value } : r
-                            )
-                          })}
-                          placeholder="0.00"
-                          className="w-full pl-8 pr-4 py-3 rounded-xl border border-gray-200 text-[15px] font-medium text-gray-900 placeholder:text-gray-300 focus:border-[#0077CC] focus:ring-1 focus:ring-[#0077CC] outline-none transition-all"
-                        />
-                      </div>
-                      <div className="text-[15px] text-gray-500 font-medium whitespace-nowrap hidden sm:block w-[80px]">total</div>
-                      <button
-                        onClick={() => removeGroupTierRow(row.id)}
-                        disabled={activePricing.groupTierRows.length === 1}
-                        className="p-2 text-gray-400 hover:text-red-500 transition-colors rounded-lg hover:bg-red-50 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:text-gray-400 disabled:hover:bg-transparent"
-                      >
-                        <X size={20} />
-                      </button>
-                    </div>
-                    <PayoutEstimate pricePence={poundsInputToPence(row.price)} />
-                  </div>
-                ))}
-                {nextGroupSize(activePricing) !== null && (
-                  <button onClick={addGroupTierRow} className="mt-2 flex items-center gap-1.5 text-[#0077CC] font-bold text-[14px] hover:text-blue-800 transition-colors w-fit">
-                    <Plus size={16} />
-                    Add {nextGroupSize(activePricing)}-player price
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
 
         </div>
 
