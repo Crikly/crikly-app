@@ -6,6 +6,7 @@ import { Check, X, Plus } from 'lucide-react'
 import { fetchCoachProfileCached, fetchSportsListCached, fetchCoachSportsCached, clearCoachSportsCache, clearSessionTypesCache } from '@/lib/onboarding-cache'
 import { poundsInputToPence } from '@/lib/payout-estimate'
 import { PayoutEstimate } from '@/components/coach/shared/PayoutEstimate'
+import { GROUP_SIZE_MAX, GROUP_SIZE_MIN, GROUP_TIER_MIN_PENCE } from '@/lib/coach/group-pricing'
 
 interface Sport {
   id: string
@@ -24,6 +25,8 @@ interface CoachSportResponse {
   price_individual_pence: number | null
   price_group_pence: number | null
   max_group_size: number | null
+  // CF-PRICE-01: group size ("2".."6") → TOTAL session price in pence
+  group_price_tiers?: Record<string, number> | null
   session_duration_minutes: number
   currency: string
   is_active: boolean
@@ -36,11 +39,21 @@ interface PricingRow {
   price: string
 }
 
+// CF-PRICE-01: one price tier per group size — price is the TOTAL for the
+// group (not per head), entered in pounds like the individual rows.
+interface GroupTierRow {
+  id: string
+  size: number
+  price: string
+}
+
 interface SportPricing {
-  sessionTypes: { individual: boolean }
+  sessionTypes: { individual: boolean; group: boolean }
   skillLevels: string[]
   ageGroups: string[]
   pricingRows: PricingRow[]
+  maxGroupSize: number
+  groupTierRows: GroupTierRow[]
 }
 
 const DURATION_OPTIONS = ['30 min', '45 min', '60 min', '90 min', '120 min'] as const
@@ -63,11 +76,24 @@ const API_TO_UI_AGE: Record<string, string> = {
   'adults': 'Adults (17+)',
 }
 
+// CF-PRICE-01: sizes a coach can cap a group at (2–6, from the shared module)
+const GROUP_SIZE_OPTIONS = Array.from(
+  { length: GROUP_SIZE_MAX - GROUP_SIZE_MIN + 1 },
+  (_, i) => GROUP_SIZE_MIN + i,
+)
+
+// CF-PRICE-01: pence → pounds input string; whole pounds stay short ("45"),
+// anything else keeps two decimals ("45.50").
+const penceToPoundsInput = (pence: number): string =>
+  pence % 100 === 0 ? String(pence / 100) : (pence / 100).toFixed(2)
+
 const defaultSportPricing: SportPricing = {
-  sessionTypes: { individual: true },
+  sessionTypes: { individual: true, group: false },
   skillLevels: [],
   ageGroups: [],
   pricingRows: [{ id: '1', duration: '60 min', price: '' }],
+  maxGroupSize: GROUP_SIZE_MAX,
+  groupTierRows: [],
 }
 
 export function PricingStep() {
@@ -134,9 +160,27 @@ export function PricingStep() {
 
           coachSportsData.sports.forEach((savedSport: CoachSportResponse) => {
             const sportName = savedSport.sport_name
+
+            // CF-PRICE-01: group_price_tiers is the source of truth for the
+            // checkbox — NOT session_types. Legacy pre-P-02 rows carry 'group'
+            // in session_types with null tiers and must render unchecked
+            // (Lasith, Phase 3 clarification). Saving normalises them.
+            const savedTiers = savedSport.group_price_tiers ?? null
+            const groupEnabled = savedTiers !== null
+            const tierRows: GroupTierRow[] = groupEnabled
+              ? Object.entries(savedTiers)
+                  .map(([size, pence]) => ({
+                    id: `tier-${size}`,
+                    size: Number.parseInt(size, 10),
+                    price: penceToPoundsInput(pence),
+                  }))
+                  .sort((a, b) => a.size - b.size)
+              : []
+
             initialPricing[sportName] = {
               sessionTypes: {
                 individual: savedSport.session_types.includes('individual'),
+                group: groupEnabled,
               },
               skillLevels: savedSport.skill_levels.map(l =>
                 l.charAt(0).toUpperCase() + l.slice(1)
@@ -149,6 +193,16 @@ export function PricingStep() {
                     price: (savedSport.price_individual_pence / 100).toFixed(0),
                   }]
                 : [{ id: '1', duration: '60 min', price: '' }],
+              // Clamp to the 2–6 range: rows saved before the CF-PRICE-01
+              // tightening can carry caps up to 50, which would render an
+              // invalid controlled <select> and 400 on save if untouched.
+              maxGroupSize:
+                savedSport.max_group_size !== null &&
+                savedSport.max_group_size >= GROUP_SIZE_MIN &&
+                savedSport.max_group_size <= GROUP_SIZE_MAX
+                  ? savedSport.max_group_size
+                  : GROUP_SIZE_MAX,
+              groupTierRows: tierRows,
             }
           })
 
@@ -202,6 +256,56 @@ export function PricingStep() {
     })
   }
 
+  // ── CF-PRICE-01: group pricing handlers ────────────────────────────────────
+
+  // Lowest group size not yet priced, within the coach's cap — what the
+  // "+ Add X-player price" link offers next. null = every size is priced.
+  const nextGroupSize = (pricing: SportPricing): number | null => {
+    const used = pricing.groupTierRows.map(r => r.size)
+    const next = GROUP_SIZE_OPTIONS.find(s => s <= pricing.maxGroupSize && !used.includes(s))
+    return next ?? null
+  }
+
+  const toggleGroupSessions = () => {
+    const enabling = !activePricing.sessionTypes.group
+    updateActiveSport({
+      sessionTypes: { ...activePricing.sessionTypes, group: enabling },
+      // First enable seeds one 2-player row so the section never opens empty;
+      // re-enabling keeps whatever rows were configured before the uncheck.
+      groupTierRows:
+        enabling && activePricing.groupTierRows.length === 0
+          ? [{ id: `tier-${GROUP_SIZE_MIN}`, size: GROUP_SIZE_MIN, price: '' }]
+          : activePricing.groupTierRows,
+    })
+  }
+
+  const setMaxGroupSize = (max: number) => {
+    updateActiveSport({
+      maxGroupSize: max,
+      // Tiers above the new cap are invalid (API rejects keys > cap) — trim
+      // them rather than block the picker.
+      groupTierRows: activePricing.groupTierRows.filter(r => r.size <= max),
+    })
+  }
+
+  const addGroupTierRow = () => {
+    const size = nextGroupSize(activePricing)
+    if (size === null) return
+    updateActiveSport({
+      groupTierRows: [
+        ...activePricing.groupTierRows,
+        { id: `tier-${size}`, size, price: '' },
+      ].sort((a, b) => a.size - b.size),
+    })
+  }
+
+  const removeGroupTierRow = (id: string) => {
+    if (activePricing.groupTierRows.length === 1) return // guard: never remove last row
+    updateActiveSport({
+      groupTierRows: activePricing.groupTierRows.filter(row => row.id !== id),
+    })
+  }
+
   const handleSave = async () => {
     setSaving(true)
     try {
@@ -215,6 +319,33 @@ export function PricingStep() {
       const unconfigured = selectedSports.filter(s => !isConfigured(s))
       if (unconfigured.length > 0) {
         setLoadingError(`Please set a price for: ${unconfigured.join(', ')}`)
+        setSaving(false)
+        return
+      }
+
+      // CF-PRICE-01: group enabled needs at least one priced tier, and every
+      // entered tier price must clear the API's £1.00 floor — catch both with
+      // specific messages before any request is made, mirroring the server's
+      // rules exactly (a sub-minimum tier must block the save, never be
+      // silently dropped from the payload).
+      const missingGroupPrice: string[] = []
+      const belowMinGroupPrice: string[] = []
+      for (const s of selectedSports) {
+        const p = pricingBySport[s]
+        if (!p?.sessionTypes.group) continue
+        const enteredPences = p.groupTierRows
+          .filter(r => r.price.trim() !== '')
+          .map(r => poundsInputToPence(r.price) ?? 0)
+        if (enteredPences.some(pence => pence < GROUP_TIER_MIN_PENCE)) belowMinGroupPrice.push(s)
+        if (!enteredPences.some(pence => pence >= GROUP_TIER_MIN_PENCE)) missingGroupPrice.push(s)
+      }
+      if (belowMinGroupPrice.length > 0) {
+        setLoadingError(`Group prices must be at least £1.00 — check: ${belowMinGroupPrice.join(', ')}`)
+        setSaving(false)
+        return
+      }
+      if (missingGroupPrice.length > 0) {
+        setLoadingError(`Please set at least one group price for: ${missingGroupPrice.join(', ')}`)
         setSaving(false)
         return
       }
@@ -236,6 +367,25 @@ export function PricingStep() {
 
         const sessionTypesArray: string[] = []
         if (pricing.sessionTypes.individual) sessionTypesArray.push('individual')
+        if (pricing.sessionTypes.group) sessionTypesArray.push('group')
+
+        // CF-PRICE-01: tiers save atomically as one JSONB map (size → total
+        // integer pence) — never the first-row-only aggregation the individual
+        // rows use (Lasith, Step 0 confirmation 3). Unpriced rows are omitted:
+        // a size without a price is simply not offered. Unchecked → explicit
+        // nulls so the upsert clears any previously saved group data.
+        let groupTiersPayload: Record<string, number> | null = null
+        if (pricing.sessionTypes.group) {
+          groupTiersPayload = {}
+          for (const row of pricing.groupTierRows) {
+            const pence = poundsInputToPence(row.price)
+            // >= £1.00 only — sub-minimum entries were already blocked above,
+            // so this filter can only ever skip untouched empty rows.
+            if (pence !== null && pence >= GROUP_TIER_MIN_PENCE) {
+              groupTiersPayload[String(row.size)] = pence
+            }
+          }
+        }
 
         const skillLevelsArray = pricing.skillLevels.map(l => l.toLowerCase())
 
@@ -263,6 +413,9 @@ export function PricingStep() {
             age_groups: ageGroupsArray,
             price_individual_pence: lowestPricePence,
             session_duration_minutes: durationMinutes,
+            // CF-PRICE-01: group pricing — nulls clear, map saves atomically
+            max_group_size: pricing.sessionTypes.group ? pricing.maxGroupSize : null,
+            group_price_tiers: groupTiersPayload,
           })
         })
       })
@@ -383,21 +536,28 @@ export function PricingStep() {
           <div className="bg-white rounded-xl p-5" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
             <h2 className="text-[18px] font-bold text-gray-900 mb-6">Session types</h2>
             <div className="flex flex-col gap-4">
-              {(['individual'] as const).map((type) => (
+              {/* CF-PRICE-01: Group checkbox restored (removed as dead in P-02,
+                  now wired to real tier pricing below) — same visual pattern
+                  as Individual. */}
+              {(['individual', 'group'] as const).map((type) => (
                 <div
                   key={type}
                   className="flex items-start gap-4 p-4 rounded-xl border border-gray-100 hover:border-blue-100 hover:bg-blue-50/30 transition-colors cursor-pointer"
-                  onClick={() => updateActiveSport({
-                    sessionTypes: { ...activePricing.sessionTypes, [type]: !activePricing.sessionTypes[type] }
-                  })}
+                  onClick={() =>
+                    type === 'group'
+                      ? toggleGroupSessions()
+                      : updateActiveSport({
+                          sessionTypes: { ...activePricing.sessionTypes, [type]: !activePricing.sessionTypes[type] }
+                        })
+                  }
                 >
                   <div className={`mt-0.5 w-6 h-6 rounded-md flex items-center justify-center shrink-0 border transition-colors ${activePricing.sessionTypes[type] ? 'bg-[#0077CC] border-[#0077CC]' : 'bg-white border-gray-300'}`}>
                     {activePricing.sessionTypes[type] && <Check size={16} className="text-white" />}
                   </div>
                   <div className="flex flex-col">
-                    <span className="text-[15px] font-bold text-gray-900 capitalize">Individual</span>
+                    <span className="text-[15px] font-bold text-gray-900 capitalize">{type === 'individual' ? 'Individual' : 'Group'}</span>
                     <span className="text-[14px] text-gray-500 font-medium mt-0.5">
-                      1-on-1 sessions with a single player
+                      {type === 'individual' ? '1-on-1 sessions with a single player' : 'Sessions with multiple players'}
                     </span>
                   </div>
                 </div>
@@ -504,6 +664,78 @@ export function PricingStep() {
             </div>
           </div>
 
+          {/* CF-PRICE-01: Group session pricing — only when Group is checked.
+              Rows mirror the 1-on-1 pattern: size label where the duration
+              select sits, £ input, live payout estimate, remove ×. Prices are
+              the TOTAL for the group, not per head. */}
+          {activePricing.sessionTypes.group && (
+            <div className="bg-white rounded-xl p-5" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+              <div className="mb-4">
+                <h2 className="text-[13px] font-medium text-gray-900">Group session pricing</h2>
+                <p className="text-[12px] text-gray-500 mt-1">Set the total price for each group size you offer</p>
+              </div>
+
+              <div className="flex items-center gap-4 mb-5">
+                <label htmlFor="max-group-size" className="text-[14px] font-medium text-gray-900">
+                  Max group size
+                </label>
+                <select
+                  id="max-group-size"
+                  value={activePricing.maxGroupSize}
+                  onChange={(e) => setMaxGroupSize(Number.parseInt(e.target.value, 10))}
+                  className="w-[90px] text-[14px] font-medium text-gray-900 border border-gray-200 rounded-lg px-2 py-2 bg-white focus:border-[#0077CC] focus:ring-1 focus:ring-[#0077CC] outline-none"
+                >
+                  {GROUP_SIZE_OPTIONS.map(s => (
+                    <option key={s} value={s}>{s} players</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex flex-col gap-4">
+                {activePricing.groupTierRows.map((row) => (
+                  <div key={row.id} className="flex flex-col">
+                    <div className="flex items-center gap-4">
+                      <div className="w-[90px] text-[14px] font-medium text-gray-900 px-2 py-2">
+                        {row.size} players
+                      </div>
+                      <div className="flex-1 relative">
+                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                          <span className="text-gray-500 font-bold">£</span>
+                        </div>
+                        <input
+                          type="number"
+                          value={row.price}
+                          onChange={(e) => updateActiveSport({
+                            groupTierRows: activePricing.groupTierRows.map(r =>
+                              r.id === row.id ? { ...r, price: e.target.value } : r
+                            )
+                          })}
+                          placeholder="0.00"
+                          className="w-full pl-8 pr-4 py-3 rounded-xl border border-gray-200 text-[15px] font-medium text-gray-900 placeholder:text-gray-300 focus:border-[#0077CC] focus:ring-1 focus:ring-[#0077CC] outline-none transition-all"
+                        />
+                      </div>
+                      <div className="text-[15px] text-gray-500 font-medium whitespace-nowrap hidden sm:block w-[80px]">total</div>
+                      <button
+                        onClick={() => removeGroupTierRow(row.id)}
+                        disabled={activePricing.groupTierRows.length === 1}
+                        className="p-2 text-gray-400 hover:text-red-500 transition-colors rounded-lg hover:bg-red-50 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:text-gray-400 disabled:hover:bg-transparent"
+                      >
+                        <X size={20} />
+                      </button>
+                    </div>
+                    <PayoutEstimate pricePence={poundsInputToPence(row.price)} />
+                  </div>
+                ))}
+                {nextGroupSize(activePricing) !== null && (
+                  <button onClick={addGroupTierRow} className="mt-2 flex items-center gap-1.5 text-[#0077CC] font-bold text-[14px] hover:text-blue-800 transition-colors w-fit">
+                    <Plus size={16} />
+                    Add {nextGroupSize(activePricing)}-player price
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
         </div>
 
         {/* CF-D12 CHANGE 3B: Save bar - SAVE BAR PATTERN (step 2+: back left, save right) */}
@@ -600,7 +832,9 @@ export function PricingStep() {
               <div className="flex justify-between">
                 <span className="text-[11px] text-gray-500">Session types</span>
                 <span className="text-[11px] text-gray-900 font-medium text-right max-w-[140px]">
-                  {activePricing.sessionTypes.individual ? 'Individual' : 'None'}
+                  {activePricing.sessionTypes.individual && activePricing.sessionTypes.group ? 'Individual · Group' :
+                   activePricing.sessionTypes.individual ? 'Individual' :
+                   activePricing.sessionTypes.group ? 'Group' : 'None'}
                 </span>
               </div>
 
