@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { requireCoachContext } from '@/lib/auth/require-coach'
+import {
+  isGroupEnabled,
+  toGroupPriceTiers,
+  validateGroupConsistency,
+  validateGroupTiersShape,
+  type GroupPriceTiers,
+} from '@/lib/coach/group-pricing'
 
 /**
  * Coach sport with session type variants
@@ -17,6 +24,8 @@ interface CoachSportResponse {
   price_individual_pence: number | null
   price_group_pence: number | null
   max_group_size: number | null
+  // CF-PRICE-01: group size ("2".."6") → TOTAL price in pence; null = group off
+  group_price_tiers: GroupPriceTiers | null
   session_duration_minutes: number
   currency: string
   is_active: boolean
@@ -48,7 +57,7 @@ export async function GET(): Promise<NextResponse<{ sports: CoachSportResponse[]
     const { data: coachSports, error: sportsError } = await supabase
       .from('coach_sports')
       // AF-P-Wave-2: explicit columns matching CoachSportResponse builder at L102–117
-      .select('id, sport_id, session_types, skill_levels, age_groups, price_individual_pence, price_group_pence, max_group_size, session_duration_minutes, currency, is_active')
+      .select('id, sport_id, session_types, skill_levels, age_groups, price_individual_pence, price_group_pence, max_group_size, group_price_tiers, session_duration_minutes, currency, is_active')
       .eq('coach_profile_id', coachProfile.id)
 
     if (sportsError) {
@@ -108,6 +117,7 @@ export async function GET(): Promise<NextResponse<{ sports: CoachSportResponse[]
         price_individual_pence: cs.price_individual_pence,
         price_group_pence: cs.price_group_pence,
         max_group_size: cs.max_group_size,
+        group_price_tiers: toGroupPriceTiers(cs.group_price_tiers),
         session_duration_minutes: cs.session_duration_minutes,
         currency: cs.currency,
         is_active: cs.is_active,
@@ -195,15 +205,47 @@ export async function POST(
       }
     }
 
+    // CF-PRICE-01: max_group_size is the coach's group-size cap — tightened
+    // from 2–50 to 2–6, integers only (approved at Step 0, confirmation 2).
     if (body.max_group_size !== undefined && body.max_group_size !== null) {
-      if (typeof body.max_group_size !== 'number' || body.max_group_size < 2 || body.max_group_size > 50) {
-        validationErrors.push('max_group_size must be a number between 2 and 50')
+      if (
+        typeof body.max_group_size !== 'number' ||
+        !Number.isInteger(body.max_group_size) ||
+        body.max_group_size < 2 ||
+        body.max_group_size > 6
+      ) {
+        validationErrors.push('max_group_size must be a number between 2 and 6')
       }
     }
 
     if (body.session_duration_minutes !== undefined) {
       if (typeof body.session_duration_minutes !== 'number' || body.session_duration_minutes < 15) {
         validationErrors.push('session_duration_minutes must be a number >= 15')
+      }
+    }
+
+    // CF-PRICE-01: group pricing tiers — shape first, then cross-field rules.
+    if (body.group_price_tiers !== undefined) {
+      validationErrors.push(...validateGroupTiersShape(body.group_price_tiers))
+    }
+
+    // POST carries the sport's full state (it upserts), so the body IS the
+    // effective state — validate group coherence on it directly. Skipped while
+    // earlier shape errors exist so a malformed map isn't double-reported
+    // (same gating as PATCH — the two routes must not diverge).
+    if (validationErrors.length === 0 && Array.isArray(body.session_types)) {
+      if (isGroupEnabled(body.session_types)) {
+        validationErrors.push(
+          ...validateGroupConsistency({
+            sessionTypes: body.session_types,
+            maxGroupSize: body.max_group_size ?? null,
+            groupPriceTiers: (body.group_price_tiers ?? null) as GroupPriceTiers | null,
+          })
+        )
+      } else if (body.group_price_tiers !== undefined && body.group_price_tiers !== null) {
+        // Explicit tiers without 'group' is a contradiction — money data is
+        // never silently dropped.
+        validationErrors.push("group_price_tiers requires 'group' in session_types")
       }
     }
 
@@ -235,6 +277,7 @@ export async function POST(
       price_individual_pence?: number | null
       price_group_pence?: number | null
       max_group_size?: number | null
+      group_price_tiers?: GroupPriceTiers | null
       session_duration_minutes?: number
     } = {
       coach_profile_id: coachProfile.id,
@@ -254,8 +297,18 @@ export async function POST(
     if (body.price_group_pence !== undefined) {
       insertData.price_group_pence = body.price_group_pence
     }
-    if (body.max_group_size !== undefined) {
+    // CF-PRICE-01: group fields are written as a unit. POST is an upsert over
+    // a possibly-existing row, so when group sessions are NOT enabled both
+    // fields are force-nulled — unchecking the Group box must clear stale
+    // tiers even if the client omits the explicit nulls. (Non-null tiers
+    // without 'group' in session_types were already rejected in validation;
+    // when group IS enabled, validation guaranteed both fields are present.)
+    if (isGroupEnabled(body.session_types)) {
       insertData.max_group_size = body.max_group_size
+      insertData.group_price_tiers = body.group_price_tiers as GroupPriceTiers
+    } else {
+      insertData.max_group_size = null
+      insertData.group_price_tiers = null
     }
     if (body.session_duration_minutes !== undefined) {
       insertData.session_duration_minutes = body.session_duration_minutes
@@ -341,6 +394,7 @@ export async function POST(
       price_individual_pence: newSport.price_individual_pence,
       price_group_pence: newSport.price_group_pence,
       max_group_size: newSport.max_group_size,
+      group_price_tiers: toGroupPriceTiers(newSport.group_price_tiers),
       session_duration_minutes: newSport.session_duration_minutes,
       currency: newSport.currency,
       is_active: newSport.is_active,
