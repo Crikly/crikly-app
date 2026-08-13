@@ -838,6 +838,7 @@ export type Database = {
           coach_profile_id: string
           created_at: string
           currency: string
+          group_price_tiers: Json | null
           id: string
           is_active: boolean
           max_advance_days: number | null
@@ -859,6 +860,7 @@ export type Database = {
           coach_profile_id: string
           created_at?: string
           currency?: string
+          group_price_tiers?: Json | null
           id?: string
           is_active?: boolean
           max_advance_days?: number | null
@@ -880,6 +882,7 @@ export type Database = {
           coach_profile_id?: string
           created_at?: string
           currency?: string
+          group_price_tiers?: Json | null
           id?: string
           is_active?: boolean
           max_advance_days?: number | null
