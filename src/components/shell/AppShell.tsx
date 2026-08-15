@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { CriklyAvatar } from '@/components/ui/CriklyAvatar'
+import { ParentTodoBadge } from '@/components/parent/ParentTodoBadge'
 import { ProfilePopover } from '@/components/shared/ProfilePopover'
 import { RolePill } from '@/components/shell/RolePill'
 import {
@@ -322,6 +323,9 @@ export function AppShell({
       {/* UI-FIX: role pill grouped with the avatar on the right — both are
           account/identity controls. */}
       <div className="ml-auto flex items-center gap-2.5 md:gap-3.5">
+        {/* P-06: To-Do badge — parent context only; renders nothing at
+            count 0 (all conditions decided by GET /api/parent/todo). */}
+        {context === 'parent' && <ParentTodoBadge />}
         <RolePill activeRole={identity.activeRole} roles={identity.roles} />
         <div ref={avatarRef} className="relative">
           <button

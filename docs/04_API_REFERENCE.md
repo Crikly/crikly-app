@@ -565,6 +565,36 @@ filter and past bookings keep their FK. Repeat deletes 404.
 
 ---
 
+## Parent Routes
+
+### GET /api/parent/todo
+P-06 (REQ-P-009): source for the parent To-Do badge in the AppShell.
+Every condition is decided server-side (derived query — no dedicated
+table, GAP-P-01): `add_child` (no live child profile), `complete_booking`
+(latest `pending_payment` booking, resume at `/book/{coach_profile_id}`),
+`link_bookings` (unclaimed guest bookings via the P-04-B scan, session
+email only). Review prompts join as a fourth condition when the review
+flow ships (P-14/P-20).
+
+**Auth:** Required (parent role — 401/403 via `requireParentRole`).
+
+**Response 200** (`Cache-Control: no-store`):
+```json
+{
+  "count": 2,
+  "items": [
+    { "type": "add_child", "href": "/parent/children/new" },
+    { "type": "link_bookings", "href": "/parent/link-bookings" }
+  ]
+}
+```
+
+Failure policy: each condition check degrades independently (item
+omitted, error logged) — the endpoint never 500s because Stripe or one
+query is down (guest-bookings precedent).
+
+---
+
 ## Booking Routes
 
 ### POST /api/bookings
