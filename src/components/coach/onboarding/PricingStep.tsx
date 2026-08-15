@@ -231,24 +231,6 @@ export function PricingStep() {
     updateActiveSport({ ageGroups: next })
   }
 
-  const removePricingRow = (id: string) => {
-    if (activePricing.pricingRows.length === 1) return // guard: never remove last row
-    updateActiveSport({
-      pricingRows: activePricing.pricingRows.filter(row => row.id !== id),
-    })
-  }
-
-  const addPricingRow = () => {
-    const used = activePricing.pricingRows.map(r => r.duration)
-    const nextDuration = DURATION_OPTIONS.find(d => !used.includes(d)) ?? '60 min'
-    updateActiveSport({
-      pricingRows: [
-        ...activePricing.pricingRows,
-        { id: Math.random().toString(36).substr(2, 9), duration: nextDuration, price: '' },
-      ],
-    })
-  }
-
   // ── CF-PRICE-01: group pricing handlers ────────────────────────────────────
 
   // Lowest group size (2–6) not yet priced — what the "+ Add X-player price"
@@ -586,22 +568,11 @@ export function PricingStep() {
                       />
                     </div>
                     <div className="text-[15px] text-gray-500 font-medium whitespace-nowrap hidden sm:block w-[80px]">per session</div>
-                    <button
-                      onClick={() => removePricingRow(row.id)}
-                      disabled={activePricing.pricingRows.length === 1}
-                      className="p-2 text-gray-400 hover:text-red-500 transition-colors rounded-lg hover:bg-red-50 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:text-gray-400 disabled:hover:bg-transparent"
-                    >
-                      <X size={20} />
-                    </button>
                   </div>
                   {/* C-PAY-04: live payout estimate as the coach types */}
                   <PayoutEstimate pricePence={poundsInputToPence(row.price)} />
                   </div>
                 ))}
-                <button onClick={addPricingRow} className="mt-2 flex items-center gap-1.5 text-[#0077CC] font-bold text-[14px] hover:text-blue-800 transition-colors w-fit">
-                  <Plus size={16} />
-                  Add another duration
-                </button>
               </div>
             </div>
           </div>
