@@ -60,6 +60,13 @@ describe('AppShell', () => {
   beforeEach(() => {
     jest.clearAllMocks()
     mockGetUser.mockResolvedValue({ data: { user: null } })
+    // P-06: ParentTodoBadge mounts inside parent context and fetches on
+    // mount. Default to count 0 so it stays invisible (null render) for
+    // every pre-existing assertion in this file that doesn't care about it.
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ count: 0, items: [] }),
+    })
   })
 
   it('renders logo, role pill and avatar in the 48px bar', () => {
@@ -181,5 +188,39 @@ describe('AppShell', () => {
     const { container } = render(<AppShell context="landing" selfFetch />)
     await waitFor(() => expect(mockGetUser).toHaveBeenCalled())
     expect(container.firstChild).toBeNull()
+  })
+
+  it('P-06: mounts the To-Do badge in parent context', async () => {
+    ;(global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        count: 1,
+        items: [{ type: 'add_child', href: '/parent/children/new' }],
+      }),
+    })
+    render(<AppShell context="parent" activeRole="parent" {...identity} />)
+    expect(await screen.findByTestId('parent-todo-badge')).toBeInTheDocument()
+  })
+
+  it('P-06: does not mount the To-Do badge in coach context', async () => {
+    ;(global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        count: 1,
+        items: [{ type: 'add_child', href: '/parent/children/new' }],
+      }),
+    })
+    render(
+      <AppShell
+        context="coach"
+        activeRole="coach"
+        {...identity}
+        roles={['coach']}
+      />,
+    )
+    // Give the (non-existent) badge's fetch a tick to have fired if it were
+    // present, then assert it never mounted.
+    await waitFor(() => expect(screen.getByTestId('app-shell')).toBeInTheDocument())
+    expect(screen.queryByTestId('parent-todo-badge')).not.toBeInTheDocument()
   })
 })
