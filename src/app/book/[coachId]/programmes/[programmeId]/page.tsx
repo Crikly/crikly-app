@@ -6,6 +6,7 @@ import { GuestEnrolmentFlow } from '@/components/booking/GuestEnrolmentFlow'
 import type { BookingSummary } from '@/components/booking/BookingSummaryCard'
 import { fetchProgrammeDetail } from '@/app/coaches/[id]/programmes/[programmeId]/_components/_data/programmeDetail'
 import { displayCommissionPence } from '@/lib/booking/commission-display'
+import { getCommissionRate } from '@/lib/booking/commission-rate'
 import { parseSelectionList, encodeSelection } from '@/lib/booking/slot-selection'
 
 // P-00c-ENROL — guest programme-enrolment checkout page. Mirrors the 1-to-1
@@ -96,6 +97,10 @@ export default async function ProgrammeEnrolmentCheckoutPage({
     notFound()
   }
 
+  // BUG-70: real rate from platform_config so the displayed fee matches the
+  // amount POST /api/guest/programme-enrolments will actually charge.
+  const commissionRate = await getCommissionRate()
+
   const summary: BookingSummary = {
     coachName: programme.coach.fullName,
     sportLabel: programme.sportName,
@@ -103,7 +108,7 @@ export default async function ProgrammeEnrolmentCheckoutPage({
     sessionTime: scheduleSummary,
     sessionType: sessionsSummary,
     sessionFeePence: coachSubtotalPence,
-    platformFeePence: displayCommissionPence(coachSubtotalPence),
+    platformFeePence: displayCommissionPence(coachSubtotalPence, commissionRate),
   }
 
   return (

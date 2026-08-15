@@ -3,6 +3,8 @@ import { PublicHeader } from '@/components/nav/PublicHeader'
 import { PublicFooter } from '@/components/public/PublicFooter'
 import { GuestBookingFlow, type GuestCheckoutParams } from '@/components/booking/GuestBookingFlow'
 import type { BookingSummary } from '@/components/booking/BookingSummaryCard'
+import { getCommissionRate } from '@/lib/booking/commission-rate'
+import { displayCommissionPence } from '@/lib/booking/commission-display'
 
 export const metadata: Metadata = {
   title: 'Complete your booking · Crikly',
@@ -32,12 +34,6 @@ interface ApiCoach {
 // preview). Real bookings always arrive with the slot params from the
 // availability page or the profile booking card.
 const FALLBACK_PRICE_PENCE = 4000
-
-// TODO(P-00c-COMMISSION-DISPLAY): fetch the rate from platform_config so the
-// displayed fee matches the charged amount. Today this is BR-02's default for
-// DISPLAY ONLY — the server re-reads platform_config and is authoritative, so an
-// admin changing the rate would make this label diverge from the real charge.
-const COMMISSION_RATE = 0.1
 
 type CheckoutError = 'payment' | 'slot_taken' | 'slot_unavailable' | 'price_changed'
 
@@ -142,7 +138,10 @@ export default async function GuestBookingPage({
   const sportPrice =
     sessionType === 'group' ? sport?.price_group_pence : sport?.price_individual_pence
   const pricePence = parsePricePence(sp.price, sportPrice ?? FALLBACK_PRICE_PENCE)
-  const platformFeePence = Math.round(pricePence * COMMISSION_RATE)
+  // BUG-70: real rate from platform_config so the displayed fee matches the
+  // amount POST /api/guest/bookings will actually charge.
+  const commissionRate = await getCommissionRate()
+  const platformFeePence = displayCommissionPence(pricePence, commissionRate)
 
   const date = firstParam(sp.date)
   const startTime = firstParam(sp.startTime)

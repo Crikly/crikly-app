@@ -26,6 +26,8 @@ interface ProgrammeScheduleProps {
   blockTotalPence: number | null
   spanLabel: string | null
   scheduleLabel: string
+  /** BUG-70: real platform rate from platform_config, fetched server-side. */
+  commissionRate: number
 }
 
 export function ProgrammeSchedule({
@@ -36,6 +38,7 @@ export function ProgrammeSchedule({
   blockTotalPence,
   spanLabel,
   scheduleLabel,
+  commissionRate,
 }: ProgrammeScheduleProps) {
   const router = useRouter()
   const [expanded, setExpanded] = useState(false)
@@ -44,7 +47,8 @@ export function ProgrammeSchedule({
   const visible = collapsible && !expanded ? schedule.slice(0, COLLAPSED_COUNT) : schedule
 
   // Parent total = coach block price + commission ON TOP (BR-01, display only).
-  const parentTotalPence = blockTotalPence !== null ? displayParentTotalPence(blockTotalPence) : null
+  const parentTotalPence =
+    blockTotalPence !== null ? displayParentTotalPence(blockTotalPence, commissionRate) : null
 
   function handleEnrol(): void {
     router.push(`/book/${coachId}/programmes/${programmeId}?block=true`)

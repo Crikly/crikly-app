@@ -6,6 +6,7 @@ import { CalendarDays, Clock, Users, CalendarRange, ShieldCheck, Star } from 'lu
 import { PublicHeader } from '@/components/nav/PublicHeader'
 import { PublicFooter } from '@/components/public/PublicFooter'
 import { fetchProgrammeDetail, type ProgrammeDetailView } from './_components/_data/programmeDetail'
+import { getCommissionRate } from '@/lib/booking/commission-rate'
 import { SessionPicker } from './_components/SessionPicker'
 import { ProgrammeSchedule } from './_components/ProgrammeSchedule'
 
@@ -206,6 +207,10 @@ export default async function ProgrammeDetailPage({
   const programme = await fetchProgrammeDetail(id, programmeId)
   if (!programme) notFound()
 
+  // BUG-70: real rate from platform_config, threaded to the client components
+  // so their running totals match what checkout will actually charge.
+  const commissionRate = await getCommissionRate()
+
   return (
     <div className="min-h-screen bg-white">
       <PublicHeader />
@@ -225,6 +230,7 @@ export default async function ProgrammeDetailPage({
               blockTotalPence={programme.blockTotalPence}
               spanLabel={programme.spanLabel}
               scheduleLabel={programme.scheduleLabel}
+              commissionRate={commissionRate}
             />
           ) : (
             <SessionPicker
@@ -234,6 +240,7 @@ export default async function ProgrammeDetailPage({
               campMode={programme.campMode}
               sessions={programme.sessions}
               campDays={programme.campDays}
+              commissionRate={commissionRate}
             />
           )}
         </div>
