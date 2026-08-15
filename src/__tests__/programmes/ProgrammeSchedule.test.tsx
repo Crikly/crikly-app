@@ -46,6 +46,7 @@ const DEFAULT_PROPS = {
   blockTotalPence: 22400 as number | null,
   spanLabel: '1 Jul – 19 Jul 2026' as string | null,
   scheduleLabel: 'Every Saturday · 9:00am – 10:00am',
+  commissionRate: 0.1,
 }
 
 afterEach(() => {
@@ -284,6 +285,7 @@ describe('ProgrammeSchedule — empty schedule', () => {
         blockTotalPence={null}
         spanLabel={null}
         scheduleLabel="Schedule TBC"
+        commissionRate={0.1}
       />,
     )
     expect(screen.getByTestId('programme-schedule')).toBeInTheDocument()
@@ -299,6 +301,7 @@ describe('ProgrammeSchedule — empty schedule', () => {
         blockTotalPence={null}
         spanLabel={null}
         scheduleLabel="Schedule TBC"
+        commissionRate={0.1}
       />,
     )
     expect(screen.queryByTestId('toggle-schedule')).not.toBeInTheDocument()
