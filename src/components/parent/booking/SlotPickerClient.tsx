@@ -1,20 +1,20 @@
 'use client'
 
-// P-10 Screen 1 (rev 3, Lasith 16 Aug): authed parent slot picker at
+// P-10 Screen 1 (rev 4, Lasith 16 Aug): authed parent slot picker at
 // /parent/book/[coachSlug], pattern-copied from the LIVE guest picker
 // (src/app/coaches/[id]/availability/_components/AvailabilityClient.tsx) so
 // the two flows look identical. The guest file itself is untouched — it stays
 // the guest funnel. Additions over the live layout:
 //   1. "How many players?" chips below the time slots — only when the coach
 //      has coach_sports.group_price_tiers; the total updates live.
-//   2. Player assignment replacing the guest "Who is this for?" inputs:
+//   2. Player selection replacing the guest "Who is this for?" inputs:
 //      - players === 1: ChildSelector (P-07) — primary child from profiles.
-//      - players > 1: one slot per player (including Player 1), each offering
-//        the parent's child avatars (a child can occupy at most ONE slot —
-//        picked children are dimmed in other slots) plus a dashed "Someone
-//        else" option revealing first-name + age inputs. "Someone else"
-//        players are ONE-SESSION details only — never child profiles, no
-//        Supabase write (approved Option C).
+//      - players > 1: ONE row of tappable child avatars (tap to select —
+//        green check ring; tap again to deselect) plus a "+" button that
+//        appends a guest row (first name + age + remove). Selections are
+//        capped at the player count: at max, unselected avatars dim and the
+//        "+" hides. Guest players are ONE-SESSION details only — never child
+//        profiles, no Supabase write (approved Option C).
 // Programme surfaces (Groups tab, purple calendar dots) are omitted:
 // programmes are a separate funnel and not part of P-10.
 //
@@ -25,7 +25,7 @@
 // sessionStorage handoff (child ids and player names never go in the URL —
 // docs/06 rules).
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -36,6 +36,7 @@ import {
   MapPin,
   Plus,
   ShieldCheck,
+  X,
 } from 'lucide-react'
 import {
   bookableSlots,
@@ -104,6 +105,11 @@ const DAY_S = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const MON_S = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const MON_L = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 
+// Selected-avatar ring/badge colour — the --success design token (#1A7A4A;
+// bg-success in Tailwind). CriklyAvatar's ringColor prop takes a colour
+// value, same as ChildSelector passing child.colour.
+const SUCCESS_GREEN = '#1A7A4A'
+
 /** Parse a 'YYYY-MM-DD' string into a local-time Date (no UTC shift). */
 function parseISO(iso: string): Date {
   const [y, m, d] = iso.split('-').map(Number)
@@ -116,18 +122,13 @@ interface MonthCell {
   date: Date
 }
 
-/** One player slot's local UI state (players > 1 mode only). 'guest' entries
- * are one-session details — never child profiles, never written to Supabase. */
-type SlotAssignment =
-  | { kind: 'none' }
-  | { kind: 'child'; childId: string }
-  | { kind: 'guest'; firstName: string; age: string }
-
-/** One assignment row per player, preserving anything already chosen/typed
- * when the player count changes. Empty for 1-on-1 mode. */
-function resizeAssignments(prev: SlotAssignment[], players: number): SlotAssignment[] {
-  if (players <= 1) return []
-  return Array.from({ length: players }, (_, i) => prev[i] ?? { kind: 'none' })
+/** A guest player row (players > 1 mode) — ONE-SESSION details only, never a
+ * child profile, never written to Supabase. `key` is a local render key so
+ * removing a middle row never re-associates input state. */
+interface GuestRow {
+  key: number
+  firstName: string
+  age: string
 }
 
 export function SlotPickerClient({ data }: { data: SlotPickerData }) {
@@ -148,11 +149,13 @@ export function SlotPickerClient({ data }: { data: SlotPickerData }) {
   const [selectedSlot, setSelectedSlot] = useState<GeneratedSlot | null>(null)
   const [players, setPlayers] = useState(1)
   const [selectedChildId, setSelectedChildId] = useState<string | null>(null)
-  const [assignments, setAssignments] = useState<SlotAssignment[]>([])
+  const [selectedChildIds, setSelectedChildIds] = useState<string[]>([])
+  const [guests, setGuests] = useState<GuestRow[]>([])
   const [holdStartedAt, setHoldStartedAt] = useState<number | null>(null)
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null)
   const [holdExpired, setHoldExpired] = useState(false)
   const [showSlotError, setShowSlotError] = useState(false)
+  const nextGuestKey = useRef(1)
 
   const blockedSet = useMemo(() => new Set(data.blockedDates), [data.blockedDates])
 
@@ -197,6 +200,12 @@ export function SlotPickerClient({ data }: { data: SlotPickerData }) {
     [data.childrenList],
   )
 
+  const makeGuestRow = (firstName = '', age = ''): GuestRow => ({
+    key: nextGuestKey.current++,
+    firstName,
+    age,
+  })
+
   // Resume a still-ticking hold on back-navigation from a later step — the
   // countdown must continue, not restart (approved brief).
   useEffect(() => {
@@ -217,19 +226,24 @@ export function SlotPickerClient({ data }: { data: SlotPickerData }) {
     setSelectedSlot(slot)
     setPlayers(hold.players)
     if (hold.players > 1 && hold.playerAssignments) {
-      setAssignments(
-        resizeAssignments(
-          hold.playerAssignments.map<SlotAssignment>((pa) =>
-            pa.kind === 'child' && childById.has(pa.childProfileId)
-              ? { kind: 'child', childId: pa.childProfileId }
-              : // Profile gone (or guest entry) — restore as one-session details.
-                { kind: 'guest', firstName: pa.firstName, age: pa.age },
-          ),
-          hold.players,
-        ),
-      )
-    } else {
-      setAssignments(resizeAssignments([], hold.players))
+      const kids: string[] = []
+      const guestRows: GuestRow[] = []
+      for (const pa of hold.playerAssignments) {
+        if (
+          pa.kind === 'child' &&
+          childById.has(pa.childProfileId) &&
+          !kids.includes(pa.childProfileId)
+        ) {
+          kids.push(pa.childProfileId)
+        } else {
+          // Guest entry, or a child whose profile has since disappeared —
+          // restore as one-session details from the denormalised name/age.
+          guestRows.push(makeGuestRow(pa.firstName, pa.age))
+        }
+      }
+      const cappedKids = kids.slice(0, hold.players)
+      setSelectedChildIds(cappedKids)
+      setGuests(guestRows.slice(0, Math.max(0, hold.players - cappedKids.length)))
     }
     if (hold.childProfileId) setSelectedChildId(hold.childProfileId)
     setHoldStartedAt(hold.holdStartedAt)
@@ -317,29 +331,18 @@ export function SlotPickerClient({ data }: { data: SlotPickerData }) {
   const selectedChild =
     data.childrenList.find((child) => child.id === selectedChildId) ?? null
 
-  // Which slot (if any) each profile child occupies — a child can be
-  // assigned to at most ONE slot; it renders dimmed everywhere else.
-  const slotByChildId = useMemo(() => {
-    const map = new Map<string, number>()
-    assignments.forEach((assignment, index) => {
-      if (assignment.kind === 'child') map.set(assignment.childId, index)
-    })
-    return map
-  }, [assignments])
+  // Pool cap: profile children + guest rows never exceed the player count.
+  const totalSelected = selectedChildIds.length + guests.length
+  const atMax = players > 1 && totalSelected >= players
 
   const hasSelection = selectedSlot !== null && totalPence !== null
 
-  // CTA rule (Lasith, 16 Aug): disabled until Player 1 has a selection —
-  // a profile child, or a "someone else" with a first name entered.
+  // CTA rule (Lasith, 16 Aug): disabled until at least one player is
+  // selected (a profile child) or has a name entered (a guest row).
   const primaryAssigned =
     players === 1
       ? selectedChildId !== null
-      : (() => {
-          const first = assignments[0]
-          if (!first) return false
-          if (first.kind === 'child') return true
-          return first.kind === 'guest' && first.firstName.trim() !== ''
-        })()
+      : selectedChildIds.length > 0 || guests.some((g) => g.firstName.trim() !== '')
   const canBook = hasSelection && primaryAssigned
 
   // ── Handlers (calendar handlers mirror the guest AvailabilityClient) ───────
@@ -400,19 +403,29 @@ export function SlotPickerClient({ data }: { data: SlotPickerData }) {
   }
 
   const selectPlayers = (count: number) => {
-    // Selection is sticky across the 1 ↔ group toggle: bumping to a group
-    // seeds Player 1 from the ChildSelector pick, and dropping back to 1
-    // keeps slot 0's child as the primary (the "+"-tile flow depends on it).
-    setAssignments((prev) => {
-      const next = resizeAssignments(prev, count)
-      if (count > 1 && players === 1 && selectedChildId && next[0]?.kind === 'none') {
-        next[0] = { kind: 'child', childId: selectedChildId }
+    // Selection is sticky across the 1 ↔ group toggle, and the pool is
+    // trimmed to the new cap when the count shrinks (children keep priority
+    // over guest rows, both in selection order).
+    if (count > 1) {
+      let kids = selectedChildIds
+      if (
+        players === 1 &&
+        selectedChildId &&
+        !kids.includes(selectedChildId)
+      ) {
+        kids = [selectedChildId, ...kids]
       }
-      return next
-    })
-    if (count === 1 && players > 1) {
-      const first = assignments[0]
-      if (first?.kind === 'child') setSelectedChildId(first.childId)
+      kids = kids.slice(0, count)
+      setSelectedChildIds(kids)
+      setGuests(guests.slice(0, Math.max(0, count - kids.length)))
+    } else if (count === 1 && players > 1) {
+      // Collapse the pool to the primary so a later group re-entry starts
+      // from truth — a stale pool would silently resurrect players the
+      // parent deselected (or replaced) while in 1-on-1 mode.
+      const primary = selectedChildIds[0] ?? selectedChildId
+      setSelectedChildId(primary)
+      setSelectedChildIds(primary ? [primary] : [])
+      setGuests([])
     }
     setPlayers(count)
     setHoldExpired(false)
@@ -421,91 +434,37 @@ export function SlotPickerClient({ data }: { data: SlotPickerData }) {
 
   const handleChildSelect = (childId: string) => {
     setSelectedChildId(childId)
+    // Keep the pool in lockstep while in 1-on-1 mode — a later group
+    // re-entry must seed from the CURRENT primary, not a stale pool.
+    setSelectedChildIds([childId])
     setShowSlotError(false)
   }
 
-  const assignChild = (slotIndex: number, childId: string) => {
+  const toggleChild = (childId: string) => {
     setShowSlotError(false)
-    setAssignments((prev) =>
-      prev.map((assignment, i) => {
-        if (i !== slotIndex) return assignment
-        // Tapping the already-selected child unassigns the slot.
-        return assignment.kind === 'child' && assignment.childId === childId
-          ? { kind: 'none' }
-          : { kind: 'child', childId }
-      }),
-    )
+    setSelectedChildIds((prev) => {
+      if (prev.includes(childId)) return prev.filter((id) => id !== childId)
+      // At the cap the avatar renders disabled, but guard anyway.
+      if (prev.length + guests.length >= players) return prev
+      return [...prev, childId]
+    })
   }
 
-  const toggleSomeoneElse = (slotIndex: number) => {
+  const addGuest = () => {
     setShowSlotError(false)
-    setAssignments((prev) =>
-      prev.map((assignment, i) => {
-        if (i !== slotIndex) return assignment
-        return assignment.kind === 'guest'
-          ? { kind: 'none' }
-          : { kind: 'guest', firstName: '', age: '' }
-      }),
-    )
+    if (totalSelected >= players) return
+    setGuests((prev) => [...prev, makeGuestRow()])
   }
 
-  // Non-toggle setters for keyboard navigation — arrow keys move AND select
-  // (radio semantics), so landing back on the current option must not
-  // unassign it the way a repeat click does.
-  const setSlotToChild = (slotIndex: number, childId: string) => {
+  const removeGuest = (key: number) => {
     setShowSlotError(false)
-    setAssignments((prev) =>
-      prev.map((a, i) => (i === slotIndex ? { kind: 'child', childId } : a)),
-    )
+    setGuests((prev) => prev.filter((guest) => guest.key !== key))
   }
 
-  const setSlotToGuest = (slotIndex: number) => {
+  const updateGuest = (key: number, patch: Partial<{ firstName: string; age: string }>) => {
     setShowSlotError(false)
-    setAssignments((prev) =>
-      prev.map((a, i) =>
-        i === slotIndex && a.kind !== 'guest'
-          ? { kind: 'guest', firstName: '', age: '' }
-          : a,
-      ),
-    )
-  }
-
-  // Radiogroup keyboard contract, mirroring ChildSelector (P-07): arrow keys
-  // move focus and select, skipping children already used by another slot
-  // (they render disabled). Options are resolved from the DOM so the child
-  // list and the "Someone else" tile stay one roving group per slot.
-  const handleSlotRadioKeyDown =
-    (slotIndex: number) => (event: React.KeyboardEvent<HTMLButtonElement>) => {
-      const forward = event.key === 'ArrowRight' || event.key === 'ArrowDown'
-      const backward = event.key === 'ArrowLeft' || event.key === 'ArrowUp'
-      if (!forward && !backward) return
-      event.preventDefault()
-      const group = event.currentTarget.closest('[role="radiogroup"]')
-      if (!group) return
-      const radios = Array.from(
-        group.querySelectorAll<HTMLButtonElement>('[role="radio"]:not([disabled])'),
-      )
-      const current = radios.indexOf(event.currentTarget)
-      if (current === -1 || radios.length < 2) return
-      const next = radios[(current + (forward ? 1 : -1) + radios.length) % radios.length]
-      if (!next) return
-      const childId = next.getAttribute('data-child-id')
-      if (childId) setSlotToChild(slotIndex, childId)
-      else setSlotToGuest(slotIndex)
-      next.focus()
-    }
-
-  const updateGuestSlot = (
-    slotIndex: number,
-    patch: Partial<{ firstName: string; age: string }>,
-  ) => {
-    setShowSlotError(false)
-    setAssignments((prev) =>
-      prev.map((assignment, i) =>
-        i === slotIndex && assignment.kind === 'guest'
-          ? { ...assignment, ...patch }
-          : assignment,
-      ),
+    setGuests((prev) =>
+      prev.map((guest) => (guest.key === key ? { ...guest, ...patch } : guest)),
     )
   }
 
@@ -541,40 +500,37 @@ export function SlotPickerClient({ data }: { data: SlotPickerData }) {
         childProfileId: selectedChildId,
       })
     } else {
-      // Every slot needs an occupant, and every "someone else" a first name
-      // (age optional, as in the guest flow). Inline error, never a dialog.
-      const incomplete = assignments.some(
-        (a) => a.kind === 'none' || (a.kind === 'guest' && !a.firstName.trim()),
-      )
-      if (incomplete) {
+      // Every guest row that was added needs a first name (age optional, as
+      // in the guest flow). Inline error, never a dialog.
+      if (guests.some((g) => !g.firstName.trim())) {
         setShowSlotError(true)
         return
       }
-      const playerAssignments: PlayerAssignment[] = assignments.map((a) => {
-        if (a.kind === 'child') {
-          const child = childById.get(a.childId)
+      const playerAssignments: PlayerAssignment[] = [
+        ...selectedChildIds.map((id): PlayerAssignment => {
+          const child = childById.get(id)
           return {
             kind: 'child',
-            childProfileId: a.childId,
+            childProfileId: id,
             firstName: child?.firstName ?? '',
             age: child ? String(child.age) : '',
           }
-        }
-        // 'none' is excluded by the incomplete guard above.
-        return {
-          kind: 'guest',
-          firstName: a.kind === 'guest' ? a.firstName.trim() : '',
-          age: a.kind === 'guest' ? a.age : '',
-        }
-      })
-      const first = assignments[0]
+        }),
+        ...guests.map(
+          (g): PlayerAssignment => ({
+            kind: 'guest',
+            firstName: g.firstName.trim(),
+            age: g.age,
+          }),
+        ),
+      ]
       stashBookingHold({
         coachSlug: data.coachSlug,
         date: selectedISO,
         startTime: selectedSlot.time,
         players,
         holdStartedAt,
-        childProfileId: first?.kind === 'child' ? first.childId : undefined,
+        childProfileId: selectedChildIds[0],
         playerAssignments,
       })
     }
@@ -599,10 +555,10 @@ export function SlotPickerClient({ data }: { data: SlotPickerData }) {
 
   const primaryFirstName = (() => {
     if (players === 1) return selectedChild?.firstName ?? null
-    const first = assignments[0]
-    if (first?.kind === 'child') return childById.get(first.childId)?.firstName ?? null
-    if (first?.kind === 'guest' && first.firstName.trim()) return first.firstName.trim()
-    return null
+    const firstChildId = selectedChildIds[0]
+    if (firstChildId) return childById.get(firstChildId)?.firstName ?? null
+    const namedGuest = guests.find((g) => g.firstName.trim())
+    return namedGuest ? namedGuest.firstName.trim() : null
   })()
 
   if (!hasAnyAvailability) {
@@ -833,10 +789,11 @@ export function SlotPickerClient({ data }: { data: SlotPickerData }) {
             )}
           </div>
 
-          {/* P-10 addition 2: player assignment. 1-on-1 keeps ChildSelector
+          {/* P-10 addition 2: player selection. 1-on-1 keeps ChildSelector
               (P-07, untouched — capture wrapper redirects the "+" tile in the
-              group context, see handleAddTileCapture). Group mode renders one
-              slot per player, each offering profile children + "Someone else". */}
+              group context, see handleAddTileCapture). Group mode renders ONE
+              row of toggleable child avatars plus a "+" that appends guest
+              rows, capped at the player count. */}
           <div className="px-5 sm:px-6 pb-6 pt-5 border-t border-gray-100">
             {players === 1 ? (
               <div onClickCapture={handleAddTileCapture}>
@@ -847,194 +804,151 @@ export function SlotPickerClient({ data }: { data: SlotPickerData }) {
                 />
               </div>
             ) : (
-              <div className="flex flex-col gap-3" data-testid="player-slots">
+              <div className="flex flex-col gap-3" data-testid="player-selection">
                 <span className="text-base font-medium text-neutral-900">
                   Who is this session for?
                 </span>
                 <p className="text-[13px] text-gray-500">
-                  &ldquo;Someone else&rdquo; players are for this session only — no profile
-                  needed.
+                  Guest players are for this session only — no profile needed.
                 </p>
-                {assignments.map((assignment, index) => {
-                  const playerNumber = index + 1
-                  const isGuest = assignment.kind === 'guest'
-                  // Roving tabindex: the slot's selected option sits in the
-                  // tab order; with nothing selected, the first pickable
-                  // option does (same contract as ChildSelector).
-                  const firstPickableChildId =
-                    data.childrenList.find(
-                      (c) =>
-                        (assignment.kind === 'child' && assignment.childId === c.id) ||
-                        !slotByChildId.has(c.id),
-                    )?.id ?? null
-                  const tabKey =
-                    assignment.kind === 'child'
-                      ? assignment.childId
-                      : isGuest
-                        ? 'guest'
-                        : (firstPickableChildId ?? 'guest')
+
+                <div
+                  role="group"
+                  aria-label="Who is this session for?"
+                  className="flex items-start gap-4 overflow-x-auto pb-1"
+                >
+                  {data.childrenList.map((child) => {
+                    const selected = selectedChildIds.includes(child.id)
+                    const dimmed = !selected && atMax
+                    return (
+                      <button
+                        key={child.id}
+                        type="button"
+                        aria-pressed={selected}
+                        disabled={dimmed}
+                        onClick={() => toggleChild(child.id)}
+                        data-testid={`select-child-${child.id}`}
+                        className={`flex min-w-[72px] flex-col items-center gap-2 ${
+                          dimmed ? 'opacity-40 cursor-not-allowed' : ''
+                        }`}
+                      >
+                        <span className="relative inline-block">
+                          <CriklyAvatar
+                            seed={child.firstName}
+                            style="adventurer"
+                            size={56}
+                            ringColor={selected ? SUCCESS_GREEN : child.colour}
+                            ringWidth={selected ? 3 : 1.5}
+                            alt={`${child.firstName}, age ${child.age}`}
+                          />
+                          {selected && (
+                            <span
+                              className="absolute -bottom-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-success text-white"
+                              aria-hidden
+                            >
+                              <Check size={12} strokeWidth={3} />
+                            </span>
+                          )}
+                        </span>
+                        <span
+                          className={`text-sm text-neutral-900 ${
+                            selected ? 'font-bold' : 'font-normal'
+                          }`}
+                        >
+                          {child.firstName}
+                        </span>
+                      </button>
+                    )
+                  })}
+
+                  {!atMax && (
+                    <button
+                      type="button"
+                      onClick={addGuest}
+                      aria-label="Add a guest player"
+                      data-testid="add-guest-player"
+                      className="flex min-w-[72px] flex-col items-center gap-2"
+                    >
+                      <span className="flex h-14 w-14 items-center justify-center rounded-full border-[1.5px] border-dashed border-neutral-400 bg-white">
+                        <Plus size={22} className="text-neutral-400" aria-hidden />
+                      </span>
+                      <span className="text-sm text-neutral-600">Add player</span>
+                    </button>
+                  )}
+                </div>
+
+                {guests.map((guest, index) => {
+                  const guestNumber = index + 1
+                  const nameMissing = showSlotError && !guest.firstName.trim()
                   return (
                     <div
-                      key={playerNumber}
-                      className="rounded-xl border border-gray-200 p-4"
-                      data-testid={`player-slot-${playerNumber}`}
+                      key={guest.key}
+                      className="grid grid-cols-[1fr_84px_auto] items-end gap-3 rounded-xl border border-gray-200 p-4"
+                      data-testid={`guest-row-${guestNumber}`}
                     >
-                      <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-3">
-                        Player {playerNumber}
-                      </p>
-                      <div
-                        role="radiogroup"
-                        aria-label={`Player ${playerNumber}`}
-                        className="flex items-start gap-4 overflow-x-auto pb-1"
-                      >
-                        {data.childrenList.map((child) => {
-                          const selectedHere =
-                            assignment.kind === 'child' && assignment.childId === child.id
-                          // A profile child can occupy at most one slot —
-                          // dimmed (not pickable) everywhere else.
-                          const usedElsewhere = !selectedHere && slotByChildId.has(child.id)
-                          return (
-                            <button
-                              key={child.id}
-                              type="button"
-                              role="radio"
-                              aria-checked={selectedHere}
-                              disabled={usedElsewhere}
-                              tabIndex={tabKey === child.id ? 0 : -1}
-                              data-child-id={child.id}
-                              onClick={() => assignChild(index, child.id)}
-                              onKeyDown={handleSlotRadioKeyDown(index)}
-                              data-testid={`player-${playerNumber}-child-${child.id}`}
-                              className={`flex min-w-[72px] flex-col items-center gap-2 ${
-                                usedElsewhere ? 'opacity-40 cursor-not-allowed' : ''
-                              }`}
-                            >
-                              <span className="relative inline-block">
-                                <CriklyAvatar
-                                  seed={child.firstName}
-                                  style="adventurer"
-                                  size={56}
-                                  ringColor={child.colour}
-                                  ringWidth={selectedHere ? 3 : 1.5}
-                                  alt={`${child.firstName}, age ${child.age}`}
-                                />
-                                {selectedHere && (
-                                  /* Identity colour is data-driven — same
-                                     inline-background pattern as ChildSelector. */
-                                  <span
-                                    className="absolute -bottom-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full text-white"
-                                    style={{ backgroundColor: child.colour }}
-                                    aria-hidden
-                                  >
-                                    <Check size={12} strokeWidth={3} />
-                                  </span>
-                                )}
-                              </span>
-                              <span
-                                className={`text-sm text-neutral-900 ${
-                                  selectedHere ? 'font-bold' : 'font-normal'
-                                }`}
-                              >
-                                {child.firstName}
-                              </span>
-                            </button>
-                          )
-                        })}
-
-                        <button
-                          type="button"
-                          role="radio"
-                          aria-checked={isGuest}
-                          tabIndex={tabKey === 'guest' ? 0 : -1}
-                          onClick={() => toggleSomeoneElse(index)}
-                          onKeyDown={handleSlotRadioKeyDown(index)}
-                          data-testid={`player-${playerNumber}-someone-else`}
-                          className="flex min-w-[72px] flex-col items-center gap-2"
+                      <div>
+                        <label
+                          htmlFor={`guest-${guest.key}-name`}
+                          className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-1.5"
                         >
-                          <span
-                            className={`flex h-14 w-14 items-center justify-center rounded-full border-[1.5px] ${
-                              isGuest
-                                ? 'border-brand-600 bg-brand-50'
-                                : 'border-dashed border-neutral-400 bg-white'
-                            }`}
-                          >
-                            <Plus
-                              size={22}
-                              className={isGuest ? 'text-brand-600' : 'text-neutral-400'}
-                              aria-hidden
-                            />
-                          </span>
-                          <span
-                            className={`text-sm ${
-                              isGuest ? 'font-bold text-brand-600' : 'text-neutral-600'
-                            }`}
-                          >
-                            Someone else
-                          </span>
-                        </button>
+                          First name
+                        </label>
+                        <input
+                          id={`guest-${guest.key}-name`}
+                          type="text"
+                          autoComplete="off"
+                          placeholder="e.g. Sam"
+                          value={guest.firstName}
+                          onChange={(e) => updateGuest(guest.key, { firstName: e.target.value })}
+                          aria-invalid={nameMissing}
+                          aria-describedby={showSlotError ? 'player-selection-error' : undefined}
+                          data-testid={`guest-name-${guestNumber}`}
+                          className={`w-full h-11 px-3.5 rounded-xl bg-gray-50 border text-[15px] text-gray-900 placeholder:text-gray-400 outline-none focus:bg-white focus:border-brand-600 transition-all ${
+                            nameMissing ? 'border-danger' : 'border-gray-200'
+                          }`}
+                        />
                       </div>
-
-                      {isGuest && (
-                        <div className="mt-3 grid grid-cols-[1fr_84px] gap-3">
-                          <div>
-                            <label
-                              htmlFor={`player-${playerNumber}-name`}
-                              className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-1.5"
-                            >
-                              First name
-                            </label>
-                            <input
-                              id={`player-${playerNumber}-name`}
-                              type="text"
-                              autoComplete="off"
-                              placeholder="e.g. Sam"
-                              value={assignment.firstName}
-                              onChange={(e) =>
-                                updateGuestSlot(index, { firstName: e.target.value })
-                              }
-                              aria-invalid={showSlotError && !assignment.firstName.trim()}
-                              aria-describedby={showSlotError ? 'player-slots-error' : undefined}
-                              data-testid={`player-name-${playerNumber}`}
-                              className={`w-full h-11 px-3.5 rounded-xl bg-gray-50 border text-[15px] text-gray-900 placeholder:text-gray-400 outline-none focus:bg-white focus:border-brand-600 transition-all ${
-                                showSlotError && !assignment.firstName.trim()
-                                  ? 'border-danger'
-                                  : 'border-gray-200'
-                              }`}
-                            />
-                          </div>
-                          <div>
-                            <label
-                              htmlFor={`player-${playerNumber}-age`}
-                              className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-1.5"
-                            >
-                              Age
-                            </label>
-                            <select
-                              id={`player-${playerNumber}-age`}
-                              value={assignment.age}
-                              onChange={(e) => updateGuestSlot(index, { age: e.target.value })}
-                              data-testid={`player-age-${playerNumber}`}
-                              className="w-full h-11 px-3 rounded-xl bg-gray-50 border border-gray-200 text-[15px] text-gray-900 outline-none focus:bg-white focus:border-brand-600 transition-all"
-                            >
-                              <option value="">–</option>
-                              {Array.from({ length: 16 }, (_, i) => i + 3).map((age) => (
-                                <option key={age} value={age}>{age}</option>
-                              ))}
-                            </select>
-                          </div>
-                        </div>
-                      )}
+                      <div>
+                        <label
+                          htmlFor={`guest-${guest.key}-age`}
+                          className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-1.5"
+                        >
+                          Age
+                        </label>
+                        <select
+                          id={`guest-${guest.key}-age`}
+                          value={guest.age}
+                          onChange={(e) => updateGuest(guest.key, { age: e.target.value })}
+                          data-testid={`guest-age-${guestNumber}`}
+                          className="w-full h-11 px-3 rounded-xl bg-gray-50 border border-gray-200 text-[15px] text-gray-900 outline-none focus:bg-white focus:border-brand-600 transition-all"
+                        >
+                          <option value="">–</option>
+                          {Array.from({ length: 16 }, (_, i) => i + 3).map((age) => (
+                            <option key={age} value={age}>{age}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeGuest(guest.key)}
+                        aria-label={`Remove guest player ${guestNumber}`}
+                        data-testid={`remove-guest-${guestNumber}`}
+                        className="flex h-11 w-11 items-center justify-center rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-gray-900 transition-colors"
+                      >
+                        <X className="w-4 h-4" aria-hidden="true" />
+                      </button>
                     </div>
                   )
                 })}
+
                 {showSlotError && (
                   <p
-                    id="player-slots-error"
+                    id="player-selection-error"
                     className="text-[12px] text-danger"
                     role="alert"
-                    data-testid="player-slots-error"
+                    data-testid="player-selection-error"
                   >
-                    Choose a player or add their name for each player slot.
+                    Add each guest player&apos;s first name to continue.
                   </p>
                 )}
               </div>
