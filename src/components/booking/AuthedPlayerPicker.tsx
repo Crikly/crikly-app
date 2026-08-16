@@ -314,9 +314,6 @@ export function AuthedPlayerPicker({
           <span className="text-base font-medium text-neutral-900">
             Who is this session for?
           </span>
-          <p className="text-[13px] text-gray-500">
-            Guest players are for this session only — no profile needed.
-          </p>
 
           <div
             role="group"
@@ -382,6 +379,13 @@ export function AuthedPlayerPicker({
               </button>
             )}
           </div>
+
+          {/* Below the avatar row (Lasith fix, 16 Aug): rendering this line
+              above it made the avatars jump vertically when the player count
+              toggled between 1 and 2+. */}
+          <p className="text-[13px] text-gray-500">
+            Guest players are for this session only — no profile needed.
+          </p>
 
           {guests.map((guest, index) => {
             const guestNumber = index + 1
