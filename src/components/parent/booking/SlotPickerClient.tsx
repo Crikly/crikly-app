@@ -48,6 +48,7 @@ import {
   clearBookingHold,
   readBookingHold,
   stashBookingHold,
+  type AdditionalPlayer,
 } from '@/lib/booking/authed-booking-handoff'
 import {
   ChildSelector,
@@ -105,6 +106,23 @@ interface MonthCell {
   date: Date
 }
 
+/** players-1 extra-player rows, preserving anything already typed when the
+ * count changes. Extra players are ONE-SESSION details only — never child
+ * profiles, never written to Supabase (Lasith, 16 Aug). */
+function resizeAdditionalPlayers(
+  prev: AdditionalPlayer[],
+  players: number,
+): AdditionalPlayer[] {
+  // Shape-check each entry — sessionStorage content is untrusted (same
+  // defence-in-depth as readBookingHold's childProfileId validation).
+  return Array.from({ length: Math.max(0, players - 1) }, (_, i) => {
+    const candidate = prev[i]
+    return typeof candidate?.firstName === 'string' && typeof candidate?.age === 'string'
+      ? candidate
+      : { firstName: '', age: '' }
+  })
+}
+
 export function SlotPickerClient({ data }: { data: SlotPickerData }) {
   const router = useRouter()
 
@@ -123,10 +141,12 @@ export function SlotPickerClient({ data }: { data: SlotPickerData }) {
   const [selectedSlot, setSelectedSlot] = useState<GeneratedSlot | null>(null)
   const [players, setPlayers] = useState(1)
   const [selectedChildId, setSelectedChildId] = useState<string | null>(null)
+  const [additionalPlayers, setAdditionalPlayers] = useState<AdditionalPlayer[]>([])
   const [holdStartedAt, setHoldStartedAt] = useState<number | null>(null)
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null)
   const [holdExpired, setHoldExpired] = useState(false)
   const [showChildError, setShowChildError] = useState(false)
+  const [showExtraPlayerError, setShowExtraPlayerError] = useState(false)
 
   const blockedSet = useMemo(() => new Set(data.blockedDates), [data.blockedDates])
 
@@ -185,6 +205,9 @@ export function SlotPickerClient({ data }: { data: SlotPickerData }) {
     setSelectedISO(hold.date)
     setSelectedSlot(slot)
     setPlayers(hold.players)
+    setAdditionalPlayers(
+      resizeAdditionalPlayers(hold.additionalPlayers ?? [], hold.players),
+    )
     if (hold.childProfileId) setSelectedChildId(hold.childProfileId)
     setHoldStartedAt(hold.holdStartedAt)
     setSecondsLeft(remaining)
@@ -332,12 +355,37 @@ export function SlotPickerClient({ data }: { data: SlotPickerData }) {
 
   const selectPlayers = (count: number) => {
     setPlayers(count)
+    setAdditionalPlayers((prev) => resizeAdditionalPlayers(prev, count))
     setHoldExpired(false)
+    setShowExtraPlayerError(false)
   }
 
   const handleChildSelect = (childId: string) => {
     setSelectedChildId(childId)
     setShowChildError(false)
+  }
+
+  const updateAdditionalPlayer = (index: number, patch: Partial<AdditionalPlayer>) => {
+    setAdditionalPlayers((prev) =>
+      prev.map((player, i) => (i === index ? { ...player, ...patch } : player)),
+    )
+    setShowExtraPlayerError(false)
+  }
+
+  // Group context (Lasith, 16 Aug): when the coach offers group sessions and
+  // the parent already has children, the ChildSelector "+" tile means "add
+  // another player to THIS session" — bump the player count instead of
+  // navigating to /parent/children/new. With NO children the default add-child
+  // navigation stands (a parent must create their first child profile).
+  // Implemented as a capture-phase intercept because ChildSelector (P-07) is
+  // reused untouched; next/link skips navigation once default is prevented.
+  const handleAddTileCapture = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (!offersGroups || data.childrenList.length === 0) return
+    const target = event.target as Element
+    if (!target.closest('[data-testid="child-selector-add"]')) return
+    event.preventDefault()
+    const next = playerOptions.find((count) => count > players)
+    if (next !== undefined) selectPlayers(next)
   }
 
   const handleBook = () => {
@@ -348,9 +396,15 @@ export function SlotPickerClient({ data }: { data: SlotPickerData }) {
       setShowChildError(true)
       return
     }
-    // Child id travels via sessionStorage only — never the URL (docs/06
-    // child-data rules). The URL carries non-PII slot facts so the summary
-    // page can server-render.
+    // Every extra group player needs a first name (age optional, as in the
+    // guest flow). One-session details only — no profile is created.
+    if (players > 1 && additionalPlayers.some((p) => !p.firstName.trim())) {
+      setShowExtraPlayerError(true)
+      return
+    }
+    // Child id and extra players' names travel via sessionStorage only —
+    // never the URL (docs/06 child-data rules). The URL carries non-PII slot
+    // facts so the summary page can server-render.
     stashBookingHold({
       coachSlug: data.coachSlug,
       date: selectedISO,
@@ -358,6 +412,10 @@ export function SlotPickerClient({ data }: { data: SlotPickerData }) {
       players,
       holdStartedAt,
       childProfileId: selectedChildId,
+      additionalPlayers:
+        players > 1
+          ? additionalPlayers.map((p) => ({ firstName: p.firstName.trim(), age: p.age }))
+          : undefined,
     })
     const q = new URLSearchParams()
     q.set('date', selectedISO)
@@ -605,17 +663,93 @@ export function SlotPickerClient({ data }: { data: SlotPickerData }) {
             )}
           </div>
 
-          {/* P-10 addition 2: ChildSelector replaces the guest name/age inputs */}
+          {/* P-10 addition 2: ChildSelector replaces the guest name/age inputs.
+              The capture wrapper redirects the "+" tile in the group context —
+              see handleAddTileCapture. */}
           <div className="px-5 sm:px-6 pb-6 pt-5 border-t border-gray-100">
-            <ChildSelector
-              childrenList={data.childrenList}
-              selectedChildId={selectedChildId}
-              onSelect={handleChildSelect}
-            />
+            <div onClickCapture={handleAddTileCapture}>
+              <ChildSelector
+                childrenList={data.childrenList}
+                selectedChildId={selectedChildId}
+                onSelect={handleChildSelect}
+              />
+            </div>
             {showChildError && (
               <p className="text-[12px] text-danger mt-2.5" role="alert" data-testid="child-required-error">
                 Choose who this session is for to continue.
               </p>
+            )}
+
+            {/* Extra group players — one-session details only, never child
+                profiles, never written to Supabase. */}
+            {players > 1 && (
+              <div className="mt-4 flex flex-col gap-3" data-testid="extra-players">
+                <p className="text-[13px] text-gray-500">
+                  Extra players are for this session only — no profile needed.
+                </p>
+                {additionalPlayers.map((player, index) => {
+                  const playerNumber = index + 2
+                  const nameMissing = showExtraPlayerError && !player.firstName.trim()
+                  return (
+                    <div key={playerNumber} className="rounded-xl border border-gray-200 p-4">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-2">
+                        Player {playerNumber}
+                      </p>
+                      <div className="grid grid-cols-[1fr_84px] gap-3">
+                        <div>
+                          <label
+                            htmlFor={`player-${playerNumber}-name`}
+                            className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-1.5"
+                          >
+                            First name
+                          </label>
+                          <input
+                            id={`player-${playerNumber}-name`}
+                            type="text"
+                            autoComplete="off"
+                            placeholder="e.g. Sam"
+                            value={player.firstName}
+                            onChange={(e) =>
+                              updateAdditionalPlayer(index, { firstName: e.target.value })
+                            }
+                            data-testid={`extra-player-name-${playerNumber}`}
+                            className={`w-full h-11 px-3.5 rounded-xl bg-gray-50 border text-[15px] text-gray-900 placeholder:text-gray-400 outline-none focus:bg-white focus:border-brand-600 transition-all ${
+                              nameMissing ? 'border-danger' : 'border-gray-200'
+                            }`}
+                          />
+                        </div>
+                        <div>
+                          <label
+                            htmlFor={`player-${playerNumber}-age`}
+                            className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-1.5"
+                          >
+                            Age
+                          </label>
+                          <select
+                            id={`player-${playerNumber}-age`}
+                            value={player.age}
+                            onChange={(e) =>
+                              updateAdditionalPlayer(index, { age: e.target.value })
+                            }
+                            data-testid={`extra-player-age-${playerNumber}`}
+                            className="w-full h-11 px-3 rounded-xl bg-gray-50 border border-gray-200 text-[15px] text-gray-900 outline-none focus:bg-white focus:border-brand-600 transition-all"
+                          >
+                            <option value="">–</option>
+                            {Array.from({ length: 16 }, (_, i) => i + 3).map((age) => (
+                              <option key={age} value={age}>{age}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+                {showExtraPlayerError && (
+                  <p className="text-[12px] text-danger" role="alert" data-testid="extra-player-error">
+                    Add each player&apos;s first name to continue.
+                  </p>
+                )}
+              </div>
             )}
           </div>
 
