@@ -1,23 +1,33 @@
 'use client'
 
-// P-10 Screen 1: authed parent slot picker (approved Claude Design
-// "Parent Booking Flow P-10", S1 mobile + desktop frames). Calendar month
-// view, available times for the selected date, "How many players?" when the
-// coach offers group pricing, and an ADVISORY 10-minute hold countdown that
-// starts on slot tap (approved Option C — the countdown is UX only; the real
-// double-booking guard is the coach_time_claims exclusion constraint fired by
-// the checkout's booking insert). The duration selector from the design was
-// dropped per BUG-52 (one fixed duration per coach sport) — duration shows as
-// fixed info in the times caption instead.
+// P-10 Screen 1 (rev 2, Lasith 16 Aug): authed parent slot picker at
+// /parent/book/[coachSlug], pattern-copied from the LIVE guest picker
+// (src/app/coaches/[id]/availability/_components/AvailabilityClient.tsx) so
+// the two flows look identical. The guest file itself is untouched — it stays
+// the guest funnel. Exactly two additions over the live layout:
+//   1. "How many players?" chips below the time slots — only when the coach
+//      has coach_sports.group_price_tiers; the total updates live.
+//   2. ChildSelector (P-07) replaces the guest "Who is this for?" name/age
+//      inputs — the primary player comes from the parent's child profiles.
+// Programme surfaces (Groups tab, purple calendar dots) are omitted:
+// programmes are a separate funnel and not part of P-10.
 //
-// Runs on live availability data via the same pure expansion the guest flow
-// and the booking API validate with (lib/availability/slots.ts) — read side
-// and write side cannot drift. Guest flow files are untouched.
+// Carried over from rev 1 unchanged: the ADVISORY 10-minute hold countdown
+// (approved Option C — UX only; the real double-booking guard is the
+// coach_time_claims exclusion constraint fired by checkout's booking insert),
+// commission-inclusive total from getCommissionRate() (BUG-70), and the
+// sessionStorage handoff (child id never goes in the URL — docs/06 rules).
 
 import { useEffect, useMemo, useState } from 'react'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ArrowRight, ChevronLeft, ChevronRight, Clock } from 'lucide-react'
+import Link from 'next/link'
+import {
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  MapPin,
+  ShieldCheck,
+} from 'lucide-react'
 import {
   bookableSlots,
   localISODate,
@@ -39,6 +49,10 @@ import {
   readBookingHold,
   stashBookingHold,
 } from '@/lib/booking/authed-booking-handoff'
+import {
+  ChildSelector,
+  type ChildSelectorOption,
+} from '@/components/parent/children/ChildSelector'
 
 /** A live booking's occupied interval from the availability API — intervals
  * only, never booking identity (BUG-14 shape). */
@@ -68,17 +82,18 @@ export interface SlotPickerData {
   bookedSlots: AuthedBookedSlot[]
   minAdvanceHours: number
   maxAdvanceDays: number
+  cancellationWindowHours: number
+  /** Parent's child profiles, assembled server-side (COPPA — never fetched
+   * client-side). Empty for a parent with no children yet. */
+  childrenList: ChildSelectorOption[]
 }
 
-const MON_L = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
-]
+const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const DAY_S = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const MON_S = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-const WEEKDAY_HEADERS = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
+const MON_L = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 
-/** Parse 'YYYY-MM-DD' into a local-time Date (no UTC shift). */
+/** Parse a 'YYYY-MM-DD' string into a local-time Date (no UTC shift). */
 function parseISO(iso: string): Date {
   const [y, m, d] = iso.split('-').map(Number)
   return new Date(y, m - 1, d)
@@ -93,8 +108,8 @@ interface MonthCell {
 export function SlotPickerClient({ data }: { data: SlotPickerData }) {
   const router = useRouter()
 
-  // "now" captured once so calendar math stays stable across re-renders
-  // (same convention as the guest AvailabilityClient).
+  // "now" captured once via a lazy initializer so calendar math stays stable
+  // across re-renders (same convention as the guest AvailabilityClient).
   const [now] = useState(() => new Date())
   const today = useMemo(() => {
     const d = new Date(now)
@@ -107,13 +122,15 @@ export function SlotPickerClient({ data }: { data: SlotPickerData }) {
   const [selectedISO, setSelectedISO] = useState<string | null>(null)
   const [selectedSlot, setSelectedSlot] = useState<GeneratedSlot | null>(null)
   const [players, setPlayers] = useState(1)
+  const [selectedChildId, setSelectedChildId] = useState<string | null>(null)
   const [holdStartedAt, setHoldStartedAt] = useState<number | null>(null)
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null)
   const [holdExpired, setHoldExpired] = useState(false)
+  const [showChildError, setShowChildError] = useState(false)
 
   const blockedSet = useMemo(() => new Set(data.blockedDates), [data.blockedDates])
 
-  // Live bookings as minute-intervals per date (BUG-14) — a booked slot
+  // BUG-14: live bookings as minute-intervals per date — a booked slot
   // disappears from the picker entirely.
   const bookedIntervalsByDate = useMemo(() => {
     const map: Record<string, Interval[]> = {}
@@ -168,6 +185,7 @@ export function SlotPickerClient({ data }: { data: SlotPickerData }) {
     setSelectedISO(hold.date)
     setSelectedSlot(slot)
     setPlayers(hold.players)
+    if (hold.childProfileId) setSelectedChildId(hold.childProfileId)
     setHoldStartedAt(hold.holdStartedAt)
     setSecondsLeft(remaining)
     // Mount-only restore by design: slotsFor is stable for the lifetime of
@@ -217,25 +235,14 @@ export function SlotPickerClient({ data }: { data: SlotPickerData }) {
     return cells
   }, [viewYear, viewMonth])
 
-  const availableISOs = useMemo(() => {
-    const set = new Set<string>()
-    for (const cell of monthCells) {
-      if (cell && slotsFor(cell.date).length > 0) set.add(cell.iso)
-    }
-    return set
-  }, [monthCells, slotsFor])
-
   const hasAnyAvailability = useMemo(() => {
-    if (availableISOs.size > 0) return true
-    // Look across the whole booking horizon so the empty state only shows
-    // when the coach truly has nothing bookable (not just a quiet month).
     for (let offset = 0; offset <= data.maxAdvanceDays; offset++) {
       const d = new Date(today)
       d.setDate(today.getDate() + offset)
       if (slotsFor(d).length > 0) return true
     }
     return false
-  }, [availableISOs, data.maxAdvanceDays, slotsFor, today])
+  }, [data.maxAdvanceDays, slotsFor, today])
 
   const prevDisabled =
     viewYear === today.getFullYear() && viewMonth === today.getMonth()
@@ -253,23 +260,20 @@ export function SlotPickerClient({ data }: { data: SlotPickerData }) {
     data.priceIndividualPence,
     data.groupPriceTiers,
   )
+  // BUG-70/BR-01: the shown total is commission-inclusive so it always
+  // matches what checkout will charge (unlike the guest picker, which shows
+  // the coach fee and itemises the platform fee on the next page).
   const totalPence =
     coachPence !== null
       ? displayParentTotalPence(coachPence, data.commissionRate)
       : null
 
-  const durationMinutes =
-    slots.length > 0 && slots.every((s) => s.durationMinutes === slots[0].durationMinutes)
-      ? slots[0].durationMinutes
-      : data.sessionDurationMinutes
+  const selectedChild =
+    data.childrenList.find((child) => child.id === selectedChildId) ?? null
 
-  const shortDate = selectedDate
-    ? `${DAY_S[selectedDate.getDay()]} ${selectedDate.getDate()} ${MON_S[selectedDate.getMonth()]}`
-    : null
+  const hasSelection = selectedSlot !== null && totalPence !== null
 
-  const canContinue = selectedSlot !== null && selectedISO !== null && totalPence !== null
-
-  // ── Handlers ───────────────────────────────────────────────────────────────
+  // ── Handlers (calendar handlers mirror the guest AvailabilityClient) ───────
 
   const goPrev = () => {
     if (prevDisabled) return
@@ -291,19 +295,30 @@ export function SlotPickerClient({ data }: { data: SlotPickerData }) {
   }
 
   const selectDay = (cell: MonthCell) => {
-    if (!availableISOs.has(cell.iso)) return
     setSelectedISO(cell.iso)
     setSelectedSlot(null)
     setHoldStartedAt(null)
     setSecondsLeft(null)
     setHoldExpired(false)
+    setShowChildError(false)
     clearBookingHold()
   }
 
-  const selectSlot = (slot: GeneratedSlot) => {
+  // UX-10: jump the view back to the current month and select today if it has
+  // any availability — otherwise just reset the view.
+  const goToday = () => {
+    setViewYear(today.getFullYear())
+    setViewMonth(today.getMonth())
+    if (slotsFor(today).length > 0) {
+      selectDay({ day: today.getDate(), iso: localISODate(today), date: today })
+    }
+  }
+
+  const toggleSlot = (slot: GeneratedSlot) => {
     setHoldExpired(false)
+    setShowChildError(false)
     if (selectedSlot?.minutes === slot.minutes) {
-      // Tapping the held slot again releases it.
+      // Tapping the held slot again releases it (guest toggle behaviour).
       setSelectedSlot(null)
       setHoldStartedAt(null)
       setSecondsLeft(null)
@@ -311,7 +326,7 @@ export function SlotPickerClient({ data }: { data: SlotPickerData }) {
       return
     }
     setSelectedSlot(slot)
-    // A fresh slot tap always starts a fresh 10-minute hold.
+    // A fresh slot tap always starts a fresh 10-minute advisory hold.
     setHoldStartedAt(Date.now())
   }
 
@@ -320,16 +335,30 @@ export function SlotPickerClient({ data }: { data: SlotPickerData }) {
     setHoldExpired(false)
   }
 
-  const handleContinue = () => {
-    if (!canContinue || !selectedSlot || !selectedISO || holdStartedAt === null) return
+  const handleChildSelect = (childId: string) => {
+    setSelectedChildId(childId)
+    setShowChildError(false)
+  }
+
+  const handleBook = () => {
+    if (!hasSelection || !selectedSlot || !selectedISO || holdStartedAt === null) return
+    // The primary player is required (mirrors the guest name gate — error
+    // shown inline on attempt, never a browser dialog).
+    if (!selectedChildId) {
+      setShowChildError(true)
+      return
+    }
+    // Child id travels via sessionStorage only — never the URL (docs/06
+    // child-data rules). The URL carries non-PII slot facts so the summary
+    // page can server-render.
     stashBookingHold({
       coachSlug: data.coachSlug,
       date: selectedISO,
       startTime: selectedSlot.time,
       players,
       holdStartedAt,
+      childProfileId: selectedChildId,
     })
-    // Slot facts only in the URL — never a child's name (docs/06 rules).
     const q = new URLSearchParams()
     q.set('date', selectedISO)
     q.set('startTime', selectedSlot.time)
@@ -337,202 +366,28 @@ export function SlotPickerClient({ data }: { data: SlotPickerData }) {
     router.push(`/parent/book/${data.coachSlug}/summary?${q.toString()}`)
   }
 
-  // ── Render pieces ──────────────────────────────────────────────────────────
+  // ── Display helpers ─────────────────────────────────────────────────────────
 
-  const timerLine =
-    secondsLeft !== null ? (
-      <div
-        className="flex items-center justify-center gap-1.5"
-        data-testid="hold-timer"
-        aria-live="polite"
-      >
-        <Clock size={14} className="text-neutral-400" aria-hidden="true" />
-        <span className="text-[12px] text-neutral-400">
-          Slot held for {formatHoldClock(secondsLeft)}
-        </span>
-      </div>
-    ) : null
+  const dayLabel = (iso: string): string => {
+    const d = parseISO(iso)
+    return `${DAY_S[d.getDay()]} ${d.getDate()} ${MON_S[d.getMonth()]}`
+  }
 
-  const expiredNotice = holdExpired ? (
-    <p
-      className="rounded-md bg-amber-100 px-3 py-2 text-[13px] font-medium text-amber-800"
-      data-testid="hold-expired-notice"
-      role="status"
-    >
-      Your slot hold expired — please pick a time again.
-    </p>
-  ) : null
-
-  const calendarCard = (
-    <div className="rounded-xl bg-white p-4 shadow-sm lg:p-6" data-testid="booking-calendar">
-      <div className="mb-3 flex items-center justify-between lg:mb-4">
-        <p className="text-[15px] font-medium text-neutral-900 lg:text-[16px]">
-          {MON_L[viewMonth]} {viewYear}
-        </p>
-        <div className="flex gap-1">
-          <button
-            type="button"
-            onClick={goPrev}
-            disabled={prevDisabled}
-            aria-label="Previous month"
-            data-testid="calendar-prev"
-            className="flex h-11 w-11 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-50 disabled:text-slate-300 disabled:hover:bg-transparent"
-          >
-            <ChevronLeft size={18} aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            onClick={goNext}
-            aria-label="Next month"
-            data-testid="calendar-next"
-            className="flex h-11 w-11 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-50"
-          >
-            <ChevronRight size={18} aria-hidden="true" />
-          </button>
-        </div>
-      </div>
-      <div className="mb-1 grid grid-cols-7 gap-0.5 lg:gap-1">
-        {WEEKDAY_HEADERS.map((label, index) => (
-          <div
-            key={`${label}-${index}`}
-            className="text-center text-xs font-medium uppercase tracking-label text-neutral-400"
-            aria-hidden="true"
-          >
-            {label}
-          </div>
-        ))}
-      </div>
-      <div className="grid grid-cols-7 gap-0.5 lg:gap-1" role="grid" aria-label="Choose a date">
-        {monthCells.map((cell, index) => {
-          if (!cell) return <div key={`lead-${index}`} aria-hidden="true" />
-          const available = availableISOs.has(cell.iso)
-          const selected = cell.iso === selectedISO
-          return (
-            <button
-              key={cell.iso}
-              type="button"
-              onClick={() => selectDay(cell)}
-              disabled={!available}
-              aria-pressed={selected}
-              aria-label={`${DAY_S[cell.date.getDay()]} ${cell.day} ${MON_L[cell.date.getMonth()]}${available ? '' : ' — unavailable'}`}
-              data-testid={`calendar-day-${cell.iso}`}
-              className={`mx-auto flex h-11 w-11 items-center justify-center rounded-md text-[14px] transition-colors lg:h-12 lg:w-12 ${
-                selected
-                  ? 'bg-brand-600 font-medium text-white'
-                  : available
-                    ? 'bg-brand-50 font-medium text-brand-800 hover:bg-brand-100'
-                    : 'cursor-default text-slate-300'
-              }`}
-            >
-              {cell.day}
-            </button>
-          )
-        })}
-      </div>
-    </div>
-  )
-
-  const timesSection = selectedISO && (
-    <div className="flex flex-col gap-2.5">
-      <p className="text-xs font-medium uppercase tracking-label text-slate-500">
-        Available times · {shortDate} · {durationMinutes} min
-      </p>
-      {slots.length === 0 ? (
-        <p className="text-[14px] text-neutral-600">
-          No times available this day — try another date.
-        </p>
-      ) : (
-        <div className="grid grid-cols-2 gap-2 lg:grid-cols-3">
-          {slots.map((slot) => {
-            const selected = selectedSlot?.minutes === slot.minutes
-            return (
-              <button
-                key={slot.time}
-                type="button"
-                onClick={() => selectSlot(slot)}
-                aria-pressed={selected}
-                data-testid={`slot-${slot.time}`}
-                className={`flex h-11 items-center justify-center rounded-md text-[14px] font-medium transition-all ${
-                  selected
-                    ? 'bg-brand-600 text-white'
-                    : 'bg-white text-neutral-900 shadow-sm hover:bg-brand-50'
-                }`}
-              >
-                {slot.label}
-              </button>
-            )
-          })}
-        </div>
-      )}
-    </div>
-  )
-
-  const groupLine =
-    offersGroups && totalPence !== null
-      ? `${players} ${players === 1 ? 'player' : 'players'} · ${formatPricePence(totalPence)} total`
-      : null
-
-  const playersSection = offersGroups && selectedISO && (
-    <div className="flex flex-col gap-2.5">
-      <p className="text-xs font-medium uppercase tracking-label text-slate-500">
-        How many players?
-      </p>
-      <div className="flex gap-2">
-        {playerOptions.map((count) => {
-          const selected = players === count
-          return (
-            <button
-              key={count}
-              type="button"
-              onClick={() => selectPlayers(count)}
-              aria-pressed={selected}
-              aria-label={`${count} ${count === 1 ? 'player' : 'players'}`}
-              data-testid={`player-count-${count}`}
-              className={`flex h-11 w-[52px] flex-shrink-0 items-center justify-center rounded-md text-[14px] font-medium transition-all ${
-                selected
-                  ? 'bg-brand-600 text-white'
-                  : 'bg-white text-neutral-900 shadow-sm hover:bg-brand-50'
-              }`}
-            >
-              {count}
-            </button>
-          )
-        })}
-      </div>
-      {groupLine && <p className="text-[14px] text-neutral-600">{groupLine}</p>}
-    </div>
-  )
-
-  const continueButton = (variant: 'mobile' | 'desktop') => (
-    <button
-      type="button"
-      onClick={handleContinue}
-      disabled={!canContinue}
-      data-testid={variant === 'mobile' ? 'continue-cta' : 'continue-cta-desktop'}
-      className={`flex items-center justify-center gap-2 rounded-md bg-brand-600 text-[15px] font-medium text-white transition-all hover:bg-brand-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-brand-600 ${
-        variant === 'mobile' ? 'h-btn-mobile flex-1' : 'h-btn-desktop w-full'
-      }`}
-    >
-      Continue to payment
-      {variant === 'desktop' && totalPence !== null && ` · ${formatPricePence(totalPence)}`}
-      <ArrowRight size={18} aria-hidden="true" />
-    </button>
-  )
+  const durationMinutes = selectedSlot?.durationMinutes ?? data.sessionDurationMinutes
+  const sessionTypeLabel =
+    players === 1 ? '1-to-1' : `Group · ${players} players`
 
   if (!hasAnyAvailability) {
     return (
-      <div className="mx-auto max-w-md px-5 py-12 text-center" data-testid="no-availability">
-        <p className="text-[16px] font-medium text-neutral-900">
-          No available times right now
-        </p>
-        <p className="mt-2 text-[14px] text-neutral-600">
-          {data.coachName} has no bookable sessions at the moment — check back
-          soon.
+      <div className="py-10 text-center" data-testid="no-availability">
+        <p className="text-[16px] font-bold text-gray-900">No available times right now</p>
+        <p className="mt-2 text-sm text-gray-500">
+          {data.coachName} has no bookable sessions at the moment — check back soon.
         </p>
         <Link
           href={`/coaches/${data.coachSlug}`}
           data-testid="no-availability-back-link"
-          className="mt-5 inline-flex h-11 items-center justify-center rounded-md px-5 text-[14px] font-medium text-brand-600 ring-[1.5px] ring-inset ring-brand-600 transition-colors hover:bg-brand-50"
+          className="mt-5 inline-flex h-11 items-center justify-center rounded-xl px-5 text-[14px] font-semibold text-brand-600 ring-[1.5px] ring-inset ring-brand-600 transition-colors hover:bg-brand-50"
         >
           Back to {data.coachName.split(' ')[0]}&apos;s profile
         </Link>
@@ -541,73 +396,321 @@ export function SlotPickerClient({ data }: { data: SlotPickerData }) {
   }
 
   return (
-    <div className="flex min-h-[calc(100vh-64px)] flex-col">
-      {/* Screen header — per approved design (back + title) */}
-      <div className="bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-        <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4 sm:px-6 lg:h-16 lg:px-8">
-          <Link
-            href={`/coaches/${data.coachSlug}`}
-            aria-label={`Back to ${data.coachName}'s profile`}
-            data-testid="back-link"
-            className="flex h-9 w-9 items-center justify-center rounded-md text-neutral-600 transition-colors hover:bg-slate-50"
-          >
-            <ChevronLeft size={20} aria-hidden="true" />
-          </Link>
-          <div>
-            <p className="text-[16px] font-medium leading-tight text-neutral-900">
-              Book a session
-            </p>
-            <p className="text-[12px] text-slate-500 lg:hidden">
-              with {data.coachName}
-            </p>
+    <div className="grid lg:grid-cols-[minmax(0,1fr)_400px] gap-8 lg:gap-10 items-stretch">
+      {/* LEFT — month calendar (guest layout, minus programme dots) */}
+      <section aria-label="Calendar" className="rounded-2xl border border-gray-200 shadow-sm p-4 sm:p-6">
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="text-[17px] font-bold text-gray-900" aria-live="polite">
+            {MON_L[viewMonth]} {viewYear}
+          </h3>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={goToday}
+              className="inline-flex items-center h-8 px-3 rounded-full border border-gray-300 text-gray-700 text-[13px] font-medium hover:border-brand-600 hover:text-brand-600 transition-colors"
+            >
+              Today
+            </button>
+            <button
+              type="button"
+              onClick={goPrev}
+              disabled={prevDisabled}
+              aria-label="Previous month"
+              data-testid="calendar-prev"
+              className="w-10 h-10 rounded-xl border border-gray-200 flex items-center justify-center text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+            <button
+              type="button"
+              onClick={goNext}
+              aria-label="Next month"
+              data-testid="calendar-next"
+              className="w-10 h-10 rounded-xl border border-gray-200 flex items-center justify-center text-gray-600 hover:bg-gray-50 transition-colors"
+            >
+              <ChevronRight className="w-5 h-5" />
+            </button>
           </div>
-          <p className="hidden text-[16px] font-medium text-neutral-900 lg:block">
-            &nbsp;with {data.coachName}
-          </p>
         </div>
-      </div>
 
-      {/* Content */}
-      <div className="mx-auto w-full max-w-6xl flex-1 px-4 pb-40 pt-5 sm:px-6 lg:px-8 lg:pb-16 lg:pt-8">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:gap-8">
-          <div className="lg:w-[480px] lg:flex-shrink-0">{calendarCard}</div>
-          <div className="flex flex-1 flex-col gap-5 lg:gap-6">
-            {expiredNotice}
-            {!selectedISO && (
-              <p className="text-[14px] text-neutral-600">
-                Pick a date to see available times.
+        <div className="grid grid-cols-7 gap-1.5 sm:gap-2 mb-2 text-center">
+          {WEEKDAYS.map(d => (
+            <span key={d} className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+              {d}
+            </span>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-7 gap-1.5 sm:gap-2" data-testid="availability-calendar">
+          {monthCells.map((cell, i) => {
+            if (!cell) return <div key={`blank-${i}`} className="aspect-square" aria-hidden />
+
+            const past = cell.date < today
+            const daySlots = past ? [] : slotsFor(cell.date)
+            const bookable = daySlots.length > 0
+            // BUG-04: split availability by recurrence so the dots match the
+            // legend — recurring slots are blue, ad-hoc (one-off) are teal.
+            const hasRecurring = daySlots.some(s => !s.isAdHoc)
+            const hasAdHoc = daySlots.some(s => s.isAdHoc)
+            const selected = cell.iso === selectedISO
+            const isToday = cell.iso === localISODate(today)
+
+            let cls =
+              'relative flex flex-col items-center justify-center aspect-square rounded-xl text-[15px] sm:text-[16px] font-semibold tabular-nums transition-all '
+            if (selected) cls += 'bg-brand-600 text-white shadow-md'
+            else if (bookable) cls += 'bg-white text-gray-900 border border-gray-200 hover:border-blue-500 cursor-pointer'
+            else cls += 'text-gray-300 cursor-default'
+
+            return (
+              <button
+                key={cell.iso}
+                type="button"
+                disabled={!bookable}
+                aria-pressed={selected}
+                aria-label={bookable ? `${dayLabel(cell.iso)}, sessions available` : undefined}
+                onClick={() => bookable && selectDay(cell)}
+                className={cls}
+                data-testid={`cal-day-${cell.iso}`}
+              >
+                <span>{cell.day}</span>
+                {bookable && (
+                  <span aria-hidden className="flex flex-row items-center gap-0.5 mt-0.5">
+                    {hasRecurring && (
+                      <span className={`w-1.5 h-1.5 rounded-full ${selected ? 'bg-white' : 'bg-blue-500'}`} />
+                    )}
+                    {hasAdHoc && (
+                      <span className={`w-1.5 h-1.5 rounded-full ${selected ? 'bg-white' : 'bg-teal-500'}`} />
+                    )}
+                  </span>
+                )}
+                {isToday && (
+                  <span
+                    aria-hidden
+                    className={`absolute top-1.5 right-2 w-1 h-1 rounded-full ${selected ? 'bg-white' : 'bg-brand-600'}`}
+                  />
+                )}
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Legend — matches the guest picker minus the programme swatch */}
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 mt-5 pt-5 border-t border-gray-100 text-[13px] text-gray-500">
+          <span className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-sm bg-blue-500" />
+            1-on-1
+          </span>
+          <span className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-sm bg-teal-500" />
+            Ad hoc
+          </span>
+        </div>
+      </section>
+
+      {/* RIGHT — booking panel */}
+      <aside className="lg:sticky lg:top-24">
+        <div className="rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+          {/* Available times */}
+          <div className="p-5 sm:p-6">
+            <div className="flex items-baseline justify-between gap-3 mb-4">
+              <h3 className="text-[16px] font-bold text-gray-900">Available times</h3>
+              {selectedISO && <span className="text-[14px] font-semibold text-brand-600">{dayLabel(selectedISO)}</span>}
+            </div>
+
+            {holdExpired && (
+              <p
+                className="mb-4 rounded-xl bg-amber-100 px-3.5 py-2.5 text-[13px] font-medium text-amber-800"
+                data-testid="hold-expired-notice"
+                role="status"
+              >
+                Your slot hold expired — please pick a time again.
               </p>
             )}
-            {timesSection}
-            {playersSection}
-            {/* Desktop CTA — inline in the right column per design */}
-            {selectedISO && (
-              <div className="mt-2 hidden flex-col gap-2.5 lg:flex">
-                {continueButton('desktop')}
-                {timerLine}
+
+            {!selectedISO ? (
+              <p className="text-sm text-gray-500 py-1">Select a date to see available times.</p>
+            ) : slots.length > 0 ? (
+              <div className="grid grid-cols-3 gap-2.5">
+                {slots.map(slot => {
+                  const isSel = selectedSlot?.minutes === slot.minutes
+                  return (
+                    <button
+                      key={slot.minutes}
+                      type="button"
+                      onClick={() => toggleSlot(slot)}
+                      aria-label={`Book ${slot.label} slot${slot.venueName ? ` at ${slot.venueName}` : ''}`}
+                      aria-pressed={isSel}
+                      className={`flex min-h-touch min-w-0 flex-col items-center justify-center rounded-xl border-[1.5px] px-1.5 py-1.5 transition-all ${
+                        isSel
+                          ? 'bg-brand-600 border-brand-600 text-white shadow-sm'
+                          : 'bg-white border-gray-300 text-gray-900 hover:border-brand-600 hover:bg-brand-50'
+                      }`}
+                      data-testid={`slot-${slot.time}`}
+                    >
+                      <span className="text-base font-semibold tabular-nums leading-none">{slot.label}</span>
+                      {slot.venueName && (
+                        <span
+                          className={`mt-1 flex min-w-0 max-w-full items-center gap-0.5 text-xs font-medium ${
+                            isSel ? 'text-white/80' : 'text-gray-500'
+                          }`}
+                          data-testid={`slot-venue-${slot.time}`}
+                        >
+                          <MapPin className="h-3 w-3 shrink-0" aria-hidden="true" />
+                          <span className="min-w-0 truncate" title={slot.venueName}>{slot.venueName}</span>
+                        </span>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500 py-1">No times on this date — try another day.</p>
+            )}
+
+            {/* P-10 addition 1: player count — only when the coach has group
+                pricing tiers. Total updates live per selection. */}
+            {offersGroups && selectedISO && (
+              <div className="mt-5">
+                <h4 className="text-[13px] font-semibold uppercase tracking-wide text-gray-500 mb-2.5">
+                  How many players?
+                </h4>
+                <div className="flex items-center gap-2.5">
+                  {playerOptions.map(count => {
+                    const isSel = players === count
+                    return (
+                      <button
+                        key={count}
+                        type="button"
+                        onClick={() => selectPlayers(count)}
+                        aria-pressed={isSel}
+                        aria-label={`${count} ${count === 1 ? 'player' : 'players'}`}
+                        data-testid={`player-count-${count}`}
+                        className={`flex h-11 w-12 items-center justify-center rounded-xl border-[1.5px] text-base font-semibold tabular-nums transition-all ${
+                          isSel
+                            ? 'bg-brand-600 border-brand-600 text-white shadow-sm'
+                            : 'bg-white border-gray-300 text-gray-900 hover:border-brand-600 hover:bg-brand-50'
+                        }`}
+                      >
+                        {count}
+                      </button>
+                    )
+                  })}
+                </div>
+                {totalPence !== null && (
+                  <p className="text-[13px] text-gray-500 mt-2" data-testid="group-price-line">
+                    {players} {players === 1 ? 'player' : 'players'} · {formatPricePence(totalPence)} total
+                  </p>
+                )}
               </div>
             )}
           </div>
-        </div>
-      </div>
 
-      {/* Mobile sticky footer per design */}
-      <div className="fixed inset-x-0 bottom-0 z-30 flex flex-col gap-2.5 bg-white px-5 pb-5 pt-2.5 shadow-[0_-1px_3px_rgba(15,23,42,0.06)] lg:hidden">
-        {timerLine}
-        <div className="flex items-center gap-4">
-          <div className="flex-shrink-0">
-            <p className="text-xs font-medium uppercase tracking-label text-neutral-400">
-              Total
-            </p>
-            <p
-              className="text-[19px] font-semibold text-neutral-900"
-              data-testid="total-price"
+          {/* P-10 addition 2: ChildSelector replaces the guest name/age inputs */}
+          <div className="px-5 sm:px-6 pb-6 pt-5 border-t border-gray-100">
+            <ChildSelector
+              childrenList={data.childrenList}
+              selectedChildId={selectedChildId}
+              onSelect={handleChildSelect}
+            />
+            {showChildError && (
+              <p className="text-[12px] text-danger mt-2.5" role="alert" data-testid="child-required-error">
+                Choose who this session is for to continue.
+              </p>
+            )}
+          </div>
+
+          {/* Booking summary */}
+          <div className="px-5 sm:px-6 pb-6 pt-5 border-t border-gray-100 bg-gray-50">
+            <h3 className="text-[13px] font-semibold uppercase tracking-wide text-gray-500 mb-3">Your booking</h3>
+
+            {hasSelection && selectedSlot && selectedISO ? (
+              <div className="flex items-center justify-between gap-3 rounded-xl bg-white border border-gray-200 px-3.5 py-3">
+                <div className="min-w-0">
+                  <p className="text-[14px] font-semibold text-gray-900 leading-tight">
+                    {dayLabel(selectedISO)} · {selectedSlot.label}
+                  </p>
+                  <p className="text-[12px] text-gray-500 mt-0.5">
+                    {sessionTypeLabel} · {durationMinutes} min{selectedChild ? ` · ${selectedChild.firstName}` : ''}
+                  </p>
+                  {selectedSlot.venueName && (
+                    <p className="flex min-w-0 items-center gap-0.5 text-xs font-medium text-gray-500 mt-0.5">
+                      <MapPin className="h-3 w-3 shrink-0" aria-hidden="true" />
+                      <span className="truncate" title={selectedSlot.venueName}>{selectedSlot.venueName}</span>
+                    </p>
+                  )}
+                </div>
+                <span className="text-[15px] font-bold text-gray-900 flex-shrink-0" data-testid="summary-price">
+                  {totalPence !== null ? formatPricePence(totalPence) : ''}
+                </span>
+              </div>
+            ) : (
+              <p className="text-[13px] text-gray-500 py-1">No time selected yet.</p>
+            )}
+
+            <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-200">
+              <span className="text-[15px] font-semibold text-gray-900">Total</span>
+              <span className="text-[18px] font-bold text-gray-900" data-testid="total-price">
+                {totalPence !== null && hasSelection ? formatPricePence(totalPence) : '£0'}
+              </span>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleBook}
+              disabled={!hasSelection}
+              className="mt-4 w-full h-[52px] rounded-xl bg-brand-600 text-white font-bold text-[15px] hover:bg-brand-700 active:scale-[0.99] transition-all shadow-sm disabled:opacity-40 disabled:hover:bg-brand-600 disabled:active:scale-100 disabled:cursor-not-allowed"
+              data-testid="book-cta"
             >
-              {totalPence !== null ? formatPricePence(totalPence) : '—'}
+              Book this slot
+            </button>
+            {secondsLeft !== null && (
+              <p
+                className="mt-2.5 text-[12px] text-center text-gray-400 flex items-center justify-center gap-1.5"
+                data-testid="hold-timer"
+                aria-live="polite"
+              >
+                <Clock className="w-3.5 h-3.5" aria-hidden="true" /> Slot held for {formatHoldClock(secondsLeft)}
+              </p>
+            )}
+            <p className="mt-2.5 text-[12px] text-center text-gray-400 flex items-center justify-center gap-1.5">
+              <ShieldCheck className="w-3.5 h-3.5" aria-hidden="true" /> You won&apos;t be charged yet · free cancellation {data.cancellationWindowHours}h before
             </p>
           </div>
-          {continueButton('mobile')}
         </div>
+      </aside>
+
+      {/* Mobile sticky bottom bar */}
+      <div className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white border-t border-gray-200 px-4 pt-3 pb-[max(12px,env(safe-area-inset-bottom))] flex items-center justify-between gap-4 shadow-[0_-4px_16px_rgba(15,23,42,0.07)]">
+        <div className="min-w-0">
+          {hasSelection && totalPence !== null ? (
+            <>
+              <p className="text-[15px] font-bold text-gray-900 leading-tight">
+                1 session · {formatPricePence(totalPence)}
+              </p>
+              <p className="text-[12px] text-gray-500 truncate">
+                {selectedISO ? dayLabel(selectedISO) : ''}
+                {selectedSlot ? ` · ${selectedSlot.label}` : ''}
+                {secondsLeft !== null ? ` · held ${formatHoldClock(secondsLeft)}` : ''}
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-[15px] font-bold text-gray-900 leading-tight">Select a time</p>
+              <p className="text-[12px] text-gray-500 truncate flex items-center gap-1">
+                <Clock className="w-3 h-3" aria-hidden="true" /> {selectedISO ? dayLabel(selectedISO) : 'Pick a date to start'}
+              </p>
+            </>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={handleBook}
+          disabled={!hasSelection}
+          className="flex-shrink-0 inline-flex items-center justify-center h-12 px-6 rounded-xl bg-brand-600 text-white font-bold text-[15px] hover:bg-brand-700 active:scale-[0.98] transition-all shadow-sm disabled:opacity-40 disabled:active:scale-100 disabled:cursor-not-allowed"
+          data-testid="book-cta-mobile"
+        >
+          Book this slot
+        </button>
       </div>
     </div>
   )
@@ -615,32 +718,24 @@ export function SlotPickerClient({ data }: { data: SlotPickerData }) {
 
 export function SlotPickerSkeleton() {
   return (
-    <div className="animate-pulse">
-      <div className="bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-        <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4 sm:px-6 lg:h-16 lg:px-8">
-          <div className="h-9 w-9 rounded-md bg-slate-100" />
-          <div className="h-4 w-40 rounded bg-slate-100" />
+    <div className="grid animate-pulse lg:grid-cols-[minmax(0,1fr)_400px] gap-8 lg:gap-10">
+      <div className="rounded-2xl border border-gray-200 shadow-sm p-4 sm:p-6">
+        <div className="mb-5 h-5 w-36 rounded bg-gray-100" />
+        <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
+          {Array.from({ length: 35 }, (_, i) => (
+            <div key={i} className="aspect-square rounded-xl bg-gray-50" />
+          ))}
         </div>
       </div>
-      <div className="mx-auto w-full max-w-6xl px-4 pt-5 sm:px-6 lg:px-8 lg:pt-8">
-        <div className="flex flex-col gap-5 lg:flex-row lg:gap-8">
-          <div className="h-[360px] rounded-xl bg-white p-4 shadow-sm lg:w-[480px]">
-            <div className="mb-4 h-4 w-32 rounded bg-slate-100" />
-            <div className="grid grid-cols-7 gap-1">
-              {Array.from({ length: 35 }, (_, i) => (
-                <div key={i} className="mx-auto h-10 w-10 rounded-md bg-slate-50" />
-              ))}
-            </div>
-          </div>
-          <div className="flex-1">
-            <div className="mb-3 h-3 w-48 rounded bg-slate-100" />
-            <div className="grid grid-cols-2 gap-2 lg:grid-cols-3">
-              {Array.from({ length: 4 }, (_, i) => (
-                <div key={i} className="h-11 rounded-md bg-white shadow-sm" />
-              ))}
-            </div>
-          </div>
+      <div className="rounded-2xl border border-gray-200 shadow-sm p-5 sm:p-6">
+        <div className="mb-4 h-5 w-32 rounded bg-gray-100" />
+        <div className="grid grid-cols-3 gap-2.5">
+          {Array.from({ length: 6 }, (_, i) => (
+            <div key={i} className="h-11 rounded-xl bg-gray-50" />
+          ))}
         </div>
+        <div className="mt-6 h-14 rounded-xl bg-gray-50" />
+        <div className="mt-4 h-[52px] rounded-xl bg-gray-100" />
       </div>
     </div>
   )

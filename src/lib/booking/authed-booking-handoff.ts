@@ -63,6 +63,11 @@ export function readBookingHold(): AuthedBookingHold | null {
     ) {
       return null
     }
+    // Optional fields: drop malformed values rather than let them flow into
+    // component state (defence-in-depth against stale/hand-edited storage).
+    if (parsed.childProfileId !== undefined && typeof parsed.childProfileId !== 'string') {
+      delete parsed.childProfileId
+    }
     return parsed as AuthedBookingHold
   } catch {
     return null
