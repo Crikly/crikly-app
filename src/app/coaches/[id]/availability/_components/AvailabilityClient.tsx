@@ -30,6 +30,7 @@ import {
 import type { DayProgramme } from './_data/programmeSchedule'
 import { stashParticipant } from '@/lib/booking/participant-handoff'
 import { hhmmToMinutes, type Interval } from '@/lib/availability/overlap'
+import type { AuthedBookingContext } from '@/components/booking/AuthedPlayerPicker'
 
 /**
  * BUG-14: a live booking's occupied interval, as shaped by the availability
@@ -58,6 +59,13 @@ interface Props {
   cancellationWindowHours: number
   programmesByDate: Record<string, DayProgramme[]>
   programmeDates: string[]
+  /**
+   * P-10 single-flow: server-assembled context for a signed-in PARENT, or
+   * null/absent for everyone else. Accepted (not yet read) as of Step B so
+   * the page can pass it; Step C forks "Who is this for?" + the CTA on it.
+   * null MUST keep guest behaviour byte-identical.
+   */
+  authedBooking?: AuthedBookingContext | null
 }
 
 type Tab = '1to1' | 'groups'
