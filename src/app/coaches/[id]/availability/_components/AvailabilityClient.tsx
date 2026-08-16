@@ -327,7 +327,7 @@ export function AvailabilityClient({
         return
       }
       stashBookingHold({
-        coachSlug: coachId,
+        coachId,
         date: selectedISO,
         startTime: selectedSlot.time,
         players: pickerSelection.players,

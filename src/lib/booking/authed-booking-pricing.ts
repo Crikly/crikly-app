@@ -12,9 +12,10 @@
 
 import { isGroupEnabled, type GroupPriceTiers } from '@/lib/coach/group-pricing'
 
-/** Advisory slot-hold length (P-10 approved Option C — UX only; the real
- * double-booking guard is the coach_time_claims GiST exclusion constraint
- * fired by P-13's booking insert). */
+/** Advisory slot-hold length. UNUSED since the Step D route deletion (the
+ * countdown UX was dropped — approved decision 2); retained with its two
+ * helpers below for P-13, which may reinstate an advisory countdown at
+ * checkout. Delete all three if P-13 ships without one. */
 export const HOLD_DURATION_SECONDS = 600
 
 /**
@@ -74,8 +75,9 @@ export function formatHoldClock(seconds: number): string {
 }
 
 /** Display-only pence → pounds: whole pounds drop the ".00" (6000 → "£60",
- * 4550 → "£45.50") — matches the approved design's price labels and the
- * parent dashboard's poundsLabel. Never store the result back (BR-10). */
+ * 4550 → "£45.50") — matches the parent dashboard's poundsLabel. No live
+ * consumer since Step D; retained for P-13's checkout display. Never store
+ * the result back (BR-10). */
 export function formatPricePence(pence: number): string {
   const pounds = pence / 100
   return Number.isInteger(pounds) ? `£${pounds}` : `£${pounds.toFixed(2)}`

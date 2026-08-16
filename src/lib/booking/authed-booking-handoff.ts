@@ -1,16 +1,16 @@
-// P-10: carries the authed booking flow's slot hold between the slot picker
-// (/parent/book/[coachSlug]) and the summary/checkout steps WITHOUT
-// restarting the advisory 10-minute countdown — and carries who each player
-// is without putting a child's name or id in a URL (same rationale as
-// participant-handoff.ts: query params leak PII into copied links, history,
-// and server logs — docs/06 child-data rules).
+// P-10 (single-flow): carries the authed booking selection from the
+// auth-aware availability page (AvailabilityClient's authed CTA) to the
+// /parent/checkout step (P-13) — who each player is must never appear in a
+// URL (same rationale as participant-handoff.ts: query params leak PII into
+// copied links, history, and server logs — docs/06 child-data rules).
 //
-// Unlike readParticipantHandoff this read is NON-destructive: the picker
-// re-reads it on back-navigation and later steps read it again. It is
-// cleared when a new slot selection starts, when the hold expires, and by
-// checkout once the booking is created. Slot facts (date/startTime/players)
-// also travel in the URL so later pages can server-render; the handoff adds
-// only what must not (hold clock, player identities).
+// Unlike readParticipantHandoff this read is NON-destructive: checkout may
+// re-read it on back-navigation. It is cleared when a new slot selection
+// starts and by checkout once the booking is created. Slot facts
+// (coachId/date/startTime/players) also travel in the URL so checkout can
+// server-render; the handoff adds only the player identities.
+// holdStartedAt is stash-time metadata (the advisory countdown was dropped —
+// approved decision 2).
 
 const KEY = 'crikly:p10-booking-hold'
 
@@ -25,8 +25,11 @@ export type PlayerAssignment =
   | { kind: 'guest'; firstName: string; age: string }
 
 export interface AuthedBookingHold {
-  /** Coach the hold belongs to — a hold never transfers between coaches. */
-  coachSlug: string
+  /** The coach's UUID (coach_profiles.id) — an identity key so a hold never
+   * transfers between coaches. NOT a routable slug; never compare it against
+   * one (renamed from coachSlug in Step D when the slug-writing parallel
+   * route was deleted). */
+  coachId: string
   /** 'YYYY-MM-DD'. */
   date: string
   /** 'HH:MM' (24h). */
@@ -72,7 +75,7 @@ export function readBookingHold(): AuthedBookingHold | null {
     if (!raw) return null
     const parsed = JSON.parse(raw) as Partial<AuthedBookingHold>
     if (
-      typeof parsed.coachSlug !== 'string' ||
+      typeof parsed.coachId !== 'string' ||
       typeof parsed.date !== 'string' ||
       typeof parsed.startTime !== 'string' ||
       typeof parsed.players !== 'number' ||
