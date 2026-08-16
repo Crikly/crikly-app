@@ -1,31 +1,40 @@
 'use client'
 
-// P-10 Screen 1 (rev 2, Lasith 16 Aug): authed parent slot picker at
+// P-10 Screen 1 (rev 3, Lasith 16 Aug): authed parent slot picker at
 // /parent/book/[coachSlug], pattern-copied from the LIVE guest picker
 // (src/app/coaches/[id]/availability/_components/AvailabilityClient.tsx) so
 // the two flows look identical. The guest file itself is untouched — it stays
-// the guest funnel. Exactly two additions over the live layout:
+// the guest funnel. Additions over the live layout:
 //   1. "How many players?" chips below the time slots — only when the coach
 //      has coach_sports.group_price_tiers; the total updates live.
-//   2. ChildSelector (P-07) replaces the guest "Who is this for?" name/age
-//      inputs — the primary player comes from the parent's child profiles.
+//   2. Player assignment replacing the guest "Who is this for?" inputs:
+//      - players === 1: ChildSelector (P-07) — primary child from profiles.
+//      - players > 1: one slot per player (including Player 1), each offering
+//        the parent's child avatars (a child can occupy at most ONE slot —
+//        picked children are dimmed in other slots) plus a dashed "Someone
+//        else" option revealing first-name + age inputs. "Someone else"
+//        players are ONE-SESSION details only — never child profiles, no
+//        Supabase write (approved Option C).
 // Programme surfaces (Groups tab, purple calendar dots) are omitted:
 // programmes are a separate funnel and not part of P-10.
 //
-// Carried over from rev 1 unchanged: the ADVISORY 10-minute hold countdown
-// (approved Option C — UX only; the real double-booking guard is the
-// coach_time_claims exclusion constraint fired by checkout's booking insert),
+// Carried over unchanged: the ADVISORY 10-minute hold countdown (approved
+// Option C — UX only; the real double-booking guard is the coach_time_claims
+// exclusion constraint fired by checkout's booking insert), the
 // commission-inclusive total from getCommissionRate() (BUG-70), and the
-// sessionStorage handoff (child id never goes in the URL — docs/06 rules).
+// sessionStorage handoff (child ids and player names never go in the URL —
+// docs/06 rules).
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
+  Check,
   ChevronLeft,
   ChevronRight,
   Clock,
   MapPin,
+  Plus,
   ShieldCheck,
 } from 'lucide-react'
 import {
@@ -48,12 +57,13 @@ import {
   clearBookingHold,
   readBookingHold,
   stashBookingHold,
-  type AdditionalPlayer,
+  type PlayerAssignment,
 } from '@/lib/booking/authed-booking-handoff'
 import {
   ChildSelector,
   type ChildSelectorOption,
 } from '@/components/parent/children/ChildSelector'
+import { CriklyAvatar } from '@/components/ui/CriklyAvatar'
 
 /** A live booking's occupied interval from the availability API — intervals
  * only, never booking identity (BUG-14 shape). */
@@ -106,21 +116,18 @@ interface MonthCell {
   date: Date
 }
 
-/** players-1 extra-player rows, preserving anything already typed when the
- * count changes. Extra players are ONE-SESSION details only — never child
- * profiles, never written to Supabase (Lasith, 16 Aug). */
-function resizeAdditionalPlayers(
-  prev: AdditionalPlayer[],
-  players: number,
-): AdditionalPlayer[] {
-  // Shape-check each entry — sessionStorage content is untrusted (same
-  // defence-in-depth as readBookingHold's childProfileId validation).
-  return Array.from({ length: Math.max(0, players - 1) }, (_, i) => {
-    const candidate = prev[i]
-    return typeof candidate?.firstName === 'string' && typeof candidate?.age === 'string'
-      ? candidate
-      : { firstName: '', age: '' }
-  })
+/** One player slot's local UI state (players > 1 mode only). 'guest' entries
+ * are one-session details — never child profiles, never written to Supabase. */
+type SlotAssignment =
+  | { kind: 'none' }
+  | { kind: 'child'; childId: string }
+  | { kind: 'guest'; firstName: string; age: string }
+
+/** One assignment row per player, preserving anything already chosen/typed
+ * when the player count changes. Empty for 1-on-1 mode. */
+function resizeAssignments(prev: SlotAssignment[], players: number): SlotAssignment[] {
+  if (players <= 1) return []
+  return Array.from({ length: players }, (_, i) => prev[i] ?? { kind: 'none' })
 }
 
 export function SlotPickerClient({ data }: { data: SlotPickerData }) {
@@ -141,12 +148,11 @@ export function SlotPickerClient({ data }: { data: SlotPickerData }) {
   const [selectedSlot, setSelectedSlot] = useState<GeneratedSlot | null>(null)
   const [players, setPlayers] = useState(1)
   const [selectedChildId, setSelectedChildId] = useState<string | null>(null)
-  const [additionalPlayers, setAdditionalPlayers] = useState<AdditionalPlayer[]>([])
+  const [assignments, setAssignments] = useState<SlotAssignment[]>([])
   const [holdStartedAt, setHoldStartedAt] = useState<number | null>(null)
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null)
   const [holdExpired, setHoldExpired] = useState(false)
-  const [showChildError, setShowChildError] = useState(false)
-  const [showExtraPlayerError, setShowExtraPlayerError] = useState(false)
+  const [showSlotError, setShowSlotError] = useState(false)
 
   const blockedSet = useMemo(() => new Set(data.blockedDates), [data.blockedDates])
 
@@ -186,8 +192,13 @@ export function SlotPickerClient({ data }: { data: SlotPickerData }) {
     ],
   )
 
-  // Resume a still-ticking hold on back-navigation from the summary page —
-  // the countdown must continue, not restart (approved brief).
+  const childById = useMemo(
+    () => new Map(data.childrenList.map((child) => [child.id, child])),
+    [data.childrenList],
+  )
+
+  // Resume a still-ticking hold on back-navigation from a later step — the
+  // countdown must continue, not restart (approved brief).
   useEffect(() => {
     const hold = readBookingHold()
     if (!hold || hold.coachSlug !== data.coachSlug) return
@@ -205,14 +216,26 @@ export function SlotPickerClient({ data }: { data: SlotPickerData }) {
     setSelectedISO(hold.date)
     setSelectedSlot(slot)
     setPlayers(hold.players)
-    setAdditionalPlayers(
-      resizeAdditionalPlayers(hold.additionalPlayers ?? [], hold.players),
-    )
+    if (hold.players > 1 && hold.playerAssignments) {
+      setAssignments(
+        resizeAssignments(
+          hold.playerAssignments.map<SlotAssignment>((pa) =>
+            pa.kind === 'child' && childById.has(pa.childProfileId)
+              ? { kind: 'child', childId: pa.childProfileId }
+              : // Profile gone (or guest entry) — restore as one-session details.
+                { kind: 'guest', firstName: pa.firstName, age: pa.age },
+          ),
+          hold.players,
+        ),
+      )
+    } else {
+      setAssignments(resizeAssignments([], hold.players))
+    }
     if (hold.childProfileId) setSelectedChildId(hold.childProfileId)
     setHoldStartedAt(hold.holdStartedAt)
     setSecondsLeft(remaining)
-    // Mount-only restore by design: slotsFor is stable for the lifetime of
-    // this page instance ("now" never changes).
+    // Mount-only restore by design: slotsFor/childById are stable for the
+    // lifetime of this page instance ("now" and props never change).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -294,7 +317,30 @@ export function SlotPickerClient({ data }: { data: SlotPickerData }) {
   const selectedChild =
     data.childrenList.find((child) => child.id === selectedChildId) ?? null
 
+  // Which slot (if any) each profile child occupies — a child can be
+  // assigned to at most ONE slot; it renders dimmed everywhere else.
+  const slotByChildId = useMemo(() => {
+    const map = new Map<string, number>()
+    assignments.forEach((assignment, index) => {
+      if (assignment.kind === 'child') map.set(assignment.childId, index)
+    })
+    return map
+  }, [assignments])
+
   const hasSelection = selectedSlot !== null && totalPence !== null
+
+  // CTA rule (Lasith, 16 Aug): disabled until Player 1 has a selection —
+  // a profile child, or a "someone else" with a first name entered.
+  const primaryAssigned =
+    players === 1
+      ? selectedChildId !== null
+      : (() => {
+          const first = assignments[0]
+          if (!first) return false
+          if (first.kind === 'child') return true
+          return first.kind === 'guest' && first.firstName.trim() !== ''
+        })()
+  const canBook = hasSelection && primaryAssigned
 
   // ── Handlers (calendar handlers mirror the guest AvailabilityClient) ───────
 
@@ -323,7 +369,7 @@ export function SlotPickerClient({ data }: { data: SlotPickerData }) {
     setHoldStartedAt(null)
     setSecondsLeft(null)
     setHoldExpired(false)
-    setShowChildError(false)
+    setShowSlotError(false)
     clearBookingHold()
   }
 
@@ -339,7 +385,7 @@ export function SlotPickerClient({ data }: { data: SlotPickerData }) {
 
   const toggleSlot = (slot: GeneratedSlot) => {
     setHoldExpired(false)
-    setShowChildError(false)
+    setShowSlotError(false)
     if (selectedSlot?.minutes === slot.minutes) {
       // Tapping the held slot again releases it (guest toggle behaviour).
       setSelectedSlot(null)
@@ -354,31 +400,123 @@ export function SlotPickerClient({ data }: { data: SlotPickerData }) {
   }
 
   const selectPlayers = (count: number) => {
+    // Selection is sticky across the 1 ↔ group toggle: bumping to a group
+    // seeds Player 1 from the ChildSelector pick, and dropping back to 1
+    // keeps slot 0's child as the primary (the "+"-tile flow depends on it).
+    setAssignments((prev) => {
+      const next = resizeAssignments(prev, count)
+      if (count > 1 && players === 1 && selectedChildId && next[0]?.kind === 'none') {
+        next[0] = { kind: 'child', childId: selectedChildId }
+      }
+      return next
+    })
+    if (count === 1 && players > 1) {
+      const first = assignments[0]
+      if (first?.kind === 'child') setSelectedChildId(first.childId)
+    }
     setPlayers(count)
-    setAdditionalPlayers((prev) => resizeAdditionalPlayers(prev, count))
     setHoldExpired(false)
-    setShowExtraPlayerError(false)
+    setShowSlotError(false)
   }
 
   const handleChildSelect = (childId: string) => {
     setSelectedChildId(childId)
-    setShowChildError(false)
+    setShowSlotError(false)
   }
 
-  const updateAdditionalPlayer = (index: number, patch: Partial<AdditionalPlayer>) => {
-    setAdditionalPlayers((prev) =>
-      prev.map((player, i) => (i === index ? { ...player, ...patch } : player)),
+  const assignChild = (slotIndex: number, childId: string) => {
+    setShowSlotError(false)
+    setAssignments((prev) =>
+      prev.map((assignment, i) => {
+        if (i !== slotIndex) return assignment
+        // Tapping the already-selected child unassigns the slot.
+        return assignment.kind === 'child' && assignment.childId === childId
+          ? { kind: 'none' }
+          : { kind: 'child', childId }
+      }),
     )
-    setShowExtraPlayerError(false)
+  }
+
+  const toggleSomeoneElse = (slotIndex: number) => {
+    setShowSlotError(false)
+    setAssignments((prev) =>
+      prev.map((assignment, i) => {
+        if (i !== slotIndex) return assignment
+        return assignment.kind === 'guest'
+          ? { kind: 'none' }
+          : { kind: 'guest', firstName: '', age: '' }
+      }),
+    )
+  }
+
+  // Non-toggle setters for keyboard navigation — arrow keys move AND select
+  // (radio semantics), so landing back on the current option must not
+  // unassign it the way a repeat click does.
+  const setSlotToChild = (slotIndex: number, childId: string) => {
+    setShowSlotError(false)
+    setAssignments((prev) =>
+      prev.map((a, i) => (i === slotIndex ? { kind: 'child', childId } : a)),
+    )
+  }
+
+  const setSlotToGuest = (slotIndex: number) => {
+    setShowSlotError(false)
+    setAssignments((prev) =>
+      prev.map((a, i) =>
+        i === slotIndex && a.kind !== 'guest'
+          ? { kind: 'guest', firstName: '', age: '' }
+          : a,
+      ),
+    )
+  }
+
+  // Radiogroup keyboard contract, mirroring ChildSelector (P-07): arrow keys
+  // move focus and select, skipping children already used by another slot
+  // (they render disabled). Options are resolved from the DOM so the child
+  // list and the "Someone else" tile stay one roving group per slot.
+  const handleSlotRadioKeyDown =
+    (slotIndex: number) => (event: React.KeyboardEvent<HTMLButtonElement>) => {
+      const forward = event.key === 'ArrowRight' || event.key === 'ArrowDown'
+      const backward = event.key === 'ArrowLeft' || event.key === 'ArrowUp'
+      if (!forward && !backward) return
+      event.preventDefault()
+      const group = event.currentTarget.closest('[role="radiogroup"]')
+      if (!group) return
+      const radios = Array.from(
+        group.querySelectorAll<HTMLButtonElement>('[role="radio"]:not([disabled])'),
+      )
+      const current = radios.indexOf(event.currentTarget)
+      if (current === -1 || radios.length < 2) return
+      const next = radios[(current + (forward ? 1 : -1) + radios.length) % radios.length]
+      if (!next) return
+      const childId = next.getAttribute('data-child-id')
+      if (childId) setSlotToChild(slotIndex, childId)
+      else setSlotToGuest(slotIndex)
+      next.focus()
+    }
+
+  const updateGuestSlot = (
+    slotIndex: number,
+    patch: Partial<{ firstName: string; age: string }>,
+  ) => {
+    setShowSlotError(false)
+    setAssignments((prev) =>
+      prev.map((assignment, i) =>
+        i === slotIndex && assignment.kind === 'guest'
+          ? { ...assignment, ...patch }
+          : assignment,
+      ),
+    )
   }
 
   // Group context (Lasith, 16 Aug): when the coach offers group sessions and
-  // the parent already has children, the ChildSelector "+" tile means "add
-  // another player to THIS session" — bump the player count instead of
-  // navigating to /parent/children/new. With NO children the default add-child
-  // navigation stands (a parent must create their first child profile).
-  // Implemented as a capture-phase intercept because ChildSelector (P-07) is
-  // reused untouched; next/link skips navigation once default is prevented.
+  // the parent already has children, the ChildSelector "+" tile (1-on-1 mode
+  // only) means "add another player to THIS session" — bump the player count
+  // instead of navigating to /parent/children/new. With NO children the
+  // default add-child navigation stands (a parent must create their first
+  // child profile). Implemented as a capture-phase intercept because
+  // ChildSelector (P-07) is reused untouched; next/link skips navigation once
+  // default is prevented.
   const handleAddTileCapture = (event: React.MouseEvent<HTMLDivElement>) => {
     if (!offersGroups || data.childrenList.length === 0) return
     const target = event.target as Element
@@ -389,34 +527,58 @@ export function SlotPickerClient({ data }: { data: SlotPickerData }) {
   }
 
   const handleBook = () => {
-    if (!hasSelection || !selectedSlot || !selectedISO || holdStartedAt === null) return
-    // The primary player is required (mirrors the guest name gate — error
-    // shown inline on attempt, never a browser dialog).
-    if (!selectedChildId) {
-      setShowChildError(true)
-      return
+    if (!canBook || !selectedSlot || !selectedISO || holdStartedAt === null) return
+
+    if (players === 1) {
+      if (!selectedChildId) return // canBook already guarantees this
+      // Child id travels via sessionStorage only — never the URL (docs/06).
+      stashBookingHold({
+        coachSlug: data.coachSlug,
+        date: selectedISO,
+        startTime: selectedSlot.time,
+        players,
+        holdStartedAt,
+        childProfileId: selectedChildId,
+      })
+    } else {
+      // Every slot needs an occupant, and every "someone else" a first name
+      // (age optional, as in the guest flow). Inline error, never a dialog.
+      const incomplete = assignments.some(
+        (a) => a.kind === 'none' || (a.kind === 'guest' && !a.firstName.trim()),
+      )
+      if (incomplete) {
+        setShowSlotError(true)
+        return
+      }
+      const playerAssignments: PlayerAssignment[] = assignments.map((a) => {
+        if (a.kind === 'child') {
+          const child = childById.get(a.childId)
+          return {
+            kind: 'child',
+            childProfileId: a.childId,
+            firstName: child?.firstName ?? '',
+            age: child ? String(child.age) : '',
+          }
+        }
+        // 'none' is excluded by the incomplete guard above.
+        return {
+          kind: 'guest',
+          firstName: a.kind === 'guest' ? a.firstName.trim() : '',
+          age: a.kind === 'guest' ? a.age : '',
+        }
+      })
+      const first = assignments[0]
+      stashBookingHold({
+        coachSlug: data.coachSlug,
+        date: selectedISO,
+        startTime: selectedSlot.time,
+        players,
+        holdStartedAt,
+        childProfileId: first?.kind === 'child' ? first.childId : undefined,
+        playerAssignments,
+      })
     }
-    // Every extra group player needs a first name (age optional, as in the
-    // guest flow). One-session details only — no profile is created.
-    if (players > 1 && additionalPlayers.some((p) => !p.firstName.trim())) {
-      setShowExtraPlayerError(true)
-      return
-    }
-    // Child id and extra players' names travel via sessionStorage only —
-    // never the URL (docs/06 child-data rules). The URL carries non-PII slot
-    // facts so the summary page can server-render.
-    stashBookingHold({
-      coachSlug: data.coachSlug,
-      date: selectedISO,
-      startTime: selectedSlot.time,
-      players,
-      holdStartedAt,
-      childProfileId: selectedChildId,
-      additionalPlayers:
-        players > 1
-          ? additionalPlayers.map((p) => ({ firstName: p.firstName.trim(), age: p.age }))
-          : undefined,
-    })
+
     const q = new URLSearchParams()
     q.set('date', selectedISO)
     q.set('startTime', selectedSlot.time)
@@ -434,6 +596,14 @@ export function SlotPickerClient({ data }: { data: SlotPickerData }) {
   const durationMinutes = selectedSlot?.durationMinutes ?? data.sessionDurationMinutes
   const sessionTypeLabel =
     players === 1 ? '1-to-1' : `Group · ${players} players`
+
+  const primaryFirstName = (() => {
+    if (players === 1) return selectedChild?.firstName ?? null
+    const first = assignments[0]
+    if (first?.kind === 'child') return childById.get(first.childId)?.firstName ?? null
+    if (first?.kind === 'guest' && first.firstName.trim()) return first.firstName.trim()
+    return null
+  })()
 
   if (!hasAnyAvailability) {
     return (
@@ -663,90 +833,208 @@ export function SlotPickerClient({ data }: { data: SlotPickerData }) {
             )}
           </div>
 
-          {/* P-10 addition 2: ChildSelector replaces the guest name/age inputs.
-              The capture wrapper redirects the "+" tile in the group context —
-              see handleAddTileCapture. */}
+          {/* P-10 addition 2: player assignment. 1-on-1 keeps ChildSelector
+              (P-07, untouched — capture wrapper redirects the "+" tile in the
+              group context, see handleAddTileCapture). Group mode renders one
+              slot per player, each offering profile children + "Someone else". */}
           <div className="px-5 sm:px-6 pb-6 pt-5 border-t border-gray-100">
-            <div onClickCapture={handleAddTileCapture}>
-              <ChildSelector
-                childrenList={data.childrenList}
-                selectedChildId={selectedChildId}
-                onSelect={handleChildSelect}
-              />
-            </div>
-            {showChildError && (
-              <p className="text-[12px] text-danger mt-2.5" role="alert" data-testid="child-required-error">
-                Choose who this session is for to continue.
-              </p>
-            )}
-
-            {/* Extra group players — one-session details only, never child
-                profiles, never written to Supabase. */}
-            {players > 1 && (
-              <div className="mt-4 flex flex-col gap-3" data-testid="extra-players">
+            {players === 1 ? (
+              <div onClickCapture={handleAddTileCapture}>
+                <ChildSelector
+                  childrenList={data.childrenList}
+                  selectedChildId={selectedChildId}
+                  onSelect={handleChildSelect}
+                />
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3" data-testid="player-slots">
+                <span className="text-base font-medium text-neutral-900">
+                  Who is this session for?
+                </span>
                 <p className="text-[13px] text-gray-500">
-                  Extra players are for this session only — no profile needed.
+                  &ldquo;Someone else&rdquo; players are for this session only — no profile
+                  needed.
                 </p>
-                {additionalPlayers.map((player, index) => {
-                  const playerNumber = index + 2
-                  const nameMissing = showExtraPlayerError && !player.firstName.trim()
+                {assignments.map((assignment, index) => {
+                  const playerNumber = index + 1
+                  const isGuest = assignment.kind === 'guest'
+                  // Roving tabindex: the slot's selected option sits in the
+                  // tab order; with nothing selected, the first pickable
+                  // option does (same contract as ChildSelector).
+                  const firstPickableChildId =
+                    data.childrenList.find(
+                      (c) =>
+                        (assignment.kind === 'child' && assignment.childId === c.id) ||
+                        !slotByChildId.has(c.id),
+                    )?.id ?? null
+                  const tabKey =
+                    assignment.kind === 'child'
+                      ? assignment.childId
+                      : isGuest
+                        ? 'guest'
+                        : (firstPickableChildId ?? 'guest')
                   return (
-                    <div key={playerNumber} className="rounded-xl border border-gray-200 p-4">
-                      <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-2">
+                    <div
+                      key={playerNumber}
+                      className="rounded-xl border border-gray-200 p-4"
+                      data-testid={`player-slot-${playerNumber}`}
+                    >
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-3">
                         Player {playerNumber}
                       </p>
-                      <div className="grid grid-cols-[1fr_84px] gap-3">
-                        <div>
-                          <label
-                            htmlFor={`player-${playerNumber}-name`}
-                            className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-1.5"
-                          >
-                            First name
-                          </label>
-                          <input
-                            id={`player-${playerNumber}-name`}
-                            type="text"
-                            autoComplete="off"
-                            placeholder="e.g. Sam"
-                            value={player.firstName}
-                            onChange={(e) =>
-                              updateAdditionalPlayer(index, { firstName: e.target.value })
-                            }
-                            data-testid={`extra-player-name-${playerNumber}`}
-                            className={`w-full h-11 px-3.5 rounded-xl bg-gray-50 border text-[15px] text-gray-900 placeholder:text-gray-400 outline-none focus:bg-white focus:border-brand-600 transition-all ${
-                              nameMissing ? 'border-danger' : 'border-gray-200'
+                      <div
+                        role="radiogroup"
+                        aria-label={`Player ${playerNumber}`}
+                        className="flex items-start gap-4 overflow-x-auto pb-1"
+                      >
+                        {data.childrenList.map((child) => {
+                          const selectedHere =
+                            assignment.kind === 'child' && assignment.childId === child.id
+                          // A profile child can occupy at most one slot —
+                          // dimmed (not pickable) everywhere else.
+                          const usedElsewhere = !selectedHere && slotByChildId.has(child.id)
+                          return (
+                            <button
+                              key={child.id}
+                              type="button"
+                              role="radio"
+                              aria-checked={selectedHere}
+                              disabled={usedElsewhere}
+                              tabIndex={tabKey === child.id ? 0 : -1}
+                              data-child-id={child.id}
+                              onClick={() => assignChild(index, child.id)}
+                              onKeyDown={handleSlotRadioKeyDown(index)}
+                              data-testid={`player-${playerNumber}-child-${child.id}`}
+                              className={`flex min-w-[72px] flex-col items-center gap-2 ${
+                                usedElsewhere ? 'opacity-40 cursor-not-allowed' : ''
+                              }`}
+                            >
+                              <span className="relative inline-block">
+                                <CriklyAvatar
+                                  seed={child.firstName}
+                                  style="adventurer"
+                                  size={56}
+                                  ringColor={child.colour}
+                                  ringWidth={selectedHere ? 3 : 1.5}
+                                  alt={`${child.firstName}, age ${child.age}`}
+                                />
+                                {selectedHere && (
+                                  /* Identity colour is data-driven — same
+                                     inline-background pattern as ChildSelector. */
+                                  <span
+                                    className="absolute -bottom-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full text-white"
+                                    style={{ backgroundColor: child.colour }}
+                                    aria-hidden
+                                  >
+                                    <Check size={12} strokeWidth={3} />
+                                  </span>
+                                )}
+                              </span>
+                              <span
+                                className={`text-sm text-neutral-900 ${
+                                  selectedHere ? 'font-bold' : 'font-normal'
+                                }`}
+                              >
+                                {child.firstName}
+                              </span>
+                            </button>
+                          )
+                        })}
+
+                        <button
+                          type="button"
+                          role="radio"
+                          aria-checked={isGuest}
+                          tabIndex={tabKey === 'guest' ? 0 : -1}
+                          onClick={() => toggleSomeoneElse(index)}
+                          onKeyDown={handleSlotRadioKeyDown(index)}
+                          data-testid={`player-${playerNumber}-someone-else`}
+                          className="flex min-w-[72px] flex-col items-center gap-2"
+                        >
+                          <span
+                            className={`flex h-14 w-14 items-center justify-center rounded-full border-[1.5px] ${
+                              isGuest
+                                ? 'border-brand-600 bg-brand-50'
+                                : 'border-dashed border-neutral-400 bg-white'
                             }`}
-                          />
-                        </div>
-                        <div>
-                          <label
-                            htmlFor={`player-${playerNumber}-age`}
-                            className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-1.5"
                           >
-                            Age
-                          </label>
-                          <select
-                            id={`player-${playerNumber}-age`}
-                            value={player.age}
-                            onChange={(e) =>
-                              updateAdditionalPlayer(index, { age: e.target.value })
-                            }
-                            data-testid={`extra-player-age-${playerNumber}`}
-                            className="w-full h-11 px-3 rounded-xl bg-gray-50 border border-gray-200 text-[15px] text-gray-900 outline-none focus:bg-white focus:border-brand-600 transition-all"
+                            <Plus
+                              size={22}
+                              className={isGuest ? 'text-brand-600' : 'text-neutral-400'}
+                              aria-hidden
+                            />
+                          </span>
+                          <span
+                            className={`text-sm ${
+                              isGuest ? 'font-bold text-brand-600' : 'text-neutral-600'
+                            }`}
                           >
-                            <option value="">–</option>
-                            {Array.from({ length: 16 }, (_, i) => i + 3).map((age) => (
-                              <option key={age} value={age}>{age}</option>
-                            ))}
-                          </select>
-                        </div>
+                            Someone else
+                          </span>
+                        </button>
                       </div>
+
+                      {isGuest && (
+                        <div className="mt-3 grid grid-cols-[1fr_84px] gap-3">
+                          <div>
+                            <label
+                              htmlFor={`player-${playerNumber}-name`}
+                              className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-1.5"
+                            >
+                              First name
+                            </label>
+                            <input
+                              id={`player-${playerNumber}-name`}
+                              type="text"
+                              autoComplete="off"
+                              placeholder="e.g. Sam"
+                              value={assignment.firstName}
+                              onChange={(e) =>
+                                updateGuestSlot(index, { firstName: e.target.value })
+                              }
+                              aria-invalid={showSlotError && !assignment.firstName.trim()}
+                              aria-describedby={showSlotError ? 'player-slots-error' : undefined}
+                              data-testid={`player-name-${playerNumber}`}
+                              className={`w-full h-11 px-3.5 rounded-xl bg-gray-50 border text-[15px] text-gray-900 placeholder:text-gray-400 outline-none focus:bg-white focus:border-brand-600 transition-all ${
+                                showSlotError && !assignment.firstName.trim()
+                                  ? 'border-danger'
+                                  : 'border-gray-200'
+                              }`}
+                            />
+                          </div>
+                          <div>
+                            <label
+                              htmlFor={`player-${playerNumber}-age`}
+                              className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-1.5"
+                            >
+                              Age
+                            </label>
+                            <select
+                              id={`player-${playerNumber}-age`}
+                              value={assignment.age}
+                              onChange={(e) => updateGuestSlot(index, { age: e.target.value })}
+                              data-testid={`player-age-${playerNumber}`}
+                              className="w-full h-11 px-3 rounded-xl bg-gray-50 border border-gray-200 text-[15px] text-gray-900 outline-none focus:bg-white focus:border-brand-600 transition-all"
+                            >
+                              <option value="">–</option>
+                              {Array.from({ length: 16 }, (_, i) => i + 3).map((age) => (
+                                <option key={age} value={age}>{age}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )
                 })}
-                {showExtraPlayerError && (
-                  <p className="text-[12px] text-danger" role="alert" data-testid="extra-player-error">
-                    Add each player&apos;s first name to continue.
+                {showSlotError && (
+                  <p
+                    id="player-slots-error"
+                    className="text-[12px] text-danger"
+                    role="alert"
+                    data-testid="player-slots-error"
+                  >
+                    Choose a player or add their name for each player slot.
                   </p>
                 )}
               </div>
@@ -764,7 +1052,7 @@ export function SlotPickerClient({ data }: { data: SlotPickerData }) {
                     {dayLabel(selectedISO)} · {selectedSlot.label}
                   </p>
                   <p className="text-[12px] text-gray-500 mt-0.5">
-                    {sessionTypeLabel} · {durationMinutes} min{selectedChild ? ` · ${selectedChild.firstName}` : ''}
+                    {sessionTypeLabel} · {durationMinutes} min{primaryFirstName ? ` · ${primaryFirstName}` : ''}
                   </p>
                   {selectedSlot.venueName && (
                     <p className="flex min-w-0 items-center gap-0.5 text-xs font-medium text-gray-500 mt-0.5">
@@ -791,7 +1079,7 @@ export function SlotPickerClient({ data }: { data: SlotPickerData }) {
             <button
               type="button"
               onClick={handleBook}
-              disabled={!hasSelection}
+              disabled={!canBook}
               className="mt-4 w-full h-[52px] rounded-xl bg-brand-600 text-white font-bold text-[15px] hover:bg-brand-700 active:scale-[0.99] transition-all shadow-sm disabled:opacity-40 disabled:hover:bg-brand-600 disabled:active:scale-100 disabled:cursor-not-allowed"
               data-testid="book-cta"
             >
@@ -839,7 +1127,7 @@ export function SlotPickerClient({ data }: { data: SlotPickerData }) {
         <button
           type="button"
           onClick={handleBook}
-          disabled={!hasSelection}
+          disabled={!canBook}
           className="flex-shrink-0 inline-flex items-center justify-center h-12 px-6 rounded-xl bg-brand-600 text-white font-bold text-[15px] hover:bg-brand-700 active:scale-[0.98] transition-all shadow-sm disabled:opacity-40 disabled:active:scale-100 disabled:cursor-not-allowed"
           data-testid="book-cta-mobile"
         >
