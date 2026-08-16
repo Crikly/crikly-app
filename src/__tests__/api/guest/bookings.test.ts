@@ -197,7 +197,12 @@ const COACH_ROW = {
 
 const COACH_SPORT_ROW = {
   price_individual_pence: 6000,
+  // P-10 Phase 2 (D4): group pricing comes from group_price_tiers[count].
+  // price_group_pence is DEPRECATED for pricing — kept in the fixture to
+  // prove the route ignores it.
   price_group_pence: 4000,
+  session_types: ['individual', 'group'],
+  group_price_tiers: { '2': 9000, '3': 12000 },
   session_duration_minutes: 60,
   currency: 'GBP',
   is_active: true,
@@ -539,7 +544,7 @@ describe('POST /api/guest/bookings — BUG-09 per-block price override', () => {
     expect(stripeMock.paymentIntents.create).not.toHaveBeenCalled()
   })
 
-  it('ignores block price overrides for group sessions (override is individual-only)', async () => {
+  it('P-10 D4: prices a group booking from group_price_tiers[count], ignoring overrides and price_group_pence', async () => {
     const stripeMock = makeStripeMock()
     ;(getStripe as MockFn).mockReturnValue(stripeMock)
 
@@ -547,10 +552,11 @@ describe('POST /api/guest/bookings — BUG-09 per-block price override', () => {
     // lookup. The 3c slot-validation membership read (BUG-19 Phase 1) still
     // consults availability_templates for EVERY session type, so exactly one
     // availability_templates from() call is expected; its row carries a 7500
-    // override which must NOT affect the group price.
+    // override which must NOT affect the group price. The tier for 2 players
+    // is 9000 — NOT price_group_pence (4000, deprecated).
     const piIdempotentChain = makeChain({ data: null })
     const coachChain = makeChain({ data: COACH_ROW })
-    const sportChain = makeChain({ data: COACH_SPORT_ROW }) // group default = 4000
+    const sportChain = makeChain({ data: COACH_SPORT_ROW })
     const configChain = makeChain({ data: PLATFORM_CONFIG_ROW })
     const profileChain = makeChain({ data: PROFILE_ROW })
     const bookingChain = makeChain({ data: BOOKING_ROW })
@@ -572,14 +578,124 @@ describe('POST /api/guest/bookings — BUG-09 per-block price override', () => {
       .mockReturnValueOnce(piInsertChain)
     ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom })
 
-    const res = await callPost({ ...VALID_BODY, sessionType: 'group', pricePence: 4000 })
+    const res = await callPost({
+      ...VALID_BODY,
+      sessionType: 'group',
+      pricePence: 9000,
+      players: [
+        { name: 'Yuwin', age: 10 },
+        { name: 'Sam', age: 9 },
+      ],
+    })
     expect(res.status).toBe(200)
 
     const fromArgs = (mockFrom as MockFn).mock.calls.map((c) => c[0])
     const templateReads = fromArgs.filter((a) => a === 'availability_templates')
     expect(templateReads).toHaveLength(1) // 3c membership only — no BUG-09 read
-    const insertArg = (bookingChain.insert as MockFn).mock.calls[0][0] as Record<string, number>
-    expect(insertArg.coach_price_pence).toBe(4000) // group default, override ignored
+    const insertArg = (bookingChain.insert as MockFn).mock.calls[0][0] as Record<string, unknown>
+    expect(insertArg.coach_price_pence).toBe(9000) // tiers['2'] — not price_group_pence
+    // Primary stays in the legacy columns; player 2 lands in the 054 jsonb
+    // with child_profile_id null (guests can never link profiles).
+    expect(insertArg.participant_name).toBe('Yuwin')
+    expect(insertArg.participant_age).toBe(10)
+    expect(insertArg.additional_participants).toEqual([
+      { name: 'Sam', age: 9, child_profile_id: null },
+    ])
+  })
+
+  it('P-10 D5: rejects a group larger than the highest tier key with too_many_players', async () => {
+    const piIdempotentChain = makeChain({ data: null })
+    const coachChain = makeChain({ data: COACH_ROW })
+    const sportChain = makeChain({ data: COACH_SPORT_ROW }) // highest tier key = 3
+    const mockFrom = jest.fn()
+      .mockReturnValueOnce(piIdempotentChain)
+      .mockReturnValueOnce(coachChain)
+      .mockReturnValueOnce(sportChain)
+    ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom })
+
+    const res = await callPost({
+      ...VALID_BODY,
+      sessionType: 'group',
+      pricePence: 12000,
+      players: [
+        { name: 'A' }, { name: 'B' }, { name: 'C' }, { name: 'D' },
+      ],
+    })
+    expect(res.status).toBe(400)
+    expect(await res.json()).toEqual({ error: 'too_many_players' })
+  })
+
+  it('P-10 D4: a count inside the cap but with no tier returns session_type_unavailable', async () => {
+    const piIdempotentChain = makeChain({ data: null })
+    const coachChain = makeChain({ data: COACH_ROW })
+    // Tiers for 2 and 4 — a 3-player request is under the cap (4) but unpriced.
+    const sportChain = makeChain({
+      data: { ...COACH_SPORT_ROW, group_price_tiers: { '2': 9000, '4': 14000 } },
+    })
+    const mockFrom = jest.fn()
+      .mockReturnValueOnce(piIdempotentChain)
+      .mockReturnValueOnce(coachChain)
+      .mockReturnValueOnce(sportChain)
+    ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom })
+
+    const res = await callPost({
+      ...VALID_BODY,
+      sessionType: 'group',
+      pricePence: 12000,
+      players: [{ name: 'A' }, { name: 'B' }, { name: 'C' }],
+    })
+    expect(res.status).toBe(400)
+    expect(await res.json()).toEqual({ error: 'session_type_unavailable' })
+  })
+
+  it('P-10 D4: group bookings 400 when the coach has not enabled group sessions', async () => {
+    const piIdempotentChain = makeChain({ data: null })
+    const coachChain = makeChain({ data: COACH_ROW })
+    const sportChain = makeChain({
+      data: { ...COACH_SPORT_ROW, session_types: ['individual'] },
+    })
+    const mockFrom = jest.fn()
+      .mockReturnValueOnce(piIdempotentChain)
+      .mockReturnValueOnce(coachChain)
+      .mockReturnValueOnce(sportChain)
+    ;(createAdminClient as MockFn).mockReturnValue({ from: mockFrom })
+
+    const res = await callPost({
+      ...VALID_BODY,
+      sessionType: 'group',
+      pricePence: 9000,
+      players: [{ name: 'A' }, { name: 'B' }],
+    })
+    expect(res.status).toBe(400)
+    expect(await res.json()).toEqual({ error: 'session_type_unavailable' })
+  })
+
+  it('P-10 coherence: player count and sessionType must agree (400 both ways)', async () => {
+    // Multi-player individual — malformed.
+    const res1 = await callPost({
+      ...VALID_BODY,
+      players: [{ name: 'A' }, { name: 'B' }],
+    })
+    expect(res1.status).toBe(400)
+
+    // Legacy single-participant body claiming group — the deprecated
+    // price_group_pence path is gone; a group booking IS a players array.
+    const res2 = await callPost({ ...VALID_BODY, sessionType: 'group', pricePence: 4000 })
+    expect(res2.status).toBe(400)
+  })
+
+  it('P-10: guests may never link child profiles in players entries', async () => {
+    const res = await callPost({
+      ...VALID_BODY,
+      sessionType: 'group',
+      pricePence: 9000,
+      players: [
+        { name: 'Yuwin', age: 10, childProfileId: '33333333-3333-4333-8333-333333333333' },
+        { name: 'Sam', age: 9 },
+      ],
+    })
+    expect(res.status).toBe(400)
+    expect(await res.json()).toEqual({ error: 'invalid_body' })
   })
 })
 
