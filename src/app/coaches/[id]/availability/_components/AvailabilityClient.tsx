@@ -30,7 +30,13 @@ import {
 import type { DayProgramme } from './_data/programmeSchedule'
 import { stashParticipant } from '@/lib/booking/participant-handoff'
 import { hhmmToMinutes, type Interval } from '@/lib/availability/overlap'
-import type { AuthedBookingContext } from '@/components/booking/AuthedPlayerPicker'
+import {
+  AuthedPlayerPicker,
+  type AuthedBookingContext,
+  type PlayerPickerSelection,
+} from '@/components/booking/AuthedPlayerPicker'
+import { coachPricePence } from '@/lib/booking/authed-booking-pricing'
+import { stashBookingHold } from '@/lib/booking/authed-booking-handoff'
 
 /**
  * BUG-14: a live booking's occupied interval, as shaped by the availability
@@ -108,6 +114,7 @@ export function AvailabilityClient({
   cancellationWindowHours,
   programmesByDate,
   programmeDates,
+  authedBooking,
 }: Props) {
   const router = useRouter()
 
@@ -132,6 +139,18 @@ export function AvailabilityClient({
   const [participantName, setParticipantName] = useState('')
   const [participantAge, setParticipantAge] = useState('')
   const [showError, setShowError] = useState(false)
+
+  // P-10 single-flow: the signed-in parent's player selection, reported by
+  // AuthedPlayerPicker. `authed === null` (guests, coach-only, player-only)
+  // leaves every pre-existing state and code path untouched.
+  const authed = authedBooking ?? null
+  const [pickerSelection, setPickerSelection] = useState<PlayerPickerSelection | null>(null)
+  const [showPickerError, setShowPickerError] = useState(false)
+
+  const handlePickerChange = (selection: PlayerPickerSelection) => {
+    setPickerSelection(selection)
+    setShowPickerError(false)
+  }
 
   const selectedDate = useMemo(() => (selectedISO ? parseISO(selectedISO) : null), [selectedISO])
 
@@ -275,6 +294,15 @@ export function AvailabilityClient({
 
   const hasSelection = selectedSlot !== null || selectedProgramme !== null
 
+  // P-10 single-flow: an authed SLOT booking additionally needs a primary
+  // player before the CTA enables (approved rule). Programme selections keep
+  // guest gating — enrolment stays on the guest funnel (approved decision 4).
+  const ctaDisabled =
+    !hasSelection ||
+    (authed !== null &&
+      selectedSlot !== null &&
+      !(pickerSelection?.primaryAssigned ?? false))
+
   const handleBook = () => {
     if (!hasSelection) return
     // BUG-24: programmes enrol through the detail page's SessionPicker — the
@@ -287,6 +315,32 @@ export function AvailabilityClient({
     if (selectedProgramme) {
       stashParticipant(participantName, participantAge)
       router.push(`/coaches/${coachId}/programmes/${selectedProgramme.id}`)
+      return
+    }
+    // P-10 single-flow: a signed-in parent books slots through the authed
+    // checkout. Player identities travel via the sessionStorage handoff —
+    // never the URL (docs/06 child-data rules); the URL carries only slot
+    // facts so checkout can server-render.
+    if (authed && selectedSlot && selectedISO) {
+      if (!pickerSelection || !pickerSelection.isComplete) {
+        setShowPickerError(true)
+        return
+      }
+      stashBookingHold({
+        coachSlug: coachId,
+        date: selectedISO,
+        startTime: selectedSlot.time,
+        players: pickerSelection.players,
+        holdStartedAt: Date.now(),
+        childProfileId: pickerSelection.childProfileId,
+        playerAssignments: pickerSelection.playerAssignments,
+      })
+      const q = new URLSearchParams()
+      q.set('coachId', coachId)
+      q.set('date', selectedISO)
+      q.set('startTime', selectedSlot.time)
+      q.set('players', String(pickerSelection.players))
+      router.push(`/parent/checkout?${q.toString()}`)
       return
     }
     // UX-16: name is required; age is optional (adult players may omit it).
@@ -330,11 +384,32 @@ export function AvailabilityClient({
 
   // BUG-08: a selected 1-to-1 slot is priced by its per-block override, falling
   // back to the coach's sport default (pricePence) when the block has none.
+  // P-10 single-flow: an authed GROUP selection prices from the coach's group
+  // tier instead (TOTAL pence for that size — CF-PRICE-01, overrides never
+  // apply to tiers); 1 player and all guests keep the exact derivation above.
+  // Coach fee only — the platform fee is itemised at checkout (decision 1).
+  const authedPlayers = authed ? pickerSelection?.players ?? 1 : 1
   const totalPence = selectedSlot
-    ? selectedSlot.pricePence ?? pricePence ?? 0
+    ? authed
+      ? coachPricePence(
+          authedPlayers,
+          selectedSlot.pricePence ?? null,
+          pricePence,
+          authed.groupPriceTiers,
+        ) ?? 0
+      : selectedSlot.pricePence ?? pricePence ?? 0
     : selectedProgramme
       ? selectedProgramme.pricePence
       : 0
+
+  // Summary-card participant: the typed guest name, or the authed primary
+  // player's first name (1-on-1 pick / first of the pool).
+  const participantLabel = authed
+    ? pickerSelection && pickerSelection.players > 1
+      ? pickerSelection.playerAssignments?.[0]?.firstName ?? ''
+      : authed.childrenList.find((c) => c.id === pickerSelection?.childProfileId)
+          ?.firstName ?? ''
+    : participantName.trim()
   const ctaLabel = selectedProgramme ? 'Enrol' : 'Book this slot'
 
   const activeChip =
@@ -643,6 +718,17 @@ export function AvailabilityClient({
 
           {/* Who is this for? */}
           <div className="px-5 sm:px-6 pb-6 pt-5 border-t border-gray-100">
+            {authed ? (
+              /* P-10 single-flow: signed-in parents pick from child profiles
+                 (plus guest players for groups) instead of free-text inputs.
+                 The guest markup below is untouched. */
+              <AuthedPlayerPicker
+                context={authed}
+                showError={showPickerError}
+                onChange={handlePickerChange}
+              />
+            ) : (
+              <>
             <h3 className="text-[16px] font-bold text-gray-900">Who is this for?</h3>
             <p className="text-[13px] text-gray-500 mt-1 mb-4">Tell us about the player. Used for this booking only.</p>
 
@@ -694,6 +780,8 @@ export function AvailabilityClient({
                 </p>
               )}
             </div>
+              </>
+            )}
           </div>
 
           {/* Booking summary */}
@@ -709,7 +797,7 @@ export function AvailabilityClient({
                         {dayLabel(selectedISO)} · {selectedSlot.label}
                       </p>
                       <p className="text-[12px] text-gray-500 mt-0.5">
-                        1-to-1 · {sessionDurationMinutes} min{participantName.trim() ? ` · ${participantName.trim()}` : ''}
+                        {authed && authedPlayers > 1 ? `Group · ${authedPlayers} players` : '1-to-1'} · {sessionDurationMinutes} min{participantLabel ? ` · ${participantLabel}` : ''}
                       </p>
                       {/* UX-14: selected slot venue — same MapPin style as the time-picker buttons */}
                       {selectedSlot.venueName && (
@@ -743,7 +831,7 @@ export function AvailabilityClient({
             <button
               type="button"
               onClick={handleBook}
-              disabled={!hasSelection}
+              disabled={ctaDisabled}
               className="mt-4 w-full h-[52px] rounded-xl bg-brand-600 text-white font-bold text-[15px] hover:bg-brand-700 active:scale-[0.99] transition-all shadow-sm disabled:opacity-40 disabled:hover:bg-brand-600 disabled:active:scale-100 disabled:cursor-not-allowed"
               data-testid="book-cta"
             >
@@ -762,7 +850,7 @@ export function AvailabilityClient({
           {hasSelection ? (
             <>
               <p className="text-[15px] font-bold text-gray-900 leading-tight">
-                {selectedProgramme ? '1 programme' : '1 session'} · {formatPence(totalPence)}
+                {selectedProgramme ? '1 programme' : authed && authedPlayers > 1 ? `Group · ${authedPlayers} players` : '1 session'} · {formatPence(totalPence)}
               </p>
               <p className="text-[12px] text-gray-500 truncate">
                 {selectedISO ? dayLabel(selectedISO) : ''}
@@ -781,7 +869,7 @@ export function AvailabilityClient({
         <button
           type="button"
           onClick={handleBook}
-          disabled={!hasSelection}
+          disabled={ctaDisabled}
           className="flex-shrink-0 inline-flex items-center justify-center h-12 px-6 rounded-xl bg-brand-600 text-white font-bold text-[15px] hover:bg-brand-700 active:scale-[0.98] transition-all shadow-sm disabled:opacity-40 disabled:active:scale-100 disabled:cursor-not-allowed"
           data-testid="book-cta-mobile"
         >
