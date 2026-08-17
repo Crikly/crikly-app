@@ -39,6 +39,7 @@ import {
   coachPricePence,
   playerCountOptions,
 } from '@/lib/booking/authed-booking-pricing'
+import { formatPlayersLabel } from '@/lib/booking/participants'
 import type { GroupPriceTiers } from '@/lib/coach/group-pricing'
 import { stashBookingHold } from '@/lib/booking/authed-booking-handoff'
 
@@ -347,14 +348,14 @@ export function AvailabilityClient({
 
   const hasSelection = selectedSlot !== null || selectedProgramme !== null
 
-  // P-10 single-flow: an authed SLOT booking additionally needs a primary
-  // player before the CTA enables (approved rule). Programme selections keep
-  // guest gating — enrolment stays on the guest funnel (approved decision 4).
+  // P-10 fix 4: an authed SLOT booking needs EVERY player slot filled before
+  // the CTA enables (picker.isComplete). Programme selections keep guest
+  // gating — enrolment stays on the guest funnel (approved decision 4).
   const ctaDisabled =
     !hasSelection ||
     (authed !== null &&
       selectedSlot !== null &&
-      !(pickerSelection?.primaryAssigned ?? false))
+      !(pickerSelection?.isComplete ?? false))
 
   const handleBook = () => {
     if (!hasSelection) return
@@ -488,14 +489,18 @@ export function AvailabilityClient({
       ? selectedProgramme.pricePence
       : 0
 
-  // Summary-card participant: the typed guest name, or the authed primary
-  // player's first name (1-on-1 pick / first of the pool).
+  // Summary-card participant (P-10 fix 2): EVERY player, not just the
+  // primary — "Yuwin + Arthur + Sam", or "Yuwin + 3 others" past three.
   const participantLabel = authed
     ? pickerSelection && pickerSelection.players > 1
-      ? pickerSelection.playerAssignments?.[0]?.firstName ?? ''
+      ? formatPlayersLabel(
+          (pickerSelection.playerAssignments ?? []).map((p) => p.firstName),
+        )
       : authed.childrenList.find((c) => c.id === pickerSelection?.childProfileId)
           ?.firstName ?? ''
-    : participantName.trim()
+    : guestPlayers > 1
+      ? formatPlayersLabel([participantName, ...guestExtras.map((row) => row.name)])
+      : participantName.trim()
   const ctaLabel = selectedProgramme ? 'Enrol' : 'Book this slot'
 
   const activeChip =
@@ -802,7 +807,19 @@ export function AvailabilityClient({
             )}
           </div>
 
-          {/* Who is this for? */}
+          {/* Who is this for? — P-10 fix 1: player selection (chips, child
+              picker, name/age inputs) appears only AFTER a booking selection
+              is made — never on page load. A time slot reveals it in both
+              modes; a GUEST programme selection also reveals the name inputs
+              so the BUG-24 enrolment pre-fill keeps working (decision 4:
+              programme behaviour unchanged — the authed picker stays hidden
+              for programme-only selections since Enrol never reads it).
+              Deselecting the slot (or changing day) unmounts this block and
+              AuthedPlayerPicker resets, re-reporting a fresh selection on
+              remount; a DIRECT slot-to-slot switch keeps it mounted, so the
+              player selection intentionally survives — player identity is
+              coach-level, not slot-level. */}
+          {(selectedSlot !== null || (!authed && selectedProgramme !== null)) && (
           <div className="px-5 sm:px-6 pb-6 pt-5 border-t border-gray-100">
             {authed ? (
               /* P-10 single-flow: signed-in parents pick from child profiles
@@ -816,8 +833,10 @@ export function AvailabilityClient({
             ) : (
               <>
             {/* P-10 Phase 3: guest player count — only when the coach has
-                group pricing tiers. Total updates live per selection. */}
-            {guestOffersGroups && (
+                group pricing tiers AND a 1-on-1 slot is selected (player
+                counts don't apply to programme enrolments). Total updates
+                live per selection. */}
+            {guestOffersGroups && selectedSlot !== null && (
               <div className="mb-4">
                 <h4 className="text-[13px] font-semibold uppercase tracking-wide text-gray-500 mb-2.5">
                   How many players?
@@ -900,9 +919,11 @@ export function AvailabilityClient({
               )}
             </div>
 
-            {/* P-10 Phase 3: players 2..N — one labelled row each, same
-                input styling as player 1. */}
+            {/* P-10 fix 3: players 2..N — ONE compact line per player
+                (label · name · age), so four players never stretch the
+                panel. Same behaviour as the full rows, tighter layout. */}
             {guestOffersGroups &&
+              selectedSlot !== null &&
               guestPlayers > 1 &&
               guestExtras.map((row, index) => {
                 const playerNumber = index + 2
@@ -910,62 +931,47 @@ export function AvailabilityClient({
                 return (
                   <div
                     key={row.key}
-                    className="rounded-xl border border-gray-200 p-4 mt-3"
+                    className="mt-2.5 grid grid-cols-[56px_1fr_72px] items-center gap-2.5 rounded-xl border border-gray-200 px-3 py-2"
                     data-testid={`guest-extra-row-${playerNumber}`}
                   >
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-2">
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
                       Player {playerNumber}
-                    </p>
-                    <div className="grid grid-cols-[1fr_84px] gap-3">
-                      <div>
-                        <label
-                          htmlFor={`participant-${playerNumber}-name`}
-                          className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-1.5"
-                        >
-                          Player&apos;s name
-                        </label>
-                        <input
-                          id={`participant-${playerNumber}-name`}
-                          type="text"
-                          autoComplete="off"
-                          placeholder="e.g. Sam"
-                          value={row.name}
-                          onChange={e => updateGuestExtra(row.key, { name: e.target.value })}
-                          aria-invalid={nameMissing}
-                          aria-describedby={nameMissing ? 'guest-players-error' : undefined}
-                          data-testid={`guest-extra-name-${playerNumber}`}
-                          className={`w-full h-11 px-3.5 rounded-xl bg-gray-50 border text-[15px] text-gray-900 placeholder:text-gray-400 outline-none focus:bg-white focus:border-brand-600 transition-all ${
-                            nameMissing ? 'border-danger' : 'border-gray-200'
-                          }`}
-                        />
-                      </div>
-                      <div>
-                        <label
-                          htmlFor={`participant-${playerNumber}-age`}
-                          className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-1.5"
-                        >
-                          Age
-                        </label>
-                        <select
-                          id={`participant-${playerNumber}-age`}
-                          value={row.age}
-                          onChange={e => updateGuestExtra(row.key, { age: e.target.value })}
-                          data-testid={`guest-extra-age-${playerNumber}`}
-                          className="w-full h-11 px-3 rounded-xl bg-gray-50 border border-gray-200 text-[15px] text-gray-900 outline-none focus:bg-white focus:border-brand-600 transition-all"
-                        >
-                          <option value="">–</option>
-                          {Array.from({ length: 16 }, (_, i) => i + 3).map(age => (
-                            <option key={age} value={age}>{age}</option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
+                    </span>
+                    <input
+                      id={`participant-${playerNumber}-name`}
+                      type="text"
+                      autoComplete="off"
+                      placeholder="Name"
+                      aria-label={`Player ${playerNumber} name`}
+                      value={row.name}
+                      onChange={e => updateGuestExtra(row.key, { name: e.target.value })}
+                      aria-invalid={nameMissing}
+                      aria-describedby={nameMissing ? 'guest-players-error' : undefined}
+                      data-testid={`guest-extra-name-${playerNumber}`}
+                      className={`w-full h-11 px-3 rounded-xl bg-gray-50 border text-[15px] text-gray-900 placeholder:text-gray-400 outline-none focus:bg-white focus:border-brand-600 transition-all ${
+                        nameMissing ? 'border-danger' : 'border-gray-200'
+                      }`}
+                    />
+                    <select
+                      id={`participant-${playerNumber}-age`}
+                      aria-label={`Player ${playerNumber} age`}
+                      value={row.age}
+                      onChange={e => updateGuestExtra(row.key, { age: e.target.value })}
+                      data-testid={`guest-extra-age-${playerNumber}`}
+                      className="w-full h-11 px-2.5 rounded-xl bg-gray-50 border border-gray-200 text-[15px] text-gray-900 outline-none focus:bg-white focus:border-brand-600 transition-all"
+                    >
+                      <option value="">Age</option>
+                      {Array.from({ length: 16 }, (_, i) => i + 3).map(age => (
+                        <option key={age} value={age}>{age}</option>
+                      ))}
+                    </select>
                   </div>
                 )
               })}
               </>
             )}
           </div>
+          )}
 
           {/* Booking summary */}
           <div className="px-5 sm:px-6 pb-6 pt-5 border-t border-gray-100 bg-gray-50">

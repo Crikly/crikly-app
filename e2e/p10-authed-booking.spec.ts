@@ -10,8 +10,41 @@
 // mode keys on is owned HERE (BUG-QA-04 "own the state you need" pattern,
 // same as P8 owning is_profile_live).
 
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 import { dbAdmin, getCoachProfileIdByEmail } from './fixtures/db'
+
+/** Local-timezone YYYY-MM-DD (mirrors src/lib/availability/slots.ts). */
+function localISODate(d: Date): string {
+  const y = d.getFullYear()
+  const mo = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${y}-${mo}-${dd}`
+}
+
+/** The next Monday at least 3 days out — clears min-advance, inside
+ *  max-advance (P8 pattern; the seeded coach has a Monday 09:00–11:00
+ *  recurring template). */
+function nextBookableMonday(): Date {
+  const d = new Date()
+  d.setHours(0, 0, 0, 0)
+  d.setDate(d.getDate() + 3)
+  while (d.getDay() !== 1) d.setDate(d.getDate() + 1)
+  return d
+}
+
+/** Opens the availability page and selects the target date + the 09:00 slot
+ *  (P-10 fix 1: player selection only appears after a slot is tapped). */
+async function selectMondaySlot(page: Page): Promise<void> {
+  const target = nextBookableMonday()
+  const now = new Date()
+  const monthsAhead =
+    (target.getFullYear() - now.getFullYear()) * 12 + (target.getMonth() - now.getMonth())
+  for (let i = 0; i < monthsAhead; i++) {
+    await page.getByRole('button', { name: 'Next month' }).click()
+  }
+  await page.getByTestId(`cal-day-${localISODate(target)}`).click()
+  await page.getByTestId('slot-09:00').click()
+}
 
 function requireEnv(key: string): string {
   const value = process.env[key]
@@ -103,28 +136,36 @@ test.describe('P10 — auth-aware availability page', () => {
       .eq('coach_profile_id', coachProfileId)
   })
 
-  test('T10.1: logged out — guest name/age inputs render, no authed picker', async ({
+  test('T10.1: logged out — player inputs appear only after a slot is tapped (fix 1)', async ({
     page,
   }) => {
     await page.goto(`/coaches/${coachProfileId}/availability`)
     await expect(page.getByTestId('availability-calendar')).toBeVisible()
+
+    // P-10 fix 1: nothing player-related before a slot is tapped.
+    await expect(page.locator('#participant-name')).toHaveCount(0)
+    await expect(page.getByTestId('guest-player-count-2')).toHaveCount(0)
+    await expect(page.getByTestId('authed-player-picker')).toHaveCount(0)
+
+    await selectMondaySlot(page)
     await expect(page.locator('#participant-name')).toBeVisible()
     await expect(page.getByTestId('authed-player-picker')).toHaveCount(0)
   })
 
-  test('T10.3: logged out + group tiers — chips render and add per-player rows', async ({
+  test('T10.3: logged out + group tiers — chips render after slot tap, rows are compact', async ({
     page,
   }) => {
     await page.goto(`/coaches/${coachProfileId}/availability`)
     await expect(page.getByTestId('availability-calendar')).toBeVisible()
+    await selectMondaySlot(page)
 
-    // Chips render for guests when the coach has tiers; Player 1 inputs are
-    // the unchanged guest fields.
+    // Chips render for guests once a slot is held; Player 1 inputs are the
+    // unchanged guest fields.
     await expect(page.getByTestId('guest-player-count-2')).toBeVisible()
     await expect(page.locator('#participant-name')).toBeVisible()
     await expect(page.getByTestId('guest-extra-row-2')).toHaveCount(0)
 
-    // Selecting 3 players appends two labelled rows; back to 1 removes them.
+    // Selecting 3 players appends two compact rows; back to 1 removes them.
     await page.getByTestId('guest-player-count-3').click()
     await expect(page.getByTestId('guest-extra-row-2')).toBeVisible()
     await expect(page.getByTestId('guest-extra-row-3')).toBeVisible()
@@ -149,10 +190,17 @@ test.describe('P10 — auth-aware availability page', () => {
 
     await page.goto(`/coaches/${coachProfileId}/availability`)
     await expect(page.getByTestId('availability-calendar')).toBeVisible()
+
+    // P-10 fix 1: no picker (and no guest inputs) before a slot is tapped.
+    await expect(page.getByTestId('authed-player-picker')).toHaveCount(0)
+    await expect(page.locator('#participant-name')).toHaveCount(0)
+
+    await selectMondaySlot(page)
     await expect(page.getByTestId('authed-player-picker')).toBeVisible()
     await expect(page.locator('#participant-name')).toHaveCount(0)
     // ChildSelector renders (the seeded parent has no children — the picker
-    // shows its "Add a child" tile) and the CTA is disabled with no primary.
+    // shows its "Add a child" tile) and the CTA is disabled until every
+    // player slot is filled (fix 4).
     await expect(page.getByTestId('child-selector')).toBeVisible()
     await expect(page.getByTestId('book-cta')).toBeDisabled()
   })

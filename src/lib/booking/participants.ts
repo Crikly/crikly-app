@@ -128,6 +128,18 @@ export function groupTierPricePence(
 }
 
 /**
+ * Display label for a booking's players (P-10 fix 2): "Yuwin",
+ * "Yuwin + Arthur", "Yuwin + Arthur + Sam", or "Yuwin + 3 others" when more
+ * than three. Blank names are dropped; returns '' when none remain.
+ */
+export function formatPlayersLabel(names: string[]): string {
+  const clean = names.map((n) => n.trim()).filter((n) => n.length > 0)
+  if (clean.length === 0) return ''
+  if (clean.length <= 3) return clean.join(' + ')
+  return `${clean[0]} + ${clean.length - 1} others`
+}
+
+/**
  * Players 2..N as the bookings.additional_participants jsonb value
  * (migration 054), or null for a 1-player booking. The primary (players[0])
  * is stored in participant_name/participant_age by the caller.

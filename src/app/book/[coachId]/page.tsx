@@ -5,6 +5,7 @@ import { GuestBookingFlow, type GuestCheckoutParams } from '@/components/booking
 import type { BookingSummary } from '@/components/booking/BookingSummaryCard'
 import { getCommissionRate } from '@/lib/booking/commission-rate'
 import { displayCommissionPence } from '@/lib/booking/commission-display'
+import { formatPlayersLabel } from '@/lib/booking/participants'
 
 export const metadata: Metadata = {
   title: 'Complete your booking · Crikly',
@@ -177,10 +178,14 @@ export default async function GuestBookingPage({
       sessionType === 'group'
         ? `Group session · ${playersCount} players`
         : '1-to-1 session',
+    // P-10 fix 2: EVERY player shows on the summary — "Yuwin + Arthur + Sam",
+    // or "Yuwin + 3 others" past three. 1-player bookings keep the age suffix.
     participant: participantName
-      ? participantAge !== null
-        ? `${participantName} (age ${participantAge})`
-        : participantName
+      ? extraPlayers.length > 0
+        ? formatPlayersLabel([participantName, ...extraPlayers.map((p) => p.name)])
+        : participantAge !== null
+          ? `${participantName} (age ${participantAge})`
+          : participantName
       : undefined,
     sessionFeePence: pricePence,
     platformFeePence,

@@ -149,7 +149,7 @@ describe('AuthedPlayerPicker — group mode', () => {
     expect(screen.queryByTestId('add-guest-player')).not.toBeInTheDocument()
   })
 
-  it('guest rows: add, name, remove — children always precede guests', async () => {
+  it('guest rows: add, name, remove — children always precede guests; every slot must fill (fix 4)', async () => {
     const user = userEvent.setup()
     const { latest } = renderPicker(makeContext())
 
@@ -163,16 +163,27 @@ describe('AuthedPlayerPicker — group mode', () => {
     await user.selectOptions(screen.getByTestId('guest-age-1'), '8')
     await user.click(screen.getByTestId(`select-child-${YUWIN.id}`))
 
+    // P-10 fix 4: 2 of 3 slots filled — still incomplete, guidance visible.
+    expect(latest().isComplete).toBe(false)
+    expect(screen.getByTestId('player-picker-incomplete')).toHaveTextContent(
+      'all 3 players',
+    )
+
+    await user.click(screen.getByTestId(`select-child-${ARTHUR.id}`))
     expect(latest().isComplete).toBe(true)
+    expect(screen.queryByTestId('player-picker-incomplete')).not.toBeInTheDocument()
     expect(latest().playerAssignments).toEqual([
       { kind: 'child', childProfileId: YUWIN.id, firstName: 'Yuwin', age: '9' },
+      { kind: 'child', childProfileId: ARTHUR.id, firstName: 'Arthur', age: '11' },
       { kind: 'guest', firstName: 'Sam', age: '8' },
     ])
 
     await user.click(screen.getByTestId('remove-guest-1'))
     expect(screen.queryByTestId('guest-row-1')).not.toBeInTheDocument()
+    expect(latest().isComplete).toBe(false) // back to 2 of 3
     expect(latest().playerAssignments).toEqual([
       { kind: 'child', childProfileId: YUWIN.id, firstName: 'Yuwin', age: '9' },
+      { kind: 'child', childProfileId: ARTHUR.id, firstName: 'Arthur', age: '11' },
     ])
   })
 

@@ -13,6 +13,7 @@ import {
   maxBookablePlayers,
   groupTierPricePence,
   toAdditionalParticipantsJson,
+  formatPlayersLabel,
 } from '@/lib/booking/participants'
 
 const CHILD_A = '33333333-3333-4333-8333-333333333333'
@@ -114,6 +115,21 @@ describe('groupTierPricePence', () => {
   it('returns null for counts with no tier (caller 400s session_type_unavailable)', () => {
     expect(groupTierPricePence(tiers, 4)).toBeNull()
     expect(groupTierPricePence(null, 2)).toBeNull()
+  })
+})
+
+// ─── formatPlayersLabel (P-10 fix 2) ──────────────────────────────────────────
+
+describe('formatPlayersLabel', () => {
+  it('joins up to three names, dropping blanks', () => {
+    expect(formatPlayersLabel(['Yuwin'])).toBe('Yuwin')
+    expect(formatPlayersLabel(['Yuwin', ' Arthur ', 'Sam'])).toBe('Yuwin + Arthur + Sam')
+    expect(formatPlayersLabel(['Yuwin', '', '  '])).toBe('Yuwin')
+    expect(formatPlayersLabel([])).toBe('')
+  })
+
+  it('collapses past three to "first + N others"', () => {
+    expect(formatPlayersLabel(['Yuwin', 'Arthur', 'Sam', 'Kim'])).toBe('Yuwin + 3 others')
   })
 })
 

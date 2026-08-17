@@ -56,9 +56,10 @@ export interface PlayerPickerSelection {
   /** players > 1: children first (selection order), then guest rows —
    * the sessionStorage handoff shape, ready to stash. */
   playerAssignments?: PlayerAssignment[]
-  /** CTA-enable rule: at least one player selected or named. */
+  /** At least one player selected or named. */
   primaryAssigned: boolean
-  /** Book-time rule: primary assigned AND every added guest row named. */
+  /** P-10 fix 4 CTA rule: EVERY player slot filled (child tapped or guest
+   * row named) — the host disables its CTA until true. */
   isComplete: boolean
 }
 
@@ -129,10 +130,16 @@ export function AuthedPlayerPicker({
     players === 1
       ? selectedChildId !== null
       : selectedChildIds.length > 0 || guests.some((g) => g.firstName.trim() !== '')
-  const isComplete =
+  // P-10 fix 4: EVERY player slot must be filled before booking — a slot is
+  // filled by a tapped child profile or a guest row with a name. The host
+  // disables its CTA on !isComplete.
+  const filledCount =
     players === 1
       ? selectedChildId !== null
-      : primaryAssigned && guests.every((g) => g.firstName.trim() !== '')
+        ? 1
+        : 0
+      : selectedChildIds.length + guests.filter((g) => g.firstName.trim() !== '').length
+  const isComplete = filledCount === players
 
   // Report every selection change upward as the ready-to-stash summary.
   useEffect(() => {
@@ -453,6 +460,18 @@ export function AuthedPlayerPicker({
             )
           })}
 
+          {/* P-10 fix 4: persistent guidance while any player slot is
+              unfilled — the CTA stays disabled until every slot is filled. */}
+          {!isComplete && (
+            <p
+              className="text-[13px] text-gray-500"
+              role="status"
+              data-testid="player-picker-incomplete"
+            >
+              Please select or add details for all {players} players before
+              continuing.
+            </p>
+          )}
           {showError && !isComplete && (
             <p
               id="player-picker-error"
