@@ -164,8 +164,9 @@ beforeEach(() => {
   })
   ;(createAdminClient as jest.Mock).mockReturnValue(adminMock(jest.fn()))
   // sendBookingConfirmation is a no-op by default — tests that care about it
-  // override this. Existing tests use intents without guest_email metadata so the
-  // route returns before ever calling this function.
+  // override this. Tests without guest_email metadata now hit the BUG-71
+  // booker lookup, which fails fast against positional mocks (caught by the
+  // route's try/catch) — the send is still never reached unless mocked.
   ;(sendBookingConfirmation as jest.Mock).mockResolvedValue(true)
   // sendProgrammeConfirmation is a no-op by default — enrolment tests override this.
   ;(sendProgrammeConfirmation as jest.Mock).mockResolvedValue(true)
@@ -486,13 +487,16 @@ describe('POST /api/webhooks/stripe — payment_intent.payment_failed', () => {
 //   - sendBookingConfirmation is called with the right params + totalPence = intent.amount
 //   - Redelivery (already-confirmed, no rows updated) does NOT trigger a second email
 //   - Email failure (sendBookingConfirmation returns false) still yields a 200 response
-//   - Missing guest_email metadata skips the email but still returns 200
+//   - Missing guest_email + provisional booker skips the email but still returns 200
+//     (BUG-71: missing guest_email with an AUTHED booker resolves the recipient
+//     from the account instead — see the dedicated describe below)
 
 describe('POST /api/webhooks/stripe — payment_intent.succeeded email (P-00c-EMAIL)', () => {
   const BOOKING_WITH_EMAIL = {
     id: BOOKING_ID,
     booking_reference: 'CRK-2026-TEST01',
     coach_profile_id: 'coach-profile-uuid-001',
+    booked_by_user_id: 'prov-user-001',
     session_date: '2026-08-15',
     session_start_time: '10:00:00',
     session_end_time: '11:00:00',
@@ -755,7 +759,7 @@ describe('POST /api/webhooks/stripe — payment_intent.succeeded email (P-00c-EM
     expect(sendBookingConfirmation).not.toHaveBeenCalled()
   })
 
-  it('missing guest_email metadata: skips email but still returns 200', async () => {
+  it('missing guest_email metadata + provisional booker: skips email but still returns 200', async () => {
     const piChain: Record<string, MockFn> = {}
     piChain.update = jest.fn().mockReturnValue({
       eq: jest.fn().mockResolvedValue({ data: null, error: null }),
@@ -773,9 +777,17 @@ describe('POST /api/webhooks/stripe — payment_intent.succeeded email (P-00c-EM
       }),
     })
 
+    // BUG-71: no guest_email now triggers the booker lookup — a provisional
+    // profile (guest without stashed metadata, e.g. a pre-P-00c-EMAIL intent)
+    // must keep the original silent-skip behaviour.
+    const bookerChain = makeChain({
+      data: { full_name: 'Sarah Test', auth_user_id: null, is_provisional: true },
+    })
+
     const mockFrom = jest.fn()
       .mockReturnValueOnce(piChain)
       .mockReturnValueOnce(bookingChain)
+      .mockReturnValueOnce(bookerChain) // user_profiles booker lookup
     ;(createAdminClient as MockFn).mockReturnValue(adminMock(mockFrom))
 
     // Intent with booking_id but NO guest_email
@@ -845,6 +857,237 @@ describe('POST /api/webhooks/stripe — payment_intent.succeeded email (P-00c-EM
 
     const [params] = (sendBookingConfirmation as MockFn).mock.calls[0] as [Record<string, unknown>]
     expect(params.guestName).toBe('there')
+  })
+})
+
+// ── BUG-71: authed parent confirmation email ──────────────────────────────────
+//
+// Authed bookings (POST /api/parent/bookings) stash NO guest_email metadata —
+// the recipient is resolved via booked_by_user_id → user_profiles
+// (full_name, auth_user_id, is_provisional) → auth.admin.getUserById. These
+// tests verify the resolution, its fallbacks, and that failure never breaks
+// the 200.
+
+describe('POST /api/webhooks/stripe — authed parent confirmation email (BUG-71)', () => {
+  const PARENT_USER_PROFILE_ID = 'up-parent-user-001'
+  const PARENT_AUTH_USER_ID = 'auth-parent-001'
+
+  const AUTHED_BOOKING = {
+    id: BOOKING_ID,
+    booking_reference: 'CRK-2026-AUTH01',
+    coach_profile_id: 'coach-profile-uuid-001',
+    booked_by_user_id: PARENT_USER_PROFILE_ID,
+    session_date: '2026-08-20',
+    session_start_time: '10:00:00',
+    session_end_time: '11:00:00',
+    session_type: 'individual',
+    coach_price_pence: 4000,
+    sport_id: 'sport-cricket-uuid',
+  }
+
+  const AUTHED_AMOUNT = 4400
+
+  function setupAuthedEmailMocks(options: {
+    bookerRow?: Record<string, unknown> | null
+    parentAuthEmail?: string | null
+    intentMetadata?: Record<string, unknown>
+    // When set, the booker's user_profiles read resolves with this DB error —
+    // exercises lookupAuthedBooker's never-throws error branch.
+    bookerLookupError?: Record<string, unknown> | null
+  } = {}) {
+    const {
+      bookerRow = { full_name: 'Priya Silva', auth_user_id: PARENT_AUTH_USER_ID, is_provisional: false },
+      bookerLookupError = null,
+      parentAuthEmail = 'priya@example.com',
+      intentMetadata = {
+        booking_id: BOOKING_ID,
+        participant_name: 'Yuwin',
+        participant_age: '10',
+      },
+    } = options
+
+    const piChain: Record<string, MockFn> = {}
+    piChain.update = jest.fn().mockReturnValue({
+      eq: jest.fn().mockResolvedValue({ data: null, error: null }),
+    })
+
+    const bookingChain: Record<string, MockFn> = {}
+    bookingChain.update = jest.fn().mockReturnValue({
+      eq: jest.fn().mockReturnValue({
+        eq: jest.fn().mockReturnValue({
+          select: jest.fn().mockResolvedValue({ data: [AUTHED_BOOKING], error: null }),
+        }),
+      }),
+    })
+
+    const coachChain = makeChain({ data: { display_name: 'Coach Davies', user_profile_id: 'up-coach-001' } })
+    const sportsChain = makeChain({ data: { name: 'Cricket' } })
+
+    // user_profiles keyed on the eq() value: booker id → bookerRow, anything
+    // else (the coach helper) → the coach's user row.
+    const userChain: Record<string, MockFn> = {}
+    let userChainLastId: unknown
+    userChain.select = jest.fn(() => userChain)
+    userChain.eq = jest.fn((_col: string, val: unknown) => {
+      userChainLastId = val
+      return userChain
+    })
+    userChain.maybeSingle = jest.fn(() => {
+      if (userChainLastId === PARENT_USER_PROFILE_ID) {
+        return Promise.resolve(
+          bookerLookupError ? { data: null, error: bookerLookupError } : { data: bookerRow, error: null },
+        )
+      }
+      return Promise.resolve({
+        data: { full_name: 'Owen Davies', auth_user_id: 'auth-coach-001' },
+        error: null,
+      })
+    })
+
+    const mockFrom = jest.fn((table: string) => {
+      if (table === 'payment_intents') return piChain
+      if (table === 'bookings') return bookingChain
+      if (table === 'coach_profiles') return coachChain
+      if (table === 'user_profiles') return userChain
+      if (table === 'sports') return sportsChain
+      return makeChain()
+    })
+
+    const admin = {
+      ...adminMock(mockFrom),
+      auth: {
+        admin: {
+          getUserById: jest.fn((authUserId: string) =>
+            Promise.resolve(
+              authUserId === PARENT_AUTH_USER_ID
+                ? {
+                    data: parentAuthEmail ? { user: { email: parentAuthEmail } } : { user: null },
+                    error: null,
+                  }
+                : { data: { user: { email: 'coach@example.com' } }, error: null },
+            ),
+          ),
+        },
+      },
+    }
+    ;(createAdminClient as MockFn).mockReturnValue(admin)
+
+    const intent = {
+      id: 'pi_test_authed_email',
+      status: 'succeeded',
+      amount: AUTHED_AMOUNT,
+      metadata: intentMetadata,
+      last_payment_error: null,
+    }
+    const event = makeStripeEvent('payment_intent.succeeded', intent)
+    ;(getStripe as MockFn).mockReturnValue({
+      webhooks: { constructEvent: jest.fn().mockReturnValue(event) },
+    })
+
+    return { admin, intent }
+  }
+
+  it('sends the confirmation to the parent\'s auth email resolved via booked_by_user_id', async () => {
+    const { admin } = setupAuthedEmailMocks()
+
+    const res = await callPost('{}')
+
+    expect(res.status).toBe(200)
+    expect(admin.auth.admin.getUserById).toHaveBeenCalledWith(PARENT_AUTH_USER_ID)
+    const [params] = (sendBookingConfirmation as MockFn).mock.calls[0] as [Record<string, unknown>]
+    expect(params.guestEmail).toBe('priya@example.com')
+  })
+
+  it('uses user_profiles.full_name as the greeting name (no guest_name metadata)', async () => {
+    setupAuthedEmailMocks()
+
+    await callPost('{}')
+
+    const [params] = (sendBookingConfirmation as MockFn).mock.calls[0] as [Record<string, unknown>]
+    expect(params.guestName).toBe('Priya Silva')
+  })
+
+  it('passes participant metadata and totalPence = intent.amount, same as the guest path', async () => {
+    setupAuthedEmailMocks()
+
+    await callPost('{}')
+
+    const [params] = (sendBookingConfirmation as MockFn).mock.calls[0] as [Record<string, unknown>]
+    expect(params.participantName).toBe('Yuwin')
+    expect(params.participantAge).toBe(10)
+    expect(params.totalPence).toBe(AUTHED_AMOUNT)
+    expect(params.bookingReference).toBe('CRK-2026-AUTH01')
+  })
+
+  it('skips the email (still 200) when the booker profile is provisional', async () => {
+    setupAuthedEmailMocks({
+      bookerRow: { full_name: 'Ghost Guest', auth_user_id: 'auth-x', is_provisional: true },
+    })
+
+    const res = await callPost('{}')
+
+    expect(res.status).toBe(200)
+    expect(sendBookingConfirmation).not.toHaveBeenCalled()
+  })
+
+  it('skips the email (still 200) when the booker has no auth_user_id', async () => {
+    setupAuthedEmailMocks({
+      bookerRow: { full_name: 'No Auth', auth_user_id: null, is_provisional: false },
+    })
+
+    const res = await callPost('{}')
+
+    expect(res.status).toBe(200)
+    expect(sendBookingConfirmation).not.toHaveBeenCalled()
+  })
+
+  it('skips the email (still 200, logged) when the auth user has no email', async () => {
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      setupAuthedEmailMocks({ parentAuthEmail: null })
+
+      const res = await callPost('{}')
+
+      expect(res.status).toBe(200)
+      expect(sendBookingConfirmation).not.toHaveBeenCalled()
+    } finally {
+      errorSpy.mockRestore()
+    }
+  })
+
+  it('skips the email (still 200, logged, never a retry) when the booker lookup itself errors', async () => {
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      setupAuthedEmailMocks({ bookerLookupError: { message: 'db down' } })
+
+      const res = await callPost('{}')
+
+      // lookupAuthedBooker never throws: a DB failure logs, skips the email,
+      // and the webhook still 200s — PERMANENT semantics, no Stripe redelivery.
+      expect(res.status).toBe(200)
+      expect(sendBookingConfirmation).not.toHaveBeenCalled()
+    } finally {
+      errorSpy.mockRestore()
+    }
+  })
+
+  it('guest_email metadata still short-circuits the account lookup (guest path unchanged)', async () => {
+    const { admin } = setupAuthedEmailMocks({
+      intentMetadata: {
+        booking_id: BOOKING_ID,
+        guest_email: 'sarah@example.com',
+        guest_name: 'Sarah Test',
+      },
+    })
+
+    await callPost('{}')
+
+    const [params] = (sendBookingConfirmation as MockFn).mock.calls[0] as [Record<string, unknown>]
+    expect(params.guestEmail).toBe('sarah@example.com')
+    expect(params.guestName).toBe('Sarah Test')
+    // The parent's auth user is never fetched for the confirmation when the
+    // guest metadata is present (the coach helper may fetch the coach's).
+    expect(admin.auth.admin.getUserById).not.toHaveBeenCalledWith(PARENT_AUTH_USER_ID)
   })
 })
 
@@ -971,6 +1214,7 @@ describe('POST /api/webhooks/stripe — coach notification email (CF-NOTIFY-02)'
     id: BOOKING_ID,
     booking_reference: 'CRK-2026-TEST01',
     coach_profile_id: 'coach-profile-uuid-001',
+    booked_by_user_id: 'up-parent-user-001',
     session_date: '2026-08-15',
     session_start_time: '14:00:00',
     session_end_time: '15:00:00',
@@ -995,6 +1239,11 @@ describe('POST /api/webhooks/stripe — coach notification email (CF-NOTIFY-02)'
     authEmail?: string | null
     sportRow?: Record<string, unknown> | null
     intentMetadata?: Record<string, unknown>
+    // BUG-71/72: the booker's user_profiles row behind booked_by_user_id.
+    // Defaults to a provisional guest profile so pre-BUG-71 tests keep their
+    // guest semantics; authed tests pass a real profile + parentAuthEmail.
+    bookerRow?: Record<string, unknown> | null
+    parentAuthEmail?: string | null
   } = {}) {
     const {
       bookingUpdateData = [COACH_BOOKING],
@@ -1003,6 +1252,8 @@ describe('POST /api/webhooks/stripe — coach notification email (CF-NOTIFY-02)'
       authEmail = 'coach@example.com',
       sportRow = { name: 'Cricket' },
       intentMetadata = { booking_id: BOOKING_ID, guest_name: 'Sarah Test' },
+      bookerRow = { full_name: 'Sarah Test', auth_user_id: null, is_provisional: true },
+      parentAuthEmail = 'parent@example.com',
     } = options
 
     const piChain: Record<string, MockFn> = {}
@@ -1020,7 +1271,22 @@ describe('POST /api/webhooks/stripe — coach notification email (CF-NOTIFY-02)'
     })
 
     const coachChain = makeChain({ data: coachRow })
-    const userChain = makeChain({ data: coachUserRow })
+    // user_profiles serves TWO readers: the coach helper (eq on the coach's
+    // user_profile_id) and the BUG-71/72 booker lookup (eq on the booking's
+    // booked_by_user_id). Key the response on the eq() argument.
+    const userChain: Record<string, MockFn> = {}
+    let userChainLastId: unknown
+    userChain.select = jest.fn(() => userChain)
+    userChain.eq = jest.fn((_col: string, val: unknown) => {
+      userChainLastId = val
+      return userChain
+    })
+    userChain.maybeSingle = jest.fn(() =>
+      Promise.resolve({
+        data: userChainLastId === COACH_BOOKING.booked_by_user_id ? bookerRow : coachUserRow,
+        error: null,
+      }),
+    )
     const sportsChain = makeChain({ data: sportRow })
     // Backstop lookup on the zero-rows branch reads bookings via makeChain —
     // give it an already-confirmed row so the redelivery test no-ops cleanly.
@@ -1052,10 +1318,21 @@ describe('POST /api/webhooks/stripe — coach notification email (CF-NOTIFY-02)'
       ...adminMock(mockFrom),
       auth: {
         admin: {
-          getUserById: jest.fn().mockResolvedValue({
-            data: authEmail ? { user: { email: authEmail } } : { user: null },
-            error: null,
-          }),
+          // Keyed on auth user id: the booker's resolves to parentAuthEmail
+          // (BUG-71), everything else to the coach's authEmail.
+          getUserById: jest.fn((authUserId: string) =>
+            Promise.resolve(
+              authUserId === bookerRow?.auth_user_id
+                ? {
+                    data: parentAuthEmail ? { user: { email: parentAuthEmail } } : { user: null },
+                    error: null,
+                  }
+                : {
+                    data: authEmail ? { user: { email: authEmail } } : { user: null },
+                    error: null,
+                  },
+            ),
+          ),
         },
       },
     }
@@ -1136,8 +1413,44 @@ describe('POST /api/webhooks/stripe — coach notification email (CF-NOTIFY-02)'
     expect(sendNewBookingNotification).toHaveBeenCalledTimes(1)
   })
 
-  it('uses "A parent" as parentName fallback when guest_name metadata is absent', async () => {
+  it('uses "A parent" as parentName fallback when guest_name metadata is absent (provisional booker)', async () => {
     setupCoachEmailMocks({ intentMetadata: { booking_id: BOOKING_ID } })
+
+    await callPost('{}')
+
+    const [params] = (sendNewBookingNotification as MockFn).mock.calls[0] as [Record<string, unknown>]
+    expect(params.parentName).toBe('A parent')
+  })
+
+  it('BUG-72: authed booking — parentName resolves to the booker\'s user_profiles.full_name', async () => {
+    setupCoachEmailMocks({
+      intentMetadata: { booking_id: BOOKING_ID },
+      bookerRow: { full_name: 'Priya Silva', auth_user_id: 'auth-parent-001', is_provisional: false },
+    })
+
+    await callPost('{}')
+
+    const [params] = (sendNewBookingNotification as MockFn).mock.calls[0] as [Record<string, unknown>]
+    expect(params.parentName).toBe('Priya Silva')
+  })
+
+  it('BUG-72: guest_name metadata still wins over the booker lookup (guest path unchanged)', async () => {
+    setupCoachEmailMocks({
+      intentMetadata: { booking_id: BOOKING_ID, guest_name: 'Sarah Test', guest_email: 'sarah@example.com' },
+      bookerRow: { full_name: 'Priya Silva', auth_user_id: 'auth-parent-001', is_provisional: false },
+    })
+
+    await callPost('{}')
+
+    const [params] = (sendNewBookingNotification as MockFn).mock.calls[0] as [Record<string, unknown>]
+    expect(params.parentName).toBe('Sarah Test')
+  })
+
+  it('BUG-72: falls back to "A parent" when the booker row is missing entirely', async () => {
+    setupCoachEmailMocks({
+      intentMetadata: { booking_id: BOOKING_ID },
+      bookerRow: null,
+    })
 
     await callPost('{}')
 

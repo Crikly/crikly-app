@@ -31,8 +31,9 @@
 // PaymentIntent captured by the platform for the full parent_total; the
 // coach/commission split is recorded on payment_intents for the payout
 // system (BR-03). Confirmation email: the guest webhook path keys off
-// guest_email metadata, which authed bookings do not set — the authed
-// confirmation email is a tracked follow-up, not silently half-wired here.
+// guest_email metadata, which authed bookings do not set — the webhook
+// resolves the authed recipient via booked_by_user_id → user_profiles →
+// auth.users instead (BUG-71).
 
 import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
