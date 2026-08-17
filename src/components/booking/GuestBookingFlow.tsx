@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import {
   Elements,
@@ -30,12 +30,17 @@ import { AddressAutocomplete } from '@/components/booking/AddressAutocomplete'
 import { getStripePromise } from '@/lib/stripe/browser'
 import { formatPlayersLabel } from '@/lib/booking/participants'
 import {
+  readBookingHold,
+  clearBookingHold,
+  type PlayerAssignment,
+} from '@/lib/booking/authed-booking-handoff'
+import {
   BookingSummaryCard,
   formatPence,
   type BookingSummary,
 } from '@/components/booking/BookingSummaryCard'
 
-type CheckoutError = 'payment' | 'slot_taken' | 'slot_unavailable' | 'price_changed'
+type CheckoutError = 'payment' | 'slot_taken' | 'slot_unavailable' | 'price_changed' | 'player_unavailable'
 
 // UX-18: every availability-shaped 409 code gets its own copy — only genuinely
 // payment-shaped failures may fall through to the "check your card details"
@@ -101,6 +106,19 @@ const EMPTY_FORM: GuestForm = {
   billingPostcode: '',
 }
 
+/** P-10 bug 4 (single checkout page): server-detected parent session.
+ * Non-null switches the checkout to authed mode — contact fields pre-fill
+ * from the account, the participant card is fed by the sessionStorage hold,
+ * and the booking POSTs to /api/parent/bookings. Null = guest behaviour,
+ * byte-identical. */
+export interface AuthedCheckoutPrefill {
+  fullName: string
+  email: string
+  phone: string
+  townCity: string
+  postcode: string
+}
+
 interface GuestBookingFlowProps {
   coachId: string
   /** Coach profile slug — used for the back link so it reads /coaches/[slug]
@@ -109,6 +127,7 @@ interface GuestBookingFlowProps {
   summary: BookingSummary
   checkout: GuestCheckoutParams
   initialError?: CheckoutError
+  authedCheckout?: AuthedCheckoutPrefill | null
 }
 
 interface ConfirmedState {
@@ -125,7 +144,7 @@ const stripePromise = getStripePromise()
  * confirmation data lifted from the inner form. The checkout view is wrapped in
  * <Elements> (deferred-intent mode) so the inner form can use the Stripe hooks.
  */
-export function GuestBookingFlow({ coachId, coachSlug, summary, checkout, initialError }: GuestBookingFlowProps) {
+export function GuestBookingFlow({ coachId, coachSlug, summary, checkout, initialError, authedCheckout }: GuestBookingFlowProps) {
   const [confirmed, setConfirmed] = useState<ConfirmedState | null>(null)
   const [copied, setCopied] = useState<boolean>(false)
 
@@ -306,6 +325,7 @@ export function GuestBookingFlow({ coachId, coachSlug, summary, checkout, initia
         summary={summary}
         checkout={checkout}
         initialError={initialError}
+        authedCheckout={authedCheckout}
         onConfirmed={(bookingReference, email, participant) =>
           setConfirmed({ bookingReference, email, participant })
         }
@@ -322,6 +342,7 @@ interface GuestCheckoutFormProps {
   summary: BookingSummary
   checkout: GuestCheckoutParams
   initialError?: CheckoutError
+  authedCheckout?: AuthedCheckoutPrefill | null
   onConfirmed: (bookingReference: string, email: string, participant?: string) => void
 }
 
@@ -331,21 +352,62 @@ function GuestCheckoutForm({
   summary,
   checkout,
   initialError,
+  authedCheckout,
   onConfirmed,
 }: GuestCheckoutFormProps) {
   const stripe = useStripe()
   const elements = useElements()
 
-  const [form, setForm] = useState<GuestForm>(EMPTY_FORM)
+  // P-10 bug 4: a signed-in parent's contact details pre-fill from the
+  // account (all fields stay editable — the form remains source of truth).
+  const [form, setForm] = useState<GuestForm>(() =>
+    authedCheckout
+      ? {
+          ...EMPTY_FORM,
+          fullName: authedCheckout.fullName,
+          email: authedCheckout.email,
+          phone: authedCheckout.phone,
+          townCity: authedCheckout.townCity,
+          postcode: authedCheckout.postcode,
+        }
+      : EMPTY_FORM,
+  )
   const [billingSame, setBillingSame] = useState<boolean>(true)
   const [error, setError] = useState<CheckoutError | null>(initialError ?? null)
   const [submitting, setSubmitting] = useState<boolean>(false)
 
+  // P-10 bug 4: a signed-in parent's players arrive via the sessionStorage
+  // hold the picker wrote (identities never ride URLs — docs/06). Read after
+  // mount, async microtask (browser-only storage; no sync setState in an
+  // effect). A parent who lands here WITHOUT a hold (e.g. the profile card's
+  // direct link) falls back to the participant form below and books their
+  // typed player through the authed route.
+  const [authedHoldPlayers, setAuthedHoldPlayers] = useState<PlayerAssignment[] | null>(null)
+  useEffect(() => {
+    if (!authedCheckout) return
+    let cancelled = false
+    void Promise.resolve().then(() => {
+      if (cancelled) return
+      const hold = readBookingHold()
+      // A hold never transfers between coaches (its own doc contract) — a
+      // stale hold from another coach's picker falls back to the participant
+      // form instead of silently pre-filling the wrong players.
+      if (hold?.coachId === coachId && hold.primaryPlayer) {
+        setAuthedHoldPlayers([hold.primaryPlayer, ...(hold.additionalParticipants ?? [])])
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [authedCheckout, coachId])
+
   // UX-16: the participant normally arrives via the availability page's URL
-  // params, but the coach-profile "Book a session" card links here directly
-  // without them. When that happens the form collects the name itself —
-  // POST /api/guest/bookings hard-requires it.
-  const needsParticipant = checkout.participantName.trim().length === 0
+  // params (guests) or the hold (parents), but the coach-profile "Book a
+  // session" card links here directly without either. When that happens the
+  // form collects the name itself — both booking APIs hard-require it.
+  const needsParticipant = authedCheckout
+    ? authedHoldPlayers === null
+    : checkout.participantName.trim().length === 0
   const [participantName, setParticipantName] = useState<string>(checkout.participantName)
   const [participantAge, setParticipantAge] = useState<string>(
     checkout.participantAge !== null ? String(checkout.participantAge) : '',
@@ -364,8 +426,13 @@ function GuestCheckoutForm({
   /** Summary-card + confirmation participant. P-10 bug 3: group bookings
    * list EVERY player ("Yuwin + Amaya", "Yuwin + 3 others") — this label
    * overrides the server-composed summary, so it must compose the same way.
-   * 1-player bookings keep the "Yuwin (age 10)" format. */
+   * Authed bookings (bug 4) compose from the hold; 1-player bookings keep
+   * the "Yuwin (age 10)" format. */
   function participantLabel(): string | undefined {
+    if (authedHoldPlayers) {
+      const label = formatPlayersLabel(authedHoldPlayers.map((p) => p.firstName))
+      return label || undefined
+    }
     const { participantName: name, participantAge: age } = participantPayload()
     if (!name) return undefined
     if (checkout.extraPlayers.length > 0) {
@@ -426,9 +493,81 @@ function GuestCheckoutForm({
    * and booking reference, or sets an error and returns null. `guest` lets the
    * wallet (Express Checkout) path supply name/email from the wallet sheet.
    */
+  /** P-10 bug 4: the authed players array for POST /api/parent/bookings —
+   * from the hold when present, else the typed participant (a parent who
+   * arrived without a hold). Ages map from the hold's form-state strings to
+   * the API's number|null. */
+  function authedPlayersPayload(): { name: string; age: number | null; childProfileId: string | null }[] {
+    if (authedHoldPlayers) {
+      return authedHoldPlayers.map((p) => {
+        const age = Number.parseInt(p.age, 10)
+        return {
+          name: p.firstName,
+          age: Number.isInteger(age) && age >= 1 && age <= 99 ? age : null,
+          childProfileId: p.kind === 'child' ? p.childProfileId : null,
+        }
+      })
+    }
+    const { participantName: name, participantAge: age } = participantPayload()
+    return [{ name, age, childProfileId: null }]
+  }
+
   async function createBooking(
     guest: { fullName: string; email: string; phone: string; address: string; townCity: string; postcode: string },
   ): Promise<{ clientSecret: string; bookingReference: string } | null> {
+    // P-10 bug 4 (single checkout page): a signed-in parent books through
+    // the authed route — same response shape, same Stripe confirm flow.
+    // Guests take the pre-existing branch below, byte-identical.
+    if (authedCheckout) {
+      try {
+        const res = await fetch('/api/parent/bookings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            coachId,
+            sportId: checkout.sportId,
+            date: checkout.date,
+            startTime: checkout.startTime,
+            pricePence: checkout.pricePence,
+            players: authedPlayersPayload(),
+            idempotencyToken,
+          }),
+        })
+
+        if (res.status === 409) {
+          const body = (await res.json().catch(() => ({}))) as { error?: string }
+          setError(checkoutErrorFor(body.error))
+          return null
+        }
+        // 403 child_not_found (child deleted/reassigned mid-flow, desynced
+        // hold) must not read as a card problem — its own copy points the
+        // parent back to re-selecting players. 404 = coach no longer
+        // bookable, same banner as the availability 409s.
+        if (res.status === 403) {
+          setError('player_unavailable')
+          return null
+        }
+        if (res.status === 404) {
+          setError('slot_unavailable')
+          return null
+        }
+        if (!res.ok) {
+          setError('payment')
+          return null
+        }
+
+        const data = (await res.json()) as { clientSecret?: string; bookingReference?: string }
+        if (!data.clientSecret || !data.bookingReference) {
+          setError('payment')
+          return null
+        }
+        return { clientSecret: data.clientSecret, bookingReference: data.bookingReference }
+      } catch {
+        setError('payment')
+        return null
+      }
+    }
+
     try {
       const res = await fetch('/api/guest/bookings', {
         method: 'POST',
@@ -486,7 +625,8 @@ function GuestCheckoutForm({
     if (!stripe || !elements || submitting) return
     // UX-16: the API rejects a missing participant name — catch it here with a
     // field-level message instead of a misleading generic payment error.
-    if (!participantName.trim()) {
+    // P-10 bug 4: authed players come from the hold, no typed name needed.
+    if (!authedHoldPlayers && !participantName.trim()) {
       setParticipantError(true)
       return
     }
@@ -557,6 +697,9 @@ function GuestCheckoutForm({
       return
     }
 
+    // P-10 bug 4: the hold's job is done once the booking exists — clear it
+    // so a later, unrelated booking never inherits stale players.
+    if (authedCheckout) clearBookingHold()
     onConfirmed(created.bookingReference, form.email, participantLabel())
   }
 
@@ -567,8 +710,8 @@ function GuestCheckoutForm({
       return
     }
     // UX-16: same guard as handlePay — the wallet sheet can be tapped before
-    // the participant field is filled.
-    if (!participantName.trim()) {
+    // the participant field is filled. Authed players come from the hold.
+    if (!authedHoldPlayers && !participantName.trim()) {
       setParticipantError(true)
       event.paymentFailed({ reason: 'fail' })
       return
@@ -616,6 +759,7 @@ function GuestCheckoutForm({
       return
     }
 
+    if (authedCheckout) clearBookingHold()
     onConfirmed(created.bookingReference, billing?.email || form.email, participantLabel())
   }
 
@@ -653,6 +797,19 @@ function GuestCheckoutForm({
               className="mt-1 inline-block font-medium underline"
             >
               Back to profile
+            </Link>
+          </>
+        ) : error === 'player_unavailable' ? (
+          <>
+            <p className="font-medium">
+              We couldn&apos;t match the selected players to your account. Please go back
+              and choose your players again.
+            </p>
+            <Link
+              href={availabilityHref}
+              className="mt-1 inline-block font-medium underline"
+            >
+              Choose players again
             </Link>
           </>
         ) : (

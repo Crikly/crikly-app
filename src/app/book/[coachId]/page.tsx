@@ -1,7 +1,12 @@
 import type { Metadata } from 'next'
 import { PublicHeader } from '@/components/nav/PublicHeader'
 import { PublicFooter } from '@/components/public/PublicFooter'
-import { GuestBookingFlow, type GuestCheckoutParams } from '@/components/booking/GuestBookingFlow'
+import {
+  GuestBookingFlow,
+  type GuestCheckoutParams,
+  type AuthedCheckoutPrefill,
+} from '@/components/booking/GuestBookingFlow'
+import { createClient } from '@/lib/supabase/server'
 import type { BookingSummary } from '@/components/booking/BookingSummaryCard'
 import { getCommissionRate } from '@/lib/booking/commission-rate'
 import { displayCommissionPence } from '@/lib/booking/commission-display'
@@ -120,6 +125,47 @@ async function fetchCoach(id: string): Promise<ApiCoach | null> {
   return res.json() as Promise<ApiCoach>
 }
 
+// P-10 bug 4 (single checkout page): detect a signed-in PARENT server-side
+// and pre-fill their contact details — null for anonymous, coach-only, and
+// player-only visitors, which renders the guest checkout byte-identically.
+// RLS-respecting server client; failures degrade to guest with a server log
+// (never a 500 on this live payment surface).
+async function loadAuthedCheckout(): Promise<AuthedCheckoutPrefill | null> {
+  try {
+    const supabase = await createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    if (!user) return null
+
+    const { data: profile } = await supabase
+      .from('user_profiles')
+      .select('id, full_name, phone, location_city, location_postcode')
+      .eq('auth_user_id', user.id)
+      .single()
+    if (!profile) return null
+
+    const { data: parentRole } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_profile_id', profile.id)
+      .eq('role', 'parent')
+      .maybeSingle()
+    if (!parentRole) return null
+
+    return {
+      fullName: profile.full_name ?? '',
+      email: user.email ?? '',
+      phone: profile.phone ?? '',
+      townCity: profile.location_city ?? '',
+      postcode: profile.location_postcode ?? '',
+    }
+  } catch (error) {
+    console.error('[GuestBookingPage] authed-checkout detection failed:', error)
+    return null
+  }
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default async function GuestBookingPage({
@@ -132,11 +178,14 @@ export default async function GuestBookingPage({
   const { coachId } = await params
   const sp = await searchParams
 
-  // Render the real coach + slot the guest chose. The descriptive fields come
-  // from the coach API; the MONEY field is driven by the `price` query param and
-  // re-verified server-side against coach_sports in POST /api/guest/bookings
-  // (anti-tampering, BR-01).
-  const coach = await fetchCoach(coachId)
+  // Render the real coach + slot the visitor chose. The descriptive fields
+  // come from the coach API; the MONEY field is driven by the `price` query
+  // param and re-verified server-side against coach_sports by whichever
+  // booking route handles the submit (anti-tampering, BR-01).
+  const [coach, authedCheckout] = await Promise.all([
+    fetchCoach(coachId),
+    loadAuthedCheckout(),
+  ])
 
   const sessionType = parseSessionType(sp.sessionType)
   const sportIdParam = firstParam(sp.sportId)
@@ -213,6 +262,7 @@ export default async function GuestBookingPage({
           summary={summary}
           checkout={checkout}
           initialError={parseSimulatedError(firstParam(sp.simulateError))}
+          authedCheckout={authedCheckout}
         />
       </div>
       <PublicFooter variant="links" />

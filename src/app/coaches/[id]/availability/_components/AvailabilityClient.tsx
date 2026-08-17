@@ -371,10 +371,11 @@ export function AvailabilityClient({
       router.push(`/coaches/${coachId}/programmes/${selectedProgramme.id}`)
       return
     }
-    // P-10 single-flow: a signed-in parent books slots through the authed
-    // checkout. Player identities travel via the sessionStorage handoff —
-    // never the URL (docs/06 child-data rules); the URL carries only slot
-    // facts so checkout can server-render.
+    // P-10 bug 4 (single checkout page): a signed-in parent books through
+    // the SAME /book/[coachId] checkout as guests — the page detects auth
+    // and swaps the POST target to /api/parent/bookings. Player identities
+    // travel via the sessionStorage handoff — never the URL (docs/06); the
+    // URL carries the same non-PII slot facts as the guest handoff.
     if (authed && selectedSlot && selectedISO) {
       if (!pickerSelection || !pickerSelection.isComplete) {
         setShowPickerError(true)
@@ -410,11 +411,18 @@ export function AvailabilityClient({
           assignments.length > 1 ? assignments.slice(1) : undefined,
       })
       const q = new URLSearchParams()
-      q.set('coachId', coachId)
       q.set('date', selectedISO)
       q.set('startTime', selectedSlot.time)
-      q.set('players', String(pickerSelection.players))
-      router.push(`/parent/checkout?${q.toString()}`)
+      q.set('sessionType', pickerSelection.players > 1 ? 'group' : 'individual')
+      const authedPrice = coachPricePence(
+        pickerSelection.players,
+        selectedSlot.pricePence ?? null,
+        pricePence,
+        authed.groupPriceTiers,
+      )
+      if (authedPrice != null) q.set('price', String(authedPrice))
+      if (pickerSelection.players > 1) q.set('players', String(pickerSelection.players))
+      router.push(`/book/${coachId}?${q.toString()}`)
       return
     }
     // UX-16: every player needs a name; ages are optional (adult players may
