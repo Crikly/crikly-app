@@ -1,0 +1,88 @@
+'use client'
+
+import { Calendar, MapPin, User } from 'lucide-react'
+import { AddToCalendarButton } from './AddToCalendarButton'
+import type { ParentBookingItem } from './types'
+
+// P-14 — mobile booking card (design: Mobile · 390 frame). One card carries
+// the full session detail; the inline cancellation panel expands inside it
+// (Phase 3). Past cards reserve the review slot for P-20 — no actions yet.
+
+interface BookingCardProps {
+  booking: ParentBookingItem
+  tab: 'upcoming' | 'past'
+}
+
+function DetailRow({
+  icon,
+  children,
+}: {
+  icon: React.ReactNode
+  children: React.ReactNode
+}) {
+  return (
+    <div className="flex items-center gap-2 text-sm text-neutral-600">
+      <span className="shrink-0 text-neutral-400">{icon}</span>
+      <span>{children}</span>
+    </div>
+  )
+}
+
+export function BookingCard({ booking, tab }: BookingCardProps) {
+  const cancelled = booking.isCancelled
+
+  return (
+    <div
+      className={`bg-white rounded-lg shadow-sm p-4 transition-opacity ${
+        cancelled ? 'opacity-60' : ''
+      }`}
+    >
+      <div className="flex items-center gap-3">
+        <div className="w-11 h-11 rounded-full bg-brand-50 text-brand-800 font-medium text-base flex items-center justify-center shrink-0">
+          {booking.coachInitials}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-base font-medium text-neutral-900 leading-snug">
+            {booking.coachName}
+          </div>
+          <div className="text-sm text-slate-500 leading-snug">{booking.sessionLine}</div>
+        </div>
+        {cancelled ? (
+          <span className="shrink-0 text-xs font-medium text-danger bg-red-100 rounded-sm px-2 py-0.5">
+            Cancelled
+          </span>
+        ) : null}
+      </div>
+
+      <div className="flex flex-col gap-2 mt-3.5">
+        <DetailRow icon={<Calendar size={16} strokeWidth={2} />}>
+          {booking.whenLabel}
+        </DetailRow>
+        <DetailRow icon={<MapPin size={16} strokeWidth={2} />}>
+          {booking.venueLabel}
+        </DetailRow>
+        <DetailRow icon={<User size={16} strokeWidth={2} />}>
+          For {booking.participantLabel}
+        </DetailRow>
+      </div>
+
+      <div className="flex items-center justify-between mt-3.5 pt-3.5 border-t border-slate-100">
+        <div className="text-[15px] font-medium text-neutral-900">
+          {booking.paidLabel}{' '}
+          <span className="text-xs font-normal text-neutral-400">paid</span>
+        </div>
+        {tab === 'upcoming' && !cancelled ? (
+          <div className="flex items-center gap-5">
+            <AddToCalendarButton booking={booking} variant="link" />
+          </div>
+        ) : null}
+      </div>
+
+      {cancelled && booking.cancelledLine ? (
+        <div className="mt-3.5 text-sm text-slate-500 bg-slate-50 rounded-md px-4 py-3">
+          {booking.cancelledLine}
+        </div>
+      ) : null}
+    </div>
+  )
+}
