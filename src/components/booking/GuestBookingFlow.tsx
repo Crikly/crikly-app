@@ -28,6 +28,7 @@ import {
 import { Input } from '@/components/ui/Input'
 import { AddressAutocomplete } from '@/components/booking/AddressAutocomplete'
 import { getStripePromise } from '@/lib/stripe/browser'
+import { formatPlayersLabel } from '@/lib/booking/participants'
 import {
   BookingSummaryCard,
   formatPence,
@@ -360,10 +361,16 @@ function GuestCheckoutForm({
     }
   }
 
-  /** "Yuwin (age 10)" for the summary card + confirmation view; undefined when unset. */
+  /** Summary-card + confirmation participant. P-10 bug 3: group bookings
+   * list EVERY player ("Yuwin + Amaya", "Yuwin + 3 others") — this label
+   * overrides the server-composed summary, so it must compose the same way.
+   * 1-player bookings keep the "Yuwin (age 10)" format. */
   function participantLabel(): string | undefined {
     const { participantName: name, participantAge: age } = participantPayload()
     if (!name) return undefined
+    if (checkout.extraPlayers.length > 0) {
+      return formatPlayersLabel([name, ...checkout.extraPlayers.map((p) => p.name)])
+    }
     return age !== null ? `${name} (age ${age})` : name
   }
 

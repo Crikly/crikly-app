@@ -51,10 +51,14 @@ export function CheckoutPlaceholder() {
     }
   }, [])
 
-  const playersLabel =
-    hold?.playerAssignments && hold.playerAssignments.length > 0
-      ? formatPlayersLabel(hold.playerAssignments.map((p) => p.firstName))
-      : ''
+  // P-10 bug 1: primary + additional are separate hold fields — composing
+  // them here can never duplicate the primary.
+  const playersLabel = hold
+    ? formatPlayersLabel([
+        hold.primaryPlayer?.firstName ?? '',
+        ...(hold.additionalParticipants ?? []).map((p) => p.firstName),
+      ])
+    : ''
   const playerCount = Number.parseInt(players ?? '', 10)
   const backHref = coachId ? `/coaches/${coachId}/availability` : '/coaches'
 

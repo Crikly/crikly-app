@@ -380,6 +380,15 @@ export function AvailabilityClient({
         setShowPickerError(true)
         return
       }
+      // P-10 bug 1: the primary is stashed SEPARATELY — it must never appear
+      // inside additionalParticipants (which mirrors the DB column exactly).
+      // The picker reports one entry per slot (index 0 = primary), so the
+      // split happens here; a 1-on-1 pick builds the primary from the child
+      // profile so checkout can always show the name.
+      const assignments = pickerSelection.playerAssignments ?? []
+      const primaryChild = authed.childrenList.find(
+        (c) => c.id === pickerSelection.childProfileId,
+      )
       stashBookingHold({
         coachId,
         date: selectedISO,
@@ -387,7 +396,18 @@ export function AvailabilityClient({
         players: pickerSelection.players,
         holdStartedAt: Date.now(),
         childProfileId: pickerSelection.childProfileId,
-        playerAssignments: pickerSelection.playerAssignments,
+        primaryPlayer:
+          assignments[0] ??
+          (primaryChild
+            ? {
+                kind: 'child',
+                childProfileId: primaryChild.id,
+                firstName: primaryChild.firstName,
+                age: String(primaryChild.age),
+              }
+            : undefined),
+        additionalParticipants:
+          assignments.length > 1 ? assignments.slice(1) : undefined,
       })
       const q = new URLSearchParams()
       q.set('coachId', coachId)
@@ -868,56 +888,59 @@ export function AvailabilityClient({
             <h3 className="text-[16px] font-bold text-gray-900">Who is this for?</h3>
             <p className="text-[13px] text-gray-500 mt-1 mb-4">Tell us about the player. Used for this booking only.</p>
 
-            <div className="rounded-xl border border-gray-200 p-4">
-              <div className="grid grid-cols-[1fr_84px] gap-3">
-                <div>
-                  <label htmlFor="participant-name" className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-1.5">
-                    Player&apos;s name
-                  </label>
-                  <input
-                    id="participant-name"
-                    type="text"
-                    autoComplete="off"
-                    placeholder="e.g. Sam"
-                    value={participantName}
-                    onChange={e => {
-                      setParticipantName(e.target.value)
-                      setShowError(false)
-                    }}
-                    className={`w-full h-11 px-3.5 rounded-xl bg-gray-50 border text-[15px] text-gray-900 placeholder:text-gray-400 outline-none focus:bg-white focus:border-brand-600 transition-all ${
-                      showError && !participantName.trim() ? 'border-danger' : 'border-gray-200'
-                    }`}
-                  />
-                </div>
-                <div>
-                  <label htmlFor="participant-age" className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-1.5">
-                    Age
-                  </label>
-                  <select
-                    id="participant-age"
-                    value={participantAge}
-                    onChange={e => {
-                      setParticipantAge(e.target.value)
-                      setShowError(false)
-                    }}
-                    className="w-full h-11 px-3 rounded-xl bg-gray-50 border border-gray-200 text-[15px] text-gray-900 outline-none focus:bg-white focus:border-brand-600 transition-all"
-                  >
-                    {/* UX-16: optional — adults booking for themselves may skip it */}
-                    <option value="">–</option>
-                    {Array.from({ length: 16 }, (_, i) => i + 3).map(age => (
-                      <option key={age} value={age}>{age}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              {showError && (
-                <p id="guest-players-error" className="text-[12px] text-danger mt-2.5" role="alert">
-                  {guestPlayers > 1
-                    ? 'Add each player’s name to continue.'
-                    : 'Add the player’s name to continue.'}
-                </p>
-              )}
+            {/* P-10 bug 2: Player 1 uses the SAME compact one-line layout as
+                players 2+ (label · name · age) — ids unchanged (UX-16 e2e
+                relies on #participant-name). */}
+            <div
+              className="grid grid-cols-[56px_1fr_72px] items-center gap-2.5 rounded-xl border border-gray-200 px-3 py-2"
+              data-testid="guest-primary-row"
+            >
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                Player 1
+              </span>
+              <input
+                id="participant-name"
+                type="text"
+                autoComplete="off"
+                placeholder="Name"
+                aria-label="Player 1 name"
+                value={participantName}
+                onChange={e => {
+                  setParticipantName(e.target.value)
+                  setShowError(false)
+                }}
+                aria-invalid={showError && !participantName.trim()}
+                aria-describedby={
+                  showError && !participantName.trim() ? 'guest-players-error' : undefined
+                }
+                className={`w-full h-11 px-3 rounded-xl bg-gray-50 border text-[15px] text-gray-900 placeholder:text-gray-400 outline-none focus:bg-white focus:border-brand-600 transition-all ${
+                  showError && !participantName.trim() ? 'border-danger' : 'border-gray-200'
+                }`}
+              />
+              <select
+                id="participant-age"
+                aria-label="Player 1 age"
+                value={participantAge}
+                onChange={e => {
+                  setParticipantAge(e.target.value)
+                  setShowError(false)
+                }}
+                className="w-full h-11 px-2.5 rounded-xl bg-gray-50 border border-gray-200 text-[15px] text-gray-900 outline-none focus:bg-white focus:border-brand-600 transition-all"
+              >
+                {/* UX-16: optional — adults booking for themselves may skip it */}
+                <option value="">Age</option>
+                {Array.from({ length: 16 }, (_, i) => i + 3).map(age => (
+                  <option key={age} value={age}>{age}</option>
+                ))}
+              </select>
             </div>
+            {showError && (
+              <p id="guest-players-error" className="text-[12px] text-danger mt-2.5" role="alert">
+                {guestPlayers > 1
+                  ? 'Add each player’s name to continue.'
+                  : 'Add the player’s name to continue.'}
+              </p>
+            )}
 
             {/* P-10 fix 3: players 2..N — ONE compact line per player
                 (label · name · age), so four players never stretch the

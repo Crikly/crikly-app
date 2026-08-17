@@ -42,9 +42,13 @@ export interface AuthedBookingHold {
    * bookings when Player 1 is a profile child (unset when Player 1 is a
    * "someone else" guest). */
   childProfileId?: string
-  /** Group bookings (players > 1): one entry per player slot, index 0 =
-   * Player 1. A profile child can occupy at most one slot. */
-  playerAssignments?: PlayerAssignment[]
+  /** Player 1 — a child link or a one-session guest. */
+  primaryPlayer?: PlayerAssignment
+  /** Players 2..N ONLY — the primary NEVER appears here (P-10 bug 1 fix;
+   * mirrors bookings.additional_participants exactly). Checkout composes
+   * the API's players array as [primaryPlayer, ...additionalParticipants].
+   * A profile child can occupy at most one entry across both fields. */
+  additionalParticipants?: PlayerAssignment[]
 }
 
 function isValidAssignment(value: unknown): value is PlayerAssignment {
@@ -86,12 +90,15 @@ export function readBookingHold(): AuthedBookingHold | null {
     if (parsed.childProfileId !== undefined && typeof parsed.childProfileId !== 'string') {
       delete parsed.childProfileId
     }
-    if (parsed.playerAssignments !== undefined) {
+    if (parsed.primaryPlayer !== undefined && !isValidAssignment(parsed.primaryPlayer)) {
+      delete parsed.primaryPlayer
+    }
+    if (parsed.additionalParticipants !== undefined) {
       if (
-        !Array.isArray(parsed.playerAssignments) ||
-        !parsed.playerAssignments.every(isValidAssignment)
+        !Array.isArray(parsed.additionalParticipants) ||
+        !parsed.additionalParticipants.every(isValidAssignment)
       ) {
-        delete parsed.playerAssignments
+        delete parsed.additionalParticipants
       }
     }
     return parsed as AuthedBookingHold

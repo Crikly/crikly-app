@@ -385,6 +385,9 @@ describe('GuestBookingFlow — handlePay success', () => {
       { name: 'Yuwin', age: 10 },
       { name: 'Amaya', age: 8 },
     ])
+    // P-10 bug 3: the summary card lists every player, primary exactly once.
+    const participantRows = screen.getAllByTestId('summary-participant')
+    expect(participantRows[0]).toHaveTextContent('For Yuwin + Amaya')
     // The legacy fields are replaced by the array — never sent alongside it.
     expect(body.participantName).toBeUndefined()
     expect(body.participantAge).toBeUndefined()
