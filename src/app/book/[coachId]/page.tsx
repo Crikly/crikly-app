@@ -73,6 +73,14 @@ function parseParticipantAge(value: string | string[] | undefined): number | nul
   return Number.isInteger(parsed) && parsed >= 1 && parsed <= 99 ? parsed : null
 }
 
+// P-10 Phase 3: total player count for a guest GROUP booking (2..6 — the
+// participants validator's hard cap); anything else means 1 player.
+function parsePlayersCount(value: string | string[] | undefined): number {
+  const raw = firstParam(value)
+  const parsed = raw ? Number.parseInt(raw, 10) : NaN
+  return Number.isInteger(parsed) && parsed >= 2 && parsed <= 6 ? parsed : 1
+}
+
 // ─── Display formatting ──────────────────────────────────────────────────────────
 
 // Parse a YYYY-MM-DD slot date at local noon so the weekday/day never shift
@@ -151,12 +159,24 @@ export default async function GuestBookingPage({
   const participantName = parseParticipantName(sp.participant)
   const participantAge = parseParticipantAge(sp.age)
 
+  // P-10 Phase 3: extra group players ride numbered params from the
+  // availability page (participant2/age2…). Only meaningful for a group
+  // booking; the guest API re-validates names/count at submit.
+  const playersCount = sessionType === 'group' ? parsePlayersCount(sp.players) : 1
+  const extraPlayers = Array.from({ length: Math.max(0, playersCount - 1) }, (_, i) => ({
+    name: parseParticipantName(sp[`participant${i + 2}`]),
+    age: parseParticipantAge(sp[`age${i + 2}`]),
+  }))
+
   const summary: BookingSummary = {
     coachName: coach?.full_name ?? 'Your coach',
     sportLabel: sport?.sport_name ?? 'Coaching',
     sessionDate: formatSessionDate(date),
     sessionTime: formatSessionTime(startTime, durationMinutes),
-    sessionType: sessionType === 'group' ? 'Group session' : '1-to-1 session',
+    sessionType:
+      sessionType === 'group'
+        ? `Group session · ${playersCount} players`
+        : '1-to-1 session',
     participant: participantName
       ? participantAge !== null
         ? `${participantName} (age ${participantAge})`
@@ -175,6 +195,7 @@ export default async function GuestBookingPage({
     pricePence,
     participantName,
     participantAge,
+    extraPlayers,
   }
 
   return (

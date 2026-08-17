@@ -8,7 +8,7 @@
 // multi-participant, recurring booking and a multi-slot basket are out of
 // scope for Block 0.
 
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   ChevronLeft,
@@ -35,7 +35,11 @@ import {
   type AuthedBookingContext,
   type PlayerPickerSelection,
 } from '@/components/booking/AuthedPlayerPicker'
-import { coachPricePence } from '@/lib/booking/authed-booking-pricing'
+import {
+  coachPricePence,
+  playerCountOptions,
+} from '@/lib/booking/authed-booking-pricing'
+import type { GroupPriceTiers } from '@/lib/coach/group-pricing'
 import { stashBookingHold } from '@/lib/booking/authed-booking-handoff'
 
 /**
@@ -67,11 +71,22 @@ interface Props {
   programmeDates: string[]
   /**
    * P-10 single-flow: server-assembled context for a signed-in PARENT, or
-   * null/absent for everyone else. Accepted (not yet read) as of Step B so
-   * the page can pass it; Step C forks "Who is this for?" + the CTA on it.
-   * null MUST keep guest behaviour byte-identical.
+   * null/absent for everyone else. Forks "Who is this for?" + the CTA.
    */
   authedBooking?: AuthedBookingContext | null
+  /**
+   * P-10 Phase 3: the coach's group pricing, for EVERY visitor — drives the
+   * guest "How many players?" chips + per-player rows. null/absent = no
+   * group booking UI (1-player guest behaviour unchanged).
+   */
+  groupPricing?: GroupPricingInfo | null
+}
+
+/** The coach's group-pricing surface (first sport, BUG-51-deterministic). */
+export interface GroupPricingInfo {
+  sessionTypes: string[]
+  maxGroupSize: number | null
+  groupPriceTiers: GroupPriceTiers | null
 }
 
 type Tab = '1to1' | 'groups'
@@ -115,6 +130,7 @@ export function AvailabilityClient({
   programmesByDate,
   programmeDates,
   authedBooking,
+  groupPricing,
 }: Props) {
   const router = useRouter()
 
@@ -150,6 +166,43 @@ export function AvailabilityClient({
   const handlePickerChange = (selection: PlayerPickerSelection) => {
     setPickerSelection(selection)
     setShowPickerError(false)
+  }
+
+  // P-10 Phase 3: GUEST group booking. Chips pick the player count; player 1
+  // stays the pre-existing name/age inputs; players 2..N are extra rows. All
+  // names travel to /book via URL params (the established guest handoff —
+  // guest participant names already ride the URL, BUG-02/UX-16 precedent).
+  const guestPlayerOptions = useMemo(
+    () =>
+      groupPricing
+        ? playerCountOptions(
+            groupPricing.sessionTypes,
+            groupPricing.maxGroupSize,
+            groupPricing.groupPriceTiers,
+          )
+        : [1],
+    [groupPricing],
+  )
+  const guestOffersGroups = !authed && guestPlayerOptions.length > 1
+  const [guestPlayers, setGuestPlayers] = useState(1)
+  const [guestExtras, setGuestExtras] = useState<{ key: number; name: string; age: string }[]>([])
+  const nextGuestExtraKey = useRef(1)
+
+  const selectGuestPlayers = (count: number) => {
+    setGuestPlayers(count)
+    setGuestExtras((prev) => {
+      const next = prev.slice(0, Math.max(0, count - 1))
+      while (next.length < count - 1) {
+        next.push({ key: nextGuestExtraKey.current++, name: '', age: '' })
+      }
+      return next
+    })
+    setShowError(false)
+  }
+
+  const updateGuestExtra = (key: number, patch: Partial<{ name: string; age: string }>) => {
+    setGuestExtras((prev) => prev.map((row) => (row.key === key ? { ...row, ...patch } : row)))
+    setShowError(false)
   }
 
   const selectedDate = useMemo(() => (selectedISO ? parseISO(selectedISO) : null), [selectedISO])
@@ -343,8 +396,12 @@ export function AvailabilityClient({
       router.push(`/parent/checkout?${q.toString()}`)
       return
     }
-    // UX-16: name is required; age is optional (adult players may omit it).
-    if (!participantName.trim()) {
+    // UX-16: every player needs a name; ages are optional (adult players may
+    // omit them). P-10 Phase 3 extends the gate to the extra guest rows.
+    if (
+      !participantName.trim() ||
+      (guestPlayers > 1 && guestExtras.some((row) => !row.name.trim()))
+    ) {
       setShowError(true)
       return
     }
@@ -354,16 +411,36 @@ export function AvailabilityClient({
       // booking summary shows the slot the guest picked (BUG-02).
       q.set('date', selectedISO)
       q.set('startTime', selectedSlot.time)
-      q.set('sessionType', 'individual')
-      // BUG-08: prefer the slot's per-block override, fall back to the sport
-      // default. Display-only — the booking server re-derives the authoritative
-      // price from the template (BUG-09).
-      const effectivePrice = selectedSlot.pricePence ?? pricePence
+      // P-10 Phase 3: a group booking is exactly a multi-player booking (the
+      // guest API enforces the same coherence rule).
+      q.set('sessionType', guestPlayers > 1 ? 'group' : 'individual')
+      // BUG-08: individual bookings prefer the slot's per-block override, then
+      // the sport default; groups price from the tier (D4 — overrides never
+      // apply). Display-only — the booking server re-derives the authoritative
+      // price (BUG-09).
+      const effectivePrice =
+        guestPlayers > 1
+          ? coachPricePence(
+              guestPlayers,
+              selectedSlot.pricePence ?? null,
+              pricePence,
+              groupPricing?.groupPriceTiers ?? null,
+            )
+          : selectedSlot.pricePence ?? pricePence
       if (effectivePrice != null) q.set('price', String(effectivePrice))
     }
     // Param names mirror what the checkout page reads (UX-16).
     q.set('participant', participantName.trim())
     if (participantAge) q.set('age', participantAge)
+    // P-10 Phase 3: extra players ride numbered params (participant2/age2…) —
+    // the same established guest URL handoff as the primary.
+    if (guestPlayers > 1) {
+      q.set('players', String(guestPlayers))
+      guestExtras.forEach((row, index) => {
+        q.set(`participant${index + 2}`, row.name.trim())
+        if (row.age) q.set(`age${index + 2}`, row.age)
+      })
+    }
     router.push(`/book/${coachId}?${q.toString()}`)
   }
 
@@ -384,11 +461,13 @@ export function AvailabilityClient({
 
   // BUG-08: a selected 1-to-1 slot is priced by its per-block override, falling
   // back to the coach's sport default (pricePence) when the block has none.
-  // P-10 single-flow: an authed GROUP selection prices from the coach's group
-  // tier instead (TOTAL pence for that size — CF-PRICE-01, overrides never
-  // apply to tiers); 1 player and all guests keep the exact derivation above.
+  // P-10: a GROUP selection — authed picker count or guest chips — prices
+  // from the coach's group tier instead (TOTAL pence for that size —
+  // CF-PRICE-01, overrides never apply to tiers); 1 player keeps the exact
+  // pre-existing derivation (coachPricePence(1, …) ≡ override ?? default).
   // Coach fee only — the platform fee is itemised at checkout (decision 1).
   const authedPlayers = authed ? pickerSelection?.players ?? 1 : 1
+  const displayPlayers = authed ? authedPlayers : guestPlayers
   const totalPence = selectedSlot
     ? authed
       ? coachPricePence(
@@ -397,7 +476,14 @@ export function AvailabilityClient({
           pricePence,
           authed.groupPriceTiers,
         ) ?? 0
-      : selectedSlot.pricePence ?? pricePence ?? 0
+      : guestPlayers > 1
+        ? coachPricePence(
+            guestPlayers,
+            selectedSlot.pricePence ?? null,
+            pricePence,
+            groupPricing?.groupPriceTiers ?? null,
+          ) ?? 0
+        : selectedSlot.pricePence ?? pricePence ?? 0
     : selectedProgramme
       ? selectedProgramme.pricePence
       : 0
@@ -729,6 +815,37 @@ export function AvailabilityClient({
               />
             ) : (
               <>
+            {/* P-10 Phase 3: guest player count — only when the coach has
+                group pricing tiers. Total updates live per selection. */}
+            {guestOffersGroups && (
+              <div className="mb-4">
+                <h4 className="text-[13px] font-semibold uppercase tracking-wide text-gray-500 mb-2.5">
+                  How many players?
+                </h4>
+                <div className="flex items-center gap-2.5">
+                  {guestPlayerOptions.map(count => {
+                    const isSel = guestPlayers === count
+                    return (
+                      <button
+                        key={count}
+                        type="button"
+                        onClick={() => selectGuestPlayers(count)}
+                        aria-pressed={isSel}
+                        aria-label={`${count} ${count === 1 ? 'player' : 'players'}`}
+                        data-testid={`guest-player-count-${count}`}
+                        className={`flex h-11 w-12 items-center justify-center rounded-xl border-[1.5px] text-base font-semibold tabular-nums transition-all ${
+                          isSel
+                            ? 'bg-brand-600 border-brand-600 text-white shadow-sm'
+                            : 'bg-white border-gray-300 text-gray-900 hover:border-brand-600 hover:bg-brand-50'
+                        }`}
+                      >
+                        {count}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
             <h3 className="text-[16px] font-bold text-gray-900">Who is this for?</h3>
             <p className="text-[13px] text-gray-500 mt-1 mb-4">Tell us about the player. Used for this booking only.</p>
 
@@ -775,11 +892,77 @@ export function AvailabilityClient({
                 </div>
               </div>
               {showError && (
-                <p className="text-[12px] text-danger mt-2.5" role="alert">
-                  Add the player&apos;s name to continue.
+                <p id="guest-players-error" className="text-[12px] text-danger mt-2.5" role="alert">
+                  {guestPlayers > 1
+                    ? 'Add each player’s name to continue.'
+                    : 'Add the player’s name to continue.'}
                 </p>
               )}
             </div>
+
+            {/* P-10 Phase 3: players 2..N — one labelled row each, same
+                input styling as player 1. */}
+            {guestOffersGroups &&
+              guestPlayers > 1 &&
+              guestExtras.map((row, index) => {
+                const playerNumber = index + 2
+                const nameMissing = showError && !row.name.trim()
+                return (
+                  <div
+                    key={row.key}
+                    className="rounded-xl border border-gray-200 p-4 mt-3"
+                    data-testid={`guest-extra-row-${playerNumber}`}
+                  >
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-2">
+                      Player {playerNumber}
+                    </p>
+                    <div className="grid grid-cols-[1fr_84px] gap-3">
+                      <div>
+                        <label
+                          htmlFor={`participant-${playerNumber}-name`}
+                          className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-1.5"
+                        >
+                          Player&apos;s name
+                        </label>
+                        <input
+                          id={`participant-${playerNumber}-name`}
+                          type="text"
+                          autoComplete="off"
+                          placeholder="e.g. Sam"
+                          value={row.name}
+                          onChange={e => updateGuestExtra(row.key, { name: e.target.value })}
+                          aria-invalid={nameMissing}
+                          aria-describedby={nameMissing ? 'guest-players-error' : undefined}
+                          data-testid={`guest-extra-name-${playerNumber}`}
+                          className={`w-full h-11 px-3.5 rounded-xl bg-gray-50 border text-[15px] text-gray-900 placeholder:text-gray-400 outline-none focus:bg-white focus:border-brand-600 transition-all ${
+                            nameMissing ? 'border-danger' : 'border-gray-200'
+                          }`}
+                        />
+                      </div>
+                      <div>
+                        <label
+                          htmlFor={`participant-${playerNumber}-age`}
+                          className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-1.5"
+                        >
+                          Age
+                        </label>
+                        <select
+                          id={`participant-${playerNumber}-age`}
+                          value={row.age}
+                          onChange={e => updateGuestExtra(row.key, { age: e.target.value })}
+                          data-testid={`guest-extra-age-${playerNumber}`}
+                          className="w-full h-11 px-3 rounded-xl bg-gray-50 border border-gray-200 text-[15px] text-gray-900 outline-none focus:bg-white focus:border-brand-600 transition-all"
+                        >
+                          <option value="">–</option>
+                          {Array.from({ length: 16 }, (_, i) => i + 3).map(age => (
+                            <option key={age} value={age}>{age}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
               </>
             )}
           </div>
@@ -797,7 +980,7 @@ export function AvailabilityClient({
                         {dayLabel(selectedISO)} · {selectedSlot.label}
                       </p>
                       <p className="text-[12px] text-gray-500 mt-0.5">
-                        {authed && authedPlayers > 1 ? `Group · ${authedPlayers} players` : '1-to-1'} · {sessionDurationMinutes} min{participantLabel ? ` · ${participantLabel}` : ''}
+                        {displayPlayers > 1 ? `Group · ${displayPlayers} players` : '1-to-1'} · {sessionDurationMinutes} min{participantLabel ? ` · ${participantLabel}` : ''}
                       </p>
                       {/* UX-14: selected slot venue — same MapPin style as the time-picker buttons */}
                       {selectedSlot.venueName && (
@@ -850,7 +1033,7 @@ export function AvailabilityClient({
           {hasSelection ? (
             <>
               <p className="text-[15px] font-bold text-gray-900 leading-tight">
-                {selectedProgramme ? '1 programme' : authed && authedPlayers > 1 ? `Group · ${authedPlayers} players` : '1 session'} · {formatPence(totalPence)}
+                {selectedProgramme ? '1 programme' : displayPlayers > 1 ? `Group · ${displayPlayers} players` : '1 session'} · {formatPence(totalPence)}
               </p>
               <p className="text-[12px] text-gray-500 truncate">
                 {selectedISO ? dayLabel(selectedISO) : ''}

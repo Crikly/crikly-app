@@ -49,6 +49,19 @@ test.describe('P10 — auth-aware availability page', () => {
       .eq('id', coachProfileId)
     if (liveErr) throw new Error(`[p10] is_profile_live setup failed: ${liveErr.message}`)
 
+    // P-10 Phase 3: the seed provisions session_types ['individual'] only —
+    // own group pricing here so the guest chips render (T10.3). Restored in
+    // afterAll; the seed also resets it on every run.
+    const { error: tiersErr } = await dbAdmin
+      .from('coach_sports')
+      .update({
+        session_types: ['individual', 'group'],
+        group_price_tiers: { '2': 9000, '3': 12000 },
+        updated_at: new Date().toISOString(),
+      })
+      .eq('coach_profile_id', coachProfileId)
+    if (tiersErr) throw new Error(`[p10] group tiers setup failed: ${tiersErr.message}`)
+
     // Authed mode keys on a parent_profiles row (loadChildSelectorOptions
     // returns null without one). Seed step 7 doesn't create it — own it here,
     // idempotently.
@@ -78,6 +91,18 @@ test.describe('P10 — auth-aware availability page', () => {
     }
   })
 
+  test.afterAll(async () => {
+    // Restore the seed baseline so later suites see the pre-P10 sport shape.
+    await dbAdmin
+      .from('coach_sports')
+      .update({
+        session_types: ['individual'],
+        group_price_tiers: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('coach_profile_id', coachProfileId)
+  })
+
   test('T10.1: logged out — guest name/age inputs render, no authed picker', async ({
     page,
   }) => {
@@ -85,6 +110,27 @@ test.describe('P10 — auth-aware availability page', () => {
     await expect(page.getByTestId('availability-calendar')).toBeVisible()
     await expect(page.locator('#participant-name')).toBeVisible()
     await expect(page.getByTestId('authed-player-picker')).toHaveCount(0)
+  })
+
+  test('T10.3: logged out + group tiers — chips render and add per-player rows', async ({
+    page,
+  }) => {
+    await page.goto(`/coaches/${coachProfileId}/availability`)
+    await expect(page.getByTestId('availability-calendar')).toBeVisible()
+
+    // Chips render for guests when the coach has tiers; Player 1 inputs are
+    // the unchanged guest fields.
+    await expect(page.getByTestId('guest-player-count-2')).toBeVisible()
+    await expect(page.locator('#participant-name')).toBeVisible()
+    await expect(page.getByTestId('guest-extra-row-2')).toHaveCount(0)
+
+    // Selecting 3 players appends two labelled rows; back to 1 removes them.
+    await page.getByTestId('guest-player-count-3').click()
+    await expect(page.getByTestId('guest-extra-row-2')).toBeVisible()
+    await expect(page.getByTestId('guest-extra-row-3')).toBeVisible()
+    await expect(page.getByTestId('guest-extra-name-2')).toBeVisible()
+    await page.getByTestId('guest-player-count-1').click()
+    await expect(page.getByTestId('guest-extra-row-2')).toHaveCount(0)
   })
 
   test('T10.2: signed-in parent — AuthedPlayerPicker replaces the guest inputs', async ({

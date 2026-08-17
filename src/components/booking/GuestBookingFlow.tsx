@@ -69,6 +69,9 @@ export interface GuestCheckoutParams {
   participantName: string
   /** UX-16: optional age — children have it, adult players may not. */
   participantAge: number | null
+  /** P-10 Phase 3: group players 2..N from the availability page (empty for
+   * a 1-player booking). Sent to the API as the tail of the players array. */
+  extraPlayers: { name: string; age: number | null }[]
 }
 
 interface GuestForm {
@@ -430,7 +433,20 @@ function GuestCheckoutForm({
           date: checkout.date,
           startTime: checkout.startTime,
           pricePence: checkout.pricePence,
-          ...participantPayload(),
+          // P-10 Phase 3: a group booking sends the full players array
+          // (primary first); a 1-player booking keeps the legacy fields —
+          // both shapes are first-class on POST /api/guest/bookings.
+          ...(checkout.extraPlayers.length > 0
+            ? {
+                players: [
+                  {
+                    name: participantPayload().participantName,
+                    age: participantPayload().participantAge,
+                  },
+                  ...checkout.extraPlayers.map((p) => ({ name: p.name, age: p.age })),
+                ],
+              }
+            : participantPayload()),
           idempotencyToken,
           guest,
         }),

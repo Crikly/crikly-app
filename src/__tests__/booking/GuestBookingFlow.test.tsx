@@ -101,6 +101,7 @@ const CHECKOUT: GuestCheckoutParams = {
   pricePence: 4000,
   participantName: 'Yuwin',
   participantAge: 10,
+  extraPlayers: [],
 }
 
 const COACH_ID = 'coach-abc-123'
@@ -353,6 +354,40 @@ describe('GuestBookingFlow — handlePay success', () => {
     const body = JSON.parse(init.body) as Record<string, unknown>
     expect(body.participantName).toBe('Yuwin')
     expect(body.participantAge).toBe(10)
+    // Legacy 1-player shape: no players array key at all.
+    expect(body.players).toBeUndefined()
+  })
+
+  it('P-10 Phase 3: a group checkout sends the full players array, primary first', async () => {
+    const user = userEvent.setup()
+    render(
+      <GuestBookingFlow
+        coachId={COACH_ID}
+        summary={STUB}
+        checkout={{
+          ...CHECKOUT,
+          sessionType: 'group',
+          pricePence: 9000,
+          extraPlayers: [{ name: 'Amaya', age: 8 }],
+        }}
+      />,
+    )
+
+    await user.click(screen.getAllByTestId('pay-button')[0])
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalled()
+    })
+    const [, init] = (global.fetch as jest.Mock).mock.calls[0] as [string, { body: string }]
+    const body = JSON.parse(init.body) as Record<string, unknown>
+    expect(body.sessionType).toBe('group')
+    expect(body.players).toEqual([
+      { name: 'Yuwin', age: 10 },
+      { name: 'Amaya', age: 8 },
+    ])
+    // The legacy fields are replaced by the array — never sent alongside it.
+    expect(body.participantName).toBeUndefined()
+    expect(body.participantAge).toBeUndefined()
   })
 
   // UX-16: the coach-profile "Book a session" card links to checkout WITHOUT

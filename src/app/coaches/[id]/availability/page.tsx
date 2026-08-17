@@ -4,7 +4,11 @@ import Link from 'next/link'
 import { ChevronLeft, MapPin, Star, ShieldCheck } from 'lucide-react'
 import { PublicHeader } from '@/components/nav/PublicHeader'
 import { PublicFooter } from '@/components/public/PublicFooter'
-import { AvailabilityClient, type BookedSlot } from './_components/AvailabilityClient'
+import {
+  AvailabilityClient,
+  type BookedSlot,
+  type GroupPricingInfo,
+} from './_components/AvailabilityClient'
 import { fetchProgrammeSchedule } from './_components/_data/programmeSchedule'
 import type { SlotTemplate } from './_components/_data/slots'
 import { createClient } from '@/lib/supabase/server'
@@ -92,25 +96,21 @@ async function fetchAvailability(id: string): Promise<ApiAvailability | null> {
   return res.json() as Promise<ApiAvailability>
 }
 
-// P-10 single-flow: the authed booking context for a signed-in PARENT, or
-// null for everyone else (anonymous, coach-only, player-only) — null renders
-// the exact guest experience. Children are assembled server-side only (COPPA);
+// P-10 Phase 3: group pricing for EVERY visitor — guests get the "How many
+// players?" chips too, so the tiers read is no longer parent-only.
 // group_price_tiers is the one field the public coach API omits, read under
 // coach_sports' public-live-coach SELECT policy (RLS respected — no admin
-// client). The panel needs no commission rate: it shows the coach fee only
-// (approved decision 1) and checkout itemises the platform fee server-side.
-async function loadAuthedBooking(coach: ApiCoach): Promise<AuthedBookingContext | null> {
-  const childrenList = await loadChildSelectorOptions()
-  if (childrenList === null) return null
-
+// client). Never silent (docs/08) but never fatal either: any failure
+// degrades to "no group pricing" with a server-side log — a thrown query
+// must not 500 this live page. The panel needs no commission rate: it shows
+// the coach fee only (approved decision 1) and checkout itemises the
+// platform fee server-side.
+async function loadGroupPricing(coach: ApiCoach): Promise<GroupPricingInfo | null> {
   // BUG-51: sports are name-sorted by the coach API, so [0] is deterministic
   // — the same "first sport" the rest of this page prices from.
   const sport = coach.sports[0]
   if (!sport) return null
 
-  // Never silent (docs/08) but never fatal either: any failure here degrades
-  // to "no group pricing" with a server-side log — a thrown query must not
-  // 500 the whole page for a signed-in parent on this live surface.
   let tiersJson: Json | null = null
   try {
     const supabase = await createClient()
@@ -122,19 +122,36 @@ async function loadAuthedBooking(coach: ApiCoach): Promise<AuthedBookingContext 
       .eq('is_active', true)
       .maybeSingle()
     if (result.error) {
-      console.error('[loadAuthedBooking] group_price_tiers lookup failed:', result.error)
+      console.error('[loadGroupPricing] group_price_tiers lookup failed:', result.error)
     } else {
       tiersJson = result.data?.group_price_tiers ?? null
     }
   } catch (error) {
-    console.error('[loadAuthedBooking] group_price_tiers lookup threw:', error)
+    console.error('[loadGroupPricing] group_price_tiers lookup threw:', error)
   }
 
   return {
-    childrenList,
     sessionTypes: sport.session_types ?? [],
     maxGroupSize: sport.max_group_size,
     groupPriceTiers: toGroupPriceTiers(tiersJson),
+  }
+}
+
+// P-10 single-flow: the authed booking context for a signed-in PARENT, or
+// null for everyone else (anonymous, coach-only, player-only) — null renders
+// the guest experience. Children are assembled server-side only (COPPA);
+// pricing fields are shared with the guest path via loadGroupPricing (one
+// tiers fetch for both audiences).
+function buildAuthedBooking(
+  childrenList: Awaited<ReturnType<typeof loadChildSelectorOptions>>,
+  groupPricing: GroupPricingInfo | null,
+): AuthedBookingContext | null {
+  if (childrenList === null) return null
+  return {
+    childrenList,
+    sessionTypes: groupPricing?.sessionTypes ?? [],
+    maxGroupSize: groupPricing?.maxGroupSize ?? null,
+    groupPriceTiers: groupPricing?.groupPriceTiers ?? null,
   }
 }
 
@@ -166,12 +183,16 @@ export default async function CoachAvailabilityPage({
   const coach = await fetchCoach(id)
   if (!coach) notFound()
 
-  const [avail, programmeSchedule, authedBooking] = await Promise.all([
+  const [avail, programmeSchedule, groupPricing, childrenList] = await Promise.all([
     fetchAvailability(coach.id),
     fetchProgrammeSchedule(coach.id),
-    // P-10 single-flow: null for guests → byte-identical guest behaviour.
-    loadAuthedBooking(coach),
+    // P-10 Phase 3: tiers for everyone (guest chips) — one fetch, shared
+    // with the authed context below.
+    loadGroupPricing(coach),
+    // P-10 single-flow: null for non-parents → guest behaviour.
+    loadChildSelectorOptions(),
   ])
+  const authedBooking = buildAuthedBooking(childrenList, groupPricing)
 
   // BUG-51: sports are name-sorted by the coach API, so [0] is deterministic.
   // Its duration is only the FALLBACK stride — each template now carries its
@@ -280,6 +301,7 @@ export default async function CoachAvailabilityPage({
           programmesByDate={programmeSchedule.byDate}
           programmeDates={programmeSchedule.programmeDates}
           authedBooking={authedBooking}
+          groupPricing={groupPricing}
         />
       </main>
 
