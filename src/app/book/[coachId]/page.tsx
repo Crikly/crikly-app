@@ -1,10 +1,16 @@
 import type { Metadata } from 'next'
 import { PublicHeader } from '@/components/nav/PublicHeader'
 import { PublicFooter } from '@/components/public/PublicFooter'
-import { GuestBookingFlow, type GuestCheckoutParams } from '@/components/booking/GuestBookingFlow'
+import {
+  GuestBookingFlow,
+  type GuestCheckoutParams,
+  type AuthedCheckoutPrefill,
+} from '@/components/booking/GuestBookingFlow'
+import { createClient } from '@/lib/supabase/server'
 import type { BookingSummary } from '@/components/booking/BookingSummaryCard'
 import { getCommissionRate } from '@/lib/booking/commission-rate'
 import { displayCommissionPence } from '@/lib/booking/commission-display'
+import { formatPlayersLabel } from '@/lib/booking/participants'
 
 export const metadata: Metadata = {
   title: 'Complete your booking · Crikly',
@@ -73,6 +79,14 @@ function parseParticipantAge(value: string | string[] | undefined): number | nul
   return Number.isInteger(parsed) && parsed >= 1 && parsed <= 99 ? parsed : null
 }
 
+// P-10 Phase 3: total player count for a guest GROUP booking (2..6 — the
+// participants validator's hard cap); anything else means 1 player.
+function parsePlayersCount(value: string | string[] | undefined): number {
+  const raw = firstParam(value)
+  const parsed = raw ? Number.parseInt(raw, 10) : NaN
+  return Number.isInteger(parsed) && parsed >= 2 && parsed <= 6 ? parsed : 1
+}
+
 // ─── Display formatting ──────────────────────────────────────────────────────────
 
 // Parse a YYYY-MM-DD slot date at local noon so the weekday/day never shift
@@ -111,6 +125,47 @@ async function fetchCoach(id: string): Promise<ApiCoach | null> {
   return res.json() as Promise<ApiCoach>
 }
 
+// P-10 bug 4 (single checkout page): detect a signed-in PARENT server-side
+// and pre-fill their contact details — null for anonymous, coach-only, and
+// player-only visitors, which renders the guest checkout byte-identically.
+// RLS-respecting server client; failures degrade to guest with a server log
+// (never a 500 on this live payment surface).
+async function loadAuthedCheckout(): Promise<AuthedCheckoutPrefill | null> {
+  try {
+    const supabase = await createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    if (!user) return null
+
+    const { data: profile } = await supabase
+      .from('user_profiles')
+      .select('id, full_name, phone, location_city, location_postcode')
+      .eq('auth_user_id', user.id)
+      .single()
+    if (!profile) return null
+
+    const { data: parentRole } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_profile_id', profile.id)
+      .eq('role', 'parent')
+      .maybeSingle()
+    if (!parentRole) return null
+
+    return {
+      fullName: profile.full_name ?? '',
+      email: user.email ?? '',
+      phone: profile.phone ?? '',
+      townCity: profile.location_city ?? '',
+      postcode: profile.location_postcode ?? '',
+    }
+  } catch (error) {
+    console.error('[GuestBookingPage] authed-checkout detection failed:', error)
+    return null
+  }
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default async function GuestBookingPage({
@@ -123,11 +178,14 @@ export default async function GuestBookingPage({
   const { coachId } = await params
   const sp = await searchParams
 
-  // Render the real coach + slot the guest chose. The descriptive fields come
-  // from the coach API; the MONEY field is driven by the `price` query param and
-  // re-verified server-side against coach_sports in POST /api/guest/bookings
-  // (anti-tampering, BR-01).
-  const coach = await fetchCoach(coachId)
+  // Render the real coach + slot the visitor chose. The descriptive fields
+  // come from the coach API; the MONEY field is driven by the `price` query
+  // param and re-verified server-side against coach_sports by whichever
+  // booking route handles the submit (anti-tampering, BR-01).
+  const [coach, authedCheckout] = await Promise.all([
+    fetchCoach(coachId),
+    loadAuthedCheckout(),
+  ])
 
   const sessionType = parseSessionType(sp.sessionType)
   const sportIdParam = firstParam(sp.sportId)
@@ -151,16 +209,32 @@ export default async function GuestBookingPage({
   const participantName = parseParticipantName(sp.participant)
   const participantAge = parseParticipantAge(sp.age)
 
+  // P-10 Phase 3: extra group players ride numbered params from the
+  // availability page (participant2/age2…). Only meaningful for a group
+  // booking; the guest API re-validates names/count at submit.
+  const playersCount = sessionType === 'group' ? parsePlayersCount(sp.players) : 1
+  const extraPlayers = Array.from({ length: Math.max(0, playersCount - 1) }, (_, i) => ({
+    name: parseParticipantName(sp[`participant${i + 2}`]),
+    age: parseParticipantAge(sp[`age${i + 2}`]),
+  }))
+
   const summary: BookingSummary = {
     coachName: coach?.full_name ?? 'Your coach',
     sportLabel: sport?.sport_name ?? 'Coaching',
     sessionDate: formatSessionDate(date),
     sessionTime: formatSessionTime(startTime, durationMinutes),
-    sessionType: sessionType === 'group' ? 'Group session' : '1-to-1 session',
+    sessionType:
+      sessionType === 'group'
+        ? `Group session · ${playersCount} players`
+        : '1-to-1 session',
+    // P-10 fix 2: EVERY player shows on the summary — "Yuwin + Arthur + Sam",
+    // or "Yuwin + 3 others" past three. 1-player bookings keep the age suffix.
     participant: participantName
-      ? participantAge !== null
-        ? `${participantName} (age ${participantAge})`
-        : participantName
+      ? extraPlayers.length > 0
+        ? formatPlayersLabel([participantName, ...extraPlayers.map((p) => p.name)])
+        : participantAge !== null
+          ? `${participantName} (age ${participantAge})`
+          : participantName
       : undefined,
     sessionFeePence: pricePence,
     platformFeePence,
@@ -175,6 +249,7 @@ export default async function GuestBookingPage({
     pricePence,
     participantName,
     participantAge,
+    extraPlayers,
   }
 
   return (
@@ -187,6 +262,7 @@ export default async function GuestBookingPage({
           summary={summary}
           checkout={checkout}
           initialError={parseSimulatedError(firstParam(sp.simulateError))}
+          authedCheckout={authedCheckout}
         />
       </div>
       <PublicFooter variant="links" />

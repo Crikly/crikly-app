@@ -258,6 +258,7 @@ export type Database = {
       }
       bookings: {
         Row: {
+          additional_participants: Json | null
           availability_template_id: string | null
           booked_by_user_id: string
           booking_reference: string
@@ -298,6 +299,7 @@ export type Database = {
           venue_name: string | null
         }
         Insert: {
+          additional_participants?: Json | null
           availability_template_id?: string | null
           booked_by_user_id: string
           booking_reference: string
@@ -338,6 +340,7 @@ export type Database = {
           venue_name?: string | null
         }
         Update: {
+          additional_participants?: Json | null
           availability_template_id?: string | null
           booked_by_user_id?: string
           booking_reference?: string

@@ -101,6 +101,7 @@ const CHECKOUT: GuestCheckoutParams = {
   pricePence: 4000,
   participantName: 'Yuwin',
   participantAge: 10,
+  extraPlayers: [],
 }
 
 const COACH_ID = 'coach-abc-123'
@@ -353,6 +354,120 @@ describe('GuestBookingFlow — handlePay success', () => {
     const body = JSON.parse(init.body) as Record<string, unknown>
     expect(body.participantName).toBe('Yuwin')
     expect(body.participantAge).toBe(10)
+    // Legacy 1-player shape: no players array key at all.
+    expect(body.players).toBeUndefined()
+  })
+
+  it('P-10 bug 4: a signed-in parent pre-fills contact details and POSTs to /api/parent/bookings with the hold players', async () => {
+    // The picker's hold, exactly as the availability page writes it.
+    window.sessionStorage.setItem(
+      'crikly:p10-booking-hold',
+      JSON.stringify({
+        coachId: COACH_ID,
+        date: '2026-06-27',
+        startTime: '10:00',
+        players: 2,
+        holdStartedAt: 1_755_000_000_000,
+        childProfileId: '33333333-3333-4333-8333-333333333333',
+        primaryPlayer: {
+          kind: 'child',
+          childProfileId: '33333333-3333-4333-8333-333333333333',
+          firstName: 'Yuwin',
+          age: '9',
+        },
+        additionalParticipants: [{ kind: 'guest', firstName: 'Sam', age: '8' }],
+      }),
+    )
+
+    const user = userEvent.setup()
+    render(
+      <GuestBookingFlow
+        coachId={COACH_ID}
+        summary={STUB}
+        checkout={{ ...CHECKOUT, sessionType: 'group', pricePence: 9000, participantName: '' }}
+        authedCheckout={{
+          fullName: 'Test Parent',
+          email: 'parent@example.com',
+          phone: '07700 900123',
+          townCity: 'London',
+          postcode: 'SW1A 1AA',
+        }}
+      />,
+    )
+
+    // Contact details pre-filled from the account (still editable inputs).
+    expect(screen.getAllByDisplayValue('Test Parent').length).toBeGreaterThan(0)
+    expect(screen.getAllByDisplayValue('parent@example.com').length).toBeGreaterThan(0)
+
+    await user.click(screen.getAllByTestId('pay-button')[0])
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalled()
+    })
+
+    const [url, init] = (global.fetch as jest.Mock).mock.calls[0] as [string, { body: string }]
+    expect(url).toBe('/api/parent/bookings')
+    const body = JSON.parse(init.body) as Record<string, unknown>
+    expect(body.players).toEqual([
+      { name: 'Yuwin', age: 9, childProfileId: '33333333-3333-4333-8333-333333333333' },
+      { name: 'Sam', age: 8, childProfileId: null },
+    ])
+    expect(body.guest).toBeUndefined() // no guest block on the authed route
+    expect(body.sessionType).toBeUndefined() // derived server-side
+
+    // The hold is cleared once the booking is confirmed.
+    await waitFor(() => {
+      expect(window.sessionStorage.getItem('crikly:p10-booking-hold')).toBeNull()
+    })
+  })
+
+  it('P-10 bug 4: without authedCheckout the guest POST is unchanged', async () => {
+    const user = userEvent.setup()
+    render(<GuestBookingFlow coachId={COACH_ID} summary={STUB} checkout={CHECKOUT} />)
+
+    await user.click(screen.getAllByTestId('pay-button')[0])
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalled()
+    })
+    const [url, init] = (global.fetch as jest.Mock).mock.calls[0] as [string, { body: string }]
+    expect(url).toBe('/api/guest/bookings')
+    const body = JSON.parse(init.body) as Record<string, unknown>
+    expect(body.guest).toBeDefined()
+    expect(body.participantName).toBe('Yuwin')
+  })
+
+  it('P-10 Phase 3: a group checkout sends the full players array, primary first', async () => {
+    const user = userEvent.setup()
+    render(
+      <GuestBookingFlow
+        coachId={COACH_ID}
+        summary={STUB}
+        checkout={{
+          ...CHECKOUT,
+          sessionType: 'group',
+          pricePence: 9000,
+          extraPlayers: [{ name: 'Amaya', age: 8 }],
+        }}
+      />,
+    )
+
+    await user.click(screen.getAllByTestId('pay-button')[0])
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalled()
+    })
+    const [, init] = (global.fetch as jest.Mock).mock.calls[0] as [string, { body: string }]
+    const body = JSON.parse(init.body) as Record<string, unknown>
+    expect(body.sessionType).toBe('group')
+    expect(body.players).toEqual([
+      { name: 'Yuwin', age: 10 },
+      { name: 'Amaya', age: 8 },
+    ])
+    // P-10 bug 3: the summary card lists every player, primary exactly once.
+    const participantRows = screen.getAllByTestId('summary-participant')
+    expect(participantRows[0]).toHaveTextContent('For Yuwin + Amaya')
+    // The legacy fields are replaced by the array — never sent alongside it.
+    expect(body.participantName).toBeUndefined()
+    expect(body.participantAge).toBeUndefined()
   })
 
   // UX-16: the coach-profile "Book a session" card links to checkout WITHOUT
