@@ -71,7 +71,10 @@ jest.mock('next/link', () => {
 })
 
 // Import the component AFTER mocks are in place
-import { GuestBookingFlow } from '@/components/booking/GuestBookingFlow'
+import {
+  GuestBookingFlow,
+  ConfirmationAccountCta,
+} from '@/components/booking/GuestBookingFlow'
 
 // Pull the stripe mock helpers (needed in handlePay tests)
 import * as StripeMock from '@stripe/react-stripe-js'
@@ -722,6 +725,68 @@ describe('GuestBookingFlow — handlePay slot_taken from API', () => {
       const alerts = screen.getAllByRole('alert')
       expect(alerts.length).toBeGreaterThanOrEqual(1)
       expect(within(alerts[0]).getByText(/Payment couldn't be completed/i)).toBeInTheDocument()
+    })
+  })
+})
+
+// ── BUG-74: confirmation account CTA — authed vs guest ───────────────────────
+
+describe('ConfirmationAccountCta (BUG-74)', () => {
+  it('guest (authed=false): shows the create-account nudge, unchanged', () => {
+    render(<ConfirmationAccountCta authed={false} />)
+    expect(screen.getByText('Save your bookings')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Create account' })).toHaveAttribute(
+      'href',
+      '/register',
+    )
+    expect(screen.queryByTestId('view-bookings-link')).not.toBeInTheDocument()
+  })
+
+  it('signed-in parent (authed=true): replaces the nudge with a bookings link', () => {
+    render(<ConfirmationAccountCta authed={true} />)
+    const link = screen.getByTestId('view-bookings-link')
+    expect(link).toHaveAttribute('href', '/parent/bookings')
+    expect(link).toHaveTextContent('View your bookings')
+    expect(screen.queryByText('Save your bookings')).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('link', { name: 'Create account' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('flow renders the authed CTA in the confirmation view when authedCheckout is set', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      status: 200,
+      ok: true,
+      json: jest.fn().mockResolvedValue({
+        clientSecret: 'cs_test',
+        bookingReference: 'CRK-2026-TEST',
+      }),
+    } as unknown as Response)
+
+    const user = userEvent.setup()
+    render(
+      <GuestBookingFlow
+        coachId={COACH_ID}
+        summary={STUB}
+        checkout={CHECKOUT}
+        authedCheckout={{
+          fullName: 'Sarah Carter',
+          email: 'sarah@example.com',
+          phone: '07700900000',
+          townCity: 'Kingston',
+          postcode: 'KT1 1AA',
+        }}
+      />,
+    )
+
+    await user.click(screen.getAllByTestId('pay-button')[0])
+
+    await waitFor(() => {
+      expect(screen.getByTestId('view-bookings-link')).toHaveAttribute(
+        'href',
+        '/parent/bookings',
+      )
+      expect(screen.queryByText('Save your bookings')).not.toBeInTheDocument()
     })
   })
 })
