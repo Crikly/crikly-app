@@ -1,6 +1,7 @@
 'use client'
 
 import { Calendar, MapPin, User } from 'lucide-react'
+import { Badge } from '@/components/ui/Badge'
 import { AddToCalendarButton } from './AddToCalendarButton'
 import type { ParentBookingItem } from './types'
 
@@ -38,7 +39,10 @@ export function BookingCard({ booking, tab }: BookingCardProps) {
       }`}
     >
       <div className="flex items-center gap-3">
-        <div className="w-11 h-11 rounded-full bg-brand-50 text-brand-800 font-medium text-base flex items-center justify-center shrink-0">
+        <div
+          className="w-11 h-11 rounded-full font-medium text-base flex items-center justify-center shrink-0"
+          style={{ backgroundColor: `${booking.coachColour}1A`, color: booking.coachColour }}
+        >
           {booking.coachInitials}
         </div>
         <div className="flex-1 min-w-0">
@@ -48,9 +52,9 @@ export function BookingCard({ booking, tab }: BookingCardProps) {
           <div className="text-sm text-slate-500 leading-snug">{booking.sessionLine}</div>
         </div>
         {cancelled ? (
-          <span className="shrink-0 text-xs font-medium text-danger bg-red-100 rounded-sm px-2 py-0.5">
+          <Badge variant="cancelled" className="shrink-0">
             Cancelled
-          </span>
+          </Badge>
         ) : null}
       </div>
 

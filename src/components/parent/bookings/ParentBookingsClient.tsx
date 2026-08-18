@@ -11,9 +11,12 @@ import type { ParentBookingItem, ParentBookingsData } from './types'
 // P-14 — parent bookings orchestrator. Upcoming / Past sessions tabs;
 // mobile (< md) renders full-detail cards, desktop (md+) renders the
 // two-column list + detail layout from the design. All data arrives
-// assembled from the server component — no client fetching.
+// assembled from the server component — no client fetching. Long lists
+// paginate client-side (design fix 1): 10 per page + "Load more".
 
 type Tab = 'upcoming' | 'past'
+
+const PAGE_SIZE = 10
 
 interface ParentBookingsClientProps {
   data: ParentBookingsData
@@ -80,8 +83,20 @@ export function ParentBookingsClient({ data }: ParentBookingsClientProps) {
   // Desktop selection per tab, so switching tabs restores each tab's pick.
   const [selectedUpcomingId, setSelectedUpcomingId] = useState<string | null>(null)
   const [selectedPastId, setSelectedPastId] = useState<string | null>(null)
+  // Pagination per tab — "Load more" only ever grows the window.
+  const [visibleUpcoming, setVisibleUpcoming] = useState(PAGE_SIZE)
+  const [visiblePast, setVisiblePast] = useState(PAGE_SIZE)
 
-  const list: ParentBookingItem[] = tab === 'upcoming' ? data.upcoming : data.past
+  const fullList: ParentBookingItem[] = tab === 'upcoming' ? data.upcoming : data.past
+  const visibleCount = tab === 'upcoming' ? visibleUpcoming : visiblePast
+  const list = fullList.slice(0, visibleCount)
+  const hasMore = fullList.length > list.length
+
+  const loadMore = () => {
+    if (tab === 'upcoming') setVisibleUpcoming((count) => count + PAGE_SIZE)
+    else setVisiblePast((count) => count + PAGE_SIZE)
+  }
+
   const selectedId = tab === 'upcoming' ? selectedUpcomingId : selectedPastId
   const selected: ParentBookingItem | null =
     list.find((b) => b.id === selectedId) ?? list[0] ?? null
@@ -90,6 +105,16 @@ export function ParentBookingsClient({ data }: ParentBookingsClientProps) {
     if (tab === 'upcoming') setSelectedUpcomingId(id)
     else setSelectedPastId(id)
   }
+
+  const loadMoreButton = hasMore ? (
+    <button
+      type="button"
+      onClick={loadMore}
+      className="h-11 rounded-md border border-neutral-100 bg-white text-sm font-medium text-brand-600 hover:bg-brand-50 active:scale-[0.98] transition-all"
+    >
+      Load more
+    </button>
+  ) : null
 
   return (
     <main className="pb-16">
@@ -130,10 +155,12 @@ export function ParentBookingsClient({ data }: ParentBookingsClientProps) {
               {list.map((booking) => (
                 <BookingCard key={booking.id} booking={booking} tab={tab} />
               ))}
+              {loadMoreButton}
             </div>
 
-            {/* Desktop — two-column: list left, detail right */}
-            <div className="hidden md:grid grid-cols-[minmax(0,380px)_1fr] gap-6 items-start">
+            {/* Desktop — two-column: list left, detail right. No items-start:
+                the detail panel stretches to the full row height (fix 2). */}
+            <div className="hidden md:grid grid-cols-[minmax(0,380px)_1fr] gap-6">
               <div className="flex flex-col gap-2.5">
                 {list.map((booking) => (
                   <BookingListRow
@@ -143,6 +170,7 @@ export function ParentBookingsClient({ data }: ParentBookingsClientProps) {
                     onSelect={() => selectBooking(booking.id)}
                   />
                 ))}
+                {loadMoreButton}
               </div>
               {selected ? <BookingDetailPanel booking={selected} tab={tab} /> : null}
             </div>

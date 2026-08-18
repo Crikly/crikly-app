@@ -16,6 +16,7 @@ function makeBooking(overrides: Partial<ParentBookingItem> = {}): ParentBookingI
     status: 'confirmed',
     coachName: 'Ravi Patel',
     coachInitials: 'RP',
+    coachColour: '#0d9488',
     sportName: 'Cricket',
     sessionLine: 'Cricket · 1-to-1',
     whenLabel: 'Thursday, 27 August · 10am – 11am (1 hr)',
@@ -23,6 +24,7 @@ function makeBooking(overrides: Partial<ParentBookingItem> = {}): ParentBookingI
     venueLabel: 'The Oval Cricket Centre, Kennington',
     participantLabel: 'Aiden',
     paidLabel: '£55.00',
+    paymentMethodLabel: 'Card payment',
     sessionStartMs: Date.UTC(2026, 7, 27, 9, 0),
     sessionEndMs: Date.UTC(2026, 7, 27, 10, 0),
     cancellationWindowHours: 24,
@@ -119,6 +121,39 @@ describe('ParentBookingsClient', () => {
     // name now appears in row + detail; Ravi drops to card + row only.
     expect(screen.getAllByText('James Okafor').length).toBeGreaterThan(1)
     expect(screen.getAllByText('Ravi Patel').length).toBeLessThanOrEqual(before)
+  })
+
+  it('shows booking reference and payment method in the detail panel', () => {
+    render(<ParentBookingsClient data={makeData()} />)
+    expect(screen.getByText('Booking reference')).toBeInTheDocument()
+    expect(screen.getByText('CRK-2026-AAAA')).toBeInTheDocument()
+    expect(screen.getByText('Payment method')).toBeInTheDocument()
+    expect(screen.getByText('Card payment')).toBeInTheDocument()
+  })
+
+  it('paginates long lists to 10 with a Load more button', () => {
+    const many = Array.from({ length: 23 }, (_, i) =>
+      makeBooking({ id: `b${i}`, reference: `CRK-2026-${String(i).padStart(4, '0')}` }),
+    )
+    render(<ParentBookingsClient data={makeData({ upcoming: many })} />)
+    // 10 visible in mobile list + 10 in desktop list = 20 coach-name hits
+    // plus 1 in the detail panel.
+    expect(screen.getAllByText('Ravi Patel')).toHaveLength(21)
+    const loadMore = screen.getAllByRole('button', { name: 'Load more' })
+    expect(loadMore.length).toBeGreaterThan(0)
+
+    fireEvent.click(loadMore[0] as HTMLElement)
+    expect(screen.getAllByText('Ravi Patel')).toHaveLength(41)
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Load more' })[0] as HTMLElement)
+    // All 23 now visible — the button disappears.
+    expect(screen.getAllByText('Ravi Patel')).toHaveLength(47)
+    expect(screen.queryAllByRole('button', { name: 'Load more' })).toHaveLength(0)
+  })
+
+  it('does not show Load more for lists of 10 or fewer', () => {
+    render(<ParentBookingsClient data={makeData()} />)
+    expect(screen.queryAllByRole('button', { name: 'Load more' })).toHaveLength(0)
   })
 
   it('offers Add to calendar for upcoming non-cancelled bookings only', () => {

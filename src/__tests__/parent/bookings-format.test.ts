@@ -7,7 +7,9 @@ import {
   formatShortWhenLabel,
   formatTimeLabel,
   formatWhenLabel,
+  stableColourIndex,
 } from '@/components/parent/bookings/format'
+import { childIdentityColour } from '@/constants/childIdentity'
 
 // P-14 — display formatters for the parent bookings page.
 
@@ -92,6 +94,20 @@ describe('coachInitials', () => {
     expect(coachInitials('Ravi Patel')).toBe('RP')
     expect(coachInitials('Mary Jane Watson')).toBe('MJ')
     expect(coachInitials('Cher')).toBe('C')
+  })
+})
+
+describe('stableColourIndex', () => {
+  it('is deterministic for the same id', () => {
+    const id = '09641cfb-9089-4426-baf6-ff4f5dc4f1d2'
+    expect(stableColourIndex(id)).toBe(stableColourIndex(id))
+  })
+
+  it('always maps into the identity palette', () => {
+    for (const id of ['a', 'b', 'coach-1', 'coach-2', '']) {
+      const colour = childIdentityColour(stableColourIndex(id))
+      expect(colour).toMatch(/^#[0-9a-f]{6}$/)
+    }
   })
 })
 

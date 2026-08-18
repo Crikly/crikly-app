@@ -15,6 +15,8 @@ export interface ParentBookingItem {
   status: ParentBookingStatus
   coachName: string
   coachInitials: string
+  /** Identity-palette hue for the initials circle (inline-style exception). */
+  coachColour: string
   sportName: string
   /** "Cricket · 1-to-1" | "Cricket · Group · 6 players" */
   sessionLine: string
@@ -28,6 +30,8 @@ export interface ParentBookingItem {
   participantLabel: string
   /** "£55.00" */
   paidLabel: string
+  /** Currently always "Card payment" — see parent/bookings/page.tsx for why. */
+  paymentMethodLabel: string
   /** True Europe/London instants (BUG-66-safe), for window/past checks. */
   sessionStartMs: number
   sessionEndMs: number

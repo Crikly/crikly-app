@@ -6,13 +6,22 @@ import {
   formatSessionLine,
   formatShortWhenLabel,
   formatWhenLabel,
+  stableColourIndex,
 } from '@/components/parent/bookings/format'
+import { childIdentityColour } from '@/constants/childIdentity'
 import {
   londonSessionToMs,
   londonTodayDateString,
   nextDateString,
 } from '@/lib/time/london'
 import { firstNameOf } from '@/constants/childIdentity'
+
+// Design fix 3: payment_intents deliberately stores no card metadata
+// ("No card data is ever stored" — migration 006). "Card ending ××××" would
+// need a per-booking live Stripe read or a webhook-time stash (schema
+// change) — flagged to Lasith; until then every booking shows the generic
+// label.
+const PAYMENT_METHOD_FALLBACK = 'Card payment'
 import type {
   ParentBookingItem,
   ParentBookingStatus,
@@ -216,6 +225,7 @@ async function loadBookingsData(): Promise<ParentBookingsData> {
         status,
         coachName,
         coachInitials: coachInitials(coachName),
+        coachColour: childIdentityColour(stableColourIndex(row.coach_profile_id)),
         sportName,
         sessionLine: formatSessionLine(sportName, row.session_type, playerCount),
         whenLabel: formatWhenLabel(
@@ -234,6 +244,7 @@ async function loadBookingsData(): Promise<ParentBookingsData> {
         venueLabel: icsVenue ?? 'At your coach’s venue',
         participantLabel: firstNameOf(participantName) || 'your player',
         paidLabel: formatPaidLabel(row.parent_total_pence, row.currency),
+        paymentMethodLabel: PAYMENT_METHOD_FALLBACK,
         sessionStartMs,
         sessionEndMs,
         cancellationWindowHours: row.cancellation_window_hours,

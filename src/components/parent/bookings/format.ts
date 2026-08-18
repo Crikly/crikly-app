@@ -107,6 +107,20 @@ export function coachInitials(name: string): string {
     .join('')
 }
 
+/**
+ * Deterministic identity-palette colour for a coach's initials circle —
+ * hash of a stable id so the hue never changes between renders or tabs.
+ * Reuses CHILD_IDENTITY_COLOURS via childIdentityColour (design-system
+ * identity palette).
+ */
+export function stableColourIndex(id: string): number {
+  let hash = 0
+  for (let i = 0; i < id.length; i++) {
+    hash = (hash * 31 + id.charCodeAt(i)) | 0
+  }
+  return Math.abs(hash)
+}
+
 /** "Cricket · 1-to-1" | "Cricket · Group · 6 players" */
 export function formatSessionLine(
   sportName: string,
