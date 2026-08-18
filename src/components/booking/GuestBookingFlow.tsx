@@ -17,6 +17,7 @@ import type {
 } from '@stripe/stripe-js'
 import {
   ArrowLeft,
+  ArrowRight,
   Lock,
   Check,
   Copy,
@@ -280,28 +281,9 @@ export function GuestBookingFlow({ coachId, coachSlug, summary, checkout, initia
           />
         </div>
 
-        {/* Account nudge — mobile: stacked; desktop: single row with inline button */}
-        <div className="mt-4 flex w-full flex-col gap-[13px] rounded-[12px] border border-[#CFE3F8] bg-[#F0F7FF] p-4 text-left lg:flex-row lg:items-center lg:gap-[14px] lg:px-[18px]">
-          <div className="flex items-start gap-3 lg:flex-1 lg:items-center">
-            <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-[10px] bg-brand-50 text-brand-600">
-              <Bookmark size={20} aria-hidden="true" />
-            </span>
-            <div>
-              <p className="text-[15px] font-semibold tracking-[-0.01em] text-neutral-900">
-                Save your bookings
-              </p>
-              <p className="mt-0.5 text-[13px] leading-[1.45] text-neutral-600">
-                Create a free Crikly account to manage and rebook in seconds.
-              </p>
-            </div>
-          </div>
-          <Link
-            href="/register"
-            className="flex h-[46px] items-center justify-center rounded-[10px] border-[1.5px] border-brand-600 bg-white text-[15px] font-semibold text-brand-600 transition-colors hover:bg-brand-50 lg:h-11 lg:flex-shrink-0 lg:px-[18px]"
-          >
-            Create account
-          </Link>
-        </div>
+        {/* BUG-74: account CTA — authed parents get a link to their bookings;
+            guests keep the create-account nudge. */}
+        <ConfirmationAccountCta authed={Boolean(authedCheckout)} />
 
         {/* Back link */}
         <Link
@@ -331,6 +313,54 @@ export function GuestBookingFlow({ coachId, coachSlug, summary, checkout, initia
         }
       />
     </Elements>
+  )
+}
+
+// ── Confirmation account CTA (BUG-74) ─────────────────────────────────────────
+
+/**
+ * The post-payment account block. Guests see the "Save your bookings /
+ * Create account" nudge (unchanged from P-00c); a signed-in parent —
+ * `authedCheckout` is parent-gated server-side by loadAuthedCheckout on
+ * /book/[coachId] — sees a link to their bookings instead. Exported for
+ * direct unit testing (the confirmed view is internal flow state).
+ */
+export function ConfirmationAccountCta({ authed }: { authed: boolean }) {
+  if (authed) {
+    return (
+      <Link
+        href="/parent/bookings"
+        data-testid="view-bookings-link"
+        className="mt-4 inline-flex items-center gap-1.5 text-[15px] font-semibold text-brand-600 transition-colors hover:text-brand-800"
+      >
+        View your bookings
+        <ArrowRight size={16} aria-hidden="true" />
+      </Link>
+    )
+  }
+  return (
+    // Account nudge — mobile: stacked; desktop: single row with inline button
+    <div className="mt-4 flex w-full flex-col gap-[13px] rounded-[12px] border border-[#CFE3F8] bg-[#F0F7FF] p-4 text-left lg:flex-row lg:items-center lg:gap-[14px] lg:px-[18px]">
+      <div className="flex items-start gap-3 lg:flex-1 lg:items-center">
+        <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-[10px] bg-brand-50 text-brand-600">
+          <Bookmark size={20} aria-hidden="true" />
+        </span>
+        <div>
+          <p className="text-[15px] font-semibold tracking-[-0.01em] text-neutral-900">
+            Save your bookings
+          </p>
+          <p className="mt-0.5 text-[13px] leading-[1.45] text-neutral-600">
+            Create a free Crikly account to manage and rebook in seconds.
+          </p>
+        </div>
+      </div>
+      <Link
+        href="/register"
+        className="flex h-[46px] items-center justify-center rounded-[10px] border-[1.5px] border-brand-600 bg-white text-[15px] font-semibold text-brand-600 transition-colors hover:bg-brand-50 lg:h-11 lg:flex-shrink-0 lg:px-[18px]"
+      >
+        Create account
+      </Link>
+    </div>
   )
 }
 
