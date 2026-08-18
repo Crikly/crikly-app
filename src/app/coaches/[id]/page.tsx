@@ -20,6 +20,7 @@ import {
 import { BioExpander } from './_components/BioExpander'
 import { PublicHeader } from '@/components/nav/PublicHeader'
 import { BookingCard } from './_components/BookingCard'
+import { loadAuthedParentShell } from '@/lib/auth/authed-parent-shell'
 import { ProgrammesCarousel } from './_components/ProgrammesCarousel'
 import { fetchCoachProgrammes } from './_components/_data/programmes'
 import { PublicFooter } from '@/components/public/PublicFooter'
@@ -215,6 +216,12 @@ export default async function CoachProfilePage({
 
   const coach = await fetchCoachProfile(id)
   if (!coach) notFound()
+
+  // BUG-75: signed-in parent detection (shared BUG-73 loader). Only the
+  // desktop BookingCard CTA needs it — the mobile sticky bar already routes
+  // everyone to /availability. Null (guest, coach-only, player-only) keeps
+  // the guest checkout href, byte-identical.
+  const authedParent = await loadAuthedParentShell()
 
   // P-00c: when reached via the canonical UUID, permanently redirect (308) to the
   // slug URL so all downstream navigation (availability, checkout, back links)
@@ -544,12 +551,17 @@ export default async function CoachProfilePage({
           {/* Right — desktop booking card */}
           <aside className="hidden lg:block sticky top-24">
             <Suspense fallback={<div className="border border-gray-200 rounded-2xl p-6 h-64 animate-pulse" />}>
+              {/* BUG-75: authedAvailabilityHref uses `id` (not coach.id) so
+                  the slug is preserved — same rule as the mobile CTA below. */}
               <BookingCard
                 coachId={coach.id}
                 sports={coach.sports}
                 priceFrom={minPrice}
                 ratingAvg={coach.rating_avg}
                 ratingCount={coach.rating_count}
+                authedAvailabilityHref={
+                  authedParent ? `/coaches/${id}/availability` : null
+                }
               />
             </Suspense>
           </aside>

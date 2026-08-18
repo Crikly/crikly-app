@@ -12,7 +12,7 @@ import {
 } from '@/components/public/CoachCard'
 import type { PublicCoachListItem } from '@/components/public/CoachCard'
 import { AppShell } from '@/components/shell/AppShell'
-import type { ShellRole } from '@/components/shell/roles'
+import type { AuthedParentShell } from '@/lib/auth/authed-parent-shell'
 import { parseRoleParam, type RoleParam } from '@/lib/auth/role-param'
 
 // BUG-73: this file is the former src/app/coaches/page.tsx moved verbatim —
@@ -23,15 +23,10 @@ import { parseRoleParam, type RoleParam } from '@/lib/auth/role-param'
 // When null (guest, coach-only, player-only) everything renders exactly as
 // before.
 
-// Server-resolved shell identity for a signed-in parent (subset of the
-// AppShell identity props — see src/components/shell/AppShell.tsx).
-export interface AuthedParentShell {
-  name: string
-  email: string
-  avatarUrl: string | null
-  activeRole: ShellRole
-  roles: ShellRole[]
-}
+// BUG-75: AuthedParentShell + its loader moved to
+// src/lib/auth/authed-parent-shell.ts (shared with the coach profile page).
+// Re-exported so existing importers of this module keep working.
+export type { AuthedParentShell }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
