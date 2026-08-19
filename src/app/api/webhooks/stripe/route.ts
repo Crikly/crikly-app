@@ -50,6 +50,7 @@ import type Stripe from 'stripe'
 import { getStripe } from '@/lib/stripe/client'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendBookingConfirmation } from '@/lib/resend/send-booking-confirmation'
+import { buildBookingIcs, bookingIcsFilename } from '@/lib/calendar/ics'
 import { sendNewBookingNotification } from '@/lib/resend/send-new-booking-to-coach'
 import { sendProgrammeConfirmation } from '@/lib/resend/send-programme-confirmation'
 import { sendOpsAlert } from '@/lib/resend/send-ops-alert'
@@ -417,7 +418,7 @@ async function handlePaymentIntentSucceeded(intent: Stripe.PaymentIntent): Promi
     .eq('id', bookingId)
     .eq('status', 'pending_payment')
     .select(
-      'id, booking_reference, coach_profile_id, booked_by_user_id, session_date, session_start_time, session_end_time, session_type, coach_price_pence, sport_id',
+      'id, booking_reference, coach_profile_id, booked_by_user_id, session_date, session_start_time, session_end_time, session_type, coach_price_pence, sport_id, venue_name',
     )
 
   if (bookingError) {
@@ -468,6 +469,53 @@ interface ConfirmedBookingRow {
   session_type: string
   coach_price_pence: number
   sport_id: string
+  /** CF-NOTIFY-03: .ics LOCATION — nullable snapshot, blank when unset. */
+  venue_name: string | null
+}
+
+/**
+ * CF-NOTIFY-03: sport display name for the .ics/email — best-effort, null on
+ * any miss so each caller picks its own fallback label.
+ */
+async function resolveSportName(
+  adminSupabase: SupabaseAdminClient,
+  sportId: string,
+): Promise<string | null> {
+  const { data: sport } = await adminSupabase
+    .from('sports')
+    .select('name')
+    .eq('id', sportId)
+    .maybeSingle()
+  return sport?.name ?? null
+}
+
+/**
+ * CF-NOTIFY-03: the booking's .ics attachment — one builder call shared by
+ * both emails (same event, different recipients). Times are UK wall-clock
+ * from the booking row; the shared builder converts them via the
+ * Europe/London offset (BUG-66-safe). Pure assembly — never throws further
+ * than its caller's email path.
+ */
+function buildBookingIcsAttachment(
+  booking: ConfirmedBookingRow,
+  sportName: string,
+  coachName: string,
+  bookerName?: string,
+): { filename: string; content: string } {
+  return {
+    filename: bookingIcsFilename(booking.booking_reference),
+    content: buildBookingIcs({
+      bookingReference: booking.booking_reference,
+      sportName,
+      coachName,
+      sessionDate: booking.session_date,
+      startTime: booking.session_start_time,
+      endTime: booking.session_end_time,
+      venue: booking.venue_name,
+      ...(bookerName ? { bookerName } : {}),
+      nowMs: Date.now(),
+    }),
+  }
 }
 
 /** The authed booker's identity, for email assembly (BUG-71/BUG-72). */
@@ -573,6 +621,9 @@ async function sendGuestBookingConfirmationEmail(
     if (coachUser?.full_name) coachName = coachUser.full_name
   }
 
+  // CF-NOTIFY-03: sport for the .ics SUMMARY — spec fallback is "Cricket".
+  const sportName = (await resolveSportName(adminSupabase, booking.sport_id)) ?? 'Cricket'
+
   const sent = await sendBookingConfirmation({
     guestName: recipientName || 'there',
     guestEmail: recipientEmail,
@@ -585,6 +636,9 @@ async function sendGuestBookingConfirmationEmail(
     sessionType: formatSessionType(booking.session_type),
     // intent.amount is the canonical amount actually charged, in pence.
     totalPence: intent.amount,
+    // CF-NOTIFY-03: same event the coach's email carries — calendars dedupe
+    // on the shared reference-based UID.
+    icsAttachment: buildBookingIcsAttachment(booking, sportName, coachName),
   })
 
   if (!sent) {
@@ -645,14 +699,11 @@ async function sendNewBookingToCoachEmail(
     return
   }
 
-  // Sport display name — non-fatal; a lookup miss falls back to a generic label.
-  let sportName = 'Coaching session'
-  const { data: sport } = await adminSupabase
-    .from('sports')
-    .select('name')
-    .eq('id', booking.sport_id)
-    .maybeSingle()
-  if (sport?.name) sportName = sport.name
+  // Sport display name — non-fatal; a lookup miss falls back to a generic
+  // label for the email row ('Coaching session') and the CF-NOTIFY-03 spec
+  // fallback ('Cricket') for the .ics SUMMARY.
+  const resolvedSport = await resolveSportName(adminSupabase, booking.sport_id)
+  const sportName = resolvedSport ?? 'Coaching session'
 
   const base = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
 
@@ -677,6 +728,14 @@ async function sendNewBookingToCoachEmail(
     coachPricePence: booking.coach_price_pence,
     bookingReference: booking.booking_reference,
     dashboardUrl: `${base}/coach/bookings/${booking.id}`,
+    // CF-NOTIFY-03: same .ics event as the parent's copy (shared UID), with
+    // the booker named in the description for the coach's context.
+    icsAttachment: buildBookingIcsAttachment(
+      booking,
+      resolvedSport ?? 'Cricket',
+      coach.display_name?.trim() || coachUser.full_name || 'Coach',
+      parentName || 'A parent',
+    ),
   })
 
   if (!sent) {
@@ -734,7 +793,7 @@ async function restoreReleasedBookingIfPaid(
     .eq('id', bookingId)
     .eq('status', 'pending_payment')
     .not('deleted_at', 'is', null)
-    .select('id, booking_reference, coach_profile_id, booked_by_user_id, session_date, session_start_time, session_end_time, session_type, coach_price_pence, sport_id')
+    .select('id, booking_reference, coach_profile_id, booked_by_user_id, session_date, session_start_time, session_end_time, session_type, coach_price_pence, sport_id, venue_name')
 
   // BUG-15 (review fix): only a constraint violation IS the permanent
   // conflict — any other restore failure is transient and must retry.

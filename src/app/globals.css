@@ -102,6 +102,20 @@ body {
   background-repeat: no-repeat;
 }
 
+/* P-14 Phase 3: inline cancel panel entrance (design: cancelIn). Guarded by
+   Tailwind's motion-safe: variant at the call site — reduced-motion users get
+   an instant panel. */
+@keyframes bookingCancelIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @keyframes qualCardIn {
   from {
     opacity: 0;
