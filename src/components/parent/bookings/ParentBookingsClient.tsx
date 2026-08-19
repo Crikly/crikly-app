@@ -6,6 +6,7 @@ import { CalendarDays } from 'lucide-react'
 import { BookingCard } from './BookingCard'
 import { BookingListRow } from './BookingListRow'
 import { BookingDetailPanel } from './BookingDetailPanel'
+import type { CancelResult } from './CancelPanel'
 import type { ParentBookingItem, ParentBookingsData } from './types'
 
 // P-14 — parent bookings orchestrator. Upcoming / Past sessions tabs;
@@ -86,10 +87,30 @@ export function ParentBookingsClient({ data }: ParentBookingsClientProps) {
   // Pagination per tab — "Load more" only ever grows the window.
   const [visibleUpcoming, setVisibleUpcoming] = useState(PAGE_SIZE)
   const [visiblePast, setVisiblePast] = useState(PAGE_SIZE)
+  // Phase 3 — inline cancellation: which booking's panel is open, and the
+  // local overlay for bookings cancelled THIS visit (server data is a
+  // one-shot prop; a successful cancel re-renders the card as cancelled
+  // without a refetch).
+  const [cancelOpenId, setCancelOpenId] = useState<string | null>(null)
+  const [cancelResults, setCancelResults] = useState<Record<string, CancelResult>>({})
+
+  const applyCancelResult = (item: ParentBookingItem): ParentBookingItem => {
+    const result = cancelResults[item.id]
+    if (!result) return item
+    return {
+      ...item,
+      status: 'cancelled_parent',
+      isCancelled: true,
+      allowsCancel: false,
+      cancelledLine: result.refunded
+        ? `${item.paidLabel} refund on its way — it usually arrives within 5 working days.`
+        : 'This booking was cancelled. No refund was due.',
+    }
+  }
 
   const fullList: ParentBookingItem[] = tab === 'upcoming' ? data.upcoming : data.past
   const visibleCount = tab === 'upcoming' ? visibleUpcoming : visiblePast
-  const list = fullList.slice(0, visibleCount)
+  const list = fullList.slice(0, visibleCount).map(applyCancelResult)
   const hasMore = fullList.length > list.length
 
   const loadMore = () => {
@@ -104,7 +125,24 @@ export function ParentBookingsClient({ data }: ParentBookingsClientProps) {
   const selectBooking = (id: string) => {
     if (tab === 'upcoming') setSelectedUpcomingId(id)
     else setSelectedPastId(id)
+    // Selecting a different booking closes any open cancel panel (design).
+    setCancelOpenId(null)
   }
+
+  const switchTab = (next: Tab) => {
+    setTab(next)
+    setCancelOpenId(null)
+  }
+
+  const cancelHandlersFor = (booking: ParentBookingItem) => ({
+    cancelOpen: cancelOpenId === booking.id,
+    onOpenCancel: () => setCancelOpenId(booking.id),
+    onKeep: () => setCancelOpenId(null),
+    onCancelled: (result: CancelResult) => {
+      setCancelResults((prev) => ({ ...prev, [booking.id]: result }))
+      setCancelOpenId(null)
+    },
+  })
 
   const loadMoreButton = hasMore ? (
     <button
@@ -127,14 +165,14 @@ export function ParentBookingsClient({ data }: ParentBookingsClientProps) {
               panelId="bookings-panel"
               label="Upcoming"
               active={tab === 'upcoming'}
-              onClick={() => setTab('upcoming')}
+              onClick={() => switchTab('upcoming')}
             />
             <TabButton
               id="bookings-tab-past"
               panelId="bookings-panel"
               label="Past sessions"
               active={tab === 'past'}
-              onClick={() => setTab('past')}
+              onClick={() => switchTab('past')}
             />
           </div>
         </div>
@@ -153,7 +191,12 @@ export function ParentBookingsClient({ data }: ParentBookingsClientProps) {
             {/* Mobile — full-detail card list */}
             <div className="flex flex-col gap-3 md:hidden">
               {list.map((booking) => (
-                <BookingCard key={booking.id} booking={booking} tab={tab} />
+                <BookingCard
+                  key={booking.id}
+                  booking={booking}
+                  tab={tab}
+                  {...cancelHandlersFor(booking)}
+                />
               ))}
               {loadMoreButton}
             </div>
@@ -172,7 +215,13 @@ export function ParentBookingsClient({ data }: ParentBookingsClientProps) {
                 ))}
                 {loadMoreButton}
               </div>
-              {selected ? <BookingDetailPanel booking={selected} tab={tab} /> : null}
+              {selected ? (
+                <BookingDetailPanel
+                  booking={selected}
+                  tab={tab}
+                  {...cancelHandlersFor(selected)}
+                />
+              ) : null}
             </div>
           </>
         )}

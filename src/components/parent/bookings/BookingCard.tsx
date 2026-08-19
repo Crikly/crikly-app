@@ -3,15 +3,21 @@
 import { Calendar, MapPin, User } from 'lucide-react'
 import { Badge } from '@/components/ui/Badge'
 import { AddToCalendarButton } from './AddToCalendarButton'
+import { CancelPanel, type CancelResult } from './CancelPanel'
 import type { ParentBookingItem } from './types'
 
 // P-14 — mobile booking card (design: Mobile · 390 frame). One card carries
-// the full session detail; the inline cancellation panel expands inside it
-// (Phase 3). Past cards reserve the review slot for P-20 — no actions yet.
+// the full session detail; the inline cancellation panel (Phase 3) expands
+// inside it — while open, the footer actions hide (design). Past cards
+// reserve the review slot for P-20 — no actions yet.
 
 interface BookingCardProps {
   booking: ParentBookingItem
   tab: 'upcoming' | 'past'
+  cancelOpen: boolean
+  onOpenCancel: () => void
+  onKeep: () => void
+  onCancelled: (result: CancelResult) => void
 }
 
 function DetailRow({
@@ -29,7 +35,14 @@ function DetailRow({
   )
 }
 
-export function BookingCard({ booking, tab }: BookingCardProps) {
+export function BookingCard({
+  booking,
+  tab,
+  cancelOpen,
+  onOpenCancel,
+  onKeep,
+  onCancelled,
+}: BookingCardProps) {
   const cancelled = booking.isCancelled
 
   return (
@@ -75,12 +88,27 @@ export function BookingCard({ booking, tab }: BookingCardProps) {
           {booking.paidLabel}{' '}
           <span className="text-xs font-normal text-neutral-400">paid</span>
         </div>
-        {tab === 'upcoming' && !cancelled ? (
+        {tab === 'upcoming' && !cancelled && !cancelOpen ? (
           <div className="flex items-center gap-5">
             <AddToCalendarButton booking={booking} variant="link" />
+            {booking.allowsCancel ? (
+              <button
+                type="button"
+                onClick={onOpenCancel}
+                className="text-sm font-medium text-brand-600 hover:text-brand-800 transition-colors"
+              >
+                Cancel
+              </button>
+            ) : null}
           </div>
         ) : null}
       </div>
+
+      {cancelOpen && !cancelled ? (
+        <div className="mt-3.5">
+          <CancelPanel booking={booking} onKeep={onKeep} onCancelled={onCancelled} />
+        </div>
+      ) : null}
 
       {cancelled && booking.cancelledLine ? (
         <div className="mt-3.5 text-sm text-slate-500 bg-slate-50 rounded-md px-4 py-3">

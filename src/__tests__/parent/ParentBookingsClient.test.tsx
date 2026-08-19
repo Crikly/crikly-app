@@ -1,6 +1,6 @@
 /** @jest-environment jsdom */
 
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { ParentBookingsClient } from '@/components/parent/bookings/ParentBookingsClient'
 import type {
   ParentBookingItem,
@@ -154,6 +154,76 @@ describe('ParentBookingsClient', () => {
   it('does not show Load more for lists of 10 or fewer', () => {
     render(<ParentBookingsClient data={makeData()} />)
     expect(screen.queryAllByRole('button', { name: 'Load more' })).toHaveLength(0)
+  })
+
+  it('opens the inline cancel panel and hides the action row while open', () => {
+    render(<ParentBookingsClient data={makeData()} />)
+    expect(screen.queryAllByTestId('cancel-panel')).toHaveLength(0)
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Cancel' })[0] as HTMLElement)
+    // Panel renders in the mobile card AND the desktop detail (same booking).
+    expect(screen.getAllByTestId('cancel-panel').length).toBeGreaterThan(0)
+    // The mobile card's action row hides while expanded (design).
+    expect(screen.queryAllByRole('button', { name: 'Cancel' })).toHaveLength(0)
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Keep booking' })[0] as HTMLElement)
+    expect(screen.queryAllByTestId('cancel-panel')).toHaveLength(0)
+    expect(screen.getAllByRole('button', { name: 'Cancel' }).length).toBeGreaterThan(0)
+  })
+
+  it('hides the Cancel affordance when the coach allows no cancellations', () => {
+    const noCancel = makeBooking({ allowsCancel: false, cancellationWindowHours: 0 })
+    render(<ParentBookingsClient data={makeData({ upcoming: [noCancel] })} />)
+    expect(screen.queryAllByRole('button', { name: 'Cancel' })).toHaveLength(0)
+    expect(screen.queryAllByRole('button', { name: 'Cancel booking' })).toHaveLength(0)
+    // Add to calendar still offered.
+    expect(screen.getAllByText('Add to calendar').length).toBeGreaterThan(0)
+  })
+
+  it('renders the refunded cancelled state after a confirmed cancel', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: jest.fn().mockResolvedValue({ status: 'cancelled', refunded: true }),
+    } as unknown as Response)
+
+    render(<ParentBookingsClient data={makeData()} />)
+    fireEvent.click(screen.getAllByRole('button', { name: 'Cancel' })[0] as HTMLElement)
+    fireEvent.click(
+      screen.getAllByTestId('confirm-cancel-button')[0] as HTMLElement,
+    )
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Cancelled').length).toBeGreaterThan(0)
+    })
+    expect(
+      screen.getAllByText(
+        '£55.00 refund on its way — it usually arrives within 5 working days.',
+      ).length,
+    ).toBeGreaterThan(0)
+    // Panel closed; no further cancel affordance on the cancelled card.
+    expect(screen.queryAllByTestId('cancel-panel')).toHaveLength(0)
+    expect(screen.queryAllByRole('button', { name: 'Cancel' })).toHaveLength(0)
+  })
+
+  it('renders the no-refund cancelled line when the API reports refunded: false', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: jest.fn().mockResolvedValue({ status: 'cancelled', refunded: false }),
+    } as unknown as Response)
+
+    render(<ParentBookingsClient data={makeData()} />)
+    fireEvent.click(screen.getAllByRole('button', { name: 'Cancel' })[0] as HTMLElement)
+    fireEvent.click(
+      screen.getAllByTestId('confirm-cancel-button')[0] as HTMLElement,
+    )
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByText('This booking was cancelled. No refund was due.').length,
+      ).toBeGreaterThan(0)
+    })
   })
 
   it('offers Add to calendar for upcoming non-cancelled bookings only', () => {
