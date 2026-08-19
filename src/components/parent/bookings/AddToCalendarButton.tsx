@@ -15,7 +15,6 @@ interface AddToCalendarButtonProps {
 
 function downloadIcs(booking: ParentBookingItem): void {
   const ics = buildBookingIcs({
-    bookingId: booking.id,
     bookingReference: booking.reference,
     sportName: booking.sportName,
     coachName: booking.coachName,

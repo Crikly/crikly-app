@@ -586,6 +586,21 @@ describe('POST /api/webhooks/stripe — payment_intent.succeeded email (P-00c-EM
       mockFrom.mockReturnValueOnce(coachChain) // 3. coach_profiles
     }
 
+    // CF-NOTIFY-03: default for every from() call after the ordered queue —
+    // serves the .ics sports lookup (and any later best-effort lookups the
+    // coach-email helper makes; its guards skip on the mismatched shape).
+    const fallbackChain: Record<string, MockFn> = {}
+    for (const m of ['select', 'eq', 'is', 'in', 'update', 'insert']) {
+      fallbackChain[m] = jest.fn(() => fallbackChain)
+    }
+    fallbackChain.maybeSingle = jest
+      .fn()
+      .mockResolvedValue({ data: { name: 'Cricket' }, error: null })
+    fallbackChain.single = jest
+      .fn()
+      .mockResolvedValue({ data: { name: 'Cricket' }, error: null })
+    mockFrom.mockImplementation(() => fallbackChain)
+
     ;(createAdminClient as MockFn).mockReturnValue(adminMock(mockFrom))
 
     const intent = makeIntentWithGuestEmail(intentOverrides)
@@ -623,6 +638,27 @@ describe('POST /api/webhooks/stripe — payment_intent.succeeded email (P-00c-EM
     const [params] = (sendBookingConfirmation as MockFn).mock.calls[0] as [Record<string, unknown>]
     expect(params.participantName).toBe('Yuwin')
     expect(params.participantAge).toBe(10)
+  })
+
+  it('attaches the booking .ics to the confirmation email — CF-NOTIFY-03', async () => {
+    setupEmailMocks()
+
+    await callPost('{}')
+
+    const [params] = (sendBookingConfirmation as MockFn).mock.calls[0] as [
+      Record<string, unknown>,
+    ]
+    const ics = params.icsAttachment as { filename: string; content: string }
+    // RFC 5545 line folding splits long lines — unfold before asserting text.
+    const unfolded = ics.content.replace(/\r\n /g, '')
+    expect(ics.filename).toBe('crikly-CRK-2026-TEST01.ics')
+    expect(unfolded).toContain('BEGIN:VCALENDAR')
+    // UID is the booking reference — same event identity as the page download.
+    expect(unfolded).toContain('UID:CRK-2026-TEST01@crikly.app')
+    // 15 Aug 2026 is BST: 10:00 London = 09:00Z (BUG-66-safe conversion).
+    expect(unfolded).toContain('DTSTART:20260815T090000Z')
+    expect(unfolded).toContain('DTEND:20260815T100000Z')
+    expect(unfolded).toContain('Booking reference: CRK-2026-TEST01')
   })
 
   it('passes undefined participant fields for pre-UX-16 intents without participant metadata', async () => {
@@ -839,6 +875,13 @@ describe('POST /api/webhooks/stripe — payment_intent.succeeded email (P-00c-EM
       .mockReturnValueOnce(piChain)
       .mockReturnValueOnce(bookingChain)
       .mockReturnValueOnce(coachChain)
+    // CF-NOTIFY-03: post-queue default serves the .ics sports lookup.
+    const sportsFallback: Record<string, MockFn> = {}
+    for (const m of ['select', 'eq']) sportsFallback[m] = jest.fn(() => sportsFallback)
+    sportsFallback.maybeSingle = jest
+      .fn()
+      .mockResolvedValue({ data: { name: 'Cricket' }, error: null })
+    mockFrom.mockImplementation(() => sportsFallback)
     ;(createAdminClient as MockFn).mockReturnValue(adminMock(mockFrom))
 
     // Intent has guest_email but no guest_name
@@ -1393,6 +1436,24 @@ describe('POST /api/webhooks/stripe — coach notification email (CF-NOTIFY-02)'
     expect(params.sport).toBe('Cricket')
     expect(params.bookingReference).toBe('CRK-2026-TEST01')
     expect(params.dashboardUrl).toContain(`/coach/bookings/${BOOKING_ID}`)
+  })
+
+  it('attaches the booking .ics with the booker named — CF-NOTIFY-03', async () => {
+    setupCoachEmailMocks()
+
+    await callPost('{}')
+
+    const [params] = (sendNewBookingNotification as MockFn).mock.calls[0] as [
+      Record<string, unknown>,
+    ]
+    const ics = params.icsAttachment as { filename: string; content: string }
+    // RFC 5545 line folding splits long lines — unfold before asserting text.
+    const unfolded = ics.content.replace(/\r\n /g, '')
+    expect(ics.filename).toBe('crikly-CRK-2026-TEST01.ics')
+    expect(unfolded).toContain('BEGIN:VCALENDAR')
+    expect(unfolded).toContain('UID:CRK-2026-TEST01@crikly.app')
+    expect(unfolded).toContain('SUMMARY:Cricket session with Coach Davies')
+    expect(unfolded).toContain('Booked by: Sarah Test')
   })
 
   it('falls back to user_profiles.full_name when display_name is null', async () => {

@@ -160,6 +160,26 @@ function guestEmailWrapper(bodyHtml: string): string {
 </html>`
 }
 
+/** CF-NOTIFY-03: an .ics calendar file to attach. Content is the raw
+ *  iCalendar text (lib/calendar/ics builder) — converted to a Buffer at the
+ *  Resend call so params stay plain-serialisable for tests. */
+export interface EmailIcsAttachment {
+  filename: string
+  content: string
+}
+
+function toResendAttachments(attachment: EmailIcsAttachment | undefined) {
+  if (!attachment) return {}
+  return {
+    attachments: [
+      {
+        filename: attachment.filename,
+        content: Buffer.from(attachment.content, 'utf-8'),
+      },
+    ],
+  }
+}
+
 export interface GuestBookingConfirmationParams {
   guestName: string
   guestEmail: string
@@ -169,6 +189,8 @@ export interface GuestBookingConfirmationParams {
   sessionTime: string
   sessionType: string
   totalPence: number
+  /** CF-NOTIFY-03: booking .ics — attached when provided. */
+  icsAttachment?: EmailIcsAttachment
   /**
    * UX-16: who the session is for (child, or the player themselves). Optional
    * only because intents created before UX-16 carry no participant metadata —
@@ -263,6 +285,7 @@ export async function sendGuestBookingConfirmation(
     to: guestEmail,
     subject: `Your Crikly booking is confirmed — ${bookingReference}`,
     html: guestEmailWrapper(body),
+    ...toResendAttachments(params.icsAttachment),
   })
 
   if (error) {
@@ -484,6 +507,8 @@ export interface NewBookingToCoachParams {
   coachPricePence: number
   bookingReference: string
   dashboardUrl: string
+  /** CF-NOTIFY-03: booking .ics — attached when provided. */
+  icsAttachment?: EmailIcsAttachment
 }
 
 export async function sendNewBookingToCoach(
@@ -545,6 +570,7 @@ export async function sendNewBookingToCoach(
     to: coachEmail,
     subject: `New booking from ${subjectParent} — ${sessionDate}`,
     html: emailWrapper(body),
+    ...toResendAttachments(params.icsAttachment),
   })
 
   if (error) {

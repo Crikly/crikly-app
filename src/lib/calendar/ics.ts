@@ -10,8 +10,9 @@
 import { londonSessionToMs } from '@/lib/time/london'
 
 export interface BookingIcsParams {
-  /** Stable UID seed — the booking's UUID. */
-  bookingId: string
+  /** UID seed — the booking reference is globally unique (CF-NOTIFY-03 spec)
+   *  and the SAME event identity must come from the page download and the
+   *  email attachment, so calendars dedupe rather than duplicate. */
   bookingReference: string
   /** e.g. "Cricket session with Ravi Patel" is derived from these two. */
   sportName: string
@@ -22,6 +23,8 @@ export interface BookingIcsParams {
   endTime: string
   /** Venue display string, or null when unknown. */
   venue: string | null
+  /** Who booked — adds a "Booked by" description line (coach's copy). */
+  bookerName?: string
   /** Epoch ms for DTSTAMP — injected so callers/tests control "now". */
   nowMs: number
 }
@@ -69,14 +72,15 @@ export function buildBookingIcs(params: BookingIcsParams): string {
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',
     'BEGIN:VEVENT',
-    `UID:${params.bookingId}@crikly.app`,
+    `UID:${params.bookingReference.replace(/[^A-Za-z0-9-]/g, '')}@crikly.app`,
     `DTSTAMP:${toIcsUtc(params.nowMs)}`,
     `DTSTART:${toIcsUtc(startMs)}`,
     `DTEND:${toIcsUtc(endMs)}`,
     `SUMMARY:${escapeIcsText(`${params.sportName} session with ${params.coachName}`)}`,
     ...(params.venue ? [`LOCATION:${escapeIcsText(params.venue)}`] : []),
     `DESCRIPTION:${escapeIcsText(
-      `Booking reference: ${params.bookingReference}\nCoach: ${params.coachName}`,
+      `Booking reference: ${params.bookingReference}\nCoach: ${params.coachName}` +
+        (params.bookerName ? `\nBooked by: ${params.bookerName}` : ''),
     )}`,
     'STATUS:CONFIRMED',
     'END:VEVENT',

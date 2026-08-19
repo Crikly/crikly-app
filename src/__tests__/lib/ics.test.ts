@@ -6,7 +6,6 @@ import type { BookingIcsParams } from '@/lib/calendar/ics'
 
 function makeParams(overrides: Partial<BookingIcsParams> = {}): BookingIcsParams {
   return {
-    bookingId: 'b1f8e2a0-0000-0000-0000-000000000001',
     bookingReference: 'CRK-2026-ABCD',
     sportName: 'Cricket',
     coachName: 'Ravi Patel',
@@ -26,7 +25,9 @@ describe('buildBookingIcs', () => {
     expect(ics.endsWith('END:VCALENDAR\r\n')).toBe(true)
     expect(ics).toContain('BEGIN:VEVENT')
     expect(ics).toContain('END:VEVENT')
-    expect(ics).toContain('UID:b1f8e2a0-0000-0000-0000-000000000001@crikly.app')
+    // CF-NOTIFY-03: UID is the booking reference — the page download and the
+    // email attachment must carry the SAME event identity so calendars dedupe.
+    expect(ics).toContain('UID:CRK-2026-ABCD@crikly.app')
     // No bare LF lines — every line break is CRLF.
     expect(ics.replace(/\r\n/g, '')).not.toContain('\n')
   })
@@ -80,6 +81,21 @@ describe('buildBookingIcs', () => {
   it('stamps DTSTAMP from the injected nowMs', () => {
     const ics = buildBookingIcs(makeParams())
     expect(ics).toContain('DTSTAMP:20260820T120000Z')
+  })
+})
+
+describe('buildBookingIcs — booker line (CF-NOTIFY-03)', () => {
+  // RFC 5545 folding splits the long DESCRIPTION line — unfold to assert.
+  const unfold = (ics: string): string => ics.replace(/\r\n /g, '')
+
+  it('adds a "Booked by" description line when bookerName is given', () => {
+    const ics = buildBookingIcs(makeParams({ bookerName: 'Sarah Carter' }))
+    expect(unfold(ics)).toContain('Booked by: Sarah Carter')
+  })
+
+  it('omits the line without bookerName', () => {
+    const ics = buildBookingIcs(makeParams())
+    expect(unfold(ics)).not.toContain('Booked by:')
   })
 })
 
