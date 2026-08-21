@@ -101,3 +101,26 @@ describe('ChildSelector', () => {
     )
   })
 })
+
+// ─── BUG-77: addLabel prop ─────────────────────────────────────────────────────
+
+describe('ChildSelector — addLabel (BUG-77)', () => {
+  it('defaults the add tile to "Add a child" (management context unchanged)', () => {
+    render(
+      <ChildSelector childrenList={[]} selectedChildId={null} onSelect={() => {}} />,
+    )
+    expect(screen.getByTestId('child-selector-add')).toHaveTextContent('Add a child')
+  })
+
+  it('renders a custom addLabel (booking context passes "Add player")', () => {
+    render(
+      <ChildSelector
+        childrenList={[]}
+        selectedChildId={null}
+        onSelect={() => {}}
+        addLabel="Add player"
+      />,
+    )
+    expect(screen.getByTestId('child-selector-add')).toHaveTextContent('Add player')
+  })
+})

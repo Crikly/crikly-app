@@ -128,14 +128,15 @@ export function AuthedPlayerPicker({
 
   const primaryAssigned =
     players === 1
-      ? selectedChildId !== null
+      ? selectedChildId !== null || guests.some((g) => g.firstName.trim() !== '')
       : selectedChildIds.length > 0 || guests.some((g) => g.firstName.trim() !== '')
   // P-10 fix 4: EVERY player slot must be filled before booking — a slot is
-  // filled by a tapped child profile or a guest row with a name. The host
-  // disables its CTA on !isComplete.
+  // filled by a tapped child profile or a guest row with a name (BUG-77: the
+  // 1-on-1 primary may itself be a one-session guest). The host disables its
+  // CTA on !isComplete.
   const filledCount =
     players === 1
-      ? selectedChildId !== null
+      ? selectedChildId !== null || guests.some((g) => g.firstName.trim() !== '')
         ? 1
         : 0
       : selectedChildIds.length + guests.filter((g) => g.firstName.trim() !== '').length
@@ -149,7 +150,20 @@ export function AuthedPlayerPicker({
       isComplete,
     }
     if (players === 1) {
-      if (selectedChildId) selection.childProfileId = selectedChildId
+      if (selectedChildId) {
+        selection.childProfileId = selectedChildId
+      } else if (guests[0]) {
+        // BUG-77: the 1-on-1 primary is a one-session guest — the host's
+        // stash takes assignments[0] as primaryPlayer, and checkout maps
+        // kind 'guest' to childProfileId null (P-10 "someone else" path).
+        selection.playerAssignments = [
+          {
+            kind: 'guest',
+            firstName: guests[0].firstName.trim(),
+            age: guests[0].age,
+          },
+        ]
+      }
     } else {
       if (selectedChildIds[0]) selection.childProfileId = selectedChildIds[0]
       selection.playerAssignments = [
@@ -219,6 +233,18 @@ export function AuthedPlayerPicker({
     // Keep the pool in lockstep while in 1-on-1 mode — a later group
     // re-entry must seed from the CURRENT primary, not a stale pool.
     setSelectedChildIds([childId])
+    // BUG-77: the 1-on-1 primary is either a child OR the solo guest row —
+    // picking a child dismisses the row so the primary stays unambiguous.
+    setGuests([])
+  }
+
+  // BUG-77: the 1-on-1 "add" affordance opens ONE inline guest row (the
+  // group flow's exact pattern) and clears any child pick — mirror of the
+  // handleChildSelect exclusivity above.
+  const addSoloGuest = () => {
+    setSelectedChildId(null)
+    setSelectedChildIds([])
+    setGuests((prev) => (prev.length === 0 ? [makeGuestRow()] : prev))
   }
 
   const toggleChild = (childId: string) => {
@@ -248,23 +274,97 @@ export function AuthedPlayerPicker({
     )
   }
 
-  // Group context: when the coach offers group sessions and the parent
-  // already has children, the ChildSelector "+" tile (1-on-1 mode only) means
-  // "add another player to THIS session" — bump the player count instead of
-  // navigating to /parent/children/new. With NO children the default
-  // add-child navigation stands (a parent must create their first child
-  // profile). Capture-phase intercept because ChildSelector (P-07) is reused
-  // untouched; next/link skips navigation once default is prevented.
+  // BUG-77: the ChildSelector "+" tile NEVER navigates away from the booking
+  // panel any more (its Link default is /parent/children/new — dropping the
+  // parent out of checkout). Capture-phase intercept because ChildSelector
+  // (P-07) is reused as-is; next/link skips navigation once default is
+  // prevented. Two in-panel behaviours:
+  //   - group-capable coach + parent has children: "add another player to
+  //     THIS session" — bump the player count (approved 16 Aug, unchanged);
+  //   - otherwise (no group pricing, or no child profiles yet): expand ONE
+  //     inline guest row — the group flow's exact "+ Add player" pattern
+  //     (zero-children navigation removal approved, BUG-77 clarification 1).
   const handleAddTileCapture = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (!offersGroups || context.childrenList.length === 0) return
     const target = event.target as Element
     if (!target.closest('[data-testid="child-selector-add"]')) return
     event.preventDefault()
-    const next = playerOptions.find((count) => count > players)
-    if (next !== undefined) selectPlayers(next)
+    if (offersGroups && context.childrenList.length > 0) {
+      const next = playerOptions.find((count) => count > players)
+      if (next !== undefined) selectPlayers(next)
+      return
+    }
+    addSoloGuest()
   }
 
   // ── Render ─────────────────────────────────────────────────────────────────
+
+  // Shared by BOTH branches (BUG-77): the group flow's guest row, verbatim —
+  // one inline first-name + age form per one-session guest player.
+  const renderGuestRow = (guest: GuestRowState, index: number) => {
+    const guestNumber = index + 1
+    const nameMissing = showError && !guest.firstName.trim()
+    return (
+      <div
+        key={guest.key}
+        className="grid grid-cols-[1fr_84px_auto] items-end gap-3 rounded-xl border border-gray-200 p-4"
+        data-testid={`guest-row-${guestNumber}`}
+      >
+        <div>
+          <label
+            htmlFor={`guest-${guest.key}-name`}
+            className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-1.5"
+          >
+            First name
+          </label>
+          <input
+            id={`guest-${guest.key}-name`}
+            type="text"
+            autoComplete="off"
+            placeholder="e.g. Sam"
+            value={guest.firstName}
+            onChange={(e) => updateGuest(guest.key, { firstName: e.target.value })}
+            aria-invalid={nameMissing}
+            aria-describedby={
+              showError && !isComplete ? 'player-picker-error' : undefined
+            }
+            data-testid={`guest-name-${guestNumber}`}
+            className={`w-full h-11 px-3.5 rounded-xl bg-gray-50 border text-[15px] text-gray-900 placeholder:text-gray-400 outline-none focus:bg-white focus:border-brand-600 transition-all ${
+              nameMissing ? 'border-danger' : 'border-gray-200'
+            }`}
+          />
+        </div>
+        <div>
+          <label
+            htmlFor={`guest-${guest.key}-age`}
+            className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-1.5"
+          >
+            Age
+          </label>
+          <select
+            id={`guest-${guest.key}-age`}
+            value={guest.age}
+            onChange={(e) => updateGuest(guest.key, { age: e.target.value })}
+            data-testid={`guest-age-${guestNumber}`}
+            className="w-full h-11 px-3 rounded-xl bg-gray-50 border border-gray-200 text-[15px] text-gray-900 outline-none focus:bg-white focus:border-brand-600 transition-all"
+          >
+            <option value="">–</option>
+            {Array.from({ length: 16 }, (_, i) => i + 3).map((age) => (
+              <option key={age} value={age}>{age}</option>
+            ))}
+          </select>
+        </div>
+        <button
+          type="button"
+          onClick={() => removeGuest(guest.key)}
+          aria-label={`Remove guest player ${guestNumber}`}
+          data-testid={`remove-guest-${guestNumber}`}
+          className="flex h-11 w-11 items-center justify-center rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-gray-900 transition-colors"
+        >
+          <X className="w-4 h-4" aria-hidden="true" />
+        </button>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col gap-3" data-testid="authed-player-picker">
@@ -300,15 +400,27 @@ export function AuthedPlayerPicker({
       )}
 
       {players === 1 ? (
-        <div onClickCapture={handleAddTileCapture}>
+        <div onClickCapture={handleAddTileCapture} className="flex flex-col gap-3">
           <ChildSelector
             childrenList={context.childrenList}
             selectedChildId={selectedChildId}
             onSelect={handleChildSelect}
+            addLabel="Add player"
           />
+          {/* BUG-77: the solo guest row — same inline pattern (and caption)
+              as the group flow's "+ Add player". */}
+          {guests.length > 0 && (
+            <>
+              <p className="text-[13px] text-gray-500">
+                Guest players are for this session only — no profile needed.
+              </p>
+              {guests.map(renderGuestRow)}
+            </>
+          )}
           {showError && !primaryAssigned && (
             <p
-              className="text-[12px] text-danger mt-2.5"
+              id="player-picker-error"
+              className="text-[12px] text-danger"
               role="alert"
               data-testid="player-picker-error"
             >
@@ -394,71 +506,7 @@ export function AuthedPlayerPicker({
             Guest players are for this session only — no profile needed.
           </p>
 
-          {guests.map((guest, index) => {
-            const guestNumber = index + 1
-            const nameMissing = showError && !guest.firstName.trim()
-            return (
-              <div
-                key={guest.key}
-                className="grid grid-cols-[1fr_84px_auto] items-end gap-3 rounded-xl border border-gray-200 p-4"
-                data-testid={`guest-row-${guestNumber}`}
-              >
-                <div>
-                  <label
-                    htmlFor={`guest-${guest.key}-name`}
-                    className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-1.5"
-                  >
-                    First name
-                  </label>
-                  <input
-                    id={`guest-${guest.key}-name`}
-                    type="text"
-                    autoComplete="off"
-                    placeholder="e.g. Sam"
-                    value={guest.firstName}
-                    onChange={(e) => updateGuest(guest.key, { firstName: e.target.value })}
-                    aria-invalid={nameMissing}
-                    aria-describedby={
-                      showError && !isComplete ? 'player-picker-error' : undefined
-                    }
-                    data-testid={`guest-name-${guestNumber}`}
-                    className={`w-full h-11 px-3.5 rounded-xl bg-gray-50 border text-[15px] text-gray-900 placeholder:text-gray-400 outline-none focus:bg-white focus:border-brand-600 transition-all ${
-                      nameMissing ? 'border-danger' : 'border-gray-200'
-                    }`}
-                  />
-                </div>
-                <div>
-                  <label
-                    htmlFor={`guest-${guest.key}-age`}
-                    className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-1.5"
-                  >
-                    Age
-                  </label>
-                  <select
-                    id={`guest-${guest.key}-age`}
-                    value={guest.age}
-                    onChange={(e) => updateGuest(guest.key, { age: e.target.value })}
-                    data-testid={`guest-age-${guestNumber}`}
-                    className="w-full h-11 px-3 rounded-xl bg-gray-50 border border-gray-200 text-[15px] text-gray-900 outline-none focus:bg-white focus:border-brand-600 transition-all"
-                  >
-                    <option value="">–</option>
-                    {Array.from({ length: 16 }, (_, i) => i + 3).map((age) => (
-                      <option key={age} value={age}>{age}</option>
-                    ))}
-                  </select>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => removeGuest(guest.key)}
-                  aria-label={`Remove guest player ${guestNumber}`}
-                  data-testid={`remove-guest-${guestNumber}`}
-                  className="flex h-11 w-11 items-center justify-center rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-gray-900 transition-colors"
-                >
-                  <X className="w-4 h-4" aria-hidden="true" />
-                </button>
-              </div>
-            )
-          })}
+          {guests.map(renderGuestRow)}
 
           {/* P-10 fix 4: persistent guidance while any player slot is
               unfilled — the CTA stays disabled until every slot is filled. */}
