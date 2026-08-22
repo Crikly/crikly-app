@@ -100,6 +100,119 @@ describe('AuthedPlayerPicker — 1-on-1 mode', () => {
   })
 })
 
+// ─── BUG-77: 1-on-1 "+" expands an inline guest row (no navigation) ───────────
+
+describe('AuthedPlayerPicker — BUG-77 inline solo guest', () => {
+  const NO_GROUPS = { groupPriceTiers: null, sessionTypes: ['individual'] }
+
+  it('non-group coach: "+" expands the inline row and prevents navigation', async () => {
+    const user = userEvent.setup()
+    const { latest } = renderPicker(makeContext(NO_GROUPS))
+
+    // The tile carries the booking-flow label (approved clarification 2).
+    expect(screen.getByTestId('child-selector-add')).toHaveTextContent('Add player')
+    expect(screen.queryByTestId('guest-row-1')).not.toBeInTheDocument()
+
+    await user.click(screen.getByTestId('child-selector-add'))
+
+    // Inline row expanded in-panel; jsdom throws "not implemented" on real
+    // navigation, so reaching these assertions also proves preventDefault.
+    expect(screen.getByTestId('guest-row-1')).toBeInTheDocument()
+    expect(
+      screen.getByText('Guest players are for this session only — no profile needed.'),
+    ).toBeInTheDocument()
+    expect(latest().players).toBe(1)
+    expect(latest().primaryAssigned).toBe(false)
+
+    await user.type(screen.getByTestId('guest-name-1'), 'Sam')
+    expect(latest()).toMatchObject({
+      players: 1,
+      primaryAssigned: true,
+      isComplete: true,
+    })
+    expect(latest().childProfileId).toBeUndefined()
+    expect(latest().playerAssignments).toEqual([
+      { kind: 'guest', firstName: 'Sam', age: '' },
+    ])
+  })
+
+  it('zero children: "+" expands inline instead of navigating (clarification 1)', async () => {
+    const user = userEvent.setup()
+    const { latest } = renderPicker(makeContext({ childrenList: [] }))
+
+    await user.click(screen.getByTestId('child-selector-add'))
+
+    expect(screen.getByTestId('guest-row-1')).toBeInTheDocument()
+    await user.type(screen.getByTestId('guest-name-1'), 'Maya')
+    expect(latest()).toMatchObject({ players: 1, isComplete: true })
+    expect(latest().playerAssignments).toEqual([
+      { kind: 'guest', firstName: 'Maya', age: '' },
+    ])
+  })
+
+  it('child pick and solo guest row are mutually exclusive', async () => {
+    const user = userEvent.setup()
+    const { latest } = renderPicker(makeContext(NO_GROUPS))
+
+    await user.click(screen.getByTestId(`child-selector-option-${YUWIN.id}`))
+    expect(latest().childProfileId).toBe(YUWIN.id)
+
+    // Opening the guest row clears the child pick…
+    await user.click(screen.getByTestId('child-selector-add'))
+    expect(latest().childProfileId).toBeUndefined()
+    expect(screen.getByTestId('guest-row-1')).toBeInTheDocument()
+
+    // …and clicking "+" again never adds a second row in 1-on-1.
+    await user.click(screen.getByTestId('child-selector-add'))
+    expect(screen.queryByTestId('guest-row-2')).not.toBeInTheDocument()
+
+    // Picking a child dismisses the row again.
+    await user.click(screen.getByTestId(`child-selector-option-${ARTHUR.id}`))
+    expect(screen.queryByTestId('guest-row-1')).not.toBeInTheDocument()
+    expect(latest()).toMatchObject({ childProfileId: ARTHUR.id, isComplete: true })
+    expect(latest().playerAssignments).toBeUndefined()
+  })
+
+  it('removing the solo row returns to the unassigned state', async () => {
+    const user = userEvent.setup()
+    const { latest } = renderPicker(makeContext(NO_GROUPS))
+
+    await user.click(screen.getByTestId('child-selector-add'))
+    await user.type(screen.getByTestId('guest-name-1'), 'Sam')
+    expect(latest().isComplete).toBe(true)
+
+    await user.click(screen.getByTestId('remove-guest-1'))
+    expect(screen.queryByTestId('guest-row-1')).not.toBeInTheDocument()
+    expect(latest()).toMatchObject({ primaryAssigned: false, isComplete: false })
+  })
+
+  it('group-capable coach with children: "+" still bumps the player count (unchanged)', async () => {
+    const user = userEvent.setup()
+    const { latest } = renderPicker(makeContext())
+
+    await user.click(screen.getByTestId('child-selector-add'))
+    expect(latest().players).toBe(2)
+    expect(screen.queryByTestId('guest-row-1')).not.toBeInTheDocument()
+  })
+
+  it('an open solo guest row carries into group mode as a guest row', async () => {
+    const user = userEvent.setup()
+    const { latest } = renderPicker(makeContext({ childrenList: [] }))
+
+    await user.click(screen.getByTestId('child-selector-add'))
+    await user.type(screen.getByTestId('guest-name-1'), 'Sam')
+
+    await user.click(screen.getByTestId('player-count-2'))
+    expect(screen.getByTestId('guest-name-1')).toHaveValue('Sam')
+    expect(latest().players).toBe(2)
+    expect(latest().playerAssignments?.[0]).toEqual({
+      kind: 'guest',
+      firstName: 'Sam',
+      age: '',
+    })
+  })
+})
+
 // ─── Group mode ────────────────────────────────────────────────────────────────
 
 describe('AuthedPlayerPicker — group mode', () => {

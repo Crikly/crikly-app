@@ -525,7 +525,11 @@ export function AvailabilityClient({
           (pickerSelection.playerAssignments ?? []).map((p) => p.firstName),
         )
       : authed.childrenList.find((c) => c.id === pickerSelection?.childProfileId)
-          ?.firstName ?? ''
+          ?.firstName ??
+        // BUG-77: 1-on-1 primary may be a one-session guest — the picker
+        // reports them as the sole playerAssignments entry.
+        pickerSelection?.playerAssignments?.[0]?.firstName ??
+        ''
     : guestPlayers > 1
       ? formatPlayersLabel([participantName, ...guestExtras.map((row) => row.name)])
       : participantName.trim()

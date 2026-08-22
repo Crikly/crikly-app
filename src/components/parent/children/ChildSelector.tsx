@@ -26,6 +26,9 @@ interface ChildSelectorProps {
   /** Where the "Add a child" tile routes; defaults to the add-child form. */
   addChildHref?: string
   label?: string
+  /** BUG-77: tile label — booking flow passes "Add player" (its capture
+   * intercept repurposes the tile); management screens keep the default. */
+  addLabel?: string
 }
 
 export function ChildSelector({
@@ -34,6 +37,7 @@ export function ChildSelector({
   onSelect,
   addChildHref = '/parent/children/new',
   label = 'Who is this session for?',
+  addLabel = 'Add a child',
 }: ChildSelectorProps) {
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([])
   const selectedIndex = childrenList.findIndex((child) => child.id === selectedChildId)
@@ -121,7 +125,7 @@ export function ChildSelector({
           <span className="flex h-[61px] w-[61px] items-center justify-center rounded-full border-[1.5px] border-dashed border-neutral-400 bg-white">
             <Plus size={22} className="text-neutral-400" aria-hidden />
           </span>
-          <span className="text-sm text-neutral-600">Add a child</span>
+          <span className="text-sm text-neutral-600">{addLabel}</span>
         </Link>
       </div>
     </div>
