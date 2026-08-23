@@ -48,6 +48,13 @@ export interface ParentBookingItem {
   endTime: string
   /** Venue for the .ics LOCATION — null when unknown (label shows fallback copy). */
   icsVenue: string | null
+  /** PROGRAMME-BOOKINGS-LIST: 'programme' = a group-programme enrolment
+   * rendered as ONE entry covering all its dates (basic view — no cancel,
+   * no .ics). Absent or 'session' = a 1-to-1 booking, untouched. */
+  kind?: 'session' | 'programme'
+  /** Comma-joined individual session dates for the detail panel
+   * ("Sat 6 Sep, Sat 13 Sep, …") — programme entries only. */
+  sessionDatesLine?: string
 }
 
 export interface ParentBookingsData {

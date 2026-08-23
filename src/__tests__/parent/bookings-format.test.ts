@@ -8,6 +8,9 @@ import {
   formatTimeLabel,
   formatWhenLabel,
   stableColourIndex,
+  formatProgrammeDateLabel,
+  formatProgrammeShortWhenLabel,
+  formatProgrammeWhenLabel,
 } from '@/components/parent/bookings/format'
 import { childIdentityColour } from '@/constants/childIdentity'
 
@@ -118,5 +121,37 @@ describe('formatSessionLine', () => {
 
   it('labels group sessions with the player count', () => {
     expect(formatSessionLine('Cricket', 'group', 6)).toBe('Cricket · Group · 6 players')
+  })
+})
+
+// ── PROGRAMME-BOOKINGS-LIST — enrolment labels ───────────────────────────────
+
+describe('formatProgrammeDateLabel', () => {
+  it('formats a compact weekday date', () => {
+    expect(formatProgrammeDateLabel('2026-09-05')).toBe('Sat 5 Sept')
+  })
+})
+
+describe('formatProgrammeWhenLabel', () => {
+  it('formats a multi-date range with a session count', () => {
+    expect(formatProgrammeWhenLabel(4, '2026-09-05', '2026-09-26')).toBe(
+      '4 sessions · Sat 5 Sept – Sat 26 Sept',
+    )
+  })
+
+  it('collapses to a single date when first and last match', () => {
+    expect(formatProgrammeWhenLabel(1, '2026-09-05', '2026-09-05')).toBe(
+      '1 session · Sat 5 Sept',
+    )
+  })
+})
+
+describe('formatProgrammeShortWhenLabel', () => {
+  it('formats the compact list-row line', () => {
+    expect(formatProgrammeShortWhenLabel(4, '2026-09-05')).toBe('4 sessions from Sat 5 Sept')
+  })
+
+  it('uses the single-session form for one date', () => {
+    expect(formatProgrammeShortWhenLabel(1, '2026-09-05')).toBe('1 session · Sat 5 Sept')
   })
 })

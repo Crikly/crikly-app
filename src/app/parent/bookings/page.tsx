@@ -3,6 +3,9 @@ import { ParentBookingsClient } from '@/components/parent/bookings/ParentBooking
 import {
   coachInitials,
   formatPaidLabel,
+  formatProgrammeDateLabel,
+  formatProgrammeShortWhenLabel,
+  formatProgrammeWhenLabel,
   formatSessionLine,
   formatShortWhenLabel,
   formatWhenLabel,
@@ -104,6 +107,292 @@ function cancelledLineFor(row: BookingQueryRow): string | null {
       : 'This booking was cancelled.'
   }
   return null
+}
+
+// ── PROGRAMME-BOOKINGS-LIST ──────────────────────────────────────────────────
+// Basic view of the parent's group-programme enrolments: ONE entry per
+// enrolment covering all its paid dates, shaped as a ParentBookingItem so the
+// existing card/row/panel render it unchanged. No cancel (allowsCancel is
+// hard-false — enrolment cancellation is later, bigger work) and no .ics
+// (single-date builder). Additive only: the bookings query and mapping above
+// are untouched; failures degrade to [] with a server-side log.
+//
+// Read path is the RLS client throughout (COPPA — child names never fetched
+// client-side): group_programme_enrolments_select_own (fixed in migration
+// 055), gpe_sessions_select_own, and the public programme/session policies.
+// KNOWN LIMIT (flagged): the public policies expose only status='active'
+// programmes, so enrolments on a paused/completed programme come back with
+// null joins and are skipped with a loud log — surfacing those needs an RLS
+// design pass, not a page change.
+
+interface EnrolmentQueryRow {
+  id: string
+  enrolment_reference: string | null
+  status: string
+  payment_model: string
+  parent_total_pence: number | null
+  block_amount_pence: number | null
+  currency: string
+  participant_name: string | null
+  cancelled_at: string | null
+  programme_id: string
+  child_profiles: { full_name: string } | { full_name: string }[] | null
+  group_programmes:
+    | {
+        id: string
+        title: string
+        coach_profile_id: string
+        coach_venue_id: string | null
+        coach_profiles: { display_name: string | null } | { display_name: string | null }[] | null
+        sports: { name: string } | { name: string }[] | null
+      }
+    | {
+        id: string
+        title: string
+        coach_profile_id: string
+        coach_venue_id: string | null
+        coach_profiles: { display_name: string | null } | { display_name: string | null }[] | null
+        sports: { name: string } | { name: string }[] | null
+      }[]
+    | null
+}
+
+interface EnrolmentSessionRow {
+  session_date: string
+  start_time: string
+  end_time: string
+  status: string
+  coach_venue_id: string | null
+}
+
+function enrolmentStatus(status: string): ParentBookingStatus {
+  if (status === 'cancelled') return 'cancelled_parent'
+  if (status === 'completed') return 'completed'
+  if (status !== 'active') {
+    console.error('[ParentBookings] unknown enrolment status:', status)
+  }
+  return 'confirmed'
+}
+
+async function loadEnrolmentItems(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userProfileId: string,
+): Promise<ParentBookingItem[]> {
+  const { data: enrolRows, error } = await supabase
+    .from('group_programme_enrolments')
+    .select(
+      `
+      id,
+      enrolment_reference,
+      status,
+      payment_model,
+      parent_total_pence,
+      block_amount_pence,
+      currency,
+      participant_name,
+      cancelled_at,
+      programme_id,
+      child_profiles ( full_name ),
+      group_programmes (
+        id,
+        title,
+        coach_profile_id,
+        coach_venue_id,
+        coach_profiles ( display_name ),
+        sports ( name )
+      )
+    `,
+    )
+    .eq('booked_by_user_id', userProfileId)
+    .eq('payment_status', 'succeeded')
+
+  if (error) {
+    console.error('[ParentBookings] enrolments fetch failed:', error)
+    return []
+  }
+  const enrolments = (enrolRows ?? []) as EnrolmentQueryRow[]
+  if (enrolments.length === 0) return []
+
+  // Dates: per_session enrolments own explicit (session) rows; block
+  // enrolments cover every session of the programme.
+  const perSessionIds = enrolments
+    .filter((e) => e.payment_model === 'per_session')
+    .map((e) => e.id)
+  const blockProgrammeIds = [
+    ...new Set(
+      enrolments
+        .filter((e) => e.payment_model === 'block')
+        .map((e) => firstOf(e.group_programmes)?.id)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ]
+
+  const sessionsByEnrolment = new Map<string, EnrolmentSessionRow[]>()
+  const sessionsByProgramme = new Map<string, EnrolmentSessionRow[]>()
+
+  if (perSessionIds.length > 0) {
+    const { data: linkRows, error: linkError } = await supabase
+      .from('group_programme_enrolment_sessions')
+      .select(
+        'enrolment_id, group_programme_sessions ( session_date, start_time, end_time, status, coach_venue_id )',
+      )
+      .in('enrolment_id', perSessionIds)
+    if (linkError) {
+      console.error('[ParentBookings] enrolment sessions fetch failed:', linkError)
+    }
+    for (const link of (linkRows ?? []) as {
+      enrolment_id: string
+      group_programme_sessions: EnrolmentSessionRow | EnrolmentSessionRow[] | null
+    }[]) {
+      const session = firstOf(link.group_programme_sessions)
+      if (!session) continue
+      const list = sessionsByEnrolment.get(link.enrolment_id) ?? []
+      list.push(session)
+      sessionsByEnrolment.set(link.enrolment_id, list)
+    }
+  }
+
+  if (blockProgrammeIds.length > 0) {
+    const { data: progSessions, error: progError } = await supabase
+      .from('group_programme_sessions')
+      .select('group_programme_id, session_date, start_time, end_time, status, coach_venue_id')
+      .in('group_programme_id', blockProgrammeIds)
+    if (progError) {
+      console.error('[ParentBookings] programme sessions fetch failed:', progError)
+    }
+    for (const session of (progSessions ?? []) as (EnrolmentSessionRow & {
+      group_programme_id: string
+    })[]) {
+      const list = sessionsByProgramme.get(session.group_programme_id) ?? []
+      list.push(session)
+      sessionsByProgramme.set(session.group_programme_id, list)
+    }
+  }
+
+  // Venues: one read of the involved coaches' venues covers both the ids the
+  // sessions/programme reference and the default-venue fallback (same
+  // preference rule as the bookings block above).
+  const coachIds = [
+    ...new Set(
+      enrolments
+        .map((e) => firstOf(e.group_programmes)?.coach_profile_id)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ]
+  const venueById = new Map<string, { name: string; address: string | null }>()
+  const defaultVenueByCoach = new Map<string, { name: string; address: string | null }>()
+  if (coachIds.length > 0) {
+    const { data: venues } = await supabase
+      .from('coach_venues')
+      .select('id, coach_profile_id, name, address, is_default')
+      .in('coach_profile_id', coachIds)
+      .order('created_at', { ascending: true })
+    for (const venue of venues ?? []) {
+      venueById.set(venue.id, { name: venue.name, address: venue.address })
+      const existing = defaultVenueByCoach.get(venue.coach_profile_id)
+      if (!existing || venue.is_default) {
+        defaultVenueByCoach.set(venue.coach_profile_id, {
+          name: venue.name,
+          address: venue.address,
+        })
+      }
+    }
+  }
+
+  const items: ParentBookingItem[] = []
+  for (const row of enrolments) {
+    const programme = firstOf(row.group_programmes)
+    if (!programme) {
+      // RLS hides non-active programmes (see KNOWN LIMIT above) — without the
+      // programme there is no coach, title or session list to render.
+      console.error(
+        '[ParentBookings] enrolment skipped — programme not readable (inactive?):',
+        row.id,
+      )
+      continue
+    }
+
+    const allSessions =
+      row.payment_model === 'block'
+        ? (sessionsByProgramme.get(programme.id) ?? [])
+        : (sessionsByEnrolment.get(row.id) ?? [])
+    const sessions = allSessions
+      .filter((s) => s.status !== 'cancelled')
+      .sort((a, b) =>
+        a.session_date === b.session_date
+          ? a.start_time.localeCompare(b.start_time)
+          : a.session_date.localeCompare(b.session_date),
+      )
+    const first = sessions[0]
+    const last = sessions[sessions.length - 1]
+    if (!first || !last) {
+      console.error('[ParentBookings] enrolment skipped — no usable sessions:', row.id)
+      continue
+    }
+
+    const coach = firstOf(programme.coach_profiles)
+    const sport = firstOf(programme.sports)
+    const child = firstOf(row.child_profiles)
+    const coachName = coach?.display_name || 'Your coach'
+    const sportName = sport?.name || 'Cricket'
+    const participantName = child?.full_name || row.participant_name || ''
+
+    const venueParts =
+      (first.coach_venue_id ? venueById.get(first.coach_venue_id) : null) ??
+      (programme.coach_venue_id ? venueById.get(programme.coach_venue_id) : null) ??
+      defaultVenueByCoach.get(programme.coach_profile_id) ??
+      null
+
+    const status = enrolmentStatus(row.status)
+    const isCancelled = status === 'cancelled_parent'
+
+    items.push({
+      id: row.id,
+      reference: row.enrolment_reference ?? '',
+      status,
+      coachName,
+      coachInitials: coachInitials(coachName),
+      coachColour: childIdentityColour(stableColourIndex(programme.coach_profile_id)),
+      sportName,
+      sessionLine: `${sportName} · Programme · ${programme.title}`,
+      whenLabel: formatProgrammeWhenLabel(
+        sessions.length,
+        first.session_date,
+        last.session_date,
+      ),
+      shortWhenLabel: formatProgrammeShortWhenLabel(sessions.length, first.session_date),
+      venueLabel: venueParts
+        ? venueParts.address
+          ? `${venueParts.name}, ${venueParts.address}`
+          : venueParts.name
+        : 'At your coach’s venue',
+      participantLabel: firstNameOf(participantName) || 'your player',
+      paidLabel: formatPaidLabel(
+        row.parent_total_pence ?? row.block_amount_pence ?? 0,
+        row.currency,
+      ),
+      paymentMethodLabel: PAYMENT_METHOD_FALLBACK,
+      sessionStartMs: londonSessionToMs(first.session_date, first.start_time),
+      sessionEndMs: londonSessionToMs(last.session_date, last.end_time),
+      cancellationWindowHours: 0,
+      allowsCancel: false, // enrolment cancellation is out of scope (later work)
+      isCancelled,
+      cancelledLine: isCancelled
+        ? row.cancelled_at
+          ? `This enrolment was cancelled on ${cancelledDayLabel(row.cancelled_at)}.`
+          : 'This enrolment was cancelled.'
+        : null,
+      sessionDate: first.session_date,
+      startTime: first.start_time,
+      endTime: last.end_time,
+      icsVenue: null,
+      kind: 'programme',
+      sessionDatesLine: sessions
+        .map((s) => formatProgrammeDateLabel(s.session_date))
+        .join(', '),
+    })
+  }
+  return items
 }
 
 async function loadBookingsData(): Promise<ParentBookingsData> {
@@ -261,11 +550,22 @@ async function loadBookingsData(): Promise<ParentBookingsData> {
       }
     })
 
+    // PROGRAMME-BOOKINGS-LIST: programme enrolments ride alongside — the
+    // bookings mapping above is untouched; the merge re-sorts explicitly
+    // (identical order for bookings-only data — the query is already
+    // date-ascending).
+    const enrolmentItems = await loadEnrolmentItems(supabase, userProfile.id)
+    const merged = [...items, ...enrolmentItems]
+
     // Upcoming = session not yet finished (ascending, soonest first);
     // Past = finished sessions, most recent first.
     return {
-      upcoming: items.filter((b) => b.sessionEndMs >= nowMs),
-      past: items.filter((b) => b.sessionEndMs < nowMs).reverse(),
+      upcoming: merged
+        .filter((b) => b.sessionEndMs >= nowMs)
+        .sort((a, b) => a.sessionStartMs - b.sessionStartMs),
+      past: merged
+        .filter((b) => b.sessionEndMs < nowMs)
+        .sort((a, b) => b.sessionStartMs - a.sessionStartMs),
     }
   } catch (error) {
     console.error('[ParentBookings] data fetch failed:', error)

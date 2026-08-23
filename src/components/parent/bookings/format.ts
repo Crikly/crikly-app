@@ -91,6 +91,40 @@ export function formatWhenLabel(
   return duration ? `${day} · ${range} ${duration}` : `${day} · ${range}`
 }
 
+/** "Sat 6 Sep" — compact date used by the programme-enrolment labels. */
+export function formatProgrammeDateLabel(dateStr: string): string {
+  return dateFromDateString(dateStr).toLocaleDateString('en-GB', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    timeZone: 'UTC',
+  })
+}
+
+/**
+ * PROGRAMME-BOOKINGS-LIST — full card line for an enrolment covering all its
+ * dates: "4 sessions · Sat 6 Sep – Sat 27 Sep" (single date: "1 session ·
+ * Sat 6 Sep"). No Today/Tomorrow variant — an enrolment spans dates.
+ */
+export function formatProgrammeWhenLabel(
+  sessionCount: number,
+  firstDate: string,
+  lastDate: string,
+): string {
+  const count = `${sessionCount} session${sessionCount !== 1 ? 's' : ''}`
+  if (firstDate === lastDate) return `${count} · ${formatProgrammeDateLabel(firstDate)}`
+  return `${count} · ${formatProgrammeDateLabel(firstDate)} – ${formatProgrammeDateLabel(lastDate)}`
+}
+
+/** Compact list-row line: "4 sessions from Sat 6 Sep" · "1 session · Sat 6 Sep" */
+export function formatProgrammeShortWhenLabel(
+  sessionCount: number,
+  firstDate: string,
+): string {
+  if (sessionCount === 1) return `1 session · ${formatProgrammeDateLabel(firstDate)}`
+  return `${sessionCount} sessions from ${formatProgrammeDateLabel(firstDate)}`
+}
+
 /** Display-only pence → "£55.00". Never store the result back. */
 export function formatPaidLabel(pence: number, currency: string): string {
   const amount = (pence / 100).toFixed(2)
