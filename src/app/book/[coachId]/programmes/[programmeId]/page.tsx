@@ -2,10 +2,13 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { PublicHeader } from '@/components/nav/PublicHeader'
 import { PublicFooter } from '@/components/public/PublicFooter'
-import { GuestEnrolmentFlow } from '@/components/booking/GuestEnrolmentFlow'
-import type { AuthedCheckoutPrefill } from '@/components/booking/GuestBookingFlow'
+import {
+  GuestEnrolmentFlow,
+  type AuthedEnrolmentContext,
+} from '@/components/booking/GuestEnrolmentFlow'
 import type { BookingSummary } from '@/components/booking/BookingSummaryCard'
 import { createClient } from '@/lib/supabase/server'
+import { loadChildSelectorOptions } from '@/lib/children/load-child-selector-options'
 import { fetchProgrammeDetail } from '@/app/coaches/[id]/programmes/[programmeId]/_components/_data/programmeDetail'
 import { displayCommissionPence } from '@/lib/booking/commission-display'
 import { getCommissionRate } from '@/lib/booking/commission-rate'
@@ -28,7 +31,13 @@ function firstParam(value: string | string[] | undefined): string | undefined {
 // loadAuthedCheckout on /book/[coachId] (P-10 bug 4): RLS server client,
 // parent role required. Null for guests AND for signed-in non-parents (e.g.
 // a coach previewing) — both keep the guest path, byte-identical.
-async function loadAuthedCheckout(): Promise<AuthedCheckoutPrefill | null> {
+//
+// PROGRAMME-CHILD-PICKER: the parent's saved children ride along as
+// ChildSelector options, assembled SERVER-SIDE with the RLS client (COPPA —
+// child data is never fetched from the browser). loadChildSelectorOptions
+// returns null when the user has no parent_profiles row; that degrades to an
+// empty list here (the parent-role gate above already decided authed mode).
+async function loadAuthedCheckout(): Promise<AuthedEnrolmentContext | null> {
   try {
     const supabase = await createClient()
     const {
@@ -51,12 +60,15 @@ async function loadAuthedCheckout(): Promise<AuthedCheckoutPrefill | null> {
       .maybeSingle()
     if (!parentRole) return null
 
+    const childrenList = (await loadChildSelectorOptions()) ?? []
+
     return {
       fullName: profile.full_name ?? '',
       email: user.email ?? '',
       phone: profile.phone ?? '',
       townCity: profile.location_city ?? '',
       postcode: profile.location_postcode ?? '',
+      childrenList,
     }
   } catch (error) {
     console.error('[ProgrammeEnrolmentCheckoutPage] authed-checkout detection failed:', error)

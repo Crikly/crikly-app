@@ -128,6 +128,8 @@ function callPost(body: unknown) {
 
 interface Wiring {
   adminFrom: MockFn
+  rlsFrom: MockFn
+  childProfilesChain: ReturnType<typeof makeChain>
   userProfilesChain: ReturnType<typeof makeChain>
   enrolmentChain: ReturnType<typeof makeChain>
   enrolmentSessionsChain: ReturnType<typeof makeListChain>
@@ -141,9 +143,20 @@ function wireHappyPath(overrides: {
   existingEnrolment?: unknown
   enrolmentInsertError?: unknown
   bookerProfile?: unknown
+  /** PROGRAMME-CHILD-PICKER: what the RLS child_profiles ownership read returns. */
+  ownedChild?: unknown
+  ownedChildError?: unknown
 } = {}): Wiring {
   ;(requireParentContext as MockFn).mockResolvedValue(PARENT_CONTEXT)
-  ;(createClient as MockFn).mockResolvedValue({ from: jest.fn() })
+  const childProfilesChain = makeChain({
+    data: overrides.ownedChild ?? null,
+    error: overrides.ownedChildError ?? null,
+  })
+  const rlsFrom = jest.fn((table: string) => {
+    if (table !== 'child_profiles') throw new Error(`unexpected RLS table ${table}`)
+    return childProfilesChain
+  })
+  ;(createClient as MockFn).mockResolvedValue({ from: rlsFrom })
 
   const userProfilesChain = makeChain({
     data: overrides.bookerProfile ?? { full_name: 'Pat Parent' },
@@ -180,8 +193,10 @@ function wireHappyPath(overrides: {
   const stripeMock = makeStripeMock()
   ;(getStripe as MockFn).mockReturnValue(stripeMock)
 
-  return { adminFrom, userProfilesChain, enrolmentChain, enrolmentSessionsChain, piChain, stripeMock }
+  return { adminFrom, rlsFrom, childProfilesChain, userProfilesChain, enrolmentChain, enrolmentSessionsChain, piChain, stripeMock }
 }
+
+const CHILD_ID = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
 
 beforeEach(() => {
   jest.clearAllMocks()
@@ -367,5 +382,63 @@ describe('POST /api/parent/programme-enrolments — rollback', () => {
     const res = await callPost(VALID_BODY)
     expect(res.status).toBe(409)
     expect(await res.json()).toEqual({ error: 'spots_taken' })
+  })
+})
+
+// ─── PROGRAMME-CHILD-PICKER: child linking ───────────────────────────────────
+
+describe('POST /api/parent/programme-enrolments — child linking', () => {
+  it('stores child_profile_id when the child belongs to THIS parent (RLS-scoped read)', async () => {
+    const { rlsFrom, childProfilesChain, enrolmentChain, adminFrom } = wireHappyPath({
+      ownedChild: { id: CHILD_ID },
+    })
+
+    const res = await callPost({ ...VALID_BODY, childProfileId: CHILD_ID })
+    expect(res.status).toBe(200)
+
+    // Ownership is read through the RLS client, never the admin client.
+    expect(rlsFrom).toHaveBeenCalledWith('child_profiles')
+    expect(adminFrom).not.toHaveBeenCalledWith('child_profiles')
+    expect(childProfilesChain.eq).toHaveBeenCalledWith('parent_profile_id', PARENT_PROFILE_ID)
+    expect(childProfilesChain.eq).toHaveBeenCalledWith('id', CHILD_ID)
+    expect(childProfilesChain.is).toHaveBeenCalledWith('deleted_at', null)
+
+    const inserted = enrolmentChain.insert.mock.calls[0][0] as Record<string, unknown>
+    expect(inserted.child_profile_id).toBe(CHILD_ID)
+    // participant_name stays populated alongside the link (roster/email fallback).
+    expect(inserted.participant_name).toBe('Yuwin')
+  })
+
+  it("403 child_not_found for a child that is not this parent's (or deleted) — nothing is written", async () => {
+    const { enrolmentChain, stripeMock } = wireHappyPath({ ownedChild: null })
+
+    const res = await callPost({ ...VALID_BODY, childProfileId: CHILD_ID })
+    expect(res.status).toBe(403)
+    expect(await res.json()).toEqual({ error: 'child_not_found' })
+    expect(enrolmentChain.insert).not.toHaveBeenCalled()
+    expect(stripeMock.paymentIntents.create).not.toHaveBeenCalled()
+  })
+
+  it('400 invalid_body for a malformed childProfileId', async () => {
+    const { rlsFrom } = wireHappyPath({ ownedChild: { id: CHILD_ID } })
+    const res = await callPost({ ...VALID_BODY, childProfileId: 'not-a-uuid' })
+    expect(res.status).toBe(400)
+    expect(rlsFrom).not.toHaveBeenCalled()
+  })
+
+  it('500 internal_error when the ownership read fails', async () => {
+    const { enrolmentChain } = wireHappyPath({ ownedChildError: { message: 'boom' } })
+    const res = await callPost({ ...VALID_BODY, childProfileId: CHILD_ID })
+    expect(res.status).toBe(500)
+    expect(enrolmentChain.insert).not.toHaveBeenCalled()
+  })
+
+  it('null / absent childProfileId skips the ownership read and stores null (BUG-79 behaviour unchanged)', async () => {
+    const { rlsFrom, enrolmentChain } = wireHappyPath()
+    const res = await callPost({ ...VALID_BODY, childProfileId: null })
+    expect(res.status).toBe(200)
+    expect(rlsFrom).not.toHaveBeenCalled()
+    const inserted = enrolmentChain.insert.mock.calls[0][0] as Record<string, unknown>
+    expect(inserted.child_profile_id).toBeNull()
   })
 })
