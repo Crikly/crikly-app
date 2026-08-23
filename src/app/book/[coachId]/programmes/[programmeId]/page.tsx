@@ -3,7 +3,9 @@ import { notFound } from 'next/navigation'
 import { PublicHeader } from '@/components/nav/PublicHeader'
 import { PublicFooter } from '@/components/public/PublicFooter'
 import { GuestEnrolmentFlow } from '@/components/booking/GuestEnrolmentFlow'
+import type { AuthedCheckoutPrefill } from '@/components/booking/GuestBookingFlow'
 import type { BookingSummary } from '@/components/booking/BookingSummaryCard'
+import { createClient } from '@/lib/supabase/server'
 import { fetchProgrammeDetail } from '@/app/coaches/[id]/programmes/[programmeId]/_components/_data/programmeDetail'
 import { displayCommissionPence } from '@/lib/booking/commission-display'
 import { getCommissionRate } from '@/lib/booking/commission-rate'
@@ -19,6 +21,47 @@ import { parseSelectionList, encodeSelection } from '@/lib/booking/slot-selectio
 
 function firstParam(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value
+}
+
+// BUG-79: detect a signed-in PARENT so the enrolment attaches to their real
+// account instead of a provisional profile. Same detection as
+// loadAuthedCheckout on /book/[coachId] (P-10 bug 4): RLS server client,
+// parent role required. Null for guests AND for signed-in non-parents (e.g.
+// a coach previewing) — both keep the guest path, byte-identical.
+async function loadAuthedCheckout(): Promise<AuthedCheckoutPrefill | null> {
+  try {
+    const supabase = await createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    if (!user) return null
+
+    const { data: profile } = await supabase
+      .from('user_profiles')
+      .select('id, full_name, phone, location_city, location_postcode')
+      .eq('auth_user_id', user.id)
+      .single()
+    if (!profile) return null
+
+    const { data: parentRole } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_profile_id', profile.id)
+      .eq('role', 'parent')
+      .maybeSingle()
+    if (!parentRole) return null
+
+    return {
+      fullName: profile.full_name ?? '',
+      email: user.email ?? '',
+      phone: profile.phone ?? '',
+      townCity: profile.location_city ?? '',
+      postcode: profile.location_postcode ?? '',
+    }
+  } catch (error) {
+    console.error('[ProgrammeEnrolmentCheckoutPage] authed-checkout detection failed:', error)
+    return null
+  }
 }
 
 export async function generateMetadata({
@@ -45,7 +88,10 @@ export default async function ProgrammeEnrolmentCheckoutPage({
   const { coachId, programmeId } = await params
   const sp = await searchParams
 
-  const programme = await fetchProgrammeDetail(coachId, programmeId)
+  const [programme, authedCheckout] = await Promise.all([
+    fetchProgrammeDetail(coachId, programmeId),
+    loadAuthedCheckout(),
+  ])
   if (!programme) notFound()
 
   const isBlock = firstParam(sp.block) === 'true'
@@ -121,6 +167,7 @@ export default async function ProgrammeEnrolmentCheckoutPage({
           paymentType={paymentType}
           selectedSessionIds={selectedSessionIds}
           summary={summary}
+          authedCheckout={authedCheckout}
         />
       </div>
       <PublicFooter variant="links" />

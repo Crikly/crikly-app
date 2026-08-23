@@ -27,13 +27,18 @@ import {
   Check,
   Copy,
   Share2,
-  Bookmark,
   AlertCircle,
   X,
 } from 'lucide-react'
 import { Input } from '@/components/ui/Input'
 import { AddressAutocomplete } from '@/components/booking/AddressAutocomplete'
 import { readParticipantHandoff } from '@/lib/booking/participant-handoff'
+// BUG-79: type + confirmation CTA are IMPORTED from the 1-to-1 flow (that
+// file is not modified) so both checkouts share one definition.
+import {
+  ConfirmationAccountCta,
+  type AuthedCheckoutPrefill,
+} from '@/components/booking/GuestBookingFlow'
 import { getStripePromise } from '@/lib/stripe/browser'
 import {
   BookingSummaryCard,
@@ -83,6 +88,12 @@ interface GuestEnrolmentFlowProps {
   selectedSessionIds: string[]
   summary: BookingSummary
   initialError?: EnrolmentError
+  /** BUG-79: server-detected parent session (parent-gated on the page).
+   * Non-null switches the checkout to authed mode — contact fields pre-fill
+   * from the account and the enrolment POSTs to
+   * /api/parent/programme-enrolments. Null/undefined = guest behaviour,
+   * byte-identical. */
+  authedCheckout?: AuthedCheckoutPrefill | null
 }
 
 interface ConfirmedState {
@@ -104,6 +115,7 @@ export function GuestEnrolmentFlow({
   selectedSessionIds,
   summary,
   initialError,
+  authedCheckout,
 }: GuestEnrolmentFlowProps) {
   const [confirmed, setConfirmed] = useState<ConfirmedState | null>(null)
   const [copied, setCopied] = useState<boolean>(false)
@@ -190,7 +202,7 @@ export function GuestEnrolmentFlow({
         </p>
 
         {/* Reference card */}
-        <div className="mt-7 flex w-full items-center justify-between gap-3 rounded-[12px] bg-[#F0F7FF] px-4 py-3.5 lg:px-5 lg:py-4">
+        <div className="mt-7 flex w-full items-center justify-between gap-3 rounded-[12px] bg-neutral-50 px-4 py-3.5 lg:px-5 lg:py-4">
           <div className="min-w-0 text-left">
             <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-brand-800 opacity-75">
               Enrolment reference
@@ -230,28 +242,8 @@ export function GuestEnrolmentFlow({
           <BookingSummaryCard summary={summary} variant="paid" />
         </div>
 
-        {/* Account nudge */}
-        <div className="mt-4 flex w-full flex-col gap-[13px] rounded-[12px] border border-[#CFE3F8] bg-[#F0F7FF] p-4 text-left lg:flex-row lg:items-center lg:gap-[14px] lg:px-[18px]">
-          <div className="flex items-start gap-3 lg:flex-1 lg:items-center">
-            <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-[10px] bg-brand-50 text-brand-600">
-              <Bookmark size={20} aria-hidden="true" />
-            </span>
-            <div>
-              <p className="text-[15px] font-semibold tracking-[-0.01em] text-neutral-900">
-                Save your enrolments
-              </p>
-              <p className="mt-0.5 text-[13px] leading-[1.45] text-neutral-600">
-                Create a free Crikly account to manage and rebook in seconds.
-              </p>
-            </div>
-          </div>
-          <Link
-            href="/register"
-            className="flex h-[46px] items-center justify-center rounded-[10px] border-[1.5px] border-brand-600 bg-white text-[15px] font-semibold text-brand-600 transition-colors hover:bg-brand-50 lg:h-11 lg:flex-shrink-0 lg:px-[18px]"
-          >
-            Create account
-          </Link>
-        </div>
+        {/* Account nudge — guests: "Create account"; signed-in parent: link to bookings */}
+        <ConfirmationAccountCta authed={Boolean(authedCheckout)} />
 
         {/* Back link */}
         <Link
@@ -276,6 +268,7 @@ export function GuestEnrolmentFlow({
         selectedSessionIds={selectedSessionIds}
         summary={summary}
         initialError={initialError}
+        authedCheckout={authedCheckout}
         onConfirmed={(enrolmentReference, email) => setConfirmed({ enrolmentReference, email })}
       />
     </Elements>
@@ -291,6 +284,7 @@ interface GuestEnrolmentFormProps {
   selectedSessionIds: string[]
   summary: BookingSummary
   initialError?: EnrolmentError
+  authedCheckout?: AuthedCheckoutPrefill | null
   onConfirmed: (enrolmentReference: string, email: string) => void
 }
 
@@ -301,12 +295,26 @@ function GuestEnrolmentForm({
   selectedSessionIds,
   summary,
   initialError,
+  authedCheckout,
   onConfirmed,
 }: GuestEnrolmentFormProps) {
   const stripe = useStripe()
   const elements = useElements()
 
-  const [form, setForm] = useState<GuestForm>(EMPTY_FORM)
+  // BUG-79: a signed-in parent's contact details pre-fill from the account
+  // (all fields stay editable — the form remains source of truth).
+  const [form, setForm] = useState<GuestForm>(() =>
+    authedCheckout
+      ? {
+          ...EMPTY_FORM,
+          fullName: authedCheckout.fullName,
+          email: authedCheckout.email,
+          phone: authedCheckout.phone,
+          townCity: authedCheckout.townCity,
+          postcode: authedCheckout.postcode,
+        }
+      : EMPTY_FORM,
+  )
   const [billingSame, setBillingSame] = useState<boolean>(true)
   const [error, setError] = useState<EnrolmentError | null>(initialError ?? null)
   const [submitting, setSubmitting] = useState<boolean>(false)
@@ -379,9 +387,61 @@ function GuestEnrolmentForm({
   async function createEnrolment(
     guest: { fullName: string; email: string; phone: string; address: string; townCity: string; postcode: string },
   ): Promise<{ clientSecret: string; enrolmentReference: string } | null> {
+    // BUG-20: age is optional — send a number only when the field parses.
+    const ageNumber = Number.parseInt(form.participantAge, 10)
+    const participantAge = Number.isInteger(ageNumber) ? ageNumber : null
+
+    // BUG-79: a signed-in parent enrols through the authed route — same
+    // response shape, same Stripe confirm flow, enrolment attached to their
+    // real account. Guests take the pre-existing branch below, byte-identical.
+    if (authedCheckout) {
+      try {
+        const res = await fetch('/api/parent/programme-enrolments', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            coachId,
+            programmeId,
+            paymentType,
+            selectedSessionIds,
+            participantName: form.participantName.trim(),
+            participantAge,
+            idempotencyToken,
+          }),
+        })
+
+        if (res.status === 409) {
+          const body = (await res.json().catch(() => ({}))) as { error?: string }
+          if (body.error === 'spots_taken') setError('spots_taken')
+          else if (body.error === 'invalid_sessions') setError('invalid_sessions')
+          else if (body.error === 'slot_full') setError('slot_full')
+          else setError('payment')
+          return null
+        }
+        // 404 = coach/programme no longer bookable — the parent was NOT
+        // charged; reuse the stale-selection copy rather than "check your card".
+        if (res.status === 404) {
+          setError('invalid_sessions')
+          return null
+        }
+        if (!res.ok) {
+          setError('payment')
+          return null
+        }
+
+        const data = (await res.json()) as { clientSecret?: string; enrolmentReference?: string }
+        if (!data.clientSecret || !data.enrolmentReference) {
+          setError('payment')
+          return null
+        }
+        return { clientSecret: data.clientSecret, enrolmentReference: data.enrolmentReference }
+      } catch {
+        setError('payment')
+        return null
+      }
+    }
+
     try {
-      // BUG-20: age is optional — send a number only when the field parses.
-      const ageNumber = Number.parseInt(form.participantAge, 10)
       const res = await fetch('/api/guest/programme-enrolments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -391,7 +451,7 @@ function GuestEnrolmentForm({
           paymentType,
           selectedSessionIds,
           participantName: form.participantName.trim(),
-          participantAge: Number.isInteger(ageNumber) ? ageNumber : null,
+          participantAge,
           idempotencyToken,
           guest,
         }),
