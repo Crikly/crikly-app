@@ -233,3 +233,58 @@ describe('ParentBookingsClient', () => {
     expect(screen.queryAllByText('Add to calendar')).toHaveLength(0)
   })
 })
+
+// ── PROGRAMME-BOOKINGS-LIST — programme enrolment entries ────────────────────
+
+function makeProgrammeItem(overrides: Partial<ParentBookingItem> = {}): ParentBookingItem {
+  return makeBooking({
+    id: 'e1',
+    reference: 'CRK-2026-3ZTMHM',
+    kind: 'programme',
+    sessionLine: 'Cricket · Programme · Summer Cricket Camp',
+    whenLabel: '4 sessions · Sat 5 Sept – Sat 26 Sept',
+    shortWhenLabel: '4 sessions from Sat 5 Sept',
+    sessionDatesLine: 'Sat 5 Sept, Sat 12 Sept, Sat 19 Sept, Sat 26 Sept',
+    allowsCancel: false,
+    cancellationWindowHours: 0,
+    icsVenue: null,
+    ...overrides,
+  })
+}
+
+describe('ParentBookingsClient — programme enrolments', () => {
+  it('renders a programme entry alongside a regular booking', () => {
+    render(
+      <ParentBookingsClient
+        data={makeData({ upcoming: [makeBooking(), makeProgrammeItem()] })}
+      />,
+    )
+    expect(screen.getAllByText('Cricket · Programme · Summer Cricket Camp').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('4 sessions · Sat 5 Sept – Sat 26 Sept').length).toBeGreaterThan(0)
+    // The regular booking still renders untouched next to it.
+    expect(screen.getAllByText('Cricket · 1-to-1').length).toBeGreaterThan(0)
+  })
+
+  it('offers no Cancel and no Add to calendar on a programme entry', () => {
+    render(<ParentBookingsClient data={makeData({ upcoming: [makeProgrammeItem()] })} />)
+    expect(screen.queryByRole('button', { name: 'Cancel' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Add to calendar' })).not.toBeInTheDocument()
+  })
+
+  it('labels the reference "Enrolment reference" and shows the session dates tile', () => {
+    render(<ParentBookingsClient data={makeData({ upcoming: [makeProgrammeItem()] })} />)
+    expect(screen.getByText('Enrolment reference')).toBeInTheDocument()
+    expect(screen.getAllByText('CRK-2026-3ZTMHM').length).toBeGreaterThan(0)
+    expect(screen.getByText('Session dates')).toBeInTheDocument()
+    expect(
+      screen.getByText('Sat 5 Sept, Sat 12 Sept, Sat 19 Sept, Sat 26 Sept'),
+    ).toBeInTheDocument()
+  })
+
+  it('keeps "Booking reference" and the calendar button for regular bookings — regression guard', () => {
+    render(<ParentBookingsClient data={makeData()} />)
+    expect(screen.getByText('Booking reference')).toBeInTheDocument()
+    expect(screen.queryByText('Enrolment reference')).not.toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Add to calendar' }).length).toBeGreaterThan(0)
+  })
+})

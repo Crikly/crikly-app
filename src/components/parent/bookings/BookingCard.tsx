@@ -90,7 +90,12 @@ export function BookingCard({
         </div>
         {tab === 'upcoming' && !cancelled && !cancelOpen ? (
           <div className="flex items-center gap-5">
-            <AddToCalendarButton booking={booking} variant="link" />
+            {/* PROGRAMME-BOOKINGS-LIST: no .ics for programme entries — the
+                builder is single-date; multi-date calendar export is later
+                work. Cancel is already gated by allowsCancel (hard-false). */}
+            {booking.kind !== 'programme' ? (
+              <AddToCalendarButton booking={booking} variant="link" />
+            ) : null}
             {booking.allowsCancel ? (
               <button
                 type="button"

@@ -26,13 +26,16 @@ function FactTile({
   label,
   value,
   mono = false,
+  className = '',
 }: {
   label: string
   value: string
   mono?: boolean
+  /** PROGRAMME-BOOKINGS-LIST: lets the session-dates tile span the grid. */
+  className?: string
 }) {
   return (
-    <div className="bg-slate-50 rounded-md px-4 py-3.5">
+    <div className={`bg-slate-50 rounded-md px-4 py-3.5 ${className}`}>
       <div className="text-xs font-medium uppercase tracking-wider text-slate-500">
         {label}
       </div>
@@ -84,11 +87,23 @@ export function BookingDetailPanel({
         <FactTile label="Venue" value={booking.venueLabel} />
         <FactTile label="Who it's for" value={booking.participantLabel} />
         <FactTile label="Total paid" value={booking.paidLabel} />
-        <FactTile label="Booking reference" value={booking.reference} mono />
+        <FactTile
+          label={booking.kind === 'programme' ? 'Enrolment reference' : 'Booking reference'}
+          value={booking.reference}
+          mono
+        />
         <FactTile label="Payment method" value={booking.paymentMethodLabel} />
+        {/* PROGRAMME-BOOKINGS-LIST: the individual dates an enrolment covers. */}
+        {booking.kind === 'programme' && booking.sessionDatesLine ? (
+          <FactTile
+            label="Session dates"
+            value={booking.sessionDatesLine}
+            className="col-span-2"
+          />
+        ) : null}
       </div>
 
-      {tab === 'upcoming' && !cancelled && !cancelOpen ? (
+      {tab === 'upcoming' && !cancelled && !cancelOpen && booking.kind !== 'programme' ? (
         <div className="flex items-center gap-3 mt-6">
           <AddToCalendarButton booking={booking} variant="button" />
           {booking.allowsCancel ? (
