@@ -53,6 +53,32 @@ INSERT INTO platform_config (
 SELECT 0.1000, 48, 24, 24, 56, 2999, 'GBP', 3, 16, 30
 WHERE NOT EXISTS (SELECT 1 FROM platform_config);
 
+-- BR-02: commission is temporarily 0% in ALL environments pending the
+-- admin module. Applied here (not in the insert above) so every reseed
+-- lands on the live platform value regardless of the migration default.
+-- Remove this UPDATE when the admin module owns the commission rate.
+UPDATE platform_config SET default_commission_rate = 0.0000;
+
+-- ============================================
+-- API Role Grants (local resets only)
+-- ============================================
+-- Newer Supabase CLI default privileges no longer grant data access on
+-- postgres-created tables to the API roles, so a db reset leaves anon/
+-- authenticated/service_role without SELECT/INSERT/UPDATE/DELETE and
+-- every PostgREST query fails with 42501. Restore the standard Supabase
+-- model: role grants at the table level, RLS as the enforcement layer.
+-- Functions are intentionally excluded — sensitive functions have
+-- explicit REVOKEs in migrations 038/040/041 that must stand.
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public
+  TO anon, authenticated, service_role;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public
+  TO anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+  GRANT USAGE, SELECT ON SEQUENCES TO anon, authenticated, service_role;
+
 -- ============================================
 -- Feature Flags
 -- ============================================
