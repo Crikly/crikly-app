@@ -33,6 +33,10 @@ import {
 import { Input } from '@/components/ui/Input'
 import { AddressAutocomplete } from '@/components/booking/AddressAutocomplete'
 import { readParticipantHandoff } from '@/lib/booking/participant-handoff'
+import {
+  ChildSelector,
+  type ChildSelectorOption,
+} from '@/components/parent/children/ChildSelector'
 // BUG-79: type + confirmation CTA are IMPORTED from the 1-to-1 flow (that
 // file is not modified) so both checkouts share one definition.
 import {
@@ -46,7 +50,19 @@ import {
   type BookingSummary,
 } from '@/components/booking/BookingSummaryCard'
 
-type EnrolmentError = 'payment' | 'spots_taken' | 'invalid_sessions' | 'slot_full'
+type EnrolmentError =
+  | 'payment'
+  | 'spots_taken'
+  | 'invalid_sessions'
+  | 'slot_full'
+  | 'child_not_found'
+
+/** PROGRAMME-CHILD-PICKER: the authed prefill plus the parent's saved
+ * children (server-assembled — COPPA, never fetched client-side). Defined
+ * here, not on the 1-to-1 type, so GuestBookingFlow stays untouched. */
+export interface AuthedEnrolmentContext extends AuthedCheckoutPrefill {
+  childrenList: ChildSelectorOption[]
+}
 
 interface GuestForm {
   fullName: string
@@ -91,9 +107,10 @@ interface GuestEnrolmentFlowProps {
   /** BUG-79: server-detected parent session (parent-gated on the page).
    * Non-null switches the checkout to authed mode — contact fields pre-fill
    * from the account and the enrolment POSTs to
-   * /api/parent/programme-enrolments. Null/undefined = guest behaviour,
-   * byte-identical. */
-  authedCheckout?: AuthedCheckoutPrefill | null
+   * /api/parent/programme-enrolments, and "Who is this for?" becomes the
+   * ChildSelector (PROGRAMME-CHILD-PICKER). Null/undefined = guest
+   * behaviour, byte-identical. */
+  authedCheckout?: AuthedEnrolmentContext | null
 }
 
 interface ConfirmedState {
@@ -284,7 +301,7 @@ interface GuestEnrolmentFormProps {
   selectedSessionIds: string[]
   summary: BookingSummary
   initialError?: EnrolmentError
-  authedCheckout?: AuthedCheckoutPrefill | null
+  authedCheckout?: AuthedEnrolmentContext | null
   onConfirmed: (enrolmentReference: string, email: string) => void
 }
 
@@ -321,6 +338,47 @@ function GuestEnrolmentForm({
   // BUG-20: participant name is required — inline error under the field.
   const [participantError, setParticipantError] = useState<boolean>(false)
 
+  // PROGRAMME-CHILD-PICKER: a signed-in parent picks ONE saved child (an
+  // enrolment is exactly one participant) OR types a one-off player. The
+  // two are mutually exclusive — picking a child closes the typed row and
+  // clears it; opening the row clears the pick (BUG-77 exclusivity rule).
+  // A parent with no children yet starts with the typed row open so they
+  // are never stuck behind an empty selector.
+  const childrenList = useMemo(
+    () => authedCheckout?.childrenList ?? [],
+    [authedCheckout?.childrenList],
+  )
+  const [selectedChildId, setSelectedChildId] = useState<string | null>(null)
+  const [soloGuestOpen, setSoloGuestOpen] = useState<boolean>(
+    () => Boolean(authedCheckout) && childrenList.length === 0,
+  )
+  const selectedChild = useMemo(
+    () => childrenList.find((child) => child.id === selectedChildId) ?? null,
+    [childrenList, selectedChildId],
+  )
+
+  const handleChildSelect = (childId: string) => {
+    setSelectedChildId(childId)
+    setSoloGuestOpen(false)
+    setParticipantError(false)
+    setForm((prev) => ({ ...prev, participantName: '', participantAge: '' }))
+  }
+
+  // BUG-77 pattern: the ChildSelector "+" tile NEVER navigates away from the
+  // checkout (its Link default is /parent/children/new). Capture-phase
+  // intercept because ChildSelector (P-07) is reused as-is; next/link skips
+  // navigation once default is prevented. Expands the inline typed row.
+  const handleAddTileCapture = (event: React.MouseEvent<HTMLDivElement>) => {
+    const target = event.target as Element
+    if (!target.closest('[data-testid="child-selector-add"]')) return
+    event.preventDefault()
+    setSelectedChildId(null)
+    setSoloGuestOpen(true)
+  }
+
+  /** BUG-20 gate, authed-aware: a picked child OR a typed name. */
+  const participantAssigned = selectedChild !== null || form.participantName.trim().length > 0
+
   // BUG-24: pre-fill "Who is this for?" from the availability panel's
   // sessionStorage handoff (never URL params — child names must not land in
   // shareable links). Effect, not initial state: sessionStorage doesn't exist
@@ -337,6 +395,9 @@ function GuestEnrolmentForm({
         ? prev
         : { ...prev, participantName: handoff.name, participantAge: handoff.age },
     )
+    // Authed: make the prefilled typed value visible (the selector would
+    // otherwise hide it until the parent taps "Add player").
+    setSoloGuestOpen(true)
   }, [])
 
   // Stable per-checkout idempotency token — a retried submit reuses the same
@@ -395,6 +456,23 @@ function GuestEnrolmentForm({
     // response shape, same Stripe confirm flow, enrolment attached to their
     // real account. Guests take the pre-existing branch below, byte-identical.
     if (authedCheckout) {
+      // PROGRAMME-CHILD-PICKER: a picked child sends its id (ownership is
+      // verified server-side) AND its name/age, so participant_name stays
+      // populated for the roster fallback, webhook and confirmation email —
+      // the same pairing /api/parent/bookings stores for its primary player.
+      const participant = selectedChild
+        ? {
+            participantName: selectedChild.firstName,
+            // An infant's derived age is 0; the route (and the DB CHECK)
+            // accept 1–99 or null, so send null exactly like a blank field.
+            participantAge: selectedChild.age >= 1 ? selectedChild.age : null,
+            childProfileId: selectedChild.id,
+          }
+        : {
+            participantName: form.participantName.trim(),
+            participantAge,
+            childProfileId: null,
+          }
       try {
         const res = await fetch('/api/parent/programme-enrolments', {
           method: 'POST',
@@ -404,12 +482,17 @@ function GuestEnrolmentForm({
             programmeId,
             paymentType,
             selectedSessionIds,
-            participantName: form.participantName.trim(),
-            participantAge,
+            ...participant,
             idempotencyToken,
           }),
         })
 
+        // The picked child no longer belongs to this account (deleted in
+        // another tab) — not charged; ask for a fresh pick.
+        if (res.status === 403) {
+          setError('child_not_found')
+          return null
+        }
         if (res.status === 409) {
           const body = (await res.json().catch(() => ({}))) as { error?: string }
           if (body.error === 'spots_taken') setError('spots_taken')
@@ -489,7 +572,8 @@ function GuestEnrolmentForm({
     if (!stripe || !elements || submitting) return
     // BUG-20: the participant name is required — the roster and confirmation
     // email are meaningless without it (same rule as the 1-on-1 flow, UX-16).
-    if (!form.participantName.trim()) {
+    // Authed: a picked child satisfies the gate (PROGRAMME-CHILD-PICKER).
+    if (!participantAssigned) {
       setParticipantError(true)
       return
     }
@@ -566,7 +650,7 @@ function GuestEnrolmentForm({
     // BUG-20: wallets skip the form's submit path, so gate here too — the
     // wallet sheet has already closed, so fail the payment and surface the
     // inline field error.
-    if (!form.participantName.trim()) {
+    if (!participantAssigned) {
       setParticipantError(true)
       event.paymentFailed({ reason: 'fail' })
       return
@@ -644,6 +728,10 @@ function GuestEnrolmentForm({
               Choose your sessions again
             </Link>
           </>
+        ) : error === 'child_not_found' ? (
+          <p className="font-medium">
+            We couldn&apos;t find that child on your account. Choose who this is for again — you haven&apos;t been charged.
+          </p>
         ) : (
           <p className="font-medium">
             {"Payment couldn't be completed. Please check your card details and try again."}
@@ -737,37 +825,64 @@ function GuestEnrolmentForm({
                   Who is this for?
                 </h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  Tell us about the player. Used for this enrolment only.
+                  {authedCheckout
+                    ? 'Pick one of your children, or add a player for this enrolment only.'
+                    : 'Tell us about the player. Used for this enrolment only.'}
                 </p>
               </div>
-              <div className="grid grid-cols-[1fr_120px] gap-3 lg:grid-cols-[1fr_160px] lg:gap-4">
-                <Input
-                  label="Player's name"
-                  placeholder="e.g. Sam"
-                  autoComplete="off"
-                  value={form.participantName}
-                  data-testid="participant-name-input"
-                  onChange={(e) => {
-                    setField('participantName', e.target.value)
-                    setParticipantError(false)
-                  }}
-                />
-                <Input
-                  label="Age (optional)"
-                  type="number"
-                  inputMode="numeric"
-                  min={1}
-                  max={99}
-                  placeholder="—"
-                  autoComplete="off"
-                  value={form.participantAge}
-                  data-testid="participant-age-input"
-                  onChange={(e) => setField('participantAge', e.target.value)}
-                />
-              </div>
+              {/* PROGRAMME-CHILD-PICKER: signed-in parents pick a saved child
+                  (ChildSelector, P-07, reused as-is). The "+" tile expands the
+                  typed row inline instead of navigating (BUG-77 pattern). */}
+              {authedCheckout && (
+                <div onClickCapture={handleAddTileCapture}>
+                  <ChildSelector
+                    childrenList={childrenList}
+                    selectedChildId={selectedChildId}
+                    onSelect={handleChildSelect}
+                    label="Who is this for?"
+                    addLabel="Add player"
+                  />
+                </div>
+              )}
+              {(!authedCheckout || soloGuestOpen) && (
+                <>
+                  {authedCheckout && (
+                    <p className="text-[13px] text-gray-500">
+                      Guest players are for this enrolment only — no profile needed.
+                    </p>
+                  )}
+                  <div className="grid grid-cols-[1fr_120px] gap-3 lg:grid-cols-[1fr_160px] lg:gap-4">
+                    <Input
+                      label="Player's name"
+                      placeholder="e.g. Sam"
+                      autoComplete="off"
+                      value={form.participantName}
+                      data-testid="participant-name-input"
+                      onChange={(e) => {
+                        setField('participantName', e.target.value)
+                        setParticipantError(false)
+                      }}
+                    />
+                    <Input
+                      label="Age (optional)"
+                      type="number"
+                      inputMode="numeric"
+                      min={1}
+                      max={99}
+                      placeholder="—"
+                      autoComplete="off"
+                      value={form.participantAge}
+                      data-testid="participant-age-input"
+                      onChange={(e) => setField('participantAge', e.target.value)}
+                    />
+                  </div>
+                </>
+              )}
               {participantError && (
                 <p className="text-sm text-danger" role="alert" data-testid="participant-error">
-                  Add the player&apos;s name to continue.
+                  {authedCheckout && childrenList.length > 0
+                    ? 'Choose who this enrolment is for to continue.'
+                    : "Add the player's name to continue."}
                 </p>
               )}
             </div>

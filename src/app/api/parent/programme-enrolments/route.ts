@@ -23,6 +23,10 @@
 //     group_programmes / group_programme_sessions and commission is added
 //     ON TOP (BR-01). Integer pence only (BR-10).
 //   - No card data ever touches this route — Stripe Elements collects it.
+//   - PROGRAMME-CHILD-PICKER: an optional childProfileId links the enrolment
+//     to one of the parent's saved children. It arrives in the JSON body
+//     (never a URL) and MUST belong to THIS parent — verified with the RLS
+//     client, anything else is a 403 (same rule as /api/parent/bookings).
 //
 // Confirmation email: the enrolment webhook path sends to
 // intent.metadata.guest_email. For an authed enrolment those metadata values
@@ -55,12 +59,17 @@ interface ParentEnrolmentInput {
   /** Who the programme is for — REQUIRED (BUG-20 parity with the guest route). */
   participantName: string
   participantAge: number | null
+  /** PROGRAMME-CHILD-PICKER: the parent's saved child this enrolment is for,
+   * or null for a one-off typed participant. Ownership verified server-side. */
+  childProfileId: string | null
   idempotencyToken: string | null
 }
 
 function badRequest(error: string): NextResponse {
   return NextResponse.json({ error }, { status: 400 })
 }
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /** Narrow the untrusted JSON body to ParentEnrolmentInput. No `any`. */
 function parseBody(raw: unknown): ParentEnrolmentInput | null {
@@ -101,6 +110,12 @@ function parseBody(raw: unknown): ParentEnrolmentInput | null {
     participantAge = b.participantAge
   }
 
+  let childProfileId: string | null = null
+  if (b.childProfileId !== undefined && b.childProfileId !== null) {
+    if (typeof b.childProfileId !== 'string' || !UUID_RE.test(b.childProfileId)) return null
+    childProfileId = b.childProfileId
+  }
+
   const token =
     typeof b.idempotencyToken === 'string' &&
     b.idempotencyToken.length > 0 &&
@@ -115,6 +130,7 @@ function parseBody(raw: unknown): ParentEnrolmentInput | null {
     selections,
     participantName: b.participantName.trim(),
     participantAge,
+    childProfileId,
     idempotencyToken: token,
   }
 }
@@ -141,6 +157,26 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const rls = await createClient()
   const { context, error: authError } = await requireParentContext(rls)
   if (authError) return authError
+
+  // 2a. Child ownership (PROGRAMME-CHILD-PICKER): a linked child profile must
+  //     belong to THIS parent and be live. RLS scopes the read; a missing row
+  //     covers both foreign and deleted ids without leaking which.
+  if (input.childProfileId) {
+    const { data: ownedChild, error: childError } = await rls
+      .from('child_profiles')
+      .select('id')
+      .eq('parent_profile_id', context.parentProfile.id)
+      .is('deleted_at', null)
+      .eq('id', input.childProfileId)
+      .maybeSingle()
+    if (childError) {
+      console.error(`${LOG} child_profiles ownership read failed:`, childError)
+      return NextResponse.json({ error: 'internal_error' }, { status: 500 })
+    }
+    if (!ownedChild) {
+      return NextResponse.json({ error: 'child_not_found' }, { status: 403 })
+    }
+  }
 
   const supabase = createAdminClient()
 
@@ -314,7 +350,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   // 8. Create the enrolment in payment_status='pending', attached to the
   //    parent's REAL profile. No provisional user is created (BUG-79).
-  //    child_profile_id stays null — child linking is P-12 scope.
+  //    child_profile_id is the ownership-verified pick from step 2a, or null
+  //    for a typed one-off participant (PROGRAMME-CHILD-PICKER).
   const reference = generateBookingReference(new Date().getUTCFullYear())
 
   const { data: enrolment, error: enrolmentError } = await supabase
@@ -322,7 +359,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     .insert({
       programme_id: programme.id,
       booked_by_user_id: context.userProfile.id,
-      child_profile_id: null,
+      child_profile_id: input.childProfileId,
       player_profile_id: null,
       payment_type: 'platform',
       payment_model: input.paymentType === 'block_upfront' ? 'block' : 'per_session',

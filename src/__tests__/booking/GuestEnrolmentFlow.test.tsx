@@ -1110,6 +1110,9 @@ describe('GuestEnrolmentFlow — BUG-79 authed parent checkout', () => {
     phone: '07700 900000',
     townCity: 'London',
     postcode: 'SW1A 1AA',
+    // PROGRAMME-CHILD-PICKER: no children → the typed row stays open, so the
+    // shared clickPay helper (types a name) keeps exercising this block.
+    childrenList: [],
   }
   const SESSION_IDS = ['session-uuid-001', 'session-uuid-002']
 
@@ -1249,5 +1252,189 @@ describe('GuestEnrolmentFlow — BUG-79 authed parent checkout', () => {
     })
     expect(screen.getByText('Create account')).toBeInTheDocument()
     expect(screen.queryByTestId('view-bookings-link')).not.toBeInTheDocument()
+  })
+})
+
+// ── PROGRAMME-CHILD-PICKER: saved-child selection for authed parents ──────────
+
+describe('GuestEnrolmentFlow — PROGRAMME-CHILD-PICKER', () => {
+  const CHILD_A = { id: 'child-uuid-aaa', firstName: 'Yuwin', colour: '#0077CC', age: 9 }
+  const CHILD_B = { id: 'child-uuid-bbb', firstName: 'Mia', colour: '#1A7A4A', age: 12 }
+  const AUTHED_WITH_CHILDREN = {
+    fullName: 'Pat Parent',
+    email: 'parent@example.com',
+    phone: '07700 900000',
+    townCity: 'London',
+    postcode: 'SW1A 1AA',
+    childrenList: [CHILD_A, CHILD_B],
+  }
+  const SESSION_IDS = ['session-uuid-001']
+
+  function renderAuthed(childrenList = AUTHED_WITH_CHILDREN.childrenList) {
+    return render(
+      <GuestEnrolmentFlow
+        coachId={COACH_ID}
+        programmeId={PROGRAMME_ID}
+        paymentType="per_session"
+        selectedSessionIds={SESSION_IDS}
+        summary={SUMMARY}
+        authedCheckout={{ ...AUTHED_WITH_CHILDREN, childrenList }}
+      />,
+    )
+  }
+
+  function postedBody(): Record<string, unknown> {
+    const [, init] = (global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit]
+    return JSON.parse(init.body as string) as Record<string, unknown>
+  }
+
+  beforeEach(() => {
+    global.fetch = jest.fn().mockResolvedValue({
+      status: 200,
+      ok: true,
+      json: jest.fn().mockResolvedValue({
+        clientSecret: 'pi_test_secret',
+        enrolmentReference: ENROLMENT_REFERENCE,
+        enrolmentId: 'enrolment-uuid-001',
+      }),
+    } as unknown as Response)
+    stripeModule.__mockConfirmPayment.mockResolvedValue({ error: null })
+    stripeModule.__mockSubmit.mockResolvedValue({ error: null })
+  })
+
+  it('renders the ChildSelector with the parent\'s children and hides the typed row', () => {
+    renderAuthed()
+    expect(screen.getByTestId('child-selector')).toBeInTheDocument()
+    expect(screen.getByTestId(`child-selector-option-${CHILD_A.id}`)).toBeInTheDocument()
+    expect(screen.getByTestId(`child-selector-option-${CHILD_B.id}`)).toBeInTheDocument()
+    expect(screen.queryByTestId('participant-name-input')).not.toBeInTheDocument()
+  })
+
+  it('guest checkout never renders the ChildSelector — regression guard', () => {
+    render(
+      <GuestEnrolmentFlow
+        coachId={COACH_ID}
+        programmeId={PROGRAMME_ID}
+        paymentType="per_session"
+        selectedSessionIds={SESSION_IDS}
+        summary={SUMMARY}
+        authedCheckout={null}
+      />,
+    )
+    expect(screen.queryByTestId('child-selector')).not.toBeInTheDocument()
+    expect(screen.getByTestId('participant-name-input')).toBeInTheDocument()
+  })
+
+  it('picking a child POSTs childProfileId plus the child\'s name and age', async () => {
+    const user = userEvent.setup()
+    renderAuthed()
+
+    await user.click(screen.getByTestId(`child-selector-option-${CHILD_B.id}`))
+    await user.click(screen.getAllByTestId('pay-button')[0])
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/parent/programme-enrolments',
+        expect.objectContaining({ method: 'POST' }),
+      )
+    })
+    expect(postedBody()).toEqual(
+      expect.objectContaining({
+        childProfileId: CHILD_B.id,
+        participantName: 'Mia',
+        participantAge: 12,
+      }),
+    )
+  })
+
+  it('blocks Pay with an inline error when nothing is picked or typed', async () => {
+    const user = userEvent.setup()
+    renderAuthed()
+
+    await user.click(screen.getAllByTestId('pay-button')[0])
+
+    expect(screen.getByTestId('participant-error')).toHaveTextContent(
+      /choose who this enrolment is for/i,
+    )
+    expect(global.fetch).not.toHaveBeenCalled()
+  })
+
+  it('"Add player" expands the typed row inline without navigating, and posts childProfileId null', async () => {
+    const user = userEvent.setup()
+    renderAuthed()
+
+    const addTile = screen.getByTestId('child-selector-add')
+    await user.click(addTile)
+
+    // Still on the checkout — the typed row appeared in place.
+    expect(screen.getByRole('heading', { name: /Complete your enrolment/i })).toBeInTheDocument()
+    const nameInput = screen.getByTestId('participant-name-input')
+    await user.type(nameInput, 'Cousin Sam')
+    await user.click(screen.getAllByTestId('pay-button')[0])
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalled()
+    })
+    expect(postedBody()).toEqual(
+      expect.objectContaining({ childProfileId: null, participantName: 'Cousin Sam' }),
+    )
+  })
+
+  it('picking a child after opening the typed row closes it and clears the typed name', async () => {
+    const user = userEvent.setup()
+    renderAuthed()
+
+    await user.click(screen.getByTestId('child-selector-add'))
+    await user.type(screen.getByTestId('participant-name-input'), 'Cousin Sam')
+    await user.click(screen.getByTestId(`child-selector-option-${CHILD_A.id}`))
+
+    expect(screen.queryByTestId('participant-name-input')).not.toBeInTheDocument()
+    await user.click(screen.getAllByTestId('pay-button')[0])
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalled()
+    })
+    expect(postedBody()).toEqual(
+      expect.objectContaining({ childProfileId: CHILD_A.id, participantName: 'Yuwin' }),
+    )
+  })
+
+  it('an infant (derived age 0) posts participantAge null so the route does not reject it', async () => {
+    const user = userEvent.setup()
+    const BABY = { id: 'child-uuid-ddd', firstName: 'Baby', colour: '#0077CC', age: 0 }
+    renderAuthed([BABY])
+
+    await user.click(screen.getByTestId(`child-selector-option-${BABY.id}`))
+    await user.click(screen.getAllByTestId('pay-button')[0])
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalled()
+    })
+    expect(postedBody()).toEqual(
+      expect.objectContaining({ childProfileId: BABY.id, participantAge: null }),
+    )
+  })
+
+  it('a parent with no children starts with the typed row open', () => {
+    renderAuthed([])
+    expect(screen.getByTestId('child-selector')).toBeInTheDocument()
+    expect(screen.getByTestId('participant-name-input')).toBeInTheDocument()
+  })
+
+  it('shows the child_not_found copy on a 403 and does not confirm payment', async () => {
+    const user = userEvent.setup()
+    ;(global.fetch as jest.Mock).mockResolvedValue({
+      status: 403,
+      ok: false,
+      json: jest.fn().mockResolvedValue({ error: 'child_not_found' }),
+    } as unknown as Response)
+    renderAuthed()
+
+    await user.click(screen.getByTestId(`child-selector-option-${CHILD_A.id}`))
+    await user.click(screen.getAllByTestId('pay-button')[0])
+
+    await waitFor(() => {
+      expect(screen.getByText(/couldn't find that child on your account/i)).toBeInTheDocument()
+    })
+    expect(stripeModule.__mockConfirmPayment).not.toHaveBeenCalled()
   })
 })
