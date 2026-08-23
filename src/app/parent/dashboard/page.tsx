@@ -73,6 +73,189 @@ function nextProgrammeDate(programme: ProgrammeRow, now: Date): Date | null {
   return null
 }
 
+// ── PROGRAMME-DASHBOARD-UPCOMING ─────────────────────────────────────────────
+// Upcoming programme-enrolment sessions as UpcomingSessionCard rows — the
+// dashboard box had the same gap /parent/bookings had: bookings only. Each
+// upcoming session DATE the account is enrolled in becomes its own card
+// (this box answers "what's coming up", unlike the bookings page's
+// one-entry-per-enrolment ledger). Same query pattern and RLS surface as the
+// bookings-page loader (migration 055 fixed _select_own); NOT shared code —
+// that loader is private to its page and returns the bookings-page shape.
+//
+// Per-child scoping: card.childProfileId = enrolment.child_profile_id and the
+// existing client filter does the rest. An enrolment with NO linked child
+// (made before the child-picker existed, or a typed guest player) matches no
+// activeChildId, so it appears under no child's box in parent mode — exactly
+// how a null-child booking already behaves here; it stays fully visible on
+// /parent/bookings. Approved decision (23 Aug).
+//
+// KNOWN LIMIT (same as the bookings page): the public RLS policies expose
+// only status='active' programmes — enrolments on paused/completed
+// programmes come back with a null join and are skipped with a loud log.
+
+interface EnrolmentCardRow {
+  id: string
+  child_profile_id: string | null
+  payment_model: string
+  programme_id: string
+  group_programmes:
+    | {
+        id: string
+        title: string
+        venue_name: string | null
+        coach_profiles: { display_name: string | null } | { display_name: string | null }[] | null
+        sports: { name: string } | { name: string }[] | null
+      }
+    | {
+        id: string
+        title: string
+        venue_name: string | null
+        coach_profiles: { display_name: string | null } | { display_name: string | null }[] | null
+        sports: { name: string } | { name: string }[] | null
+      }[]
+    | null
+}
+
+interface EnrolmentSessionDateRow {
+  id: string
+  session_date: string
+  start_time: string
+  status: string
+}
+
+async function loadEnrolmentSessionCards(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userProfileId: string,
+  todayDateStr: string,
+  todayMidnight: Date,
+): Promise<UpcomingSessionCard[]> {
+  const { data: enrolRows, error } = await supabase
+    .from('group_programme_enrolments')
+    .select(
+      `
+      id,
+      child_profile_id,
+      payment_model,
+      programme_id,
+      group_programmes (
+        id,
+        title,
+        venue_name,
+        coach_profiles ( display_name ),
+        sports ( name )
+      )
+    `,
+    )
+    .eq('booked_by_user_id', userProfileId)
+    .eq('payment_status', 'succeeded')
+    .eq('status', 'active')
+
+  if (error) {
+    console.error('[ParentDashboard] enrolments fetch failed:', error)
+    return []
+  }
+  const enrolments = (enrolRows ?? []) as EnrolmentCardRow[]
+  if (enrolments.length === 0) return []
+
+  // Upcoming dates: per_session enrolments own explicit (session) links;
+  // block enrolments cover every session of the programme.
+  const perSessionIds = enrolments
+    .filter((e) => e.payment_model === 'per_session')
+    .map((e) => e.id)
+  const blockProgrammeIds = [
+    ...new Set(
+      enrolments
+        .filter((e) => e.payment_model === 'block')
+        .map((e) => firstOf(e.group_programmes)?.id)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ]
+
+  const sessionsByEnrolment = new Map<string, EnrolmentSessionDateRow[]>()
+  const sessionsByProgramme = new Map<string, EnrolmentSessionDateRow[]>()
+
+  if (perSessionIds.length > 0) {
+    const { data: linkRows, error: linkError } = await supabase
+      .from('group_programme_enrolment_sessions')
+      .select(
+        'enrolment_id, group_programme_sessions ( id, session_date, start_time, status )',
+      )
+      .in('enrolment_id', perSessionIds)
+    if (linkError) {
+      console.error('[ParentDashboard] enrolment sessions fetch failed:', linkError)
+    }
+    for (const link of (linkRows ?? []) as {
+      enrolment_id: string
+      group_programme_sessions: EnrolmentSessionDateRow | EnrolmentSessionDateRow[] | null
+    }[]) {
+      const session = firstOf(link.group_programme_sessions)
+      if (!session) continue
+      const list = sessionsByEnrolment.get(link.enrolment_id) ?? []
+      list.push(session)
+      sessionsByEnrolment.set(link.enrolment_id, list)
+    }
+  }
+
+  if (blockProgrammeIds.length > 0) {
+    const { data: progSessions, error: progError } = await supabase
+      .from('group_programme_sessions')
+      .select('id, group_programme_id, session_date, start_time, status')
+      .in('group_programme_id', blockProgrammeIds)
+    if (progError) {
+      console.error('[ParentDashboard] programme sessions fetch failed:', progError)
+    }
+    for (const session of (progSessions ?? []) as (EnrolmentSessionDateRow & {
+      group_programme_id: string
+    })[]) {
+      const list = sessionsByProgramme.get(session.group_programme_id) ?? []
+      list.push(session)
+      sessionsByProgramme.set(session.group_programme_id, list)
+    }
+  }
+
+  const cards: UpcomingSessionCard[] = []
+  for (const enrolment of enrolments) {
+    const programme = firstOf(enrolment.group_programmes)
+    if (!programme) {
+      console.error(
+        '[ParentDashboard] enrolment skipped — programme not readable (inactive?):',
+        enrolment.id,
+      )
+      continue
+    }
+    const coach = firstOf(programme.coach_profiles)
+    const sport = firstOf(programme.sports)
+
+    const dates =
+      enrolment.payment_model === 'block'
+        ? (sessionsByProgramme.get(programme.id) ?? [])
+        : (sessionsByEnrolment.get(enrolment.id) ?? [])
+
+    for (const session of dates) {
+      if (session.status !== 'scheduled') continue
+      if (session.session_date < todayDateStr) continue
+      const sessionDate = new Date(`${session.session_date}T00:00:00`)
+      const daysUntil = Math.max(
+        0,
+        Math.round(
+          (sessionDate.getTime() - todayMidnight.getTime()) / 86_400_000,
+        ),
+      )
+      cards.push({
+        id: `${enrolment.id}:${session.id}`,
+        childProfileId: enrolment.child_profile_id,
+        coachName: coach?.display_name || 'Coach',
+        sportName: sport?.name || 'Cricket',
+        dateLabel: formatDayLabel(sessionDate),
+        timeLabel: session.start_time.substring(0, 5),
+        venueName: programme.venue_name,
+        daysUntil,
+      })
+    }
+  }
+  return cards
+}
+
 // Data assembly is a plain async function (no JSX) so the try/catch only
 // guards data fetching — rendering errors stay with React error
 // boundaries (react-hooks/error-boundaries).
@@ -144,8 +327,10 @@ async function loadDashboardData(): Promise<ParentDashboardData> {
 
     const now = new Date()
     const todayDateStr = now.toISOString().split('T')[0] ?? ''
+    const todayMidnight = new Date(now)
+    todayMidnight.setHours(0, 0, 0, 0)
 
-    const [upcomingResult, lifetimeCountResult, programmesResult] =
+    const [upcomingResult, lifetimeCountResult, programmesResult, enrolmentCards] =
       await Promise.all([
         // Upcoming confirmed sessions across all this account's bookings —
         // grouped per child client-side so switching the active child is
@@ -202,14 +387,14 @@ async function loadDashboardData(): Promise<ParentDashboardData> {
           .or(`ends_at.gte.${now.toISOString()},ends_at.is.null`)
           .order('starts_at', { ascending: true })
           .limit(10),
+        // PROGRAMME-DASHBOARD-UPCOMING: enrolment session cards, in the same
+        // parallel batch so page latency doesn't stack.
+        loadEnrolmentSessionCards(supabase, userProfile.id, todayDateStr, todayMidnight),
       ])
 
     dashboardData.lifetimeBookingsCount = lifetimeCountResult.count ?? 0
 
-    const todayMidnight = new Date(now)
-    todayMidnight.setHours(0, 0, 0, 0)
-
-    dashboardData.sessions = (upcomingResult.data ?? []).map(
+    const bookingCards = (upcomingResult.data ?? []).map(
       (booking): UpcomingSessionCard => {
         const coach = firstOf(booking.coach_profiles)
         const sport = firstOf(booking.sports)
@@ -232,6 +417,17 @@ async function loadDashboardData(): Promise<ParentDashboardData> {
         }
       },
     )
+
+    // PROGRAMME-DASHBOARD-UPCOMING: merge, re-sort (bookings arrive
+    // date-ordered; enrolment cards are per-enrolment), keep the existing
+    // 24-card cap. Bookings mapping above is untouched.
+    dashboardData.sessions = [...bookingCards, ...enrolmentCards]
+      .sort((a, b) =>
+        a.daysUntil === b.daysUntil
+          ? a.timeLabel.localeCompare(b.timeLabel)
+          : a.daysUntil - b.daysUntil,
+      )
+      .slice(0, 24)
 
     dashboardData.programmes = (programmesResult.data ?? [])
       .filter((programme) => programme.max_spots - programme.current_spots > 0)
