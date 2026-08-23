@@ -68,3 +68,23 @@ export function nextDateString(dateStr: string): string {
   const next = new Date(Date.UTC(y, mo - 1, d + 1))
   return next.toISOString().slice(0, 10)
 }
+
+/**
+ * BUG-68: is the London wall-clock session [start, end] in progress at `nowMs`?
+ *
+ * The dashboard previously compared the server's local `HH:MM:SS` string
+ * (UTC on Vercel) against the stored UK wall-clock times, so during BST a
+ * 15:00 session only read as active from 16:00 BST. Comparing true instants
+ * via the Europe/London offset keeps it correct across the BST/GMT switch.
+ * Bounds are inclusive to preserve the prior `>= start && <= end` semantics.
+ */
+export function isSessionActiveAt(
+  dateStr: string,
+  startTime: string,
+  endTime: string,
+  nowMs: number,
+): boolean {
+  const startMs = londonSessionToMs(dateStr, startTime)
+  const endMs = londonSessionToMs(dateStr, endTime)
+  return nowMs >= startMs && nowMs <= endMs
+}

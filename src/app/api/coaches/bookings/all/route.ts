@@ -89,7 +89,8 @@ export async function GET() {
       .is('deleted_at', null)
       .gte('session_date', mondayIso)
       .lte('session_date', sundayIso)
-      .not('status', 'in', '(cancelled_parent,cancelled_coach)')
+      // BUG-82: mirrors ?tab=week — abandoned checkouts never reach the lineup.
+      .not('status', 'in', '(cancelled_parent,cancelled_coach,pending_payment)')
       .order('session_date', { ascending: true })
       .order('session_start_time', { ascending: true })
       .range(0, PAGE_SIZE - 1),

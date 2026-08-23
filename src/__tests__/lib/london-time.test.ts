@@ -1,4 +1,5 @@
 import {
+  isSessionActiveAt,
   londonSessionToMs,
   londonTodayDateString,
   londonWallClockToMs,
@@ -65,5 +66,33 @@ describe('nextDateString', () => {
   it('rolls over month and year ends', () => {
     expect(nextDateString('2026-08-31')).toBe('2026-09-01')
     expect(nextDateString('2026-12-31')).toBe('2027-01-01')
+  })
+})
+
+// BUG-68: dashboard isActive compared a server-local HH:MM:SS string (UTC on
+// Vercel) against UK wall-clock times — an hour late during BST.
+describe('isSessionActiveAt', () => {
+  const bstSession = ['2026-08-23', '15:00:00', '16:00:00'] as const
+
+  it('BST: active at 15:30 London (14:30Z), which the old UTC string compare missed', () => {
+    expect(isSessionActiveAt(...bstSession, Date.UTC(2026, 7, 23, 14, 30))).toBe(true)
+  })
+
+  it('BST: not active at 14:30 London (13:30Z)', () => {
+    expect(isSessionActiveAt(...bstSession, Date.UTC(2026, 7, 23, 13, 30))).toBe(false)
+  })
+
+  it('BST: not active at 16:30 London (15:30Z) — old code wrongly said active here', () => {
+    expect(isSessionActiveAt(...bstSession, Date.UTC(2026, 7, 23, 15, 30))).toBe(false)
+  })
+
+  it('bounds are inclusive (matches prior >= start && <= end semantics)', () => {
+    expect(isSessionActiveAt(...bstSession, Date.UTC(2026, 7, 23, 14, 0))).toBe(true)
+    expect(isSessionActiveAt(...bstSession, Date.UTC(2026, 7, 23, 15, 0))).toBe(true)
+  })
+
+  it('GMT: 15:00-16:00 London equals 15:00-16:00Z', () => {
+    expect(isSessionActiveAt('2026-01-15', '15:00:00', '16:00:00', Date.UTC(2026, 0, 15, 15, 30))).toBe(true)
+    expect(isSessionActiveAt('2026-01-15', '15:00:00', '16:00:00', Date.UTC(2026, 0, 15, 14, 30))).toBe(false)
   })
 })

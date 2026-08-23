@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { CoachHomeClient } from '@/components/coach/CoachHomeClient'
+import { isSessionActiveAt } from '@/lib/time/london'
 
 interface Programme {
   id: string
@@ -509,14 +510,20 @@ export default async function CoachDashboardPage() {
     // Today's sessions — same processing logic as before
     const todayBookings = todayBookingsResult.data
     if (todayBookings) {
-      const currentTime = new Date()
-      const currentTimeStr = currentTime.toTimeString().substring(0, 8)
+      const nowMs = Date.now()
 
       dashboardData.todaySessions = todayBookings.map(booking => {
         const startDateTime = new Date(`${booking.session_date}T${booking.session_start_time}`)
         const endDateTime = new Date(`${booking.session_date}T${booking.session_end_time}`)
         const durationMinutes = Math.round((endDateTime.getTime() - startDateTime.getTime()) / (1000 * 60))
-        const isActive = currentTimeStr >= booking.session_start_time && currentTimeStr <= booking.session_end_time
+        // BUG-68: compare true Europe/London instants, not a server-local
+        // HH:MM:SS string — during BST the string compare ran an hour late.
+        const isActive = isSessionActiveAt(
+          booking.session_date,
+          booking.session_start_time,
+          booking.session_end_time,
+          nowMs,
+        )
 
         const bookerData = Array.isArray(booking.booker)
           ? booking.booker[0]

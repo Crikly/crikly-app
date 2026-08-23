@@ -65,7 +65,10 @@ export async function GET(request: Request) {
 
   let filtered
   if (tab === 'today') {
-    filtered = base.eq('session_date', todayIso)
+    // BUG-82: pending_payment rows are abandoned/in-flight checkouts, not
+    // sessions — the coach should never see them. Mirrors the dashboard
+    // summary and upcoming tab, which were already confirmed-only.
+    filtered = base.eq('session_date', todayIso).neq('status', 'pending_payment')
   } else if (tab === 'upcoming') {
     filtered = base.gte('session_date', todayIso).eq('status', 'confirmed')
   } else if (tab === 'past') {
@@ -74,11 +77,11 @@ export async function GET(request: Request) {
     filtered = base.in('status', ['pending_approval'])
   } else if (tab === 'week') {
     // DS-RIGHT-PANEL-01 + BUG-QA-02: returns Mon-Sun of (today + offset
-    // weeks), all statuses except cancelled. Powers the right-panel week
-    // strip + daily lineup so coaches can scrub back/forward to past or
-    // future sessions and still see correct dot indicators. Server-local
-    // time is acceptable for Phase 1 (UK-only). Offset clamped to ±52
-    // weeks — a year forward/back is plenty for the strip.
+    // weeks), all statuses except cancelled and pending_payment (BUG-82).
+    // Powers the right-panel week strip + daily lineup so coaches can scrub
+    // back/forward to past or future sessions and still see correct dot
+    // indicators. Server-local time is acceptable for Phase 1 (UK-only).
+    // Offset clamped to ±52 weeks — a year forward/back is plenty.
     const rawOffset = parseInt(searchParams.get('offset') ?? '0', 10)
     const weekOffset = isNaN(rawOffset) ? 0 : Math.max(-52, Math.min(52, rawOffset))
     const today = new Date()
@@ -93,7 +96,7 @@ export async function GET(request: Request) {
     filtered = base
       .gte('session_date', mondayIso)
       .lte('session_date', sundayIso)
-      .not('status', 'in', '(cancelled_parent,cancelled_coach)')
+      .not('status', 'in', '(cancelled_parent,cancelled_coach,pending_payment)')
   } else {
     filtered = base.in('status', ['cancelled_parent', 'cancelled_coach'])
   }
