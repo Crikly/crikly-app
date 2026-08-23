@@ -266,7 +266,7 @@ export default async function CoachProfilePage({
         >
           <Link href="/" className="hover:text-gray-900">Home</Link>
           <ChevronRight className="w-3.5 h-3.5" />
-          <Link href="/search" className="hover:text-gray-900">Coaches</Link>
+          <Link href="/coaches" className="hover:text-gray-900">Coaches</Link>
           <ChevronRight className="w-3.5 h-3.5" />
           <span className="text-gray-900 font-medium">{coach.full_name}</span>
         </nav>
