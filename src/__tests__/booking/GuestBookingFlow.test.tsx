@@ -16,7 +16,7 @@
 //   - handlePay — fetch returns 409 slot_taken → slot_taken error banner.
 
 import React from 'react'
-import { render, screen, within, waitFor } from '@testing-library/react'
+import { render, screen, within, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { BookingSummary } from '@/components/booking/BookingSummaryCard'
 import type { GuestCheckoutParams } from '@/components/booking/GuestBookingFlow'
@@ -421,6 +421,53 @@ describe('GuestBookingFlow — handlePay success', () => {
     await waitFor(() => {
       expect(window.sessionStorage.getItem('crikly:p10-booking-hold')).toBeNull()
     })
+  })
+
+  it('BUG-80: a hold for the SAME coach but a DIFFERENT slot is ignored — participant form renders, no hold players sent', async () => {
+    // Parent started booking this coach at 14:00, backed out, now books 10:00.
+    window.sessionStorage.setItem(
+      'crikly:p10-booking-hold',
+      JSON.stringify({
+        coachId: COACH_ID,
+        date: '2026-06-27',
+        startTime: '14:00',
+        players: 1,
+        holdStartedAt: 1_755_000_000_000,
+        childProfileId: '33333333-3333-4333-8333-333333333333',
+        primaryPlayer: {
+          kind: 'child',
+          childProfileId: '33333333-3333-4333-8333-333333333333',
+          firstName: 'Yuwin',
+          age: '9',
+        },
+      }),
+    )
+
+    render(
+      <GuestBookingFlow
+        coachId={COACH_ID}
+        summary={STUB}
+        checkout={{ ...CHECKOUT, participantName: '' }}
+        authedCheckout={{
+          fullName: 'Test Parent',
+          email: 'parent@example.com',
+          phone: '07700 900123',
+          townCity: 'London',
+          postcode: 'SW1A 1AA',
+        }}
+      />,
+    )
+
+    // The hold is read in a post-mount microtask — let it settle before
+    // asserting, otherwise the initial (hold-less) render passes spuriously.
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    // The stale slot's child is NOT pre-filled — the fallback participant
+    // field is still rendered (empty) after the hold read.
+    expect(screen.getByTestId('participant-name-input')).toHaveValue('')
+    expect(screen.queryByText('Yuwin')).not.toBeInTheDocument()
   })
 
   it('P-10 bug 4: without authedCheckout the guest POST is unchanged', async () => {

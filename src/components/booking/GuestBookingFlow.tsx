@@ -419,17 +419,23 @@ function GuestCheckoutForm({
     void Promise.resolve().then(() => {
       if (cancelled) return
       const hold = readBookingHold()
-      // A hold never transfers between coaches (its own doc contract) — a
-      // stale hold from another coach's picker falls back to the participant
-      // form instead of silently pre-filling the wrong players.
-      if (hold?.coachId === coachId && hold.primaryPlayer) {
+      // A hold never transfers between coaches OR slots (its own doc
+      // contract) — a stale hold from another coach's picker, or from a
+      // different date/time with the same coach (BUG-80), falls back to the
+      // participant form instead of silently pre-filling the wrong players.
+      if (
+        hold?.coachId === coachId &&
+        hold.date === checkout.date &&
+        hold.startTime === checkout.startTime &&
+        hold.primaryPlayer
+      ) {
         setAuthedHoldPlayers([hold.primaryPlayer, ...(hold.additionalParticipants ?? [])])
       }
     })
     return () => {
       cancelled = true
     }
-  }, [authedCheckout, coachId])
+  }, [authedCheckout, coachId, checkout.date, checkout.startTime])
 
   // UX-16: the participant normally arrives via the availability page's URL
   // params (guests) or the hold (parents), but the coach-profile "Book a
