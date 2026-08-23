@@ -1100,3 +1100,154 @@ describe('GuestEnrolmentFlow — 409 slot_full (BUG-23)', () => {
     expect(screen.queryByText(/check your card details/i)).not.toBeInTheDocument()
   })
 })
+
+// ── BUG-79: signed-in parent (authedCheckout) ─────────────────────────────────
+
+describe('GuestEnrolmentFlow — BUG-79 authed parent checkout', () => {
+  const AUTHED = {
+    fullName: 'Pat Parent',
+    email: 'parent@example.com',
+    phone: '07700 900000',
+    townCity: 'London',
+    postcode: 'SW1A 1AA',
+  }
+  const SESSION_IDS = ['session-uuid-001', 'session-uuid-002']
+
+  beforeEach(() => {
+    global.fetch = jest.fn().mockResolvedValue({
+      status: 200,
+      ok: true,
+      json: jest.fn().mockResolvedValue({
+        clientSecret: 'pi_test_secret',
+        enrolmentReference: ENROLMENT_REFERENCE,
+        enrolmentId: 'enrolment-uuid-001',
+      }),
+    } as unknown as Response)
+    stripeModule.__mockConfirmPayment.mockResolvedValue({ error: null })
+    stripeModule.__mockSubmit.mockResolvedValue({ error: null })
+  })
+
+  it('pre-fills contact fields from the account', () => {
+    render(
+      <GuestEnrolmentFlow
+        coachId={COACH_ID}
+        programmeId={PROGRAMME_ID}
+        paymentType="per_session"
+        selectedSessionIds={SESSION_IDS}
+        summary={SUMMARY}
+        authedCheckout={AUTHED}
+      />,
+    )
+    expect(screen.getByDisplayValue('Pat Parent')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('parent@example.com')).toBeInTheDocument()
+  })
+
+  it('POSTs to /api/parent/programme-enrolments WITHOUT a guest block', async () => {
+    const user = userEvent.setup()
+    render(
+      <GuestEnrolmentFlow
+        coachId={COACH_ID}
+        programmeId={PROGRAMME_ID}
+        paymentType="per_session"
+        selectedSessionIds={SESSION_IDS}
+        summary={SUMMARY}
+        authedCheckout={AUTHED}
+      />,
+    )
+
+    await clickPay(user)
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/parent/programme-enrolments',
+        expect.objectContaining({ method: 'POST' }),
+      )
+    })
+    const [, init] = (global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit]
+    const body = JSON.parse(init.body as string) as Record<string, unknown>
+    expect(body.guest).toBeUndefined()
+    expect(body).toEqual(
+      expect.objectContaining({
+        coachId: COACH_ID,
+        programmeId: PROGRAMME_ID,
+        paymentType: 'per_session',
+        selectedSessionIds: SESSION_IDS,
+        participantName: 'Yuwin Test',
+        idempotencyToken: 'test-enrol-uuid-1234',
+      }),
+    )
+    expect(global.fetch).not.toHaveBeenCalledWith(
+      '/api/guest/programme-enrolments',
+      expect.anything(),
+    )
+  })
+
+  it('guest (no authedCheckout) still POSTs to the guest route — regression guard', async () => {
+    const user = userEvent.setup()
+    render(
+      <GuestEnrolmentFlow
+        coachId={COACH_ID}
+        programmeId={PROGRAMME_ID}
+        paymentType="per_session"
+        selectedSessionIds={SESSION_IDS}
+        summary={SUMMARY}
+        authedCheckout={null}
+      />,
+    )
+
+    await clickPay(user)
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/guest/programme-enrolments',
+        expect.objectContaining({ method: 'POST' }),
+      )
+    })
+    const [, init] = (global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit]
+    const body = JSON.parse(init.body as string) as Record<string, unknown>
+    expect(body.guest).toBeDefined()
+  })
+
+  it('confirmation shows "View your bookings" instead of "Create account" for a parent', async () => {
+    const user = userEvent.setup()
+    render(
+      <GuestEnrolmentFlow
+        coachId={COACH_ID}
+        programmeId={PROGRAMME_ID}
+        paymentType="per_session"
+        selectedSessionIds={SESSION_IDS}
+        summary={SUMMARY}
+        authedCheckout={AUTHED}
+      />,
+    )
+
+    await clickPay(user)
+
+    await waitFor(() => {
+      expect(screen.getByText("You're enrolled!")).toBeInTheDocument()
+    })
+    expect(screen.getByTestId('view-bookings-link')).toHaveAttribute('href', '/parent/bookings')
+    expect(screen.queryByText('Create account')).not.toBeInTheDocument()
+  })
+
+  it('guest confirmation still shows the "Create account" nudge', async () => {
+    const user = userEvent.setup()
+    render(
+      <GuestEnrolmentFlow
+        coachId={COACH_ID}
+        programmeId={PROGRAMME_ID}
+        paymentType="per_session"
+        selectedSessionIds={SESSION_IDS}
+        summary={SUMMARY}
+      />,
+    )
+
+    await clickPay(user)
+
+    await waitFor(() => {
+      expect(screen.getByText("You're enrolled!")).toBeInTheDocument()
+    })
+    expect(screen.getByText('Create account')).toBeInTheDocument()
+    expect(screen.queryByTestId('view-bookings-link')).not.toBeInTheDocument()
+  })
+})
