@@ -33,14 +33,18 @@ import {
   isValidTime,
   isValidEmail,
 } from '@/lib/booking/guest-checkout'
+import { isGroupEnabled } from '@/lib/coach/group-pricing'
 import {
-  bookableSlots,
-  isDateWithinBookingWindow,
-  clearsMinAdvance,
-  type SlotTemplate,
-} from '@/lib/availability/slots'
-import { getCoachCommitments, findFirstConflict } from '@/lib/availability/commitments'
-import { hhmmToMinutes } from '@/lib/availability/overlap'
+  parsePlayers,
+  maxBookablePlayers,
+  groupTierPricePence,
+  toAdditionalParticipantsJson,
+  type BookingPlayer,
+} from '@/lib/booking/participants'
+import {
+  resolveIndividualCanonicalPrice,
+  validateSlotAvailability,
+} from '@/lib/booking/slot-pricing'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -65,10 +69,14 @@ interface GuestBookingInput {
   date: string
   startTime: string
   pricePence: number
-  /** Who the session is for — a parent's child or the player themselves (UX-16). */
-  participantName: string
-  /** Age in years. Optional — children have it, adult players may not. */
-  participantAge: number | null
+  /**
+   * Who the session is for (UX-16 / P-10 Phase 2). players[0] is the PRIMARY
+   * (stored in participant_name/participant_age — back-compat); players 1..N
+   * are stored in additional_participants (migration 054). Guests never carry
+   * childProfileId. Normalised at parse time: new clients send a `players`
+   * array, legacy clients send participantName/participantAge (= one player).
+   */
+  players: BookingPlayer[]
   /** Client-stable token so a retried submit reuses the same booking + intent. */
   idempotencyToken: string | null
   guest: GuestDetails
@@ -105,30 +113,42 @@ function parseBody(raw: unknown): GuestBookingInput | null {
   if (typeof g.fullName !== 'string' || g.fullName.trim().length === 0) return null
   if (!isValidEmail(g.email)) return null
 
-  // UX-16: participant name is REQUIRED for every guest booking — it is what
-  // the coach sees ("who am I coaching?"). Length-bounded like other free text.
-  if (
-    typeof b.participantName !== 'string' ||
-    b.participantName.trim().length === 0 ||
-    b.participantName.trim().length > 100
-  ) {
-    return null
-  }
-
-  // UX-16: age is optional (adult players may omit it) but must be a sane
-  // integer when present — mirrors the DB CHECK (1–99).
-  let participantAge: number | null = null
-  if (b.participantAge !== undefined && b.participantAge !== null) {
+  // UX-16 / P-10 Phase 2: who the session is for. New clients send a
+  // `players` array (validated by the shared participants module — guests
+  // may never link child profiles); legacy clients send
+  // participantName/participantAge, normalised to a one-player array. Name
+  // rules are identical in both paths (required, trimmed, ≤100; age optional
+  // 1..99, mirroring the DB CHECK).
+  let players: BookingPlayer[] | null = null
+  if (b.players !== undefined) {
+    players = parsePlayers(b.players, { allowChildProfiles: false })
+    if (!players) return null
+  } else {
     if (
-      typeof b.participantAge !== 'number' ||
-      !Number.isInteger(b.participantAge) ||
-      b.participantAge < 1 ||
-      b.participantAge > 99
+      typeof b.participantName !== 'string' ||
+      b.participantName.trim().length === 0 ||
+      b.participantName.trim().length > 100
     ) {
       return null
     }
-    participantAge = b.participantAge
+    let participantAge: number | null = null
+    if (b.participantAge !== undefined && b.participantAge !== null) {
+      if (
+        typeof b.participantAge !== 'number' ||
+        !Number.isInteger(b.participantAge) ||
+        b.participantAge < 1 ||
+        b.participantAge > 99
+      ) {
+        return null
+      }
+      participantAge = b.participantAge
+    }
+    players = [{ name: b.participantName.trim(), age: participantAge, childProfileId: null }]
   }
+
+  // D4/D5 coherence: a group booking is exactly a multi-player booking. A
+  // count/sessionType mismatch is a malformed client, not a pricing case.
+  if ((players.length > 1) !== (b.sessionType === 'group')) return null
 
   // Optional but length-bounded so it can't be abused as an unbounded key.
   const token =
@@ -145,8 +165,7 @@ function parseBody(raw: unknown): GuestBookingInput | null {
     date: b.date,
     startTime: b.startTime,
     pricePence: b.pricePence,
-    participantName: b.participantName.trim(),
-    participantAge,
+    players,
     idempotencyToken: token,
     guest: {
       fullName: g.fullName.trim(),
@@ -257,7 +276,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   //    Anti-tampering, BR-01.
   const { data: coachSport, error: sportError } = await supabase
     .from('coach_sports')
-    .select('price_individual_pence, price_group_pence, session_duration_minutes, currency, is_active')
+    .select('price_individual_pence, group_price_tiers, session_types, session_duration_minutes, currency, is_active')
     .eq('coach_profile_id', input.coachId)
     .eq('sport_id', input.sportId)
     .maybeSingle()
@@ -270,66 +289,49 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return badRequest('sport_unavailable')
   }
 
-  const sportDefault =
-    input.sessionType === 'individual'
-      ? coachSport.price_individual_pence
-      : coachSport.price_group_pence
+  // P-10 Phase 2 (D4/D5): canonical coach fee.
+  //   - group → group_price_tiers[player_count], the TOTAL for that size.
+  //     price_group_pence is DEPRECATED for price derivation; per-block
+  //     overrides never apply to groups (BUG-09 is 1-on-1 scope). Count is
+  //     capped at the highest tier key, primary player included.
+  //   - individual → sport default + BUG-09 per-block override via the
+  //     shared slot-pricing module (logic unchanged, now shared with
+  //     POST /api/parent/bookings).
+  const playerCount = input.players.length
+  let canonicalPrice: number
 
-  if (sportDefault === null || sportDefault <= 0) {
-    return badRequest('session_type_unavailable')
-  }
-
-  // 3b. BUG-09: a coach can set a per-block price override on an availability
-  //     template (e.g. £75 for Sunday mornings vs a £60 sport default). The guest
-  //     was shown — and the anti-tamper check below must accept — that overridden
-  //     figure, so the canonical price must honour it too. Overrides are only
-  //     surfaced on the 1-on-1 slot picker, so they apply to individual sessions
-  //     only; group bookings flow through the programme/enrolment path and always
-  //     use the sport default.
-  //
-  //     We mirror the public availability query exactly (GET
-  //     /api/coaches/[id]/availability): active templates for this coach, matching
-  //     the sport or sport-agnostic (sport_id IS NULL), on the booking's weekday.
-  //     Separate query, no nested joins (Fix-16d safe). The matching block is the
-  //     one whose window CONTAINS the start time (start_time <= startTime <
-  //     end_time) — one block spans several stride-length start slots, so an exact
-  //     start_time match would miss every slot but the first.
-  let canonicalPrice = sportDefault
-
-  if (input.sessionType === 'individual') {
-    // Weekday from the YYYY-MM-DD string, computed in UTC so BST/GMT never shifts
-    // it — matches the client, which derives the same weekday from the same string.
-    const [year, month, day] = input.date.split('-').map(Number)
-    const dayOfWeek = new Date(Date.UTC(year, month - 1, day)).getUTCDay()
-
-    const { data: templates, error: templateError } = await supabase
-      .from('availability_templates')
-      .select('start_time, end_time, price_override_pence')
-      .eq('coach_profile_id', input.coachId)
-      .eq('is_active', true)
-      .eq('day_of_week', dayOfWeek)
-      .or(`sport_id.eq.${input.sportId},sport_id.is.null`)
-
-    if (templateError) {
-      console.error('[POST /api/guest/bookings] availability_templates lookup failed:', templateError)
+  if (input.sessionType === 'group') {
+    if (!isGroupEnabled(coachSport.session_types ?? [])) {
+      return badRequest('session_type_unavailable')
+    }
+    if (
+      playerCount >
+      maxBookablePlayers(coachSport.session_types ?? [], coachSport.group_price_tiers)
+    ) {
+      return badRequest('too_many_players')
+    }
+    const tierPrice = groupTierPricePence(coachSport.group_price_tiers, playerCount)
+    if (tierPrice === null) {
+      return badRequest('session_type_unavailable')
+    }
+    canonicalPrice = tierPrice
+  } else {
+    const sportDefault = coachSport.price_individual_pence
+    if (sportDefault === null || sportDefault <= 0) {
+      return badRequest('session_type_unavailable')
+    }
+    const resolved = await resolveIndividualCanonicalPrice(supabase, {
+      coachId: input.coachId,
+      sportId: input.sportId,
+      date: input.date,
+      startTime: input.startTime,
+      sportDefaultPence: sportDefault,
+      logPrefix: '[POST /api/guest/bookings]',
+    })
+    if (resolved.failed) {
       return NextResponse.json({ error: 'internal_error' }, { status: 500 })
     }
-
-    // Compare on HH:MM (DB time is HH:MM:SS, client sends HH:MM). The no-overlap
-    // business rule means at most one block matches; if a misconfiguration yields
-    // several, the first with a usable override wins (deterministic, conservative).
-    // No matching block, or a null/zero override, falls through to the sport
-    // default — never a 500 (BUG-09 graceful fallback).
-    const startHHMM = input.startTime.slice(0, 5)
-    const match = (templates ?? []).find((t) => {
-      const blockStart = t.start_time.slice(0, 5)
-      const blockEnd = t.end_time.slice(0, 5)
-      return blockStart <= startHHMM && startHHMM < blockEnd
-    })
-
-    if (match?.price_override_pence != null && match.price_override_pence > 0) {
-      canonicalPrice = match.price_override_pence
-    }
+    canonicalPrice = resolved.price
   }
 
   // The client-supplied price MUST match the DB. Mismatch = stale page or tamper.
@@ -340,174 +342,29 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const endTime = addMinutesToTime(input.startTime, coachSport.session_duration_minutes)
   if (!endTime) return badRequest('invalid_session_time')
 
-  // 3c. BUG-19 Phase 1 (closes BUG-21): validate the requested slot against the
-  //     coach's REAL availability before any money object exists. Until now this
-  //     route accepted ANY date/time. The slot must be one that bookableSlots()
-  //     — the exact function the public calendar renders from
-  //     (src/lib/availability/slots.ts) — would emit for this date: inside an
-  //     active availability block (recurring or ad-hoc), not on a blocked date,
-  //     inside the coach's min/max advance window, and not overlapping a
-  //     committed programme session (persisted or legacy recurring pattern) or a
-  //     live 1-on-1 booking — including overlapping-but-UNEQUAL start times,
-  //     which the migration-034 unique index (23505 → slot_taken at insert,
-  //     kept below as the same-slot race backstop) cannot catch.
-  //
-  //     Template membership deliberately ignores sport, matching the calendar
-  //     (its availability fetch passes no sport filter) — approved in BUG-19
-  //     Phase 1 Step 0. Do not tighten to sport-matched templates here.
-  //
-  //     BUG-51: each template DOES carry its own sport's duration, mirroring the
-  //     availability API — the calendar strides a Tennis block by Tennis's
-  //     session length even when the guest books Cricket, so this validation
-  //     must too or every slot the calendar legitimately shows past the first
-  //     stride would 409 as slot_not_available.
-  const { data: allTemplates, error: allTemplatesError } = await supabase
-    .from('availability_templates')
-    .select('sport_id, day_of_week, start_time, end_time, is_recurring, specific_date')
-    .eq('coach_profile_id', input.coachId)
-    .eq('is_active', true)
-
-  if (allTemplatesError) {
-    console.error('[POST /api/guest/bookings] slot-validation template lookup failed:', allTemplatesError)
-    return NextResponse.json({ error: 'internal_error' }, { status: 500 })
-  }
-
-  // BUG-51: sport_id → session length for ALL the coach's active sports (the
-  // earlier coach_sports read fetched the booked sport only). Same resolution
-  // the availability API performs, so read and write stride identically.
-  const { data: allSportRows, error: allSportsError } = await supabase
-    .from('coach_sports')
-    .select('sport_id, session_duration_minutes')
-    .eq('coach_profile_id', input.coachId)
-    .eq('is_active', true)
-
-  if (allSportsError) {
-    console.error('[POST /api/guest/bookings] coach_sports durations lookup failed:', allSportsError)
-    return NextResponse.json({ error: 'internal_error' }, { status: 500 })
-  }
-
-  const durationBySport: Record<string, number> = Object.fromEntries(
-    ((allSportRows ?? []) as { sport_id: string; session_duration_minutes: number }[]).map(
-      (s) => [s.sport_id, s.session_duration_minutes],
-    ),
-  )
-
-  const { data: blockedRows, error: blockedError } = await supabase
-    .from('blocked_dates')
-    .select('blocked_date, blocked_date_end')
-    .eq('coach_profile_id', input.coachId)
-
-  if (blockedError) {
-    console.error('[POST /api/guest/bookings] blocked_dates lookup failed:', blockedError)
-    return NextResponse.json({ error: 'internal_error' }, { status: 500 })
-  }
-
-  // A date is blocked when it falls inside any blocked range (single-day rows
-  // have no end). ISO-string comparison is safe for YYYY-MM-DD.
-  const isBlocked = ((blockedRows ?? []) as { blocked_date: string; blocked_date_end: string | null }[]).some(
-    (r) => {
-      const rangeStart = r.blocked_date.slice(0, 10)
-      const rangeEnd = (r.blocked_date_end ?? r.blocked_date).slice(0, 10)
-      return rangeStart <= input.date && input.date <= rangeEnd
-    },
-  )
-
-  // Busy intervals from the shared aggregator (BUG-16/17/18 guards): programme
-  // sessions + live bookings ONLY — for a 1-on-1 booking, availability templates
-  // are the valid zone, not a conflict.
-  const busy = await getCoachCommitments(supabase, input.coachId, input.date, {
-    sources: ['programme', 'booking'],
+  // 3c. BUG-19 Phase 1 (closes BUG-21): the requested slot must be one the
+  // public calendar would render — validated by the shared slot-pricing
+  // module (logic extracted verbatim; now also used by
+  // POST /api/parent/bookings so the write sides cannot drift). Specific,
+  // friendly 409s BEFORE the provisional user, the booking row, and the
+  // Stripe PaymentIntent are created.
+  const slotCheck = await validateSlotAvailability(supabase, {
+    coachId: input.coachId,
+    date: input.date,
+    startTime: input.startTime,
+    minAdvanceHours: coach.min_advance_hours,
+    maxAdvanceDays: coach.max_advance_days,
+    bookedSportDurationMinutes: coachSport.session_duration_minutes,
+    logPrefix: '[POST /api/guest/bookings]',
   })
-
-  interface TemplateMembershipRow {
-    sport_id: string | null
-    day_of_week: number
-    start_time: string
-    end_time: string
-    is_recurring: boolean | null
-    specific_date: string | null
-  }
-
-  const slotTemplates: SlotTemplate[] = ((allTemplates ?? []) as TemplateMembershipRow[]).map((t) => ({
-    day_of_week: t.day_of_week,
-    start_time: t.start_time,
-    end_time: t.end_time,
-    is_recurring: t.is_recurring ?? true,
-    specific_date: t.specific_date ? t.specific_date.slice(0, 10) : null,
-    // BUG-51: per-template stride — sport-agnostic templates (null) fall back
-    // to the booked sport's duration passed to bookableSlots below.
-    session_duration_minutes:
-      t.sport_id !== null ? durationBySport[t.sport_id] ?? null : null,
-  }))
-
-  // Server-local midnight for the session date; bookableSlots does all its
-  // boundary maths off this + `now` exactly as the calendar client does.
-  const [bookYear, bookMonth, bookDay] = input.date.split('-').map(Number)
-  const sessionDate = new Date(bookYear, bookMonth - 1, bookDay)
-  const now = new Date()
-
-  const daySlots = bookableSlots(
-    sessionDate,
-    slotTemplates,
-    isBlocked ? new Set([input.date]) : new Set<string>(),
-    coach.min_advance_hours,
-    coach.max_advance_days,
-    now,
-    coachSport.session_duration_minutes,
-    busy,
-  )
-
-  const requestedHHMM = input.startTime.slice(0, 5)
-  if (!daySlots.some((s) => s.time === requestedHHMM)) {
-    // Diagnose WHY for a specific, friendly 409 — all before the provisional
-    // user, the booking row, and the Stripe PaymentIntent are created.
-    if (isBlocked) {
-      return NextResponse.json({ error: 'date_blocked' }, { status: 409 })
-    }
-
-    const startMinutes = hhmmToMinutes(input.startTime)
-    if (
-      !isDateWithinBookingWindow(sessionDate, now, coach.max_advance_days) ||
-      !clearsMinAdvance(sessionDate, startMinutes, coach.min_advance_hours, now)
-    ) {
-      return NextResponse.json({ error: 'outside_booking_window' }, { status: 409 })
-    }
-
-    // slot_taken is only the honest reason when the slot WOULD exist absent
-    // the busy intervals — i.e. a commitment consumed a genuinely offered
-    // slot. A time that overlaps, say, an evening programme but was never
-    // inside any availability block must report slot_not_available, not a
-    // phantom conflict.
-    const slotsIgnoringBusy = bookableSlots(
-      sessionDate,
-      slotTemplates,
-      new Set<string>(),
-      coach.min_advance_hours,
-      coach.max_advance_days,
-      now,
-      coachSport.session_duration_minutes,
-      [],
+  if (!slotCheck.ok) {
+    return NextResponse.json(
+      {
+        error: slotCheck.error,
+        ...('reason' in slotCheck && slotCheck.reason ? { reason: slotCheck.reason } : {}),
+      },
+      { status: slotCheck.status },
     )
-    const wouldExist = slotsIgnoringBusy.find((s) => s.time === requestedHHMM)
-    if (wouldExist) {
-      // BUG-51: diagnose with the slot's OWN duration (its template's sport),
-      // matching the window bookableSlots used to suppress it.
-      const conflict = findFirstConflict(
-        startMinutes,
-        startMinutes + wouldExist.durationMinutes,
-        busy,
-      )
-      return NextResponse.json(
-        {
-          error: 'slot_taken',
-          ...(conflict ? { reason: `This time overlaps ${conflict.label}.` } : {}),
-        },
-        { status: 409 },
-      )
-    }
-
-    // Not inside any active availability block for this date.
-    return NextResponse.json({ error: 'slot_not_available' }, { status: 409 })
   }
 
   // 4. Commission + total (BR-01/BR-02) — rate from platform_config, never hardcoded.
@@ -587,8 +444,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       cancellation_window_hours: coach.cancellation_window_hours,
       // UX-16: snapshot of who the session is for — guests have no
       // child_profiles row, so this is the coach's only source of the name.
-      participant_name: input.participantName,
-      participant_age: input.participantAge,
+      participant_name: input.players[0].name,
+      participant_age: input.players[0].age,
+      // P-10 Phase 2 (migration 054): players 2..N — always with
+      // child_profile_id null on the guest route.
+      additional_participants: toAdditionalParticipantsJson(input.players),
     })
     .select('id')
     .single()
@@ -646,9 +506,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           guest_name: input.guest.fullName,
           // UX-16: the confirmation email must say who the session is for.
           // Stripe metadata values are strings; age omitted when not given.
-          participant_name: input.participantName,
-          ...(input.participantAge !== null
-            ? { participant_age: String(input.participantAge) }
+          participant_name: input.players[0].name,
+          ...(input.players[0].age !== null
+            ? { participant_age: String(input.players[0].age) }
+            : {}),
+          // P-10 Phase 2: group size for the confirmation email copy.
+          ...(input.players.length > 1
+            ? { player_count: String(input.players.length) }
             : {}),
         },
       },

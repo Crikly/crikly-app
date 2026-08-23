@@ -37,6 +37,8 @@ interface SessionPickerProps {
   campMode: boolean
   sessions: SessionView[]
   campDays: CampDay[]
+  /** BUG-70: real platform rate from platform_config, fetched server-side. */
+  commissionRate: number
 }
 
 // ─── Single selectable session row ─────────────────────────────────────────────
@@ -135,6 +137,7 @@ export function SessionPicker({
   campMode,
   sessions,
   campDays,
+  commissionRate,
 }: SessionPickerProps) {
   const router = useRouter()
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -175,8 +178,8 @@ export function SessionPicker({
   // so the total is never unexplained against a "per session" price.
   const payCount = selectedSessionIds.length
   const coachSubtotal = payCount * (pricePerSessionPence ?? 0)
-  const feePence = displayCommissionPence(coachSubtotal)
-  const total = displayParentTotalPence(coachSubtotal)
+  const feePence = displayCommissionPence(coachSubtotal, commissionRate)
+  const total = displayParentTotalPence(coachSubtotal, commissionRate)
 
   const collapsible = !campMode && sessions.length > COLLAPSED_COUNT
   const visibleSessions = collapsible && !expanded ? sessions.slice(0, COLLAPSED_COUNT) : sessions

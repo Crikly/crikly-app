@@ -48,6 +48,11 @@ export interface BookingCardProps {
   priceFrom: number | null
   ratingAvg: number | null
   ratingCount: number
+  /** BUG-75: set for a signed-in parent — the CTA routes to the auth-aware
+   *  booking flow instead of guest checkout. Computed by the page (which
+   *  owns the slug-preserving route param — this component only holds the
+   *  coach UUID). Null/omitted → guest checkout href, unchanged. */
+  authedAvailabilityHref?: string | null
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -177,7 +182,14 @@ function buildBookHref(
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function BookingCard({ coachId, sports, priceFrom, ratingAvg, ratingCount }: BookingCardProps) {
+export function BookingCard({
+  coachId,
+  sports,
+  priceFrom,
+  ratingAvg,
+  ratingCount,
+  authedAvailabilityHref = null,
+}: BookingCardProps) {
   const [loading, setLoading] = useState(true)
   const [nextSlot, setNextSlot] = useState<NextSlot | null>(null)
   const searchParams = useSearchParams()
@@ -207,7 +219,10 @@ export function BookingCard({ coachId, sports, priceFrom, ratingAvg, ratingCount
     ? `${firstSport.session_types[0] === 'group' ? 'Group' : '1-to-1'} · ${firstSport.session_duration_minutes} min`
     : '1-to-1 · 60 min'
 
-  const bookHref = buildBookHref(coachId, nextSlot, firstSport, priceFrom)
+  // BUG-75: a signed-in parent books through the auth-aware flow; everyone
+  // else keeps the guest checkout href (with its slot prefill), unchanged.
+  const bookHref =
+    authedAvailabilityHref ?? buildBookHref(coachId, nextSlot, firstSport, priceFrom)
 
   return (
     <div

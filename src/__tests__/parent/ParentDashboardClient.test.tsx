@@ -168,3 +168,65 @@ describe('ParentDashboardClient', () => {
     expect(card).toHaveTextContent('£12 / session')
   })
 })
+
+// ── PROGRAMME-DASHBOARD-UPCOMING — enrolment-derived session cards ───────────
+// Cards born from programme enrolments are shape-identical to booking cards;
+// what's under test is the per-child scoping contract they ride on.
+
+describe('ParentDashboardClient — programme enrolment cards', () => {
+  const enrolmentCard = {
+    id: 'enrol-1:sess-1',
+    childProfileId: 'c2',
+    coachName: 'Coach Priya',
+    sportName: 'Cricket',
+    dateLabel: 'Sat 5 Sept',
+    timeLabel: '10:00',
+    venueName: 'Camp Ground',
+    daysUntil: 5,
+  }
+
+  it('shows an enrolment card under its linked child only', () => {
+    render(
+      <ParentDashboardClient
+        data={makeData({ sessions: [...makeData().sessions, enrolmentCard] })}
+      />,
+    )
+    // Emma (c1) active by default — her booking shows, Liam's enrolment doesn't.
+    expect(screen.getByText('Coach Dave')).toBeInTheDocument()
+    expect(screen.queryByText('Coach Priya')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /Liam/ }))
+    expect(screen.getByText('Coach Priya')).toBeInTheDocument()
+    expect(screen.queryByText('Coach Dave')).not.toBeInTheDocument()
+  })
+
+  it('an unlinked enrolment (childProfileId null) appears under no child — approved decision', () => {
+    render(
+      <ParentDashboardClient
+        data={makeData({
+          sessions: [{ ...enrolmentCard, childProfileId: null }],
+        })}
+      />,
+    )
+    // Emma active: nothing.
+    expect(screen.queryByText('Coach Priya')).not.toBeInTheDocument()
+    expect(screen.getByTestId('sessions-empty-state')).toBeInTheDocument()
+    // Liam active: still nothing.
+    fireEvent.click(screen.getByRole('button', { name: /Liam/ }))
+    expect(screen.queryByText('Coach Priya')).not.toBeInTheDocument()
+    expect(screen.getByTestId('sessions-empty-state')).toBeInTheDocument()
+  })
+
+  it('player mode still shows null-child cards (self-enrolments)', () => {
+    render(
+      <ParentDashboardClient
+        data={makeData({
+          playerMode: true,
+          children: [],
+          sessions: [{ ...enrolmentCard, childProfileId: null }],
+        })}
+      />,
+    )
+    expect(screen.getByText('Coach Priya')).toBeInTheDocument()
+  })
+})

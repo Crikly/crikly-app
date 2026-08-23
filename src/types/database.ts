@@ -258,6 +258,7 @@ export type Database = {
       }
       bookings: {
         Row: {
+          additional_participants: Json | null
           availability_template_id: string | null
           booked_by_user_id: string
           booking_reference: string
@@ -298,6 +299,7 @@ export type Database = {
           venue_name: string | null
         }
         Insert: {
+          additional_participants?: Json | null
           availability_template_id?: string | null
           booked_by_user_id: string
           booking_reference: string
@@ -338,6 +340,7 @@ export type Database = {
           venue_name?: string | null
         }
         Update: {
+          additional_participants?: Json | null
           availability_template_id?: string | null
           booked_by_user_id?: string
           booking_reference?: string
@@ -838,6 +841,7 @@ export type Database = {
           coach_profile_id: string
           created_at: string
           currency: string
+          group_price_tiers: Json | null
           id: string
           is_active: boolean
           max_advance_days: number | null
@@ -859,6 +863,7 @@ export type Database = {
           coach_profile_id: string
           created_at?: string
           currency?: string
+          group_price_tiers?: Json | null
           id?: string
           is_active?: boolean
           max_advance_days?: number | null
@@ -880,6 +885,7 @@ export type Database = {
           coach_profile_id?: string
           created_at?: string
           currency?: string
+          group_price_tiers?: Json | null
           id?: string
           is_active?: boolean
           max_advance_days?: number | null

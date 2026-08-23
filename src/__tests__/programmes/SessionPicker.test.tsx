@@ -80,6 +80,7 @@ describe('SessionPicker — rendering', () => {
       <SessionPicker
         coachId={COACH_ID}
         programmeId={PROGRAMME_ID}
+        commissionRate={0.1}
         pricePerSessionPence={2500}
         campMode={false}
         sessions={[makeSession()]}
@@ -94,6 +95,7 @@ describe('SessionPicker — rendering', () => {
       <SessionPicker
         coachId={COACH_ID}
         programmeId={PROGRAMME_ID}
+        commissionRate={0.1}
         pricePerSessionPence={2500}
         campMode={false}
         sessions={[makeSession({ selectable: false, closedLabel: 'Closed' })]}
@@ -108,6 +110,7 @@ describe('SessionPicker — rendering', () => {
       <SessionPicker
         coachId={COACH_ID}
         programmeId={PROGRAMME_ID}
+        commissionRate={0.1}
         pricePerSessionPence={2500}
         campMode={false}
         sessions={[makeSession({ dateLabel: 'Sat 5 July' })]}
@@ -122,6 +125,7 @@ describe('SessionPicker — rendering', () => {
       <SessionPicker
         coachId={COACH_ID}
         programmeId={PROGRAMME_ID}
+        commissionRate={0.1}
         pricePerSessionPence={2500}
         campMode={false}
         sessions={[makeSession({ timeLabel: '9:00am – 10:00am' })]}
@@ -136,6 +140,7 @@ describe('SessionPicker — rendering', () => {
       <SessionPicker
         coachId={COACH_ID}
         programmeId={PROGRAMME_ID}
+        commissionRate={0.1}
         pricePerSessionPence={2500}
         campMode={false}
         sessions={[makeSession({ selectable: false, closedLabel: 'Closed' })]}
@@ -154,6 +159,7 @@ describe('SessionPicker — CTA at 0 selections', () => {
       <SessionPicker
         coachId={COACH_ID}
         programmeId={PROGRAMME_ID}
+        commissionRate={0.1}
         pricePerSessionPence={2500}
         campMode={false}
         sessions={[makeSession()]}
@@ -169,6 +175,7 @@ describe('SessionPicker — CTA at 0 selections', () => {
       <SessionPicker
         coachId={COACH_ID}
         programmeId={PROGRAMME_ID}
+        commissionRate={0.1}
         pricePerSessionPence={2500}
         campMode={false}
         sessions={[makeSession()]}
@@ -184,6 +191,7 @@ describe('SessionPicker — CTA at 0 selections', () => {
       <SessionPicker
         coachId={COACH_ID}
         programmeId={PROGRAMME_ID}
+        commissionRate={0.1}
         pricePerSessionPence={2500}
         campMode={false}
         sessions={[makeSession()]}
@@ -203,6 +211,7 @@ describe('SessionPicker — selection toggles count + total', () => {
       <SessionPicker
         coachId={COACH_ID}
         programmeId={PROGRAMME_ID}
+        commissionRate={0.1}
         pricePerSessionPence={2500}
         campMode={false}
         sessions={[makeSession({ key: 'k1' })]}
@@ -220,6 +229,7 @@ describe('SessionPicker — selection toggles count + total', () => {
       <SessionPicker
         coachId={COACH_ID}
         programmeId={PROGRAMME_ID}
+        commissionRate={0.1}
         pricePerSessionPence={2500}
         campMode={false}
         sessions={[makeSession({ key: 'k1', pricePence: 2500 })]}
@@ -238,6 +248,7 @@ describe('SessionPicker — selection toggles count + total', () => {
       <SessionPicker
         coachId={COACH_ID}
         programmeId={PROGRAMME_ID}
+        commissionRate={0.1}
         pricePerSessionPence={2500}
         campMode={false}
         sessions={sessions}
@@ -256,6 +267,7 @@ describe('SessionPicker — selection toggles count + total', () => {
       <SessionPicker
         coachId={COACH_ID}
         programmeId={PROGRAMME_ID}
+        commissionRate={0.1}
         pricePerSessionPence={2500}
         campMode={false}
         sessions={[makeSession({ key: 'k1' })]}
@@ -277,6 +289,7 @@ describe('SessionPicker — selection toggles count + total', () => {
       <SessionPicker
         coachId={COACH_ID}
         programmeId={PROGRAMME_ID}
+        commissionRate={0.1}
         pricePerSessionPence={2800}
         campMode={false}
         sessions={sessions}
@@ -300,6 +313,7 @@ describe('SessionPicker — CTA navigation', () => {
       <SessionPicker
         coachId={COACH_ID}
         programmeId={PROGRAMME_ID}
+        commissionRate={0.1}
         pricePerSessionPence={2500}
         campMode={false}
         sessions={[makeSession({ key: 'k1', sessionId: 'session-uuid-1' })]}
@@ -323,6 +337,7 @@ describe('SessionPicker — CTA navigation', () => {
       <SessionPicker
         coachId={COACH_ID}
         programmeId={PROGRAMME_ID}
+        commissionRate={0.1}
         pricePerSessionPence={2500}
         campMode={false}
         sessions={sessions}
@@ -359,6 +374,7 @@ describe('SessionPicker — CTA navigation', () => {
       <SessionPicker
         coachId={COACH_ID}
         programmeId={PROGRAMME_ID}
+        commissionRate={0.1}
         pricePerSessionPence={2500}
         campMode={true}
         sessions={[]}
@@ -390,6 +406,7 @@ describe('SessionPicker — CTA navigation', () => {
       <SessionPicker
         coachId={COACH_ID}
         programmeId={PROGRAMME_ID}
+        commissionRate={0.1}
         pricePerSessionPence={4000}
         campMode={false}
         sessions={makeSessions(3)}
@@ -421,6 +438,7 @@ describe('SessionPicker — CTA navigation', () => {
       <SessionPicker
         coachId={COACH_ID}
         programmeId={PROGRAMME_ID}
+        commissionRate={0.1}
         pricePerSessionPence={2500}
         campMode={false}
         sessions={[makeSession({ key: 'k1' })]}
@@ -442,6 +460,7 @@ describe('SessionPicker — closed rows are not interactive', () => {
       <SessionPicker
         coachId={COACH_ID}
         programmeId={PROGRAMME_ID}
+        commissionRate={0.1}
         pricePerSessionPence={2500}
         campMode={false}
         sessions={[makeSession({ selectable: false, closedLabel: 'Closed' })]}
@@ -458,6 +477,7 @@ describe('SessionPicker — closed rows are not interactive', () => {
       <SessionPicker
         coachId={COACH_ID}
         programmeId={PROGRAMME_ID}
+        commissionRate={0.1}
         pricePerSessionPence={2500}
         campMode={false}
         sessions={[makeSession({ selectable: false, closedLabel: 'Closed' })]}
@@ -478,6 +498,7 @@ describe('SessionPicker — collapse toggle', () => {
       <SessionPicker
         coachId={COACH_ID}
         programmeId={PROGRAMME_ID}
+        commissionRate={0.1}
         pricePerSessionPence={2500}
         campMode={false}
         sessions={makeSessions(6)}
@@ -492,6 +513,7 @@ describe('SessionPicker — collapse toggle', () => {
       <SessionPicker
         coachId={COACH_ID}
         programmeId={PROGRAMME_ID}
+        commissionRate={0.1}
         pricePerSessionPence={2500}
         campMode={false}
         sessions={makeSessions(4)}
@@ -506,6 +528,7 @@ describe('SessionPicker — collapse toggle', () => {
       <SessionPicker
         coachId={COACH_ID}
         programmeId={PROGRAMME_ID}
+        commissionRate={0.1}
         pricePerSessionPence={2500}
         campMode={false}
         sessions={makeSessions(5)}
@@ -520,6 +543,7 @@ describe('SessionPicker — collapse toggle', () => {
       <SessionPicker
         coachId={COACH_ID}
         programmeId={PROGRAMME_ID}
+        commissionRate={0.1}
         pricePerSessionPence={2500}
         campMode={false}
         sessions={makeSessions(7)}
@@ -535,6 +559,7 @@ describe('SessionPicker — collapse toggle', () => {
       <SessionPicker
         coachId={COACH_ID}
         programmeId={PROGRAMME_ID}
+        commissionRate={0.1}
         pricePerSessionPence={2500}
         campMode={false}
         sessions={makeSessions(6)}
@@ -551,6 +576,7 @@ describe('SessionPicker — collapse toggle', () => {
       <SessionPicker
         coachId={COACH_ID}
         programmeId={PROGRAMME_ID}
+        commissionRate={0.1}
         pricePerSessionPence={2500}
         campMode={false}
         sessions={makeSessions(5)}
@@ -567,6 +593,7 @@ describe('SessionPicker — collapse toggle', () => {
       <SessionPicker
         coachId={COACH_ID}
         programmeId={PROGRAMME_ID}
+        commissionRate={0.1}
         pricePerSessionPence={2500}
         campMode={false}
         sessions={makeSessions(6)}
@@ -584,6 +611,7 @@ describe('SessionPicker — collapse toggle', () => {
       <SessionPicker
         coachId={COACH_ID}
         programmeId={PROGRAMME_ID}
+        commissionRate={0.1}
         pricePerSessionPence={2500}
         campMode={false}
         sessions={makeSessions(5)}
@@ -599,6 +627,7 @@ describe('SessionPicker — collapse toggle', () => {
       <SessionPicker
         coachId={COACH_ID}
         programmeId={PROGRAMME_ID}
+        commissionRate={0.1}
         pricePerSessionPence={2500}
         campMode={false}
         sessions={makeSessions(5)}
@@ -621,6 +650,7 @@ describe('SessionPicker — collapse toggle', () => {
       <SessionPicker
         coachId={COACH_ID}
         programmeId={PROGRAMME_ID}
+        commissionRate={0.1}
         pricePerSessionPence={2500}
         campMode={true}
         sessions={[]}
@@ -646,6 +676,7 @@ describe('SessionPicker — camp mode', () => {
       <SessionPicker
         coachId={COACH_ID}
         programmeId={PROGRAMME_ID}
+        commissionRate={0.1}
         pricePerSessionPence={2500}
         campMode={true}
         sessions={[]}
@@ -670,6 +701,7 @@ describe('SessionPicker — camp mode', () => {
       <SessionPicker
         coachId={COACH_ID}
         programmeId={PROGRAMME_ID}
+        commissionRate={0.1}
         pricePerSessionPence={2500}
         campMode={true}
         sessions={[]}
@@ -692,6 +724,7 @@ describe('SessionPicker — camp mode', () => {
       <SessionPicker
         coachId={COACH_ID}
         programmeId={PROGRAMME_ID}
+        commissionRate={0.1}
         pricePerSessionPence={3000}
         campMode={true}
         sessions={[]}
@@ -712,6 +745,7 @@ describe('SessionPicker — null price edge case', () => {
       <SessionPicker
         coachId={COACH_ID}
         programmeId={PROGRAMME_ID}
+        commissionRate={0.1}
         pricePerSessionPence={null}
         campMode={false}
         sessions={[makeSession({ pricePence: 0 })]}
@@ -727,6 +761,7 @@ describe('SessionPicker — null price edge case', () => {
       <SessionPicker
         coachId={COACH_ID}
         programmeId={PROGRAMME_ID}
+        commissionRate={0.1}
         pricePerSessionPence={null}
         campMode={false}
         sessions={[makeSession({ key: 'k1', pricePence: 0 })]}

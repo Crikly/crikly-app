@@ -5,7 +5,10 @@
 //      only = 1×, morning + afternoon = 2× (the pre-BUG-23 bug sold full days
 //      at 1×).
 //   2. UX-21: the sticky summary itemises "N sessions × £X = £Y.YY" +
-//      "Service fee £Z" + total, with the 10% commission ON TOP (BR-01/BR-02).
+//      "Service fee £Z" + total, with the commission ON TOP (BR-01/BR-02).
+//      BUG-70: the displayed rate comes from platform_config, so the expected
+//      fee/total are computed from the DB rate read in beforeAll — never
+//      hardcoded 10%.
 //   3. A full slot closes only its own row — sibling slots stay selectable
 //      (capacity is per (session, slot_index), migration 040).
 //
@@ -69,6 +72,7 @@ test.describe('P9 — BUG-23: camp per-slot booking', () => {
   let coachProfileId: string
   let programmeId: string
   let sessionIds: string[] = []
+  let commissionRate: number
   const thursday = nextBookableThursday()
   const day1 = localISODate(thursday)
   const day2 = localISODate(plusDays(thursday, 1))
@@ -79,6 +83,15 @@ test.describe('P9 — BUG-23: camp per-slot booking', () => {
 
   test.beforeAll(async () => {
     coachProfileId = await getCoachProfileIdByEmail(TEST_COACH_EMAIL)
+
+    // BUG-70: the picker displays the real platform_config rate — expected
+    // fee/total mirror the display maths (Math.round, commission on top).
+    const { data: configRow, error: configErr } = await dbAdmin
+      .from('platform_config')
+      .select('default_commission_rate')
+      .single()
+    if (configErr || !configRow) throw new Error(`[P9] platform_config read failed: ${configErr?.message}`)
+    commissionRate = Number(configRow.default_commission_rate)
 
     // Public pages 404 for a non-live coach (P8 pattern — own the state).
     const { error: liveErr } = await dbAdmin
@@ -152,7 +165,16 @@ test.describe('P9 — BUG-23: camp per-slot booking', () => {
     }
   })
 
-  test('T9.1: morning slot only prices at 1× + 10% fee (UX-21 itemised)', async ({ page }) => {
+  /** Mirrors SessionPicker formatTotal — 2-dp GBP. */
+  function gbp2dp(pence: number): string {
+    return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(pence / 100)
+  }
+  /** Display maths (commission-display.ts): fee = round(subtotal × rate), on top. */
+  function expectedFeePence(subtotalPence: number): number {
+    return Math.round(subtotalPence * commissionRate)
+  }
+
+  test('T9.1: morning slot only prices at 1× + commission fee (UX-21 itemised)', async ({ page }) => {
     await page.goto(`/coaches/${coachProfileId}/programmes/${programmeId}`)
     await expect(page.getByTestId('session-picker')).toBeVisible()
 
@@ -164,12 +186,15 @@ test.describe('P9 — BUG-23: camp per-slot booking', () => {
 
     // UX-21: three itemised lines. £40 unit price renders whole-pound; the
     // computed values render 2-dp (SessionPicker formatPence/formatTotal).
+    const feePence = expectedFeePence(PRICE_PENCE)
     await expect(page.getByTestId('subtotal-line-desktop')).toHaveText('1 session × £40 = £40.00')
-    await expect(page.getByTestId('fee-line-desktop')).toHaveText('Service fee £4.00')
-    await expect(page.getByTestId('pay-cta-desktop')).toHaveText('Pay for 1 session — £44.00')
+    await expect(page.getByTestId('fee-line-desktop')).toHaveText(`Service fee ${gbp2dp(feePence)}`)
+    await expect(page.getByTestId('pay-cta-desktop')).toHaveText(
+      `Pay for 1 session — ${gbp2dp(PRICE_PENCE + feePence)}`,
+    )
   })
 
-  test('T9.2: both slots of a camp day price at 2× + 10% fee, wire format carries slot indices', async ({ page }) => {
+  test('T9.2: both slots of a camp day price at 2× + commission fee, wire format carries slot indices', async ({ page }) => {
     await page.goto(`/coaches/${coachProfileId}/programmes/${programmeId}`)
     const rows = page.getByTestId('session-row')
     await expect(rows).toHaveCount(3)
@@ -177,9 +202,13 @@ test.describe('P9 — BUG-23: camp per-slot booking', () => {
     await rows.nth(0).click() // day 1 Morning
     await rows.nth(1).click() // day 1 Afternoon
 
+    const subtotalPence = 2 * PRICE_PENCE
+    const feePence = expectedFeePence(subtotalPence)
     await expect(page.getByTestId('subtotal-line-desktop')).toHaveText('2 sessions × £40 = £80.00')
-    await expect(page.getByTestId('fee-line-desktop')).toHaveText('Service fee £8.00')
-    await expect(page.getByTestId('pay-cta-desktop')).toHaveText('Pay for 2 sessions — £88.00')
+    await expect(page.getByTestId('fee-line-desktop')).toHaveText(`Service fee ${gbp2dp(feePence)}`)
+    await expect(page.getByTestId('pay-cta-desktop')).toHaveText(
+      `Pay for 2 sessions — ${gbp2dp(subtotalPence + feePence)}`,
+    )
 
     // BUG-23 wire format: two selections of the SAME session — bare uuid for
     // slot 0, uuid.1 for the afternoon block (slot-selection.ts encoding).
