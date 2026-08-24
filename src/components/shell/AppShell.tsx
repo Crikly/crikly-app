@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { CriklyAvatar } from '@/components/ui/CriklyAvatar'
+import { ParentTodoBadge } from '@/components/parent/ParentTodoBadge'
 import { ProfilePopover } from '@/components/shared/ProfilePopover'
 import { RolePill } from '@/components/shell/RolePill'
 import {
@@ -271,9 +272,13 @@ export function AppShell({
       </Link>
 
       {context === 'parent' && (
+        // P-07 fix: absolutely centred (same pattern as the landing nav
+        // below / PublicHeader) instead of left-aligned beside the logo.
+        // md: breakpoint for the same reason as landing — below 768px the
+        // centred links collide with the pill+avatar cluster.
         <nav
           aria-label="Primary"
-          className="ml-3 hidden items-center gap-6 sm:flex"
+          className="absolute left-1/2 hidden -translate-x-1/2 items-center gap-6 md:flex"
         >
           {PARENT_LINKS.map((link) => (
             <Link
@@ -318,6 +323,9 @@ export function AppShell({
       {/* UI-FIX: role pill grouped with the avatar on the right — both are
           account/identity controls. */}
       <div className="ml-auto flex items-center gap-2.5 md:gap-3.5">
+        {/* P-06: To-Do badge — parent context only; renders nothing at
+            count 0 (all conditions decided by GET /api/parent/todo). */}
+        {context === 'parent' && <ParentTodoBadge />}
         <RolePill activeRole={identity.activeRole} roles={identity.roles} />
         <div ref={avatarRef} className="relative">
           <button

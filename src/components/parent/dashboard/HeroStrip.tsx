@@ -44,7 +44,13 @@ export function HeroStrip({
         )}
 
         {!playerMode && (
-          <div className="mt-8 -mb-12 translate-y-4">
+          // P-07 fix: the approved design floats the bubbles ACROSS the
+          // hero/content boundary — translateY(34px) in the design source;
+          // translate-y-8 (32px) is the closest Tailwind step. translate-y-4
+          // left the avatars almost entirely inside the banner ("cut off").
+          // relative z-10 guarantees the row paints above the white content
+          // that follows in the DOM, whatever the font metrics/scaling.
+          <div className="relative z-10 mt-8 -mb-12 translate-y-8">
             <ChildBubbleRow
               childrenList={childrenList}
               activeChildId={activeChild?.id ?? null}

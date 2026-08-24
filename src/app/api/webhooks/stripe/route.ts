@@ -50,6 +50,7 @@ import type Stripe from 'stripe'
 import { getStripe } from '@/lib/stripe/client'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendBookingConfirmation } from '@/lib/resend/send-booking-confirmation'
+import { buildBookingIcs, bookingIcsFilename } from '@/lib/calendar/ics'
 import { sendNewBookingNotification } from '@/lib/resend/send-new-booking-to-coach'
 import { sendProgrammeConfirmation } from '@/lib/resend/send-programme-confirmation'
 import { sendOpsAlert } from '@/lib/resend/send-ops-alert'
@@ -417,7 +418,7 @@ async function handlePaymentIntentSucceeded(intent: Stripe.PaymentIntent): Promi
     .eq('id', bookingId)
     .eq('status', 'pending_payment')
     .select(
-      'id, booking_reference, coach_profile_id, session_date, session_start_time, session_end_time, session_type, coach_price_pence, sport_id',
+      'id, booking_reference, coach_profile_id, booked_by_user_id, session_date, session_start_time, session_end_time, session_type, coach_price_pence, sport_id, venue_name',
     )
 
   if (bookingError) {
@@ -461,20 +462,105 @@ interface ConfirmedBookingRow {
   id: string
   booking_reference: string
   coach_profile_id: string
+  booked_by_user_id: string
   session_date: string
   session_start_time: string
   session_end_time: string
   session_type: string
   coach_price_pence: number
   sport_id: string
+  /** CF-NOTIFY-03: .ics LOCATION — nullable snapshot, blank when unset. */
+  venue_name: string | null
+}
+
+/**
+ * CF-NOTIFY-03: sport display name for the .ics/email — best-effort, null on
+ * any miss so each caller picks its own fallback label.
+ */
+async function resolveSportName(
+  adminSupabase: SupabaseAdminClient,
+  sportId: string,
+): Promise<string | null> {
+  const { data: sport } = await adminSupabase
+    .from('sports')
+    .select('name')
+    .eq('id', sportId)
+    .maybeSingle()
+  return sport?.name ?? null
+}
+
+/**
+ * CF-NOTIFY-03: the booking's .ics attachment — one builder call shared by
+ * both emails (same event, different recipients). Times are UK wall-clock
+ * from the booking row; the shared builder converts them via the
+ * Europe/London offset (BUG-66-safe). Pure assembly — never throws further
+ * than its caller's email path.
+ */
+function buildBookingIcsAttachment(
+  booking: ConfirmedBookingRow,
+  sportName: string,
+  coachName: string,
+  bookerName?: string,
+): { filename: string; content: string } {
+  return {
+    filename: bookingIcsFilename(booking.booking_reference),
+    content: buildBookingIcs({
+      bookingReference: booking.booking_reference,
+      sportName,
+      coachName,
+      sessionDate: booking.session_date,
+      startTime: booking.session_start_time,
+      endTime: booking.session_end_time,
+      venue: booking.venue_name,
+      ...(bookerName ? { bookerName } : {}),
+      nowMs: Date.now(),
+    }),
+  }
+}
+
+/** The authed booker's identity, for email assembly (BUG-71/BUG-72). */
+interface AuthedBookerProfile {
+  fullName: string | null
+  authUserId: string
+}
+
+/**
+ * BUG-71/BUG-72 — resolve the authed booker behind a booking. Authed bookings
+ * point booked_by_user_id at a real user_profiles row with an auth user; guest
+ * bookings point at a provisional profile (no auth user), so this returns null
+ * for them. Best-effort with PERMANENT semantics: lookup failures log and
+ * return null, never throw — a redelivery would no-op at the confirm guard and
+ * never resend the email anyway.
+ */
+async function lookupAuthedBooker(
+  adminSupabase: SupabaseAdminClient,
+  bookedByUserId: string,
+): Promise<AuthedBookerProfile | null> {
+  const { data: profile, error: profileError } = await adminSupabase
+    .from('user_profiles')
+    .select('full_name, auth_user_id, is_provisional')
+    .eq('id', bookedByUserId)
+    .maybeSingle()
+
+  if (profileError) {
+    console.error(`[Stripe Webhook] booker profile lookup failed for ${bookedByUserId}:`, profileError)
+    return null
+  }
+  if (!profile || profile.is_provisional || !profile.auth_user_id) {
+    // Guest (provisional) booker or missing row — the normal non-authed path.
+    return null
+  }
+  return { fullName: profile.full_name || null, authUserId: profile.auth_user_id }
 }
 
 /**
  * Booking-confirmation email (P-00c-EMAIL). Fires exactly once — gated by the
- * pending_payment transition in the caller. The guest has no account and no
- * stored email, so the address + name come from the intent metadata stashed at
- * creation by /api/guest/bookings. Email failure NEVER affects the webhook
- * response: sendBookingConfirmation swallows and returns a boolean.
+ * pending_payment transition in the caller. For a GUEST booking the address +
+ * name come from the intent metadata stashed at creation by /api/guest/bookings
+ * (the guest has no account and no stored email). For an AUTHED booking
+ * (BUG-71) there is no guest_email metadata — the recipient is resolved via
+ * booked_by_user_id → user_profiles → auth.users. Email failure NEVER affects
+ * the webhook response: sendBookingConfirmation swallows and returns a boolean.
  *
  * Extracted verbatim from handlePaymentIntentSucceeded (BUG-13b) so the
  * succeeded-after-release restore path can send the same email. No logic change.
@@ -484,19 +570,35 @@ async function sendGuestBookingConfirmationEmail(
   booking: ConfirmedBookingRow,
   intent: Stripe.PaymentIntent,
 ): Promise<void> {
-  const guestEmail = intent.metadata?.guest_email
-  const guestName = intent.metadata?.guest_name
+  let recipientEmail: string | undefined = intent.metadata?.guest_email
+  let recipientName: string | undefined = intent.metadata?.guest_name
   // UX-16: who the session is for, stashed at intent creation. Absent on
   // intents created before UX-16 — the email then omits its "Booking for" row.
   const participantName = intent.metadata?.participant_name || undefined
   const participantAgeRaw = Number.parseInt(intent.metadata?.participant_age ?? '', 10)
   const participantAge = Number.isInteger(participantAgeRaw) ? participantAgeRaw : undefined
 
-  if (!guestEmail) {
-    // No recipient (non-guest intent, or an older intent created before this
-    // metadata existed). Booking is confirmed; silently skip the email — this is
-    // a normal path, not an error worth logging.
-    return
+  if (!recipientEmail) {
+    // BUG-71: no guest_email metadata means an AUTHED booking (the parent route
+    // deliberately doesn't stash one — the account is the source of truth).
+    // Resolve the recipient via booked_by_user_id; if that yields nothing
+    // (provisional booker, pre-metadata intent, lookup miss) silently skip —
+    // the booking is confirmed either way, same as before.
+    const booker = await lookupAuthedBooker(adminSupabase, booking.booked_by_user_id)
+    if (!booker) return
+
+    const { data: authUser, error: authUserError } = await adminSupabase.auth.admin.getUserById(
+      booker.authUserId,
+    )
+    if (!authUser?.user?.email) {
+      console.error(
+        `[Stripe Webhook] no email for authed booker — confirmation email skipped for booking ${booking.id}:`,
+        authUserError ?? 'user has no email',
+      )
+      return
+    }
+    recipientEmail = authUser.user.email
+    recipientName = recipientName || booker.fullName || undefined
   }
 
   // Coach display name: prefer coach_profiles.display_name, fall back to the
@@ -519,9 +621,12 @@ async function sendGuestBookingConfirmationEmail(
     if (coachUser?.full_name) coachName = coachUser.full_name
   }
 
+  // CF-NOTIFY-03: sport for the .ics SUMMARY — spec fallback is "Cricket".
+  const sportName = (await resolveSportName(adminSupabase, booking.sport_id)) ?? 'Cricket'
+
   const sent = await sendBookingConfirmation({
-    guestName: guestName || 'there',
-    guestEmail,
+    guestName: recipientName || 'there',
+    guestEmail: recipientEmail,
     coachName,
     participantName,
     participantAge,
@@ -531,6 +636,9 @@ async function sendGuestBookingConfirmationEmail(
     sessionType: formatSessionType(booking.session_type),
     // intent.amount is the canonical amount actually charged, in pence.
     totalPence: intent.amount,
+    // CF-NOTIFY-03: same event the coach's email carries — calendars dedupe
+    // on the shared reference-based UID.
+    icsAttachment: buildBookingIcsAttachment(booking, sportName, coachName),
   })
 
   if (!sent) {
@@ -591,21 +699,27 @@ async function sendNewBookingToCoachEmail(
     return
   }
 
-  // Sport display name — non-fatal; a lookup miss falls back to a generic label.
-  let sportName = 'Coaching session'
-  const { data: sport } = await adminSupabase
-    .from('sports')
-    .select('name')
-    .eq('id', booking.sport_id)
-    .maybeSingle()
-  if (sport?.name) sportName = sport.name
+  // Sport display name — non-fatal; a lookup miss falls back to a generic
+  // label for the email row ('Coaching session') and the CF-NOTIFY-03 spec
+  // fallback ('Cricket') for the .ics SUMMARY.
+  const resolvedSport = await resolveSportName(adminSupabase, booking.sport_id)
+  const sportName = resolvedSport ?? 'Coaching session'
 
   const base = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+
+  // BUG-72: guest bookings carry the payer's name in guest_name metadata;
+  // authed bookings don't — resolve it from the booker's user_profiles row.
+  // Best-effort: any miss falls back to the existing generic label.
+  let parentName = intent.metadata?.guest_name
+  if (!parentName) {
+    const booker = await lookupAuthedBooker(adminSupabase, booking.booked_by_user_id)
+    if (booker?.fullName) parentName = booker.fullName
+  }
 
   const sent = await sendNewBookingNotification({
     coachEmail,
     coachName: coach.display_name?.trim() || coachUser.full_name || 'Coach',
-    parentName: intent.metadata?.guest_name || 'A parent',
+    parentName: parentName || 'A parent',
     sport: sportName,
     sessionDate: formatSessionDate(booking.session_date),
     sessionTime: formatSessionTime(booking.session_start_time, booking.session_end_time),
@@ -614,6 +728,14 @@ async function sendNewBookingToCoachEmail(
     coachPricePence: booking.coach_price_pence,
     bookingReference: booking.booking_reference,
     dashboardUrl: `${base}/coach/bookings/${booking.id}`,
+    // CF-NOTIFY-03: same .ics event as the parent's copy (shared UID), with
+    // the booker named in the description for the coach's context.
+    icsAttachment: buildBookingIcsAttachment(
+      booking,
+      resolvedSport ?? 'Cricket',
+      coach.display_name?.trim() || coachUser.full_name || 'Coach',
+      parentName || 'A parent',
+    ),
   })
 
   if (!sent) {
@@ -671,7 +793,7 @@ async function restoreReleasedBookingIfPaid(
     .eq('id', bookingId)
     .eq('status', 'pending_payment')
     .not('deleted_at', 'is', null)
-    .select('id, booking_reference, coach_profile_id, session_date, session_start_time, session_end_time, session_type, coach_price_pence, sport_id')
+    .select('id, booking_reference, coach_profile_id, booked_by_user_id, session_date, session_start_time, session_end_time, session_type, coach_price_pence, sport_id, venue_name')
 
   // BUG-15 (review fix): only a constraint violation IS the permanent
   // conflict — any other restore failure is transient and must retry.
