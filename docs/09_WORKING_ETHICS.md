@@ -65,7 +65,7 @@ always does.
 
 | Tool | Purpose | When required |
 |---|---|---|
-| Node 20 LTS | Run Next.js, run npm scripts | Always |
+| Node 24 LTS | Run Next.js, run npm scripts | Always |
 | Docker Desktop | Hosts local Supabase containers | Migrations, seed, API testing against local DB |
 | Supabase CLI | Manages local Supabase stack | Same as Docker |
 | psql (optional) | Direct DB queries from terminal | Optional — `docker exec` works as fallback |
@@ -73,7 +73,7 @@ always does.
 ### Verifying each tool works
 
 ```
-node --version       # Expect: v20.x.x
+node --version       # Expect: v24.x.x
 docker ps            # Expect: empty list (no containers) or list (containers running)
 supabase --version   # Expect: any 2.x version
 ```
@@ -529,7 +529,7 @@ Stop Claude Code immediately and bring to Claude if:
 → Business rule changes (commission rates, payout timing)
 → Adding new external dependencies (npm packages)
 → Anything that feels architecturally significant
-→ Node.js version is not 20 LTS — check with: node --version
+→ Node.js version is not 24 LTS — check with: node --version
 → API route created as a stub with no wiring task scheduled to follow it
 → reactCompiler: true is present in next.config.ts
 ```
@@ -991,7 +991,7 @@ Discipline". Summary — these are absolute:
 ## Quality Gate — Before Any Commit
 
 ```
-□ Node version is 20 LTS (node --version shows v20.x.x)
+□ Node version is 24 LTS (node --version shows v24.x.x)
 □ If this task creates an API route — is it wired to real data, or explicitly marked STUB with a follow-up task in the build plan?
 □ next.config.ts does NOT contain reactCompiler: true
 □ TypeScript: zero errors (npx tsc --noEmit)

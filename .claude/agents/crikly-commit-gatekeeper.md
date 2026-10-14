@@ -26,8 +26,8 @@ Run each check in order. Report PASS or FAIL clearly for each. If any check fail
 ```
 □ Check 1:  Node version
             Run: node --version
-            Expect: v20.x.x
-            Fail action: Stop. Tell user to switch to Node 20 LTS.
+            Expect: v24.x.x
+            Fail action: Stop. Tell user to switch to Node 24 LTS.
 
 □ Check 2:  reactCompiler guard
             Run: grep -n "reactCompiler" next.config.ts
@@ -186,7 +186,7 @@ Branch: <current-branch>
 Staged files: <count>
 
 --- Quality Gate ---
-[1] Node version ............... ✅ PASS (v20.11.1)
+[1] Node version ............... ✅ PASS (v24.22.0)
 [2] reactCompiler guard ........ ✅ PASS
 [3] TypeScript compilation ..... ❌ FAIL (3 errors)
     src/app/api/coaches/route.ts:42 — Property 'sport' does not exist...
