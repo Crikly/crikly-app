@@ -977,7 +977,7 @@ When a coach opens a confirmed booking, they see all of the following:
 - Child Training Passport summary (subject to REQ-C-064)
 - Parent name and contact details (unlocked on confirmed booking per BR-07)
 - Booking reference number (CRK-YYYY-NNNN format per BR-12)
-- Amount they will earn + expected payout date (completed_at + 48hrs)
+- Amount they will earn + expected payout date (completed_at + 48hrs) (1-to-1 and group bookings only)
 - Cancellation policy reminder (hours remaining in window)
 - Session notes field (always accessible — see REQ-C-065)
 
@@ -996,14 +996,11 @@ Notes are never locked. The coach may want to update notes days after a session.
 Notes are internal to the coach — not shown to the parent.
 Stored on `session_notes` table (already exists in schema).
 
-### REQ-C-066 — Payout triggered by coach manually marking complete
-The 48hr payout countdown starts when the coach manually taps "Mark as complete."
-Sessions are NOT auto-marked complete at session end time.
-This is a deliberate choice — it ensures the coach has delivered the session before payment is released,
-and gives them a moment to add notes or a performance report first.
-
-**Impact on schema:** `bookings.completed_at` is set at the moment the coach taps "Mark as complete."
-`bookings.payout_eligible_at` = completed_at + platform_config.default_payout_delay_hours.
+### REQ-C-066 — Payout countdown starts automatically when the session ends
+(Changed 15 Oct 2026; supersedes the earlier "coach manually marks complete" rule.)
+For 1-to-1 and group bookings, completed_at is set automatically after the session ends (session end + platform_config.default_autocomplete_delay_hours, by the hourly auto-complete job). The coach does not tap "Mark as complete".
+bookings.payout_eligible_at = completed_at + platform_config.default_payout_delay_hours (default 48 hours). See BR-03.
+Programme enrolments are paid immediately on successful payment with no hold (BR-03, T-16).
 
 ### REQ-C-067 — Performance reports: configurable window with notification
 Performance reports (Premium feature) can be written within a configurable time window
@@ -1093,7 +1090,7 @@ Both Free and Premium coaches can filter earnings by:
 
 ### REQ-C-074 — Pending payouts clearly separated
 Earnings screen has two distinct sections:
-1. **Pending** — sessions marked complete, payout_eligible_at in the future (within 48hr window)
+1. **Pending** — sessions marked complete, payout_eligible_at in the future (within 48hr window) (1-to-1 and group bookings only)
    Shows: session date, child name, sport, amount, expected payout date
 2. **Received** — payouts already transferred to bank account via Stripe
    Shows: transfer date, amount, Stripe transfer reference

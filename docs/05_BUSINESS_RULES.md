@@ -1,8 +1,8 @@
 # Crikly — Business Rules
 
 **Version:** 1.1
-**Last Updated:** July 2026
-**Changed:** Added BR-20 — Coach Scheduling Conflict Rules (BUG-16/17/18).
+**Last Updated:** 15 October 2026
+**Changed:** BR-01 now records the Stripe fee deduction from the coach payout (T-17); BR-03 split by booking type — bookings paid 48h after auto-completion, programme enrolments paid immediately (T-16, not yet implemented, TECH-06); BR-04 implementation status added (TECH-07). Previous: Added BR-20 — Coach Scheduling Conflict Rules (BUG-16/17/18).
 
 These rules MUST be enforced in code, not just documented.
 Every rule has an ID. Reference it in code comments and commits.
@@ -12,27 +12,34 @@ Every rule has an ID. Reference it in code comments and commits.
 ## BR-01 — Commission Calculation
 
 Commission is added ON TOP of the coach's price. Never deducted from it.
+The Stripe processing fee on the parent's payment is deducted from the coach's payout.
 
 ```
-parent_total = coach_price + (coach_price × commission_rate)
-coach_receives = coach_price (full amount, unchanged)
-platform_earns = coach_price × commission_rate
+parent_total   = coach_price + (coach_price × commission_rate)
+stripe_fee     = the actual fee Stripe charged on the parent's payment (read from the charge's balance transaction)
+coach_receives = coach_price − stripe_fee
+platform_earns = coach_price × commission_rate (commission is not reduced by the Stripe fee)
 ```
 
-**Example:**
+**Example** (the Stripe fee is illustrative; the real fee is read from Stripe):
 ```
-coach_price  = 6000 pence (£60.00)
-commission   = 10% → 600 pence (£6.00)
-parent_pays  = 6600 pence (£66.00)
-coach_gets   = 6000 pence (£60.00)
-platform_net = 600 pence minus Stripe fees
+coach_price  = 6000p (£60.00)
+commission   = 10% = 600p
+parent_pays  = 6600p (£66.00)
+stripe_fee   = 119p (illustrative: 1.5% of 6600 + 20p)
+coach_gets   = 5881p (£58.81)
+platform_net = 600p
 ```
 
 **Implementation rules:**
-- Commission rate always read from `platform_config` or `countries` table — NEVER hardcoded
-- Commission rate snapshot stored on `bookings.commission_rate` at time of booking
-- Once booked, commission rate on that booking never changes
-- All amounts stored as integers in pence — never decimals
+- Commission rate always read from `platform_config` or `countries` — NEVER hardcoded
+- Commission rate snapshot stored on `bookings.commission_rate` at booking time; never changes after
+- All amounts stored as integers in pence
+- The Stripe fee is read from Stripe at transfer time, never estimated in the payout itself
+- `payouts.amount_pence` stores the NET amount transferred to the coach
+- `payment_intents.coach_transfer_amount_pence` stores the GROSS coach price (audit figure; differs from the transfer by the Stripe fee)
+- Coaches are shown the net figure as an estimate before the payout (payout-estimate)
+- Code comments that call the Stripe fee deduction "BR-02" refer to this rule (BR-02 is the commission rate)
 
 ---
 
@@ -47,17 +54,20 @@ Country-specific rates stored in `countries.default_commission_rate`.
 
 ## BR-03 — Payout Schedule
 
-Coach is paid 48 hours after session completion.
+Payout timing depends on the type of booking (Decision T-16, 15 Oct 2026).
 
-```
-payout_eligible_at = booking.completed_at + platform_config.default_payout_delay_hours
-```
+**1-to-1 and group bookings (rows in `bookings`): paid 48 hours after the session completes.**
+- `completed_at` is set automatically after the session ends (session end + `platform_config.default_autocomplete_delay_hours`, applied by the hourly auto-complete job). The coach does NOT tap "Mark as complete". This supersedes REQ-C-066.
+- `payout_eligible_at` = `booking.completed_at` + `platform_config.default_payout_delay_hours`
+- Default 48 hours; admin configurable (24h, 72h, 7 days); read from `platform_config`, never hardcoded
+- Payout triggers only when the session is completed AND `payout_eligible_at` has passed
+- Method: Stripe Connect transfer tied to the original charge (`source_transaction`). Amount: per BR-01.
 
-- Default: 48 hours
-- Admin configurable: 24hrs, 72hrs, 7 days
-- Read from `platform_config.default_payout_delay_hours` — never hardcoded
-- Payout only triggers when: session is completed AND payout_eligible_at has passed
-- Payout method: Stripe Connect transfer to coach's bank account
+**Programme enrolments (rows in `group_programme_enrolments`): paid immediately.**
+- The coach is paid as soon as the parent's enrolment payment succeeds. NO 48-hour hold.
+- Same method and amount rule (`source_transaction`, coach price minus the Stripe fee per BR-01).
+- Accepted risk: the coach is paid before sessions are delivered. If a programme is cancelled or a parent is refunded (BR-04, REQ-C-056, BR-17), the platform must reverse the Stripe transfer. A reversal fails if the coach has already withdrawn the money, and the platform carries that loss. Programme refunds are handled manually by an admin until built.
+- STATUS: decided, NOT YET IMPLEMENTED. Live code creates no payout for a programme enrolment. Tracked as TECH-06.
 
 ---
 
@@ -93,6 +103,8 @@ Outcome:   Full refund to parent regardless of timing
 - Default: 24 hours before session
 - Coach configurable: stored in `coach_profiles.cancellation_window_hours`
 - Snapshot of window stored on `bookings.cancellation_window_hours` at booking time
+
+**Implementation status (15 Oct 2026):** Scenarios A and B are implemented for bookings. Scenario C is NOT implemented: no coach cancellation path exists for a paid booking (TECH-07).
 
 ---
 
@@ -432,5 +444,5 @@ When a new business rule is agreed:
 
 ---
 
-*Crikly Business Rules v1.0 — March 2026*
+*Crikly Business Rules v1.1 — 15 October 2026*
 *These rules must be enforced in code. Reference by ID in commits and comments.*
