@@ -22,7 +22,9 @@ interface EarningsSummary {
 
 interface PayoutItem {
   id: string
-  booking_id: string
+  // Nullable since migration 056 (TECH-06): null for programme-enrolment
+  // payouts, which phase 2 renders from group_programme_enrolments.
+  booking_id: string | null
   booking_reference: string | null
   session_date: string | null
   session_type: string | null
@@ -229,7 +231,7 @@ export async function GET(): Promise<NextResponse> {
 
   // Build history slice (max 50) and batch-fetch booking details (Fix-16d)
   const historyRows = allPayouts.slice(0, 50)
-  const bookingIds = historyRows.map((p) => p.booking_id)
+  const bookingIds = historyRows.map((p) => p.booking_id).filter((id): id is string => id !== null)
 
   const bookingMap: Record<string, HistoryBooking> = {}
 
@@ -252,7 +254,7 @@ export async function GET(): Promise<NextResponse> {
 
   // Assemble payout history items (shape unchanged — C-PAY-05 contract)
   const payoutItems: PayoutItem[] = historyRows.map((p) => {
-    const booking = bookingMap[p.booking_id] ?? null
+    const booking = p.booking_id ? (bookingMap[p.booking_id] ?? null) : null
     return {
       id: p.id,
       booking_id: p.booking_id,
@@ -288,7 +290,7 @@ export async function GET(): Promise<NextResponse> {
   }))
 
   const payoutTransactions: TransactionItem[] = historyRows.map((p) => {
-    const booking = bookingMap[p.booking_id] ?? null
+    const booking = p.booking_id ? (bookingMap[p.booking_id] ?? null) : null
     const gross = booking?.coach_price_pence ?? null
     const fee = gross !== null && gross - p.amount_pence >= 0 ? gross - p.amount_pence : null
     return {
