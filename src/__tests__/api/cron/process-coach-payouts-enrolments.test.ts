@@ -132,17 +132,78 @@ describe('PAYOUTS_ENROLMENTS_ENABLED off', () => {
     expect(stripe.transfers.create.mock.calls[0][0].metadata).toEqual({ booking_id: BOOKING_ID, payout_id: inserted.id })
   })
 
-  it('dry_run with the flag off lists bookings only and reports enrolments_enabled=false', async () => {
+  it('dry_run with the flag off PREVIEWS enrolment candidates and still reports enrolments_enabled=false', async () => {
     delete process.env.PAYOUTS_ENROLMENTS_ENABLED
-    const { from, insert } = flagOffBookingScenario()
+    const insert = makeChain()
+    const update = makeChain()
+    const { from } = enrolmentScenario({
+      newBookings: [bookingRow()],
+      newEnrolments: [enrolmentRow()],
+      bookingPis: [bookingPiRow()],
+      writeChains: [insert, update],
+    })
+    withAdminClient(from)
     const stripe = withStripeMock()
 
     const res = await call('?dry_run=1')
+    expect(res.status).toBe(200)
     const body = await res.json()
+    expect(body.enrolments_enabled).toBe(false) // the REAL flag
+    expect(body.candidates).toHaveLength(2)
+    expect(body.candidates.find((c: { id: string }) => c.id === BOOKING_ID)).toMatchObject({ kind: 'booking', would: 'transfer' })
+    expect(body.candidates.find((c: { id: string }) => c.id === ENROLMENT_ID)).toMatchObject({
+      kind: 'enrolment',
+      reference: ENROLMENT_REF,
+      gross_pence: COACH_AMOUNT,
+      fee_source: 'estimated',
+      would: 'transfer',
+    })
+    expect(tablesQueried(from)).toContain('group_programme_enrolments')
+    // Still read-only.
+    expect(insert.insert).not.toHaveBeenCalled()
+    expect(update.update).not.toHaveBeenCalled()
+    expect(stripe.transfers.create).not.toHaveBeenCalled()
+    expect(stripe.transfers.list).not.toHaveBeenCalled()
+    expect(stripe.paymentIntents.retrieve).not.toHaveBeenCalled()
+  })
+
+  it('dry_run=stripe with the flag off previews the enrolment with the ACTUAL fee and touches nothing', async () => {
+    delete process.env.PAYOUTS_ENROLMENTS_ENABLED
+    const insert = makeChain()
+    const update = makeChain()
+    const { from } = enrolmentScenario({ newEnrolments: [enrolmentRow()], writeChains: [insert, update] })
+    withAdminClient(from)
+    const stripe = withStripeMock({ fee: 223 })
+
+    const body = await (await call('?dry_run=stripe')).json()
     expect(body.enrolments_enabled).toBe(false)
     expect(body.candidates).toHaveLength(1)
-    expect(body.candidates[0]).toMatchObject({ kind: 'booking', id: BOOKING_ID, would: 'transfer' })
-    expect(tablesQueried(from)).not.toContain('group_programme_enrolments')
+    expect(body.candidates[0]).toMatchObject({ kind: 'enrolment', id: ENROLMENT_ID, fee_pence: 223, fee_source: 'stripe', net_pence: COACH_AMOUNT - 223, would: 'transfer' })
+    expect(stripe.paymentIntents.retrieve).toHaveBeenCalledTimes(1)
+    expect(stripe.transfers.create).not.toHaveBeenCalled()
+    expect(stripe.transfers.list).not.toHaveBeenCalled()
+    expect(insert.insert).not.toHaveBeenCalled()
+    expect(update.update).not.toHaveBeenCalled()
+  })
+
+  it('a REAL run with the flag off never queries enrolment tables, even when an eligible enrolment exists', async () => {
+    delete process.env.PAYOUTS_ENROLMENTS_ENABLED
+    const insert = makeChain()
+    // Only the pre-TECH-06 tables are mocked: touching group_programme_enrolments
+    // or payment_alerts would throw inside the route and surface as a 500.
+    const from = mockFromTables({
+      bookings: [makeChain({ data: [] })],
+      payouts: [makeChain({ data: [] }), makeChain({ count: 0 }), insert],
+      coach_profiles: [makeChain({ data: [] })],
+      payment_intents: [makeChain({ data: [] })],
+    })
+    withAdminClient(from)
+    const stripe = withStripeMock()
+
+    const res = await call()
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ checked: 0, transferred: 0, adopted: 0, released: 0, held: 0, failed: 0, skipped: 0, errors: 0, parked: 0 })
+    expect(tablesQueried(from)).toEqual(['bookings', 'payouts', 'payouts'])
     expect(insert.insert).not.toHaveBeenCalled()
     expect(stripe.transfers.create).not.toHaveBeenCalled()
   })

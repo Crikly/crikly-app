@@ -9,8 +9,9 @@
 //   enrolment — a programme enrolment (group_programme_enrolments) whose
 //               parent payment succeeded. Paid on the next hourly run, no hold
 //               (BR-03, Decision T-16). Gated by PAYOUTS_ENROLMENTS_ENABLED:
-//               unset = the job never queries enrolments and pays bookings
-//               exactly as before TECH-06.
+//               unset = the real run never queries enrolments and pays
+//               bookings exactly as before TECH-06 (the read-only dry-run
+//               still previews them — see below).
 //
 // BR-21: coach payout = gross coach amount − the ACTUAL Stripe fee, read from
 // balance_transaction.fee on the real charge (expanded off the PaymentIntent)
@@ -68,6 +69,9 @@
 // Dry-run (TECH-06): ?dry_run=1 lists what the job WOULD pay — selection
 // queries only, Stripe fee ESTIMATED, no Stripe call, no write. ?dry_run=stripe
 // additionally reads the ACTUAL fee via paymentIntents.retrieve (read-only).
+// Both modes list enrolment candidates even while PAYOUTS_ENROLMENTS_ENABLED is
+// off, so the listing can be approved before the flag is flipped; the response
+// field enrolments_enabled always reports the real flag.
 // Both modes return before the transfer loop is ever entered, and the dry-run
 // code only ever receives a ReadonlyStripe (paymentIntents.retrieve) — a
 // transfer cannot be created from it even by mistake.
@@ -341,7 +345,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   const supabase = createAdminClient()
   const nowIso = new Date().toISOString()
-  const withEnrolments = enrolmentsEnabled()
+  // Dry-run previews enrolment candidates even while the flag is off (so
+  // the listing can be approved BEFORE the flag is flipped); the real run
+  // stays gated. The dry-run branch returns before any write or transfer.
+  const withEnrolments = enrolmentsEnabled() || dryRun !== null
 
   const [newRes, queueRes, parkedRes] = await Promise.all([
     // Query A — discovery: eligible bookings the job has never touched (no
@@ -596,7 +603,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   // ── Dry-run: list, never write, never transfer ─────────────────────────────
   if (dryRun !== null) {
     return NextResponse.json(await buildDryRun(dryRun, items, excludedEnrolments, coachById, intentFor, stripe, {
-      withEnrolments,
+      // Report the REAL flag, not the dry-run override above.
+      withEnrolments: enrolmentsEnabled(),
       parked,
       duplicateIntentEnrolments,
     }))
