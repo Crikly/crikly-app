@@ -55,11 +55,11 @@ Payout timing depends on the type of booking (Decision T-16, 15 Oct 2026).
 - `payout_eligible_at` = `booking.completed_at` + `platform_config.default_payout_delay_hours`
 - Default 48 hours; admin configurable (24h, 72h, 7 days); read from `platform_config`, never hardcoded
 - Payout triggers only when the session is completed AND `payout_eligible_at` has passed
-- Method: Stripe Connect transfer tied to the original charge (`source_transaction`). Amount: per BR-21.
+- Method: Stripe Connect transfer tied to the original charge (`source_transaction`). Amount: per BR-21. The charge link lets a transfer succeed before the parent's charge settles; once it has settled (always the case for bookings by the end of the hold), the transfer draws on the platform's AVAILABLE Stripe balance. Platform Stripe payouts are MANUAL so collected funds stay available; withdrawals must leave at least the sum of unpaid coach nets in the balance. A `balance_insufficient` transfer is deferred (row back to pending, retried hourly, coach still sees "Transferring"), never failed or parked. Each retry uses a fresh Stripe idempotency key (`payout id`, then `payout id:attempt`) because Stripe replays a cached error per key for ~24h; double payment is prevented by the unique payout row per booking/enrolment, the "never re-create a row that already has a transfer id" rule, and the ghost-transfer lookup before every create.
 
 **Programme enrolments (rows in `group_programme_enrolments`): paid immediately.**
 - The coach is paid as soon as the parent's enrolment payment succeeds. NO 48-hour hold.
-- Same method and amount rule (`source_transaction`, coach price minus the Stripe fee per BR-21).
+- Same method and amount rule (`source_transaction`, coach price minus the Stripe fee per BR-21), same platform-balance and deferral rules as bookings above: an enrolment paid in the last few days is covered by its unsettled charge; an older one needs available funds.
 - Accepted risk: the coach is paid before sessions are delivered. If a programme is cancelled or a parent is refunded (BR-04, REQ-C-056, BR-17), the platform must reverse the Stripe transfer. A reversal fails if the coach has already withdrawn the money, and the platform carries that loss. Programme refunds are handled manually by an admin until built.
 - STATUS: implemented in the hourly payout job behind the `PAYOUTS_ENROLMENTS_ENABLED` flag (TECH-06, migration 056). With the flag off (the default) no programme enrolment is paid; Lasith switches it on per environment after approving the job's dry-run listing (`?dry_run=1` / `?dry_run=stripe`). Before the transfer the job re-checks that the enrolment is still paid and not cancelled or refunded, and it never pays an enrolment with an open `needs_refund` alert or whose programme is cancelled.
 
@@ -438,6 +438,7 @@ stripe_fee     = the ACTUAL fee from the charge's balance transaction, read at t
 
 - The coach bears the Stripe fee.
 - The platform keeps the full commission (zero at 0%) and has no Stripe exposure on the commission.
+- Funding of the transfer itself (unsettled charge vs the platform's available balance, and deferral on a shortfall) is governed by BR-03.
 - `payouts.amount_pence` stores the NET amount transferred to the coach.
 - `payment_intents.coach_transfer_amount_pence` stores the GROSS coach price (audit figure; differs from the transfer by the Stripe fee).
 - Coaches see the net figure as an estimate before the payout (payout-estimate).

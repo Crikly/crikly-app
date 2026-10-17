@@ -46,6 +46,9 @@ import {
   makeRequest,
   makeStripeMock,
   mockFromTables,
+  BALANCE_INSUFFICIENT,
+  listedTransfer,
+  stripeError,
 } from './payouts-test-harness'
 
 type MockFn = jest.Mock
@@ -88,6 +91,7 @@ describe('PAYOUTS_ENROLMENTS_ENABLED off', () => {
     released: 0,
     held: 0,
     failed: 0,
+    deferred: 0, // TECH-06 balance deferral: new top-level key (0 on a clean run)
     skipped: 0,
     errors: 0,
     parked: 0,
@@ -202,7 +206,7 @@ describe('PAYOUTS_ENROLMENTS_ENABLED off', () => {
 
     const res = await call()
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ checked: 0, transferred: 0, adopted: 0, released: 0, held: 0, failed: 0, skipped: 0, errors: 0, parked: 0 })
+    expect(await res.json()).toEqual({ checked: 0, transferred: 0, adopted: 0, released: 0, held: 0, failed: 0, deferred: 0, skipped: 0, errors: 0, parked: 0 })
     expect(tablesQueried(from)).toEqual(['bookings', 'payouts', 'payouts'])
     expect(insert.insert).not.toHaveBeenCalled()
     expect(stripe.transfers.create).not.toHaveBeenCalled()
@@ -411,7 +415,8 @@ describe('pre-transfer re-read', () => {
       failure_reason: 'enrolment_not_payable: enrolment_cancelled',
       retry_count: 5,
     })
-    expect(stripe.transfers.list).not.toHaveBeenCalled()
+    expect(park.eq).toHaveBeenCalledWith('status', 'pending') // safeguard 2 on the park write too
+    expect(stripe.transfers.list).not.toHaveBeenCalled() // brand-new row: nothing to reconcile
     expect(stripe.transfers.create).not.toHaveBeenCalled() // …but no money moved
   })
 
@@ -498,7 +503,7 @@ describe('enrolment rows reuse the booking machinery', () => {
     const adopt = makeChain()
     const { from } = enrolmentScenario({ enrolmentQueue: [enrolmentQueueRow()], writeChains: [adopt] })
     withAdminClient(from)
-    const stripe = withStripeMock({ listData: [{ id: 'tr_ghost_e1' }] })
+    const stripe = withStripeMock({ listData: [listedTransfer({ id: 'tr_ghost_e1' })] }) // matched on the charge
 
     expect(await (await call()).json()).toMatchObject({ adopted: 1, transferred: 0 })
     expect(stripe.transfers.list).toHaveBeenCalledWith({ transfer_group: ENROLMENT_REF, destination: ACCOUNT_ID, limit: 10 })
@@ -529,6 +534,9 @@ describe('enrolment rows reuse the booking machinery', () => {
 
     expect(await (await call()).json()).toMatchObject({ failed: 1, transferred: 0 })
     expect(park.update.mock.calls[0][0]).toMatchObject({ status: 'failed', failure_reason: 'enrolment_not_payable: payment_status_refunded', retry_count: 5 })
+    expect(park.eq).toHaveBeenCalledWith('status', 'pending')
+    // Pre-existing row: the ghost lookup ran BEFORE the park decision.
+    expect(stripe.transfers.list).toHaveBeenCalledTimes(1)
     expect(stripe.transfers.create).not.toHaveBeenCalled()
   })
 
@@ -738,7 +746,7 @@ describe('enrolment held / failure / dedup parity with bookings', () => {
     expect(console.error).toHaveBeenCalledWith(expect.stringContaining('ghost guard will adopt'), expect.anything())
   })
 
-  it('retries a failed enrolment row reusing the SAME row UUID as the idempotency key', async () => {
+  it('retries a failed enrolment row with a fresh per-attempt key (payoutId:retry_count)', async () => {
     const write = makeChain()
     const { from } = enrolmentScenario({
       enrolmentQueue: [enrolmentQueueRow({ status: 'failed', retry_count: 2, stripe_transfer_id: null })],
@@ -748,7 +756,7 @@ describe('enrolment held / failure / dedup parity with bookings', () => {
     const stripe = withStripeMock()
 
     expect(await (await call()).json()).toMatchObject({ transferred: 1, failed: 0 })
-    expect(stripe.transfers.create.mock.calls[0][1]).toEqual({ idempotencyKey: PAYOUT_ID })
+    expect(stripe.transfers.create.mock.calls[0][1]).toEqual({ idempotencyKey: `${PAYOUT_ID}:2` })
     expect(write.update.mock.calls[0][0]).toMatchObject({ status: 'processing', failure_reason: null })
   })
 
@@ -830,5 +838,286 @@ describe('dry-run edge cases', () => {
 
     const body = await (await call('?dry_run=stripe')).json()
     expect(body.candidates[0]).toMatchObject({ would: 'error', reason: 'fee_unresolvable', fee_pence: null })
+  })
+})
+
+// ── TECH-06 amendment: fresh per-attempt key, balance deferral, no double create ──
+
+describe('idempotency key per attempt', () => {
+  it('first attempt uses the bare payout row UUID (unchanged)', async () => {
+    const insert = makeChain()
+    const { from } = enrolmentScenario({ newEnrolments: [enrolmentRow()], writeChains: [insert] })
+    withAdminClient(from)
+    const stripe = withStripeMock()
+    await call()
+    const inserted = insert.insert.mock.calls[0][0]
+    expect(stripe.transfers.create.mock.calls[0][1]).toEqual({ idempotencyKey: inserted.id })
+  })
+
+  it('a retried failed row uses payoutId:retry_count (never sent to Stripe before)', async () => {
+    const write = makeChain()
+    const { from } = enrolmentScenario({ enrolmentQueue: [enrolmentQueueRow({ status: 'failed', retry_count: 2 })], writeChains: [write] })
+    withAdminClient(from)
+    const stripe = withStripeMock()
+    expect(await (await call()).json()).toMatchObject({ transferred: 1 })
+    expect(stripe.transfers.list).toHaveBeenCalledTimes(1) // ghost lookup first
+    expect(stripe.transfers.create.mock.calls[0][1]).toEqual({ idempotencyKey: `${PAYOUT_ID}:2` })
+  })
+
+  it('two runs over the SAME row state derive the SAME key (Stripe dedups them to one transfer)', async () => {
+    const keys: string[] = []
+    for (let run = 0; run < 2; run++) {
+      const { from } = enrolmentScenario({ enrolmentQueue: [enrolmentQueueRow({ status: 'failed', retry_count: 1 })] })
+      withAdminClient(from)
+      const stripe = withStripeMock()
+      await call()
+      keys.push(stripe.transfers.create.mock.calls[0][1].idempotencyKey)
+    }
+    expect(new Set(keys).size).toBe(1)
+    expect(keys[0]).toBe(`${PAYOUT_ID}:1`)
+  })
+})
+
+describe('balance_insufficient deferral', () => {
+  it.each([
+    ['enrolment', () => enrolmentScenario({ newEnrolments: [enrolmentRow()], writeChains: [makeChain(), makeChain()] })],
+    ['booking', () => enrolmentScenario({ newBookings: [bookingRow()], bookingPis: [bookingPiRow()], writeChains: [makeChain(), makeChain()] })],
+  ])('%s: row goes back to pending with the reason and attempt counted — not failed, not parked', async (_kind, make) => {
+    const { from, writes } = make()
+    withAdminClient(from)
+    const stripe = withStripeMock({ createError: BALANCE_INSUFFICIENT(), availablePence: 1234 })
+
+    const body = await (await call()).json()
+    expect(body).toMatchObject({ deferred: 1, failed: 0, transferred: 0, errors: 0 })
+    expect(stripe.transfers.create).toHaveBeenCalledTimes(1)
+    const deferral = writes[1].update.mock.calls[0][0]
+    expect(deferral).toEqual({
+      status: 'pending',
+      failure_reason: 'balance_insufficient: You have insufficient available funds in your Stripe account.',
+      retry_count: 1,
+    })
+    expect(writes[1].eq).toHaveBeenCalledWith('status', 'pending') // safeguard 2
+    expect(stripe.balance.retrieve).toHaveBeenCalledTimes(1) // for the loud log only
+    expect(console.error).toHaveBeenCalledWith(expect.stringContaining('DEFERRED'))
+    expect(console.error).toHaveBeenCalledWith(expect.stringContaining('1234p'))
+  })
+
+  it('a deferred (pending) row is retried next run with a fresh key after the ghost lookup, and pays', async () => {
+    const write = makeChain()
+    const { from } = enrolmentScenario({
+      enrolmentQueue: [enrolmentQueueRow({ status: 'pending', retry_count: 1, stripe_transfer_id: null })],
+      writeChains: [write],
+    })
+    withAdminClient(from)
+    const stripe = withStripeMock()
+
+    expect(await (await call()).json()).toMatchObject({ transferred: 1, deferred: 0, adopted: 0 })
+    expect(stripe.transfers.list).toHaveBeenCalledTimes(1)
+    expect(stripe.transfers.create.mock.calls[0][1]).toEqual({ idempotencyKey: `${PAYOUT_ID}:1` })
+    expect(write.update.mock.calls[0][0]).toMatchObject({ status: 'processing', failure_reason: null })
+  })
+
+  it('a deferred row never parks: retry_count 7 and pending is still processed', async () => {
+    const { from } = enrolmentScenario({ enrolmentQueue: [enrolmentQueueRow({ status: 'pending', retry_count: 7 })] })
+    withAdminClient(from)
+    const stripe = withStripeMock()
+    expect(await (await call()).json()).toMatchObject({ transferred: 1, skipped: 0 })
+    expect(stripe.transfers.create.mock.calls[0][1]).toEqual({ idempotencyKey: `${PAYOUT_ID}:7` })
+  })
+
+  it('any other Stripe error still fails the row with retry_count + 1 and a status guard', async () => {
+    const write = makeChain()
+    const { from } = enrolmentScenario({ enrolmentQueue: [enrolmentQueueRow({ status: 'failed', retry_count: 3 })], writeChains: [write] })
+    withAdminClient(from)
+    withStripeMock({ createError: stripeError({ code: 'account_invalid', type: 'StripeInvalidRequestError', statusCode: 400, message: 'bad account' }) })
+
+    expect(await (await call()).json()).toMatchObject({ failed: 1, deferred: 0 })
+    expect(write.update.mock.calls[0][0]).toEqual({ status: 'failed', failure_reason: 'bad account', retry_count: 4 })
+    expect(write.eq).toHaveBeenCalledWith('status', 'failed')
+  })
+})
+
+describe('no double create', () => {
+  it('safeguard 1: a failed row that already carries a transfer id is adopted via retrieve, never re-created', async () => {
+    const write = makeChain()
+    const { from } = enrolmentScenario({
+      enrolmentQueue: [enrolmentQueueRow({ status: 'failed', retry_count: 1, stripe_transfer_id: 'tr_already' })],
+      writeChains: [write],
+    })
+    withAdminClient(from)
+    const stripe = withStripeMock()
+
+    expect(await (await call()).json()).toMatchObject({ adopted: 1, transferred: 0, failed: 0 })
+    expect(stripe.transfers.retrieve).toHaveBeenCalledWith('tr_already')
+    expect(stripe.transfers.create).not.toHaveBeenCalled()
+    expect(stripe.transfers.list).not.toHaveBeenCalled()
+    expect(write.update.mock.calls[0][0]).toMatchObject({ stripe_transfer_id: 'tr_already', status: 'processing' })
+  })
+
+  it('safeguard 1: if that transfer cannot be retrieved the row is errored and nothing fires', async () => {
+    const { from } = enrolmentScenario({ enrolmentQueue: [enrolmentQueueRow({ status: 'failed', retry_count: 1, stripe_transfer_id: 'tr_gone' })] })
+    withAdminClient(from)
+    const stripe = withStripeMock({ transferRetrieveRejects: true })
+    expect(await (await call()).json()).toMatchObject({ errors: 1, transferred: 0, adopted: 0 })
+    expect(stripe.transfers.create).not.toHaveBeenCalled()
+  })
+
+  it('ghost lookup adopts only a transfer matched on the charge or payout_id, not on transfer_group alone', async () => {
+    const write = makeChain()
+    const { from } = enrolmentScenario({ enrolmentQueue: [enrolmentQueueRow({ status: 'pending' })], writeChains: [write] })
+    withAdminClient(from)
+    const stripe = withStripeMock({ listData: [listedTransfer({ id: 'tr_other', source_transaction: 'ch_other' }), listedTransfer({ id: 'tr_mine' })] })
+
+    expect(await (await call()).json()).toMatchObject({ adopted: 1, transferred: 0 })
+    expect(write.update.mock.calls[0][0]).toMatchObject({ stripe_transfer_id: 'tr_mine' })
+    expect(stripe.transfers.create).not.toHaveBeenCalled()
+  })
+
+  it('ghost lookup ignores unrelated transfers in the group and creates normally', async () => {
+    const { from } = enrolmentScenario({ enrolmentQueue: [enrolmentQueueRow({ status: 'pending' })] })
+    withAdminClient(from)
+    const stripe = withStripeMock({ listData: [listedTransfer({ id: 'tr_other', source_transaction: 'ch_other' })] })
+    expect(await (await call()).json()).toMatchObject({ transferred: 1, adopted: 0 })
+    expect(stripe.transfers.create).toHaveBeenCalledTimes(1)
+  })
+
+  it('unknown-outcome error (connection): re-checks Stripe immediately and adopts the transfer that did get created', async () => {
+    const insert = makeChain()
+    const write = makeChain()
+    const { from } = enrolmentScenario({ newEnrolments: [enrolmentRow()], writeChains: [insert, write] })
+    withAdminClient(from)
+    const stripe = withStripeMock({
+      createError: stripeError({ type: 'StripeConnectionError', message: 'socket hang up' }),
+      listData: [listedTransfer({ id: 'tr_created_anyway' })],
+    })
+
+    expect(await (await call()).json()).toMatchObject({ adopted: 1, failed: 0, transferred: 0 })
+    expect(stripe.transfers.create).toHaveBeenCalledTimes(1)
+    expect(stripe.transfers.list).toHaveBeenCalledTimes(1)
+    expect(write.update.mock.calls[0][0]).toMatchObject({ stripe_transfer_id: 'tr_created_anyway', status: 'processing' })
+  })
+
+  it('unknown-outcome error (5xx) with no transfer found falls back to failed + retry_count + 1', async () => {
+    const insert = makeChain()
+    const write = makeChain()
+    const { from } = enrolmentScenario({ newEnrolments: [enrolmentRow()], writeChains: [insert, write] })
+    withAdminClient(from)
+    const stripe = withStripeMock({ createError: stripeError({ type: 'StripeAPIError', statusCode: 503, message: 'upstream' }), listData: [] })
+
+    expect(await (await call()).json()).toMatchObject({ failed: 1, adopted: 0 })
+    expect(stripe.transfers.list).toHaveBeenCalledTimes(1)
+    expect(write.update.mock.calls[0][0]).toEqual({ status: 'failed', failure_reason: 'upstream', retry_count: 1 })
+  })
+
+  it('a stale failure write is status-guarded: the update is scoped to the status the row was read with', async () => {
+    const write = makeChain()
+    const { from } = enrolmentScenario({ enrolmentQueue: [enrolmentQueueRow({ status: 'held', held_reason: 'no_stripe_account' })], writeChains: [write] })
+    withAdminClient(from)
+    withStripeMock({ createError: stripeError({ code: 'account_invalid', statusCode: 400, message: 'bad' }) })
+    await call()
+    // held → released to pending before the transfer, so the failure write guards on 'pending'
+    const failedCall = write.update.mock.calls.find((c) => c[0].status === 'failed')
+    expect(failedCall).toBeTruthy()
+    expect(write.eq).toHaveBeenCalledWith('status', 'pending')
+  })
+})
+
+describe('dry-run balance picture', () => {
+  it('?dry_run=stripe reports funding per candidate and the platform balance totals (one balance read)', async () => {
+    const { from } = enrolmentScenario({
+      newEnrolments: [enrolmentRow()],
+      newBookings: [bookingRow()],
+      bookingPis: [bookingPiRow()],
+    })
+    withAdminClient(from)
+    // Both charges settled (booking charges always are by payout time).
+    const stripe = withStripeMock({ fee: 100, btStatus: 'available', btAvailableOn: 1790000000, availablePence: 5000 })
+
+    const body = await (await call('?dry_run=stripe')).json()
+    expect(stripe.balance.retrieve).toHaveBeenCalledTimes(1)
+    for (const c of body.candidates) {
+      expect(c).toMatchObject({ charge_settled: true, charge_available_on: '2026-09-21T14:13:20.000Z', funding: 'needs_available_funds', would: 'transfer' })
+    }
+    expect(body.platform_available_pence).toBe(5000)
+    expect(body.total_needed_from_available_pence).toBe(COACH_AMOUNT - 100 + (COACH_PRICE - 100))
+    expect(body.shortfall_pence).toBe(COACH_AMOUNT - 100 + (COACH_PRICE - 100) - 5000)
+    expect(stripe.transfers.create).not.toHaveBeenCalled()
+    expect(stripe.transfers.list).not.toHaveBeenCalled()
+  })
+
+  it('an unsettled charge is covered_by_pending_charge and needs nothing from the available balance', async () => {
+    const { from } = enrolmentScenario({ newEnrolments: [enrolmentRow()] })
+    withAdminClient(from)
+    withStripeMock({ btStatus: 'pending', availablePence: 0 })
+    const body = await (await call('?dry_run=stripe')).json()
+    expect(body.candidates[0]).toMatchObject({ charge_settled: false, funding: 'covered_by_pending_charge' })
+    expect(body).toMatchObject({ platform_available_pence: 0, total_needed_from_available_pence: 0, shortfall_pence: 0 })
+  })
+
+  it('a failed balance read reports null, never zero', async () => {
+    const { from } = enrolmentScenario({ newEnrolments: [enrolmentRow()] })
+    withAdminClient(from)
+    withStripeMock({ btStatus: 'available', balanceRejects: true })
+    const body = await (await call('?dry_run=stripe')).json()
+    expect(body).toMatchObject({ platform_available_pence: null, shortfall_pence: null })
+    expect(body.total_needed_from_available_pence).toBe(COACH_AMOUNT - 113)
+  })
+
+  it('?dry_run=1 is unchanged: no Stripe call, no funding fields', async () => {
+    const { from } = enrolmentScenario({ newEnrolments: [enrolmentRow()] })
+    withAdminClient(from)
+    const stripe = withStripeMock()
+    const body = await (await call('?dry_run=1')).json()
+    expect(stripe.balance.retrieve).not.toHaveBeenCalled()
+    expect(stripe.paymentIntents.retrieve).not.toHaveBeenCalled()
+    expect(body.candidates[0]).toMatchObject({ charge_settled: null, charge_available_on: null, funding: null, fee_source: 'estimated' })
+    expect(body).toMatchObject({ platform_available_pence: null, total_needed_from_available_pence: null, shortfall_pence: null })
+  })
+})
+
+describe('reconcile before park', () => {
+  it('a queued enrolment row whose transfer already exists is adopted even though the enrolment is now unpayable', async () => {
+    const write = makeChain()
+    const { from } = enrolmentScenario({
+      enrolmentQueue: [enrolmentQueueRow({ status: 'pending' })],
+      reread: enrolmentRow({ status: 'cancelled' }),
+      writeChains: [write],
+    })
+    withAdminClient(from)
+    const stripe = withStripeMock({ listData: [listedTransfer({ id: 'tr_already_moved' })] })
+
+    expect(await (await call()).json()).toMatchObject({ adopted: 1, failed: 0, transferred: 0 })
+    expect(write.update.mock.calls[0][0]).toMatchObject({ stripe_transfer_id: 'tr_already_moved', status: 'processing' })
+    expect(write.update.mock.calls.find((c) => c[0].status === 'failed')).toBeUndefined()
+    expect(stripe.transfers.create).not.toHaveBeenCalled()
+  })
+
+  it('a failed enrolment row carrying a transfer id is adopted (safeguard 1) before any re-read or park', async () => {
+    const write = makeChain()
+    const { from } = enrolmentScenario({
+      enrolmentQueue: [enrolmentQueueRow({ status: 'failed', retry_count: 1, stripe_transfer_id: 'tr_done' })],
+      reread: enrolmentRow({ status: 'cancelled' }),
+      writeChains: [write],
+    })
+    withAdminClient(from)
+    const stripe = withStripeMock()
+
+    expect(await (await call()).json()).toMatchObject({ adopted: 1, failed: 0 })
+    expect(stripe.transfers.retrieve).toHaveBeenCalledWith('tr_done')
+    expect(from.mock.calls.filter((c) => c[0] === 'group_programme_enrolments')).toHaveLength(1) // query C only, no re-read
+    expect(stripe.transfers.create).not.toHaveBeenCalled()
+  })
+
+  it('dry-run stripe totals only count candidates in the balance currency', async () => {
+    const { from } = enrolmentScenario({
+      newEnrolments: [enrolmentRow(), enrolmentRow({ id: 'enrolment-usd', enrolment_reference: 'CRK-USD', currency: 'USD' })],
+      enrolmentPis: [enrolmentPiRow(), enrolmentPiRow({ enrolment_id: 'enrolment-usd', stripe_payment_intent_id: 'pi_usd' })],
+    })
+    withAdminClient(from)
+    withStripeMock({ fee: 100, btStatus: 'available', availablePence: 1000 })
+    const body = await (await call('?dry_run=stripe')).json()
+    expect(body.candidates).toHaveLength(2)
+    expect(body.total_needed_from_available_pence).toBe(COACH_AMOUNT - 100) // GBP candidate only
+    expect(body.shortfall_pence).toBe(COACH_AMOUNT - 100 - 1000)
   })
 })
