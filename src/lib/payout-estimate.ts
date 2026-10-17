@@ -2,7 +2,7 @@
 // session or programme price.
 //
 // The REAL payout is computed by the C-PAY-02 cron from the actual Stripe fee
-// on the charge (balance_transaction.fee — BR-01); this module never feeds any
+// on the charge (balance_transaction.fee — BR-21); this module never feeds any
 // money movement. The estimate uses the UK Visa rate (1.5% + 20p fixed) purely
 // so coaches see roughly what they'll receive before saving, and every
 // rendered figure must carry PAYOUT_ESTIMATE_REMARK alongside it.

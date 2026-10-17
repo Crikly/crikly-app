@@ -15,7 +15,7 @@ interface EarningsSummary {
   last_month_pence: number
   // C-PAY-06: gross value of completed sessions still inside the BR-03 hold
   // window (no active payout row yet). Gross because the Stripe fee is only
-  // known at transfer time (BR-01).
+  // known at transfer time (BR-21).
   in_clearance_pence: number
   currency: 'GBP'
 }
