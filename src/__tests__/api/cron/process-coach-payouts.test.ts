@@ -487,7 +487,7 @@ describe('GET /api/cron/process-coach-payouts — failures', () => {
     })
   })
 
-  it('retries a failed row reusing the SAME row UUID as the idempotency key', async () => {
+  it('retries a failed row with a FRESH per-attempt idempotency key (TECH-06: Stripe caches errors per key)', async () => {
     const writeChain = makeChain()
     scenario({
       queue: [queueRow({ status: 'failed', retry_count: 2 })],
@@ -497,8 +497,9 @@ describe('GET /api/cron/process-coach-payouts — failures', () => {
 
     const res = await callGet()
     expect(await res.json()).toMatchObject({ transferred: 1, failed: 0 })
-    // Same row, same key — a duplicate transfer is impossible.
-    expect(stripe.transfers.create.mock.calls[0][1]).toEqual({ idempotencyKey: PAYOUT_ID })
+    // Attempt 3 of this row: payoutId:retry_count — never sent to Stripe
+    // before, so a cached error from attempt 1/2 cannot be replayed.
+    expect(stripe.transfers.create.mock.calls[0][1]).toEqual({ idempotencyKey: `${PAYOUT_ID}:2` })
     // Success clears the stale failure_reason.
     expect(writeChain.update.mock.calls[0][0]).toMatchObject({ status: 'processing', failure_reason: null })
   })
@@ -547,7 +548,7 @@ describe('GET /api/cron/process-coach-payouts — ghost guard', () => {
       queue: [queueRow({ status: 'pending' })],
       writeChains: [adoptChain],
     })
-    const stripe = makeStripeMock({ listData: [{ id: 'tr_ghost_1' }] })
+    const stripe = makeStripeMock({ listData: [{ id: 'tr_ghost_1', source_transaction: CHARGE_ID } as { id: string }] }) // TECH-06: matched on the charge
 
     const res = await callGet()
     expect(await res.json()).toMatchObject({ adopted: 1, transferred: 0 })

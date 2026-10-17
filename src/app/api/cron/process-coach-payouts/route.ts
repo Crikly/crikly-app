@@ -34,13 +34,29 @@
 // Retry-exhausted rows are excluded from B/B2 so they cannot crowd the queue;
 // their count is surfaced loudly every run (counts.parked) instead.
 //
-// Idempotency — one payable must never receive two transfers (three layers):
+// Idempotency — one payable must never receive two transfers. Stripe caches
+// a response (including a 4xx error) per idempotency key for ~24h, so a
+// constant key makes a failed attempt unrecoverable for a day (seen on
+// staging, 17 Oct 2026). The key is therefore FRESH PER ATTEMPT —
+// payoutId for the first attempt, `${payoutId}:${retry_count}` after —
+// and double payment is prevented by three layers that do not rely on the
+// key being constant:
 //   1. DB     — payouts.booking_id and payouts.enrolment_id are each UNIQUE
-//               (migrations 045, 056), so the payout row UUID is stable per
-//               payable forever.
-//   2. Stripe — transfers.create() is keyed on that row UUID; a re-fire
-//               returns the original transfer instead of creating another.
-//   3. App    — rows already 'processing'/'paid' are skipped outright.
+//               (migrations 045, 056): one row per payable; rows already
+//               'processing'/'paid' are never selected or fired, and every
+//               failure/deferral write is guarded by .eq('status', <read>)
+//               so a late write can never overwrite a row another run has
+//               moved to 'processing'.
+//   2. Stripe — a pre-existing row that already carries stripe_transfer_id
+//               NEVER calls transfers.create again: the transfer is
+//               retrieved (read-only) and adopted. A pre-existing row with
+//               no transfer id is reconciled against transfers.list
+//               (transfer_group + destination, matched on the charge /
+//               payout_id) before any create — this also heals a crashed
+//               run or an unknown-outcome error (timeout, 5xx), and that
+//               lookup is run immediately after such an error too.
+//   3. Runs   — two overlapping runs read the same retry_count and so send
+//               the same key; Stripe deduplicates them to one transfer.
 //
 // Held-payout contract (C-PAY-03, migration 043, src/types/domain.ts): a
 // coach without a usable Stripe account holds the row (status='held' +
@@ -50,14 +66,25 @@
 // the SAME update (the held_reason_iff_held biconditional demands it), then
 // the transfer proceeds in the same run.
 //
+// Platform balance: source_transaction ties the transfer to the parent's
+// charge and lets it succeed BEFORE that charge settles; once the charge has
+// settled the transfer draws on the platform's available balance, so the
+// platform must hold funds for every booking payout (charges always settle
+// before the 48h hold ends) and for enrolments older than a few days. A
+// balance_insufficient error is therefore a DEFERRAL, not a failure: the row
+// goes back to 'pending' (retry_count + 1, so the next attempt gets a fresh
+// key), is retried every hour until the balance covers it, never parks, and
+// the coach keeps seeing "Transferring" rather than "Action needed".
+//
 // Write-intent-first: the payout row is written BEFORE the transfer fires, so
 // a crash between the two leaves an auditable 'pending' row, never a ghost
 // transfer with no trail. The reverse crash (transfer fired, success update
 // lost) is healed by the ghost-transfer reconcile guard: any pre-existing row
 // with no stripe_transfer_id is checked against
 // transfers.list({ transfer_group }) before a create — an existing transfer
-// is adopted, never re-fired. This also covers Stripe's ~24h idempotency-key
-// expiry, after which a blind re-fire would double-pay.
+// is adopted, never re-fired. With a fresh key per attempt this lookup, not
+// Stripe's key cache, is what stops a crashed or unknown-outcome attempt
+// from being paid twice.
 //
 // Enrolment safety (TECH-06): immediately before an enrolment transfer the
 // enrolment is re-read; if it is no longer payable (cancelled, refunded,
@@ -105,8 +132,8 @@ export const dynamic = 'force-dynamic'
 const BATCH_LIMIT = 50
 // After this many failed transfer attempts a row parks (excluded from the
 // work queue + loud parked count every run) until manually investigated.
-// Retries happen hourly, so all five attempts land well inside Stripe's ~24h
-// idempotency-key window.
+// Only genuine failures count: balance_insufficient deferrals leave the row
+// pending, so they never park. Each attempt uses a fresh idempotency key.
 const MAX_RETRY = 5
 const FAILURE_REASON_MAX = 500
 // Parked-row failure_reason for an enrolment that stopped being payable
@@ -214,11 +241,62 @@ interface WorkItem {
 interface ChargeFee {
   chargeId: string
   feePence: number
+  /** balance_transaction.status === 'available': the charge has settled, so a
+   *  transfer now draws on the platform's available balance. */
+  settled: boolean
+  /** balance_transaction.available_on as ISO, when known. */
+  availableOn: string | null
 }
 
-/** The only Stripe surface the dry-run ever receives — no transfers at all. */
+/** The only Stripe surface the dry-run ever receives — reads only, no
+ *  transfers, payouts or refunds. */
 interface ReadonlyStripe {
   paymentIntents: { retrieve: Stripe['paymentIntents']['retrieve'] }
+  balance: { retrieve: Stripe['balance']['retrieve'] }
+}
+
+/** Shape-only view of a Stripe error (no instanceof: the SDK is a type-only
+ *  import here). */
+interface StripeErrorInfo {
+  code: string | null
+  type: string | null
+  statusCode: number | null
+  message: string
+}
+
+function stripeErrorInfo(err: unknown): StripeErrorInfo {
+  const e = (err ?? {}) as { code?: unknown; type?: unknown; statusCode?: unknown; message?: unknown }
+  return {
+    code: typeof e.code === 'string' ? e.code : null,
+    type: typeof e.type === 'string' ? e.type : null,
+    statusCode: typeof e.statusCode === 'number' ? e.statusCode : null,
+    message: errorMessage(err),
+  }
+}
+
+/** True when Stripe may have created the transfer but we cannot know:
+ *  connection errors, timeouts and 5xx responses. */
+function isUnknownOutcome(info: StripeErrorInfo): boolean {
+  if (info.type === 'StripeConnectionError' || info.type === 'StripeAPIError') return true
+  if (info.statusCode !== null && info.statusCode >= 500) return true
+  return info.code === null && info.statusCode === null
+}
+
+/** Idempotency key for this attempt — fresh per attempt (see header). */
+function attemptKey(payoutId: string, attempt: number): string {
+  return attempt === 0 ? payoutId : `${payoutId}:${attempt}`
+}
+
+/** Platform available balance in a currency, in minor units; null if the
+ *  read fails (callers treat null as "unknown", never as zero). */
+async function platformAvailablePence(stripe: ReadonlyStripe, currency: string): Promise<number | null> {
+  try {
+    const balance = await stripe.balance.retrieve()
+    const cur = currency.toLowerCase()
+    return balance.available.filter((b) => b.currency === cur).reduce((sum, b) => sum + b.amount, 0)
+  } catch {
+    return null
+  }
 }
 
 type DryRunMode = '1' | 'stripe'
@@ -239,7 +317,15 @@ async function resolveChargeFee(stripe: ReadonlyStripe, paymentIntentId: string)
   if (!charge || typeof charge === 'string') return null
   const balanceTransaction = charge.balance_transaction
   if (!balanceTransaction || typeof balanceTransaction === 'string') return null
-  return { chargeId: charge.id, feePence: balanceTransaction.fee }
+  return {
+    chargeId: charge.id,
+    feePence: balanceTransaction.fee,
+    settled: balanceTransaction.status === 'available',
+    availableOn:
+      typeof balanceTransaction.available_on === 'number'
+        ? new Date(balanceTransaction.available_on * 1000).toISOString()
+        : null,
+  }
 }
 
 /**
@@ -524,6 +610,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     released: 0,
     held: 0,
     failed: 0,
+    deferred: 0,
     skipped: 0,
     errors: 0,
     parked,
@@ -772,12 +859,17 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       let priorTransferId: string | null = null
       let retryBase = 0
       let preExisting = false
+      // The status the row will have at write time — every failure/deferral
+      // write below is guarded on it (safeguard 2), so a late write from an
+      // overlapping run can never clobber a row that already moved on.
+      let statusAtWrite: PayoutStatus = 'pending'
 
       if (payout) {
         payoutId = payout.id
         priorTransferId = payout.stripe_transfer_id
         retryBase = payout.retry_count
         preExisting = true
+        statusAtWrite = payout.status === 'held' ? 'pending' : payout.status
         if (payout.status === 'held') {
           // Release: leave 'held' and clear held_reason in ONE update
           // (held_reason_iff_held). The transfer proceeds below in this run.
@@ -820,9 +912,92 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         }
       }
 
-      // TECH-06 pre-transfer re-read (enrolments only): the enrolment may
-      // have been cancelled/refunded, or its programme cancelled, between
-      // selection and now. Park the row rather than pay; refunds are manual.
+      // Adopt an existing transfer: write processing with its id. Returns
+      // true when the row was adopted (caller must `continue`).
+      const adopt = async (transferId: string, how: string): Promise<boolean> => {
+        const { error } = await supabase
+          .from('payouts')
+          .update({
+            stripe_transfer_id: transferId,
+            status: 'processing',
+            processed_at: new Date().toISOString(),
+            failure_reason: null,
+          })
+          .eq('id', payoutId)
+        if (error) {
+          console.error(`[Payouts] adopt update failed for payout ${payoutId} (transfer ${transferId}):`, error)
+          counts.errors++
+          return true
+        }
+        console.info(`[Payouts] adopted existing transfer ${transferId} for ${label} (${how})`)
+        counts.adopted++
+        return true
+      }
+
+      // Ghost-transfer lookup: does a transfer for this payable already exist?
+      // Matched on the parent's charge (source_transaction) or on our own
+      // payout_id metadata — never adopted on transfer_group alone. Returns
+      // undefined when none exists; throws if Stripe cannot be asked.
+      const findExistingTransfer = async (): Promise<Stripe.Transfer | undefined> => {
+        const prior = await stripe.transfers.list({
+          transfer_group: payable.reference,
+          destination: accountId,
+          limit: 10,
+        })
+        const matches = prior.data.filter(
+          (t) => t.source_transaction === chargeFee.chargeId || t.metadata?.payout_id === payoutId,
+        )
+        if (matches.length > 1) {
+          console.error(
+            `[Payouts] MULTIPLE transfers exist for transfer_group ${payable.reference} — ` +
+              `adopting ${matches[0].id}; investigate immediately`,
+          )
+        }
+        return matches[0]
+      }
+
+      // Safeguard 1: a row that already carries a transfer id NEVER creates
+      // again, whatever its status (a failed row with a transfer id can only
+      // be a stale failure write). Retrieve the transfer read-only and adopt.
+      if (preExisting && priorTransferId) {
+        try {
+          const existing = await stripe.transfers.retrieve(priorTransferId)
+          await adopt(existing.id, 'row already carried its transfer id')
+        } catch (err) {
+          console.error(
+            `[Payouts] payout ${payoutId} (${label}) carries transfer ${priorTransferId} but it could not be ` +
+              `retrieved — not firing; investigate:`,
+            err,
+          )
+          counts.errors++
+        }
+        continue
+      }
+
+      // Ghost-transfer reconcile guard: a pre-existing row with no
+      // stripe_transfer_id may belong to a run that crashed after
+      // transfers.create(), or to an unknown-outcome error. Ask Stripe
+      // before creating — on EVERY attempt.
+      if (preExisting) {
+        let existing: Stripe.Transfer | undefined
+        try {
+          existing = await findExistingTransfer()
+        } catch (err) {
+          console.error(`[Payouts] transfers.list failed for ${label} — not firing blind:`, err)
+          counts.errors++
+          continue
+        }
+        if (existing) {
+          await adopt(existing.id, 'ghost-transfer guard')
+          continue
+        }
+      }
+
+      // TECH-06 pre-transfer re-read (enrolments only), immediately before
+      // transfers.create and AFTER the reconcile guards above — a row whose
+      // money already moved is adopted, never parked. The enrolment may have
+      // been cancelled/refunded, or its programme cancelled, between selection
+      // and now: park the row rather than pay; refunds are manual.
       if (payable.kind === 'enrolment') {
         const { data: fresh, error: freshError } = await supabase
           .from('group_programme_enrolments')
@@ -846,6 +1021,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
               retry_count: MAX_RETRY,
             })
             .eq('id', payoutId)
+            .eq('status', statusAtWrite) // safeguard 2: never clobber a row another run advanced
           if (error) {
             console.error(`[Payouts] park update failed for payout ${payoutId} (${label}):`, error)
             counts.errors++
@@ -855,51 +1031,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
                 `no transfer fired; resolve via the manual refund flow`,
             )
             counts.failed++
-          }
-          continue
-        }
-      }
-
-      // Ghost-transfer reconcile guard (approved Step 0 §3): a pre-existing
-      // row with no stripe_transfer_id may belong to a run that crashed
-      // after transfers.create() — and past Stripe's ~24h idempotency-key
-      // expiry a blind re-fire would double-pay. Ask Stripe before creating.
-      if (preExisting && !priorTransferId) {
-        let existing: Stripe.Transfer | undefined
-        try {
-          const prior = await stripe.transfers.list({
-            transfer_group: payable.reference,
-            destination: accountId,
-            limit: 10,
-          })
-          existing = prior.data[0]
-          if (prior.data.length > 1) {
-            console.error(
-              `[Payouts] MULTIPLE transfers exist for transfer_group ${payable.reference} — ` +
-                `adopting ${prior.data[0].id}; investigate immediately`,
-            )
-          }
-        } catch (err) {
-          console.error(`[Payouts] transfers.list failed for ${label} — not firing blind:`, err)
-          counts.errors++
-          continue
-        }
-        if (existing) {
-          const { error } = await supabase
-            .from('payouts')
-            .update({
-              stripe_transfer_id: existing.id,
-              status: 'processing',
-              processed_at: new Date().toISOString(),
-              failure_reason: null,
-            })
-            .eq('id', payoutId)
-          if (error) {
-            console.error(`[Payouts] adopt update failed for payout ${payoutId} (transfer ${existing.id}):`, error)
-            counts.errors++
-          } else {
-            console.info(`[Payouts] adopted existing transfer ${existing.id} for ${label}`)
-            counts.adopted++
           }
           continue
         }
@@ -918,19 +1049,64 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
             currency: payable.currency.toLowerCase(),
             destination: accountId,
             transfer_group: payable.reference,
-            // Draws from the specific charge's balance (even while it is
-            // still settling) instead of the platform's available balance —
-            // prevents insufficient-balance failures (approved Step 0
-            // clarification).
+            // Ties the transfer to the parent's charge: it succeeds BEFORE
+            // the charge settles regardless of platform balance; once the
+            // charge has settled it draws on the platform's available
+            // balance (a shortfall is deferred below, never failed).
             source_transaction: chargeFee.chargeId,
             metadata,
           },
-          // The payout row UUID: stable per payable via migrations 045/056,
-          // so a re-fire for the same payable can only ever replay this
-          // transfer.
-          { idempotencyKey: payoutId },
+          // Fresh per attempt (see header): payoutId first, then
+          // payoutId:retry_count — Stripe caches errors per key for ~24h.
+          { idempotencyKey: attemptKey(payoutId, retryBase) },
         )
       } catch (err) {
+        const info = stripeErrorInfo(err)
+
+        if (info.code === 'balance_insufficient') {
+          // Deferral: the platform's available balance does not cover this
+          // transfer. Row back to 'pending' (never parks), attempt counted so
+          // the next key is fresh, loud log with what is needed.
+          const available = await platformAvailablePence(stripe, payable.currency)
+          console.error(
+            `[Payouts] DEFERRED ${label}: platform available balance is ` +
+              `${available === null ? 'unknown' : available + 'p'} ${payable.currency}, ` +
+              `${amountPence}p needed for payout ${payoutId} — will retry hourly until topped up`,
+          )
+          const { error } = await supabase
+            .from('payouts')
+            .update({
+              status: 'pending',
+              failure_reason: `balance_insufficient: ${info.message}`.slice(0, FAILURE_REASON_MAX),
+              retry_count: retryBase + 1,
+            })
+            .eq('id', payoutId)
+            .eq('status', statusAtWrite)
+          if (error) {
+            console.error(`[Payouts] deferral write failed for payout ${payoutId}:`, error)
+          }
+          counts.deferred++
+          continue
+        }
+
+        if (isUnknownOutcome(info)) {
+          // Stripe MAY have created the transfer. Ask before giving up, so
+          // the next attempt's fresh key cannot become a second transfer.
+          try {
+            const existing = await findExistingTransfer()
+            if (existing) {
+              console.error(
+                `[Payouts] transfer create for ${label} returned an unknown outcome but the transfer ` +
+                  `exists (${existing.id}) — adopting`,
+              )
+              await adopt(existing.id, 'unknown-outcome reconcile')
+              continue
+            }
+          } catch (listErr) {
+            console.error(`[Payouts] post-error transfers.list failed for ${label}:`, listErr)
+          }
+        }
+
         console.error(
           `[Payouts] transfer create failed for ${label} ` +
             `(payout ${payoutId}, attempt ${retryBase + 1}/${MAX_RETRY}):`,
@@ -940,10 +1116,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           .from('payouts')
           .update({
             status: 'failed',
-            failure_reason: errorMessage(err),
+            failure_reason: info.message,
             retry_count: retryBase + 1,
           })
           .eq('id', payoutId)
+          .eq('status', statusAtWrite)
         if (error) {
           console.error(`[Payouts] failed-state write failed for payout ${payoutId}:`, error)
         }
@@ -987,7 +1164,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   console.info(
     `[Payouts] run complete: checked=${counts.checked} transferred=${counts.transferred} ` +
       `adopted=${counts.adopted} released=${counts.released} held=${counts.held} ` +
-      `failed=${counts.failed} skipped=${counts.skipped} errors=${counts.errors} parked=${counts.parked}`,
+      `failed=${counts.failed} deferred=${counts.deferred} skipped=${counts.skipped} errors=${counts.errors} parked=${counts.parked}`,
   )
   return NextResponse.json(counts)
 }
@@ -1008,10 +1185,18 @@ interface DryRunCandidate {
   fee_pence: number | null
   fee_source: 'estimated' | 'stripe' | null
   net_pence: number | null
+  /** stripe mode only: has the parent's charge settled into the platform
+   *  balance? A settled charge means the transfer needs AVAILABLE funds. */
+  charge_settled: boolean | null
+  charge_available_on: string | null
+  funding: 'covered_by_pending_charge' | 'needs_available_funds' | null
   existing_payout: { id: string; status: PayoutStatus; retry_count: number } | null
   would: DryRunAction
   reason: string | null
 }
+
+type DryRunFunding = Pick<DryRunCandidate, 'charge_settled' | 'charge_available_on' | 'funding'>
+const NO_FUNDING: DryRunFunding = { charge_settled: null, charge_available_on: null, funding: null }
 
 /**
  * Builds the dry-run listing. Receives ONLY a ReadonlyStripe — there is no
@@ -1035,6 +1220,12 @@ async function buildDryRun(
   candidates: DryRunCandidate[]
   excluded_enrolments: Array<{ id: string; reference: string; reason: string }>
   parked: number
+  /** stripe mode only (null in mode '1'): platform available balance for the
+   *  candidates' currency, the net sum of would-transfer candidates whose
+   *  charge has settled, and how much is missing. */
+  platform_available_pence: number | null
+  total_needed_from_available_pence: number | null
+  shortfall_pence: number | null
 }> {
   const candidates: DryRunCandidate[] = []
 
@@ -1043,6 +1234,7 @@ async function buildDryRun(
     const connected = !!coach?.stripe_account_id
     const onboarded = coach?.stripe_onboarding_complete === true
     const base: Omit<DryRunCandidate, 'fee_pence' | 'fee_source' | 'net_pence' | 'would' | 'reason'> = {
+      ...NO_FUNDING,
       kind: payable.kind,
       id: payable.id,
       reference: payable.reference,
@@ -1082,11 +1274,19 @@ async function buildDryRun(
 
     let feePence: number | null
     let feeSource: 'estimated' | 'stripe'
+    let funding: DryRunFunding = NO_FUNDING
     if (mode === 'stripe') {
       feeSource = 'stripe'
       try {
         const fee = await resolveChargeFee(stripe, pi.stripe_payment_intent_id)
         feePence = fee?.feePence ?? null
+        if (fee) {
+          funding = {
+            charge_settled: fee.settled,
+            charge_available_on: fee.availableOn,
+            funding: fee.settled ? 'needs_available_funds' : 'covered_by_pending_charge',
+          }
+        }
       } catch {
         feePence = null
       }
@@ -1101,7 +1301,7 @@ async function buildDryRun(
 
     const netPence = payable.grossPence - feePence
     if (netPence <= 0) {
-      candidates.push({ ...base, fee_pence: feePence, fee_source: feeSource, net_pence: netPence, would: 'skip', reason: 'fee_gte_gross' })
+      candidates.push({ ...base, ...funding, fee_pence: feePence, fee_source: feeSource, net_pence: netPence, would: 'skip', reason: 'fee_gte_gross' })
       continue
     }
 
@@ -1111,18 +1311,40 @@ async function buildDryRun(
         ? 'stripe_onboarding_incomplete'
         : null
     if (heldReason) {
-      candidates.push({ ...base, fee_pence: feePence, fee_source: feeSource, net_pence: netPence, would: 'hold', reason: heldReason })
+      candidates.push({ ...base, ...funding, fee_pence: feePence, fee_source: feeSource, net_pence: netPence, would: 'hold', reason: heldReason })
       continue
     }
 
     candidates.push({
       ...base,
+      ...funding,
       fee_pence: feePence,
       fee_source: feeSource,
       net_pence: netPence,
       would: payout && !payout.stripe_transfer_id ? 'adopt_or_transfer' : 'transfer',
       reason: null,
     })
+  }
+
+  // Balance picture (stripe mode only, one read-only call): what the
+  // would-transfer candidates on settled charges need from the available
+  // balance, versus what is there. Candidates still riding an unsettled
+  // charge do not need available funds.
+  let platformAvailable: number | null = null
+  let totalNeeded: number | null = null
+  let shortfall: number | null = null
+  if (mode === 'stripe') {
+    const currency = candidates[0]?.currency ?? 'GBP'
+    platformAvailable = await platformAvailablePence(stripe, currency)
+    totalNeeded = candidates
+      .filter(
+        (c) =>
+          c.currency === currency &&
+          (c.would === 'transfer' || c.would === 'adopt_or_transfer') &&
+          c.funding === 'needs_available_funds',
+      )
+      .reduce((sum, c) => sum + (c.net_pence ?? 0), 0)
+    shortfall = platformAvailable === null ? null : Math.max(0, totalNeeded - platformAvailable)
   }
 
   return {
@@ -1132,5 +1354,8 @@ async function buildDryRun(
     candidates,
     excluded_enrolments: excluded,
     parked: extra.parked,
+    platform_available_pence: platformAvailable,
+    total_needed_from_available_pence: totalNeeded,
+    shortfall_pence: shortfall,
   }
 }
