@@ -427,7 +427,7 @@ the shared summary + their own report if written. → **GAP-P-06**.
 ## Block 11 — Reviews, Notifications & Settings  `[SHR]`
 
 ### REQ-P-065 — Review prompt after completion
-Prompt appears after the coach marks the session complete (REQ-C-066), via To-Do + notification.
+Prompt appears after the session completes (REQ-C-066), via To-Do + notification.
 
 ### REQ-P-066 — Review optional
 Star required if reviewing; comment optional (matches `reviews`: `rating` required, `comment` nullable).

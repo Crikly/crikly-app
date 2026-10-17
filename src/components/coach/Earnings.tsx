@@ -22,6 +22,9 @@ interface TransactionItem {
   processed_at: string | null
   held_reason: string | null
   failure_reason: string | null
+  // TECH-06: programme-enrolment payouts only (absent on booking rows).
+  kind?: 'programme'
+  programme_name?: string | null
 }
 
 interface EarningsData {
@@ -297,8 +300,20 @@ export function Earnings() {
                         <span className="text-[16px] font-medium text-neutral-900">
                           {tx.session_date ? formatSessionDate(tx.session_date) : '—'}
                         </span>
-                        <span className="text-sm text-neutral-400 truncate">{tx.booking_reference ?? 'Booking'}</span>
-                        <span className="text-sm text-neutral-400 truncate">{tx.participant_name}</span>
+                        {tx.kind === 'programme' ? (
+                          <>
+                            <span className="text-sm text-neutral-600 truncate" data-testid="programme-label">
+                              Programme · {tx.programme_name ?? 'Programme'}
+                            </span>
+                            <span className="text-sm text-neutral-400 truncate">{tx.participant_name}</span>
+                            <span className="text-xs text-neutral-400 truncate">{tx.booking_reference ?? 'Enrolment'}</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="text-sm text-neutral-400 truncate">{tx.booking_reference ?? 'Booking'}</span>
+                            <span className="text-sm text-neutral-400 truncate">{tx.participant_name}</span>
+                          </>
+                        )}
                       </div>
                       <div className="flex flex-col items-end gap-1.5 shrink-0">
                         <span className="text-lg font-semibold tracking-heading text-neutral-900">
