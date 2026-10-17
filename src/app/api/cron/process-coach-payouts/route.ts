@@ -4,7 +4,7 @@
 // Stripe account to their Connect account once the booking has completed and
 // the BR-03 hold has passed (payout_eligible_at, stamped by C-PAY-01).
 //
-// BR-02: coach payout = booking.coach_price_pence − the ACTUAL Stripe fee,
+// BR-21: coach payout = booking.coach_price_pence − the ACTUAL Stripe fee,
 // read from balance_transaction.fee on the real charge (expanded off the
 // PaymentIntent) — never estimated, never a fixed rate.
 //
@@ -128,7 +128,7 @@ interface ChargeFee {
  * succeeded PaymentIntent by expanding latest_charge.balance_transaction.
  * Returns null when the expansion cannot be resolved to objects — which
  * should be impossible for a settled card charge and is treated as a loud
- * per-row error by the caller. BR-02: this fee is the only permitted source;
+ * per-row error by the caller. BR-21: this fee is the only permitted source;
  * estimating is banned.
  */
 async function resolveChargeFee(stripe: Stripe, paymentIntentId: string): Promise<ChargeFee | null> {
@@ -365,7 +365,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       }
 
       // Every remaining path (new hold row, new pending row, transfer) needs
-      // the real BR-02 amount → resolve the actual fee from the charge.
+      // the real BR-21 amount → resolve the actual fee from the charge.
       const pi = piByBooking.get(booking.id)
       if (!pi) {
         console.error(

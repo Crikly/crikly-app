@@ -1176,7 +1176,7 @@ The coach payout transfer job (C-PAY-02). Moves money owed to coaches from the p
 
 **Selection (starvation-proof):** two queries, neither able to return settled work — (A) discovery: completed bookings with `payout_eligible_at <= now()` and NO payout row yet (PostgREST anti-join `payouts!left` + is-null); (B) work queue: payout rows `status IN ('pending','held') OR (failed AND retry_count < 5)` due by `scheduled_at`, booking embedded `!inner`. Each capped at 50, oldest first; merged and deduped (queue row wins).
 
-**Amount (BR-02):** `coach_price_pence − balance_transaction.fee`, the ACTUAL Stripe fee expanded off the succeeded PaymentIntent's `latest_charge` — never estimated. If the fee ≥ coach price (unreachable at real prices) the row is skipped loudly with no payout row written — admin must resolve.
+**Amount (BR-21):** `coach_price_pence − balance_transaction.fee`, the ACTUAL Stripe fee expanded off the succeeded PaymentIntent's `latest_charge` — never estimated. If the fee ≥ coach price (unreachable at real prices) the row is skipped loudly with no payout row written — admin must resolve.
 
 **Idempotency (one booking never receives two transfers):** payout row written BEFORE the transfer fires (write-intent-first); `payouts.booking_id` UNIQUE (migration 045) makes the row UUID stable per booking; that UUID is the `transfers.create` idempotency key; rows already `processing`/`paid` are skipped. A pre-existing row with no `stripe_transfer_id` (crashed prior run) is reconciled against `transfers.list({ transfer_group })` and adopts any existing transfer instead of re-firing — covers Stripe's ~24h idempotency-key expiry.
 
