@@ -82,8 +82,9 @@
 // lost) is healed by the ghost-transfer reconcile guard: any pre-existing row
 // with no stripe_transfer_id is checked against
 // transfers.list({ transfer_group }) before a create — an existing transfer
-// is adopted, never re-fired. This also covers Stripe's ~24h idempotency-key
-// expiry, after which a blind re-fire would double-pay.
+// is adopted, never re-fired. With a fresh key per attempt this lookup, not
+// Stripe's key cache, is what stops a crashed or unknown-outcome attempt
+// from being paid twice.
 //
 // Enrolment safety (TECH-06): immediately before an enrolment transfer the
 // enrolment is re-read; if it is no longer payable (cancelled, refunded,
@@ -131,8 +132,8 @@ export const dynamic = 'force-dynamic'
 const BATCH_LIMIT = 50
 // After this many failed transfer attempts a row parks (excluded from the
 // work queue + loud parked count every run) until manually investigated.
-// Retries happen hourly, so all five attempts land well inside Stripe's ~24h
-// idempotency-key window.
+// Only genuine failures count: balance_insufficient deferrals leave the row
+// pending, so they never park. Each attempt uses a fresh idempotency key.
 const MAX_RETRY = 5
 const FAILURE_REASON_MAX = 500
 // Parked-row failure_reason for an enrolment that stopped being payable

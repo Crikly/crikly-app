@@ -1078,8 +1078,8 @@ Tracks payouts to coaches — one row per paid **booking** (after session comple
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
 | id | uuid | NO | gen_random_uuid() | Primary key |
-| booking_id | uuid | YES | null | FK → bookings(id). UNIQUE (migration 045) — one payout row per booking, ever; the row UUID doubles as the Stripe transfer idempotency key (C-PAY-02). Nullable since migration 056: NULL for programme-enrolment payouts |
-| enrolment_id | uuid | YES | null | FK → group_programme_enrolments(id) ON DELETE RESTRICT (migration 056, TECH-06). UNIQUE (payouts_enrolment_id_key) — one payout row per enrolment, ever. NULL for booking payouts. CHECK payouts_booking_xor_enrolment: exactly one of booking_id / enrolment_id is set |
+| booking_id | uuid | YES | null | FK → bookings(id). UNIQUE (migration 045) — one payout row per booking, ever. The Stripe transfer idempotency key is derived from the row UUID per attempt (uuid, then uuid:retry_count — TECH-06); the UNIQUE constraint is what keeps it one row per payable. Nullable since migration 056: NULL for programme-enrolment payouts |
+| enrolment_id | uuid | YES | null | FK → group_programme_enrolments(id) ON DELETE RESTRICT (migration 056, TECH-06). UNIQUE (payouts_enrolment_id_key) — one payout row per enrolment, ever (the per-attempt idempotency key derives from the row UUID, as for bookings). NULL for booking payouts. CHECK payouts_booking_xor_enrolment: exactly one of booking_id / enrolment_id is set |
 | coach_profile_id | uuid | NO | — | FK → coach_profiles(id) |
 | stripe_transfer_id | text | YES | null | Stripe Transfer id 'tr_...' |
 | amount_pence | integer | NO | — | Amount paid to coach in pence |
@@ -1097,6 +1097,7 @@ Tracks payouts to coaches — one row per paid **booking** (after session comple
 - The job's work queue selects due rows `WHERE status IN ('pending', 'held') OR (status = 'failed' AND retry_count < 5), scheduled_at <= now()` (plus a discovery query for eligible completed bookings with no payout row yet — anti-join; and, with `PAYOUTS_ENROLMENTS_ENABLED` on, the same two shapes over paid, non-cancelled, platform-paid enrolments with no open needs_refund alert — TECH-06). Held rows are re-evaluated every run, so release is automatic with no webhook involvement. Settled rows ('processing'/'paid') and retry-exhausted rows are excluded by the WHERE itself, so they can never crowd out new payouts; retry-exhausted rows are surfaced as a loud `parked` count every run.
 - At transfer time, a coach with no `stripe_account_id` → `status='held'`, `held_reason='no_stripe_account'`; an account with `stripe_onboarding_complete=false` → `status='held'`, `held_reason='stripe_onboarding_incomplete'`.
 - A hold is not a failure: `retry_count` is not incremented and `failure_reason` stays null. The job continues with remaining rows.
+- A platform-balance shortfall (Stripe `balance_insufficient`) is a deferral, not a failure (TECH-06): the row stays `pending` with `failure_reason` `balance_insufficient: …` and `retry_count` + 1, is retried every hour, and never parks. `failure_reason` `enrolment_not_payable: <reason>` with `retry_count` = 5 marks an enrolment row parked by the pre-transfer re-read. The migration-056 column comment on `enrolment_id` still describes the original "row UUID as idempotency key" design; migration files are immutable, so this table is the current description.
 - Release clears `held_reason` in the same UPDATE that leaves 'held' (DB-enforced) and proceeds like a pending row ('held' → 'processing' → 'paid').
 - Account deletion is blocked while any payout is in 'pending', 'processing', or 'held' (`PAYOUT_OWED_STATUSES`, `src/types/domain.ts`).
 
