@@ -171,10 +171,18 @@ const historyChain = {
   in: jest.fn(),
 }
 
+// TECH-06: programme-enrolment detail fetch (only issued when an enrolment
+// payout row exists, so the pre-TECH-06 fixtures never hit it).
+const enrolmentsChain = {
+  select: jest.fn().mockReturnThis(),
+  in: jest.fn(),
+}
+
 let bookingsCallCount = 0
 
 const mockFrom = jest.fn((table: string) => {
   if (table === 'payouts') return payoutsChain
+  if (table === 'group_programme_enrolments') return enrolmentsChain
   bookingsCallCount += 1
   return bookingsCallCount === 1 ? clearanceChain : historyChain
 })
@@ -194,6 +202,8 @@ beforeEach(() => {
   clearanceChain.limit.mockResolvedValue({ data: CLEARANCE_ROWS, error: null })
   historyChain.select.mockReturnThis()
   historyChain.in.mockResolvedValue({ data: BOOKING_ROWS, error: null })
+  enrolmentsChain.select.mockReturnThis()
+  enrolmentsChain.in.mockResolvedValue({ data: [], error: null })
   ;(createClient as jest.Mock).mockResolvedValue({ from: mockFrom })
   ;(requireCoachContext as jest.Mock).mockResolvedValue({
     context: {
@@ -360,5 +370,201 @@ describe('GET /api/coaches/earnings — C-PAY-06 unified transactions', () => {
     })
     expect(body.summary).toHaveProperty('this_month_pence')
     expect(body.summary).toHaveProperty('last_month_pence')
+  })
+})
+
+// ─── TECH-06: programme-enrolment payouts ─────────────────────────────────────
+
+const ENROLMENT_PAYOUT_ROWS = [
+  {
+    id: 'po-e1',
+    booking_id: null,
+    enrolment_id: 'en-1',
+    amount_pence: 13277, // 13500 gross − 223p actual fee
+    currency: 'GBP',
+    status: 'processing',
+    scheduled_at: '2026-10-16T09:30:00Z',
+    processed_at: '2026-10-16T10:05:00Z',
+    held_reason: null,
+    failure_reason: null,
+  },
+  {
+    id: 'po-e2',
+    booking_id: null,
+    enrolment_id: 'en-held',
+    amount_pence: 4905,
+    currency: 'GBP',
+    status: 'held',
+    scheduled_at: '2026-10-15T09:30:00Z',
+    processed_at: null,
+    held_reason: 'no_stripe_account',
+    failure_reason: null,
+  },
+  {
+    id: 'po-e3',
+    booking_id: null,
+    enrolment_id: 'en-failed',
+    amount_pence: 2381,
+    currency: 'GBP',
+    status: 'failed',
+    scheduled_at: '2026-10-14T09:30:00Z',
+    processed_at: null,
+    held_reason: null,
+    failure_reason: 'transfer declined',
+  },
+  {
+    id: 'po-orphan',
+    booking_id: null, // defensive: neither id (should never exist — XOR) must not crash
+    enrolment_id: null,
+    amount_pence: 100,
+    currency: 'GBP',
+    status: 'pending',
+    scheduled_at: '2026-10-13T09:30:00Z',
+    processed_at: null,
+    held_reason: null,
+    failure_reason: null,
+  },
+]
+
+const ENROLMENT_ROWS = [
+  {
+    id: 'en-1',
+    enrolment_reference: 'CRK-2026-E00001',
+    participant_name: 'Aarav Shah',
+    coach_amount_pence: 13500,
+    updated_at: '2026-10-16T09:30:00Z',
+    group_programmes: { title: 'Summer Cricket Camp' },
+  },
+  {
+    id: 'en-held',
+    enrolment_reference: 'CRK-2026-E00002',
+    participant_name: null, // → 'Participant'
+    coach_amount_pence: 5000,
+    updated_at: '2026-10-15T09:30:00Z',
+    group_programmes: null, // programme title unreadable → null name
+  },
+  {
+    id: 'en-failed',
+    enrolment_reference: 'CRK-2026-E00003',
+    participant_name: 'Maya Perera',
+    coach_amount_pence: 2500,
+    updated_at: '2026-10-14T09:30:00Z',
+    group_programmes: { title: 'Winter Nets' },
+  },
+]
+
+describe('GET /api/coaches/earnings — TECH-06 programme-enrolment payouts', () => {
+  beforeEach(() => {
+    payoutsChain.order.mockResolvedValue({ data: [...PAYOUT_ROWS, ...ENROLMENT_PAYOUT_ROWS], error: null })
+    enrolmentsChain.in.mockResolvedValue({ data: ENROLMENT_ROWS, error: null })
+  })
+
+  it('selects enrolment_id from payouts and fetches enrolment details only for enrolment rows', async () => {
+    await callGet()
+    expect(payoutsChain.select).toHaveBeenCalledWith(expect.stringContaining('enrolment_id'))
+    expect(enrolmentsChain.select).toHaveBeenCalledWith(expect.stringContaining('group_programmes(title)'))
+    expect(enrolmentsChain.in).toHaveBeenCalledWith('id', ['en-1', 'en-held', 'en-failed'])
+    // Booking batch still receives only booking ids — no nulls leak in.
+    expect(historyChain.in).toHaveBeenCalledWith('id', ['bk-1', 'bk-orphan', 'bk-3', 'bk-4', 'bk-5'])
+  })
+
+  it('renders an enrolment payout with reference, participant, programme name and derived fee', async () => {
+    const body = await (await callGet()).json()
+    const tx = body.transactions.find((t: TxLike) => t.id === 'po-e1')
+    expect(tx).toEqual({
+      id: 'po-e1',
+      status: 'transferring',
+      session_date: '2026-10-16',
+      booking_reference: 'CRK-2026-E00001',
+      participant_name: 'Aarav Shah',
+      coach_price_pence: 13500,
+      fee_pence: 223,
+      net_pence: 13277,
+      currency: 'GBP',
+      payout_eligible_at: null,
+      scheduled_at: '2026-10-16T09:30:00Z',
+      processed_at: '2026-10-16T10:05:00Z',
+      held_reason: null,
+      failure_reason: null,
+      kind: 'programme',
+      programme_name: 'Summer Cricket Camp',
+    })
+    const item = body.payouts.find((p: { id: string }) => p.id === 'po-e1')
+    expect(item).toEqual({
+      id: 'po-e1',
+      booking_id: null,
+      enrolment_id: 'en-1',
+      booking_reference: 'CRK-2026-E00001',
+      session_date: '2026-10-16',
+      session_type: 'programme',
+      coach_price_pence: 13500,
+      amount_pence: 13277,
+      currency: 'GBP',
+      status: 'processing',
+      scheduled_at: '2026-10-16T09:30:00Z',
+      processed_at: '2026-10-16T10:05:00Z',
+    })
+  })
+
+  it('maps held and failed enrolment payouts exactly like bookings', async () => {
+    const body = await (await callGet()).json()
+    const byId = new Map<string, TxLike & { kind?: string; programme_name?: string | null }>(
+      body.transactions.map((t: TxLike) => [t.id, t]),
+    )
+    expect(byId.get('po-e2')).toMatchObject({ status: 'on_hold', held_reason: 'no_stripe_account', participant_name: 'Participant', programme_name: null, kind: 'programme', fee_pence: 95 })
+    expect(byId.get('po-e3')).toMatchObject({ status: 'failed', failure_reason: 'transfer declined', programme_name: 'Winter Nets', fee_pence: 119 })
+  })
+
+  it('leaves booking payout items and transactions byte-identical (no kind / enrolment_id keys)', async () => {
+    const body = await (await callGet()).json()
+    const bookingTx = body.transactions.find((t: TxLike) => t.id === 'po-1')
+    expect(bookingTx).not.toHaveProperty('kind')
+    expect(bookingTx).not.toHaveProperty('programme_name')
+    expect(bookingTx).toMatchObject({ booking_reference: 'CRK-1001', participant_name: 'Aarav Shah', fee_pence: 80 })
+    const bookingItem = body.payouts.find((p: { id: string }) => p.id === 'po-1')
+    expect(bookingItem).not.toHaveProperty('enrolment_id')
+    expect(bookingItem).toMatchObject({ booking_id: 'bk-1', session_type: 'individual' })
+  })
+
+  it('tolerates a payout row with neither id without crashing', async () => {
+    const res = await callGet()
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    const orphan = body.transactions.find((t: TxLike) => t.id === 'po-orphan')
+    expect(orphan).toMatchObject({ status: 'transferring', participant_name: 'Player', booking_reference: null, coach_price_pence: null, fee_pence: null, net_pence: 100 })
+    expect(orphan).not.toHaveProperty('kind')
+  })
+
+  it('sorts bookings and programmes together, newest date first, unknown dates last', async () => {
+    const body = await (await callGet()).json()
+    const dates = body.transactions.map((t: TxLike) => t.session_date)
+    expect(dates).toEqual(['2026-10-16', '2026-10-15', '2026-10-14', '2026-07-26', '2026-07-21', '2026-07-20', '2026-07-19', '2026-07-18', null, null])
+  })
+
+  it('counts enrolment payouts in the summary like any other payout', async () => {
+    const body = await (await callGet()).json()
+    // pending_pence: po-2 (2500) + po-5 (4411) + po-e1 processing (13277) + orphan pending (100)
+    expect(body.summary.pending_pence).toBe(20288)
+  })
+
+  it('returns 500 when the enrolment detail fetch fails', async () => {
+    enrolmentsChain.in.mockResolvedValue({ data: null, error: { message: 'db down' } })
+    const res = await callGet()
+    expect(res.status).toBe(500)
+    expect(await res.json()).toEqual({ error: 'Failed to fetch enrolment details' })
+  })
+
+  it('falls back to the pre-TECH-06 column list when payouts.enrolment_id does not exist yet', async () => {
+    payoutsChain.order
+      .mockResolvedValueOnce({ data: null, error: { code: '42703', message: 'column payouts.enrolment_id does not exist' } })
+      .mockResolvedValueOnce({ data: PAYOUT_ROWS, error: null })
+    const res = await callGet()
+    expect(res.status).toBe(200)
+    expect(payoutsChain.select).toHaveBeenNthCalledWith(1, expect.stringContaining('enrolment_id'))
+    expect(payoutsChain.select).toHaveBeenNthCalledWith(2, expect.not.stringContaining('enrolment_id'))
+    expect(enrolmentsChain.in).not.toHaveBeenCalled()
+    const body = await res.json()
+    expect(body.payouts).toHaveLength(5)
+    expect(body.payouts.find((p: { id: string }) => p.id === 'po-1')).not.toHaveProperty('enrolment_id')
   })
 })

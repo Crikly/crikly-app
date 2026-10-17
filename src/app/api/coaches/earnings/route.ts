@@ -23,8 +23,12 @@ interface EarningsSummary {
 interface PayoutItem {
   id: string
   // Nullable since migration 056 (TECH-06): null for programme-enrolment
-  // payouts, which phase 2 renders from group_programme_enrolments.
+  // payouts, which carry enrolment_id instead (absent on booking items so the
+  // C-PAY-05 booking shape is unchanged on the wire).
   booking_id: string | null
+  enrolment_id?: string
+  // For enrolment payouts: the enrolment reference (CRK-…), the enrolment's
+  // payment date and session_type 'programme'.
   booking_reference: string | null
   session_date: string | null
   session_type: string | null
@@ -64,6 +68,22 @@ interface TransactionItem {
   processed_at: string | null
   held_reason: string | null
   failure_reason: string | null
+  // TECH-06: present only on programme-enrolment payouts. The row is
+  // labelled "Programme · <programme_name>"; booking_reference carries the
+  // enrolment reference and session_date the enrolment's payment date.
+  kind?: 'programme'
+  programme_name?: string | null
+}
+
+// TECH-06: enrolment detail for a programme payout row. participant_name is
+// the checkout snapshot (migration 020); group_programmes.title is public.
+interface HistoryEnrolment {
+  id: string
+  enrolment_reference: string | null
+  participant_name: string | null
+  coach_amount_pence: number | null
+  updated_at: string
+  group_programmes: { title: string | null } | null
 }
 
 // Embedded participant joins. player_profiles carries no name of its own —
@@ -182,13 +202,15 @@ export async function GET(): Promise<NextResponse> {
 
   const nowIso = new Date().toISOString()
 
-  const [payoutsRes, clearanceRes] = await Promise.all([
-    // All payouts for this coach (needed for accurate all-time and monthly sums)
+  const PAYOUT_COLUMNS =
+    'id, booking_id, amount_pence, currency, status, scheduled_at, processed_at, held_reason, failure_reason'
+
+  const [payoutsResFirst, clearanceRes] = await Promise.all([
+    // All payouts for this coach (needed for accurate all-time and monthly sums).
+    // TECH-06: enrolment_id is selected so programme payouts can be rendered.
     supabase
       .from('payouts')
-      .select(
-        'id, booking_id, amount_pence, currency, status, scheduled_at, processed_at, held_reason, failure_reason',
-      )
+      .select(`${PAYOUT_COLUMNS}, enrolment_id`)
       .eq('coach_profile_id', coachProfile.id)
       .order('scheduled_at', { ascending: false }),
     // C-PAY-06: in-clearance bookings — completed, still inside the BR-03
@@ -219,11 +241,28 @@ export async function GET(): Promise<NextResponse> {
       .limit(50),
   ])
 
-  if (payoutsRes.error || clearanceRes.error) {
+  // TECH-06 deploy-order tolerance: if this code reaches an environment
+  // before migration 056, payouts.enrolment_id does not exist yet. Fall back
+  // to the pre-TECH-06 column list so booking payouts keep rendering.
+  type PayoutQueryRow = Omit<PayoutRow, 'enrolment_id'> & { enrolment_id?: string | null }
+  let payoutsData = payoutsResFirst.data as PayoutQueryRow[] | null
+  let payoutsError = payoutsResFirst.error
+  if (payoutsError && (payoutsError.code === '42703' || /enrolment_id/.test(payoutsError.message ?? ''))) {
+    const fallback = await supabase
+      .from('payouts')
+      .select(PAYOUT_COLUMNS)
+      .eq('coach_profile_id', coachProfile.id)
+      .order('scheduled_at', { ascending: false })
+    payoutsData = fallback.data as PayoutQueryRow[] | null
+    payoutsError = fallback.error
+  }
+
+  if (payoutsError || clearanceRes.error) {
     return NextResponse.json({ error: 'Failed to fetch earnings' }, { status: 500 })
   }
 
-  const allPayouts = (payoutsRes.data ?? []) as PayoutRow[]
+  // enrolment_id is absent on the fallback shape → treated as null.
+  const allPayouts: PayoutRow[] = (payoutsData ?? []).map((p) => ({ ...p, enrolment_id: p.enrolment_id ?? null }))
   const clearanceBookings = (clearanceRes.data ?? []) as unknown as ClearanceBookingRow[]
 
   const inClearancePence = clearanceBookings.reduce((sum, b) => sum + b.coach_price_pence, 0)
@@ -232,8 +271,10 @@ export async function GET(): Promise<NextResponse> {
   // Build history slice (max 50) and batch-fetch booking details (Fix-16d)
   const historyRows = allPayouts.slice(0, 50)
   const bookingIds = historyRows.map((p) => p.booking_id).filter((id): id is string => id !== null)
+  const enrolmentIds = historyRows.map((p) => p.enrolment_id).filter((id): id is string => id !== null)
 
   const bookingMap: Record<string, HistoryBooking> = {}
+  const enrolmentMap: Record<string, HistoryEnrolment> = {}
 
   if (bookingIds.length > 0) {
     const { data: bookings, error: bookingsError } = await supabase
@@ -252,8 +293,48 @@ export async function GET(): Promise<NextResponse> {
     })
   }
 
+  // TECH-06: programme-enrolment payouts. Coach RLS: a coach can read the
+  // enrolments of their own programmes (group_programme_enrolments_select_coach)
+  // and programme titles are public.
+  if (enrolmentIds.length > 0) {
+    const { data: enrolments, error: enrolmentsError } = await supabase
+      .from('group_programme_enrolments')
+      .select('id, enrolment_reference, participant_name, coach_amount_pence, updated_at, group_programmes(title)')
+      .in('id', enrolmentIds)
+
+    if (enrolmentsError) {
+      return NextResponse.json({ error: 'Failed to fetch enrolment details' }, { status: 500 })
+    }
+
+    ;((enrolments ?? []) as unknown as HistoryEnrolment[]).forEach((e) => {
+      enrolmentMap[e.id] = e
+    })
+  }
+
+  // 'YYYY-MM-DD' of the enrolment's payment confirmation — the programme
+  // row's "session date" for sorting and date-range filtering.
+  const enrolmentDate = (e: HistoryEnrolment | null): string | null =>
+    e?.updated_at ? e.updated_at.slice(0, 10) : null
+
   // Assemble payout history items (shape unchanged — C-PAY-05 contract)
   const payoutItems: PayoutItem[] = historyRows.map((p) => {
+    if (p.enrolment_id) {
+      const enrolment = enrolmentMap[p.enrolment_id] ?? null
+      return {
+        id: p.id,
+        booking_id: null,
+        enrolment_id: p.enrolment_id,
+        booking_reference: enrolment?.enrolment_reference ?? null,
+        session_date: enrolmentDate(enrolment),
+        session_type: 'programme',
+        coach_price_pence: enrolment?.coach_amount_pence ?? null,
+        amount_pence: p.amount_pence,
+        currency: p.currency,
+        status: p.status,
+        scheduled_at: p.scheduled_at,
+        processed_at: p.processed_at,
+      }
+    }
     const booking = p.booking_id ? (bookingMap[p.booking_id] ?? null) : null
     return {
       id: p.id,
@@ -290,6 +371,30 @@ export async function GET(): Promise<NextResponse> {
   }))
 
   const payoutTransactions: TransactionItem[] = historyRows.map((p) => {
+    if (p.enrolment_id) {
+      const enrolment = enrolmentMap[p.enrolment_id] ?? null
+      const gross = enrolment?.coach_amount_pence ?? null
+      const fee = gross !== null && gross - p.amount_pence >= 0 ? gross - p.amount_pence : null
+      return {
+        id: p.id,
+        status: toTransactionStatus(p.status),
+        session_date: enrolmentDate(enrolment),
+        booking_reference: enrolment?.enrolment_reference ?? null,
+        participant_name: enrolment?.participant_name ?? 'Participant',
+        coach_price_pence: gross,
+        fee_pence: fee,
+        net_pence: p.amount_pence,
+        currency: p.currency,
+        payout_eligible_at: null,
+        scheduled_at: p.scheduled_at,
+        processed_at: p.processed_at,
+        held_reason: p.held_reason,
+        failure_reason: p.failure_reason,
+        kind: 'programme',
+        programme_name: enrolment?.group_programmes?.title ?? null,
+      }
+    }
+    // Booking payout (unchanged), or a defensive orphan with neither id.
     const booking = p.booking_id ? (bookingMap[p.booking_id] ?? null) : null
     const gross = booking?.coach_price_pence ?? null
     const fee = gross !== null && gross - p.amount_pence >= 0 ? gross - p.amount_pence : null
