@@ -52,16 +52,47 @@ export function mockFromTables(map: Record<string, Chain[]>) {
 export const CHARGE_ID = 'ch_pay_1'
 export const STRIPE_FEE = 113
 
+/** A Stripe-shaped error (the route duck-types code/type/statusCode). */
+export function stripeError(over: { code?: string; type?: string; statusCode?: number; message?: string } = {}) {
+  const e = new Error(over.message ?? 'stripe error') as Error & { code?: string; type?: string; statusCode?: number }
+  if (over.code !== undefined) e.code = over.code
+  if (over.type !== undefined) e.type = over.type
+  if (over.statusCode !== undefined) e.statusCode = over.statusCode
+  return e
+}
+
+export const BALANCE_INSUFFICIENT = () =>
+  stripeError({
+    code: 'balance_insufficient',
+    type: 'StripeInvalidRequestError',
+    statusCode: 400,
+    message: 'You have insufficient available funds in your Stripe account.',
+  })
+
+/** list() results are filtered by the route on source_transaction / payout_id. */
+export function listedTransfer(over: Record<string, unknown> = {}) {
+  return { id: 'tr_ghost_1', source_transaction: CHARGE_ID, metadata: {}, ...over }
+}
+
 export function makeStripeMock(
   over: {
     fee?: number
+    /** balance_transaction.status — 'pending' (default) or 'available' */
+    btStatus?: 'pending' | 'available'
+    btAvailableOn?: number
     latestCharge?: unknown
     retrieveRejects?: boolean
     createRejects?: boolean
-    listData?: Array<{ id: string }>
+    /** Error thrown by every transfers.create; overrides createRejects */
+    createError?: Error
+    listData?: Array<{ id: string; source_transaction?: string; metadata?: Record<string, string> }>
     listRejects?: boolean
+    transferRetrieveRejects?: boolean
+    availablePence?: number
+    balanceRejects?: boolean
   } = {},
 ) {
+  const createError = over.createError ?? (over.createRejects ? new Error('Insufficient funds in Stripe balance') : null)
   return {
     paymentIntents: {
       retrieve: over.retrieveRejects
@@ -71,15 +102,34 @@ export function makeStripeMock(
             latest_charge:
               'latestCharge' in over
                 ? over.latestCharge
-                : { id: CHARGE_ID, balance_transaction: { id: 'txn_pay_1', fee: over.fee ?? STRIPE_FEE } },
+                : {
+                    id: CHARGE_ID,
+                    balance_transaction: {
+                      id: 'txn_pay_1',
+                      fee: over.fee ?? STRIPE_FEE,
+                      status: over.btStatus ?? 'pending',
+                      available_on: over.btAvailableOn ?? 1792627200, // 2026-10-22T00:00:00Z
+                    },
+                  },
+          }),
+    },
+    balance: {
+      retrieve: over.balanceRejects
+        ? jest.fn().mockRejectedValue(new Error('balance unavailable'))
+        : jest.fn().mockResolvedValue({
+            available: [{ amount: over.availablePence ?? 0, currency: 'gbp', source_types: { card: over.availablePence ?? 0 } }],
+            pending: [{ amount: 0, currency: 'gbp', source_types: { card: 0 } }],
           }),
     },
     transfers: {
       list: over.listRejects
         ? jest.fn().mockRejectedValue(new Error('rate limited'))
         : jest.fn().mockResolvedValue({ data: over.listData ?? [] }),
-      create: over.createRejects
-        ? jest.fn().mockRejectedValue(new Error('Insufficient funds in Stripe balance'))
+      retrieve: over.transferRetrieveRejects
+        ? jest.fn().mockRejectedValue(new Error('No such transfer'))
+        : jest.fn().mockImplementation(async (id: string) => ({ id })),
+      create: createError
+        ? jest.fn().mockRejectedValue(createError)
         : jest.fn().mockResolvedValue({ id: 'tr_pay_1' }),
     },
   }

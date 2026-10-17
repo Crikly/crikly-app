@@ -453,6 +453,34 @@ const ENROLMENT_ROWS = [
   },
 ]
 
+describe('GET /api/coaches/earnings — deferred payouts (TECH-06 balance deferral)', () => {
+  it('maps a pending row carrying a balance_insufficient failure_reason to "transferring", never "failed"', async () => {
+    payoutsChain.order.mockResolvedValue({
+      data: [
+        ...PAYOUT_ROWS,
+        {
+          id: 'po-deferred',
+          booking_id: 'bk-3',
+          enrolment_id: null,
+          amount_pence: 2941,
+          currency: 'GBP',
+          status: 'pending',
+          scheduled_at: '2026-10-17T18:00:00Z',
+          processed_at: null,
+          held_reason: null,
+          failure_reason: 'balance_insufficient: You have insufficient available funds in your Stripe account.',
+        },
+      ],
+      error: null,
+    })
+    const body = await (await callGet()).json()
+    const tx = body.transactions.find((t: TxLike) => t.id === 'po-deferred')
+    expect(tx).toMatchObject({ status: 'transferring', net_pence: 2941 })
+    expect(tx.status).not.toBe('failed')
+    expect(body.summary.pending_pence).toBe(6911 + 2941)
+  })
+})
+
 describe('GET /api/coaches/earnings — TECH-06 programme-enrolment payouts', () => {
   beforeEach(() => {
     payoutsChain.order.mockResolvedValue({ data: [...PAYOUT_ROWS, ...ENROLMENT_PAYOUT_ROWS], error: null })
