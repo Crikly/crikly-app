@@ -2181,10 +2181,11 @@ export type Database = {
       payouts: {
         Row: {
           amount_pence: number
-          booking_id: string
+          booking_id: string | null
           coach_profile_id: string
           created_at: string
           currency: string
+          enrolment_id: string | null
           failure_reason: string | null
           held_reason: string | null
           id: string
@@ -2197,10 +2198,11 @@ export type Database = {
         }
         Insert: {
           amount_pence: number
-          booking_id: string
+          booking_id?: string | null
           coach_profile_id: string
           created_at?: string
           currency?: string
+          enrolment_id?: string | null
           failure_reason?: string | null
           held_reason?: string | null
           id?: string
@@ -2213,10 +2215,11 @@ export type Database = {
         }
         Update: {
           amount_pence?: number
-          booking_id?: string
+          booking_id?: string | null
           coach_profile_id?: string
           created_at?: string
           currency?: string
+          enrolment_id?: string | null
           failure_reason?: string | null
           held_reason?: string | null
           id?: string
@@ -2240,6 +2243,13 @@ export type Database = {
             columns: ["coach_profile_id"]
             isOneToOne: false
             referencedRelation: "coach_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payouts_enrolment_id_fkey"
+            columns: ["enrolment_id"]
+            isOneToOne: true
+            referencedRelation: "group_programme_enrolments"
             referencedColumns: ["id"]
           },
         ]

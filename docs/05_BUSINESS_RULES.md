@@ -2,7 +2,7 @@
 
 **Version:** 1.1
 **Last Updated:** 17 October 2026
-**Changed:** New BR-21 — Coach Payout: Stripe Fee Deduction (the Notion "BR-02" fee rule renumbered; BR-02 stays the commission rate) (T-17); BR-01 reduced to the commission-on-top calculation; BR-02 notes the 0% pilot commission (Decision T-18); BR-03 split by booking type — bookings paid 48h after auto-completion, programme enrolments paid immediately (T-16, not yet implemented, TECH-06); BR-04 implementation status added (TECH-07). Previous: Added BR-20 — Coach Scheduling Conflict Rules (BUG-16/17/18).
+**Changed:** New BR-21 — Coach Payout: Stripe Fee Deduction (the Notion "BR-02" fee rule renumbered; BR-02 stays the commission rate) (T-17); BR-01 reduced to the commission-on-top calculation; BR-02 notes the 0% pilot commission (Decision T-18); BR-03 split by booking type — bookings paid 48h after auto-completion, programme enrolments paid immediately (T-16; implemented behind the PAYOUTS_ENROLMENTS_ENABLED flag — TECH-06); BR-04 implementation status added (TECH-07). Previous: Added BR-20 — Coach Scheduling Conflict Rules (BUG-16/17/18).
 
 These rules MUST be enforced in code, not just documented.
 Every rule has an ID. Reference it in code comments and commits.
@@ -61,7 +61,7 @@ Payout timing depends on the type of booking (Decision T-16, 15 Oct 2026).
 - The coach is paid as soon as the parent's enrolment payment succeeds. NO 48-hour hold.
 - Same method and amount rule (`source_transaction`, coach price minus the Stripe fee per BR-21).
 - Accepted risk: the coach is paid before sessions are delivered. If a programme is cancelled or a parent is refunded (BR-04, REQ-C-056, BR-17), the platform must reverse the Stripe transfer. A reversal fails if the coach has already withdrawn the money, and the platform carries that loss. Programme refunds are handled manually by an admin until built.
-- STATUS: decided, NOT YET IMPLEMENTED. Live code creates no payout for a programme enrolment. Tracked as TECH-06.
+- STATUS: implemented in the hourly payout job behind the `PAYOUTS_ENROLMENTS_ENABLED` flag (TECH-06, migration 056). With the flag off (the default) no programme enrolment is paid; Lasith switches it on per environment after approving the job's dry-run listing (`?dry_run=1` / `?dry_run=stripe`). Before the transfer the job re-checks that the enrolment is still paid and not cancelled or refunded, and it never pays an enrolment with an open `needs_refund` alert or whose programme is cancelled.
 
 ---
 

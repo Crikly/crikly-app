@@ -285,3 +285,122 @@ describe('Earnings — client-side filtering', () => {
     expect(screen.getByTestId('transaction-count')).toHaveTextContent('0 sessions')
   })
 })
+
+// ── TECH-06: programme-enrolment payout rows ─────────────────────────────────
+
+const PROGRAMME_TRANSACTIONS = [
+  {
+    id: 'po-e1',
+    status: 'transferring',
+    session_date: '2026-10-16',
+    booking_reference: 'CRK-2026-E00001',
+    participant_name: 'Aarav',
+    coach_price_pence: 13500,
+    fee_pence: 223,
+    net_pence: 13277,
+    payout_eligible_at: null,
+    scheduled_at: '2026-10-16T09:30:00Z',
+    processed_at: '2026-10-16T10:05:00Z',
+    held_reason: null,
+    failure_reason: null,
+    kind: 'programme',
+    programme_name: 'Summer Cricket Camp',
+  },
+  {
+    id: 'po-e2',
+    status: 'on_hold',
+    session_date: '2026-10-15',
+    booking_reference: 'CRK-2026-E00002',
+    participant_name: 'Participant',
+    coach_price_pence: 5000,
+    fee_pence: 95,
+    net_pence: 4905,
+    payout_eligible_at: null,
+    scheduled_at: '2026-10-15T09:30:00Z',
+    processed_at: null,
+    held_reason: 'no_stripe_account',
+    failure_reason: null,
+    kind: 'programme',
+    programme_name: null,
+  },
+  {
+    id: 'po-e3',
+    status: 'failed',
+    session_date: '2026-10-14',
+    booking_reference: 'CRK-2026-E00003',
+    participant_name: 'Maya',
+    coach_price_pence: 2500,
+    fee_pence: 119,
+    net_pence: 2381,
+    payout_eligible_at: null,
+    scheduled_at: '2026-10-14T09:30:00Z',
+    processed_at: null,
+    held_reason: null,
+    failure_reason: 'transfer declined',
+    kind: 'programme',
+    programme_name: 'Winter Nets',
+  },
+]
+
+describe('Earnings — programme-enrolment payouts (TECH-06)', () => {
+  it('renders a programme row with its label, participant, reference, net and badge', async () => {
+    stubFetch({ ...EARNINGS_RESPONSE, transactions: [PROGRAMME_TRANSACTIONS[0], ...TRANSACTIONS] })
+    render(<Earnings />)
+    const rows = await screen.findAllByTestId('transaction-row')
+    expect(rows).toHaveLength(6)
+
+    const row = rows[0]
+    expect(within(row).getByTestId('programme-label')).toHaveTextContent('Programme · Summer Cricket Camp')
+    expect(within(row).getByText('Aarav')).toBeInTheDocument()
+    expect(within(row).getByText('CRK-2026-E00001')).toBeInTheDocument()
+    expect(within(row).getByText('£132.77')).toBeInTheDocument()
+    expect(within(row).getByText('£135.00 − £2.23 fee')).toBeInTheDocument()
+    expect(within(row).getByText('Transferring')).toBeInTheDocument()
+    expect(within(row).getByText('Fri 16 Oct')).toBeInTheDocument()
+  })
+
+  it('booking rows carry no programme label', async () => {
+    stubFetch()
+    render(<Earnings />)
+    const rows = await screen.findAllByTestId('transaction-row')
+    for (const row of rows) {
+      expect(within(row).queryByTestId('programme-label')).not.toBeInTheDocument()
+    }
+  })
+
+  it('held and failed programme rows use the same wording as bookings, and a missing title falls back', async () => {
+    stubFetch({ ...EARNINGS_RESPONSE, transactions: PROGRAMME_TRANSACTIONS })
+    render(<Earnings />)
+    const rows = await screen.findAllByTestId('transaction-row')
+    expect(rows).toHaveLength(3)
+
+    expect(within(rows[1]).getByTestId('programme-label')).toHaveTextContent('Programme · Programme')
+    expect(within(rows[1]).getByText('On hold')).toBeInTheDocument()
+    expect(within(rows[1]).getByText('Connect Stripe to release')).toBeInTheDocument()
+    expect(within(rows[2]).getByText('Failed')).toBeInTheDocument()
+    expect(within(rows[2]).getByText('Action needed')).toBeInTheDocument()
+    expect(screen.queryByTestId('clearance-fee-note')).not.toBeInTheDocument()
+  })
+
+  it('programme rows take part in status and date filtering', async () => {
+    stubFetch({ ...EARNINGS_RESPONSE, transactions: [...PROGRAMME_TRANSACTIONS, ...TRANSACTIONS] })
+    render(<Earnings />)
+    await screen.findAllByTestId('transaction-row')
+
+    fireEvent.click(screen.getByRole('button', { name: 'On hold' }))
+    expect(screen.getAllByTestId('transaction-row')).toHaveLength(2) // po-e2 + po-3
+    expect(screen.getByTestId('transaction-count')).toHaveTextContent('2 sessions')
+
+    fireEvent.click(screen.getByRole('button', { name: 'All' }))
+    const [from] = screen.getAllByTestId('datepicker-input')
+    fireEvent.change(from, { target: { value: '2026-10-01' } })
+    expect(screen.getAllByTestId('transaction-row')).toHaveLength(3) // the three programme rows
+  })
+
+  it('renders the empty state when there are no transactions at all', async () => {
+    stubFetch({ ...EARNINGS_RESPONSE, transactions: [] })
+    render(<Earnings />)
+    expect(await screen.findByText('No transactions yet')).toBeInTheDocument()
+    expect(screen.queryAllByTestId('transaction-row')).toHaveLength(0)
+  })
+})
