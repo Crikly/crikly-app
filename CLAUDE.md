@@ -127,7 +127,7 @@ Always read the relevant agent file before starting any task.
 | Hosting | Vercel | Auto-deploy on push to main |
 | Mobile | Flutter (iOS + Android) | Phase 2 only — not now |
 
-**Node version:** Always use Node 20 LTS. Run `node --version` to verify.
+**Node version:** Always use Node 24 LTS. Run `node --version` to verify.
 **Supabase:** two projects — see Environment & Deployment Discipline below. Never confuse them.
 - STAGING: `gzehxfnlfogkhadejowo` → `https://gzehxfnlfogkhadejowo.supabase.co` (staging.crikly.app)
 - PRODUCTION: `smwvtaeivmqaldvrbycm` → `https://smwvtaeivmqaldvrbycm.supabase.co` (crikly.app)
@@ -410,7 +410,7 @@ chore(deps): update Stripe SDK
 ## Quality Gate — Before Every Commit
 
 ```
-□ node --version shows v20.x.x
+□ node --version shows v24.x.x
 □ next.config.ts does NOT contain reactCompiler: true
 □ npx tsc --noEmit passes — zero TypeScript errors
 □ No `any` types introduced
@@ -455,7 +455,7 @@ chore(deps): update Stripe SDK
 → Adding new npm dependencies
 → Anything architecturally significant
 → reactCompiler: true appearing in next.config.ts
-→ Node version is not 20 LTS
+→ Node version is not 24 LTS
 ```
 
 ---

@@ -38,7 +38,7 @@ Before generic debugging, rule out these known Crikly-specific failure patterns 
 
 **Build hangs / mysterious build failures:**
 - Is `reactCompiler: true` present in `next.config.ts`? → That is the cause. Remove it.
-- Is `node --version` returning v20.x.x? → If not, that is likely the cause.
+- Is `node --version` returning v24.x.x? → If not, that is likely the cause.
 - Is there a stale `.next/` directory? → Try clean rebuild.
 
 **TypeScript errors:**
@@ -122,7 +122,7 @@ Never apply fixes without Lasith's explicit go-ahead, especially for 🟡 and �
 ## What You Must Never Do
 
 - Never apply a fix that adds `reactCompiler: true` to next.config.ts.
-- Never propose downgrading or upgrading Node away from 20 LTS without explicit approval.
+- Never propose downgrading or upgrading Node away from 24 LTS without explicit approval.
 - Never edit existing migration files — always create new ones to fix drift.
 - Never bypass RLS as a debugging shortcut.
 - Never log card data, CVVs, or full card numbers, even temporarily.
