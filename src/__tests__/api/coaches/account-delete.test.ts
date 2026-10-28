@@ -2,7 +2,11 @@
 //
 //   1. Upcoming bookings (confirmed/pending_approval, today onwards) → 409
 //      UPCOMING_BOOKINGS — the coach can act on these (cancel/complete).
-//   2. Owed payouts (pending/processing/held) → 409 PENDING_PAYOUTS.
+//   2. Owed payouts (pending/processing/held) → 409 PENDING_PAYOUTS. 'paid'
+//      is NOT owed (BUG-50): a coach whose transfers have all succeeded is
+//      no longer blocked here; their payout rows are never touched by this
+//      route (steps 5-8 write coach_profiles / user_roles / auth.users only,
+//      and payouts.coach_profile_id is ON DELETE RESTRICT).
 //   3. Past-only booking history → step 8's auth.users hard delete FK-fails
 //      (bookings.coach_profile_id is ON DELETE RESTRICT via the
 //      auth.users → user_profiles → coach_profiles cascade) → 500
@@ -43,6 +47,7 @@ function buildMocks(opts: {
   authDeleteError?: { message: string } | null
 }) {
   const bookingFilters: Array<{ statuses: unknown; fromDate: unknown }> = []
+  const payoutFilters: Array<{ statuses: unknown }> = []
 
   const supabase = {
     from: jest.fn((table: string) => {
@@ -82,9 +87,12 @@ function buildMocks(opts: {
         return {
           select: jest.fn().mockReturnValue({
             eq: jest.fn().mockReturnValue({
-              in: jest.fn().mockResolvedValue({
-                count: opts.owedPayoutCount ?? 0,
-                error: null,
+              in: jest.fn((_col: string, statuses: unknown) => {
+                payoutFilters.push({ statuses })
+                return Promise.resolve({
+                  count: opts.owedPayoutCount ?? 0,
+                  error: null,
+                })
               }),
             }),
           }),
@@ -151,7 +159,7 @@ function buildMocks(opts: {
     error: null,
   })
 
-  return { supabase, admin, bookingFilters, softDeletes, roleDeactivations }
+  return { supabase, admin, bookingFilters, payoutFilters, softDeletes, roleDeactivations }
 }
 
 beforeEach(() => {
@@ -189,6 +197,28 @@ describe('DELETE /api/coaches/account — four-case deletion contract (BUG-49)',
     expect(data.error).toBe('You have pending payouts. Please wait for them to clear.')
     expect(softDeletes).toEqual([])
     expect(admin.auth.admin.deleteUser).not.toHaveBeenCalled()
+  })
+
+  // BUG-50 — 'paid' is terminal and not owed. The owed filter must keep the
+  // three owed statuses (legacy 'processing' included, so an uncorrected
+  // pre-BUG-50 row still blocks) and must never include 'paid'.
+  it('does not treat paid payouts as owed: the status filter excludes paid and keeps pending/processing/held', async () => {
+    const { admin, payoutFilters, softDeletes } = buildMocks({
+      upcomingCount: 0,
+      owedPayoutCount: 0, // every payout row for this coach is 'paid'
+      otherActiveRoleCount: 1, // multi-role → soft-delete only, no auth delete
+    })
+
+    const res = await DELETE()
+    expect(res.status).toBe(200)
+    expect(payoutFilters).toHaveLength(1)
+    const statuses = payoutFilters[0].statuses as string[]
+    expect(statuses).toEqual(expect.arrayContaining(['pending', 'processing', 'held']))
+    expect(statuses).not.toContain('paid')
+    expect(statuses).not.toContain('failed')
+    // Payout rows are never written by this route — only the profile is soft-deleted.
+    expect(admin.from).not.toHaveBeenCalledWith('payouts')
+    expect(softDeletes).toHaveLength(1)
   })
 
   // Case 3 — past-only booking history: deleteUser FK-fails → loud 500
