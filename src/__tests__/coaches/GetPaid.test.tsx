@@ -76,8 +76,19 @@ describe('GetPaid — payment setup only (C-PAY-06)', () => {
     expect(screen.getByText('Where your money goes and when it lands.')).toBeInTheDocument()
     expect(screen.getByText('How payouts work')).toBeInTheDocument()
     expect(screen.getByText('Session completed')).toBeInTheDocument()
-    expect(screen.getByText('48hr processing')).toBeInTheDocument()
-    expect(screen.getByText('Released to bank')).toBeInTheDocument()
+    // BUG-50 / T-20 copy: Paid = money sent to the coach's Stripe account;
+    // bookings hold 48h, programmes pay on the next hourly run.
+    expect(screen.getByText('48hr hold')).toBeInTheDocument()
+    expect(
+      screen.getByText('1-to-1 and group sessions clear 48 hours after they end. Programmes are sent within the hour.'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Paid to your Stripe account')).toBeInTheDocument()
+    expect(
+      screen.getByText('Lands in your Stripe balance, then your bank on your Stripe payout schedule.'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('The 48-hour hold on sessions protects both coaches and parents.')).toBeInTheDocument()
+    expect(screen.queryByText('48hr processing')).not.toBeInTheDocument()
+    expect(screen.queryByText('Released to bank')).not.toBeInTheDocument()
   })
 })
 

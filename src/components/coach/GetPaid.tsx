@@ -239,21 +239,21 @@ export function GetPaid() {
                   <div className="w-12 h-12 rounded-full bg-brand-50 flex items-center justify-center">
                     <Clock size={22} className="text-brand-600" />
                   </div>
-                  <span className="text-[14px] font-medium text-neutral-900">48hr processing</span>
-                  <span className="text-sm text-neutral-600">Your payout clears in the background.</span>
+                  <span className="text-[14px] font-medium text-neutral-900">48hr hold</span>
+                  <span className="text-sm text-neutral-600">1-to-1 and group sessions clear 48 hours after they end. Programmes are sent within the hour.</span>
                 </div>
                 <ArrowRight size={20} className="text-neutral-100" />
                 <div className="flex flex-col items-center gap-2.5 text-center">
                   <div className="w-12 h-12 rounded-full bg-brand-50 flex items-center justify-center">
                     <Landmark size={22} className="text-brand-600" />
                   </div>
-                  <span className="text-[14px] font-medium text-neutral-900">Released to bank</span>
-                  <span className="text-sm text-neutral-600">Sent to your connected account.</span>
+                  <span className="text-[14px] font-medium text-neutral-900">Paid to your Stripe account</span>
+                  <span className="text-sm text-neutral-600">Lands in your Stripe balance, then your bank on your Stripe payout schedule.</span>
                 </div>
               </div>
               <div className="bg-neutral-50 rounded-md px-4 py-3.5 flex items-center gap-2.5">
                 <Info size={18} className="text-brand-600 shrink-0" />
-                <span className="text-[14px] text-brand-800">The 48-hour delay protects both coaches and parents.</span>
+                <span className="text-[14px] text-brand-800">The 48-hour hold on sessions protects both coaches and parents.</span>
               </div>
             </div>
 
