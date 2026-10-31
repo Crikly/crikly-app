@@ -43,10 +43,10 @@
 // key being constant:
 //   1. DB     — payouts.booking_id and payouts.enrolment_id are each UNIQUE
 //               (migrations 045, 056): one row per payable; rows already
-//               'processing'/'paid' are never selected or fired, and every
-//               failure/deferral write is guarded by .eq('status', <read>)
-//               so a late write can never overwrite a row another run has
-//               moved to 'processing'.
+//               'paid' (or legacy 'processing', see below) are never selected
+//               or fired, and every failure/deferral write is guarded by
+//               .eq('status', <read>) so a late write can never overwrite a
+//               row another run has moved to 'paid'.
 //   2. Stripe — a pre-existing row that already carries stripe_transfer_id
 //               NEVER calls transfers.create again: the transfer is
 //               retrieved (read-only) and adopted. A pre-existing row with
@@ -75,6 +75,17 @@
 // goes back to 'pending' (retry_count + 1, so the next attempt gets a fresh
 // key), is retried every hour until the balance covers it, never parks, and
 // the coach keeps seeing "Transferring" rather than "Action needed".
+//
+// Terminal status (BUG-50, Decision T-20): a Stripe transfer is synchronous —
+// transfers.create either returns a Transfer (money is in the coach's Stripe
+// balance) or throws; there is no pending state and no later success event.
+// So the success write and the adopt write set status='paid' directly, with
+// processed_at as the paid timestamp. Stripe's onward payout from the coach's
+// balance to their bank (payout.* events, po_ ids) is the coach's own
+// schedule and is never tracked here. 'processing' is a legacy value: rows
+// transferred before BUG-50 carry it until corrected by a one-time data fix.
+// Both skip guards (real run and dry-run) still treat it as settled, so a
+// legacy row can never be fired again.
 //
 // Write-intent-first: the payout row is written BEFORE the transfer fires, so
 // a crash between the two leaves an auditable 'pending' row, never a ghost
@@ -912,14 +923,15 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         }
       }
 
-      // Adopt an existing transfer: write processing with its id. Returns
-      // true when the row was adopted (caller must `continue`).
+      // Adopt an existing transfer: write paid with its id (the transfer
+      // already succeeded). Returns true when the row was adopted (caller
+      // must `continue`).
       const adopt = async (transferId: string, how: string): Promise<boolean> => {
         const { error } = await supabase
           .from('payouts')
           .update({
             stripe_transfer_id: transferId,
-            status: 'processing',
+            status: 'paid',
             processed_at: new Date().toISOString(),
             failure_reason: null,
           })
@@ -1132,7 +1144,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         .from('payouts')
         .update({
           stripe_transfer_id: transfer.id,
-          status: 'processing',
+          status: 'paid',
           processed_at: new Date().toISOString(),
           failure_reason: null,
         })

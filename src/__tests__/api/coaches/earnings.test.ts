@@ -596,3 +596,82 @@ describe('GET /api/coaches/earnings — TECH-06 programme-enrolment payouts', ()
     expect(body.payouts.find((p: { id: string }) => p.id === 'po-1')).not.toHaveProperty('enrolment_id')
   })
 })
+
+// ─── BUG-50: 'paid' is the terminal status the summary boxes count ────────────
+//
+// The cron now writes status='paid' (processed_at stamped) the moment the
+// synchronous Stripe transfer succeeds. The list row must read 'paid' and the
+// same row must land in BOTH summary boxes (This month by processed_at, All
+// time regardless). A legacy 'processing' row still reads 'transferring' and
+// is counted in neither box, so an uncorrected pre-BUG-50 row stays visible
+// rather than silently inflating the totals.
+
+describe('GET /api/coaches/earnings — BUG-50 paid status drives the summary boxes', () => {
+  const now = new Date()
+  const thisMonthIso = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 12, 0, 0)).toISOString()
+  const threeMonthsAgoIso = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 3, 15, 12, 0, 0)).toISOString()
+
+  const BUG50_ROWS = [
+    {
+      id: 'po-paid-now',
+      booking_id: 'bk-1',
+      amount_pence: 3920,
+      currency: 'GBP',
+      status: 'paid',
+      scheduled_at: thisMonthIso,
+      processed_at: thisMonthIso, // transferred this month
+      held_reason: null,
+      failure_reason: null,
+      stripe_transfer_id: 'tr_now',
+    },
+    {
+      id: 'po-paid-old',
+      booking_id: 'bk-4',
+      amount_pence: 5881,
+      currency: 'GBP',
+      status: 'paid',
+      scheduled_at: threeMonthsAgoIso,
+      processed_at: threeMonthsAgoIso, // transferred in an earlier month
+      held_reason: null,
+      failure_reason: null,
+      stripe_transfer_id: 'tr_old',
+    },
+    {
+      id: 'po-legacy',
+      booking_id: 'bk-5',
+      amount_pence: 4411,
+      currency: 'GBP',
+      status: 'processing', // legacy pre-BUG-50 row, transfer did succeed
+      scheduled_at: thisMonthIso,
+      processed_at: thisMonthIso,
+      held_reason: null,
+      failure_reason: null,
+      stripe_transfer_id: 'tr_legacy',
+    },
+  ]
+
+  beforeEach(() => {
+    payoutsChain.order.mockResolvedValue({ data: BUG50_ROWS, error: null })
+    clearanceChain.limit.mockResolvedValue({ data: [], error: null })
+  })
+
+  it('a paid row reads "paid" in the list and counts in This month and All time', async () => {
+    const body = await (await callGet()).json()
+    const byId = new Map<string, TxLike>(body.transactions.map((t: TxLike) => [t.id, t]))
+
+    expect(byId.get('po-paid-now')?.status).toBe('paid')
+    expect(byId.get('po-paid-old')?.status).toBe('paid')
+    expect(body.summary.this_month_pence).toBe(3920) // only the row processed this month
+    expect(body.summary.total_earned_pence).toBe(3920 + 5881) // every paid row
+  })
+
+  it('a legacy processing row still reads "transferring" and is counted in neither box', async () => {
+    const body = await (await callGet()).json()
+    const legacy = body.transactions.find((t: TxLike) => t.id === 'po-legacy')
+
+    expect(legacy?.status).toBe('transferring')
+    expect(body.summary.this_month_pence).toBe(3920)
+    expect(body.summary.total_earned_pence).toBe(9801)
+    expect(body.summary.pending_pence).toBe(4411)
+  })
+})

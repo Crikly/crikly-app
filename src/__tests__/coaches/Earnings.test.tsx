@@ -224,6 +224,46 @@ describe('Earnings — transaction list', () => {
     expect(screen.getByText('Action needed')).toBeInTheDocument()
     expect(screen.getByText('Connect Stripe to release')).toBeInTheDocument()
   })
+
+  // BUG-50 / T-20: Paid = Crikly's transfer to the coach's Stripe account
+  // succeeded. The row says so, and a page note explains the onward bank step.
+  it('shows the Stripe-account sub-text on paid rows only', async () => {
+    stubFetch()
+    render(<Earnings />)
+    const rows = await screen.findAllByTestId('transaction-row')
+
+    expect(within(rows[2]).getByText('Paid')).toBeInTheDocument()
+    expect(within(rows[2]).getByText('Sent to your Stripe account')).toBeInTheDocument()
+    expect(screen.getAllByText('Sent to your Stripe account')).toHaveLength(1)
+    // Transferring rows keep no sub-text
+    expect(within(rows[1]).queryByText(/Stripe account/)).not.toBeInTheDocument()
+  })
+
+  it('shows the paid note only when a paid transaction exists, keyed off the full list', async () => {
+    stubFetch()
+    render(<Earnings />)
+    await screen.findAllByTestId('transaction-row')
+
+    expect(screen.getByTestId('paid-note')).toHaveTextContent(
+      'Paid means we have sent the money to your Stripe account. Stripe pays it to your bank on your payout schedule.',
+    )
+
+    // Filtering the paid row out of view does not hide the note
+    fireEvent.click(screen.getByRole('button', { name: 'Failed' }))
+    expect(screen.getByTestId('paid-note')).toBeInTheDocument()
+  })
+
+  it('hides the paid note when nothing is paid', async () => {
+    stubFetch({
+      ...EARNINGS_RESPONSE,
+      transactions: TRANSACTIONS.filter((t) => t.status !== 'paid'),
+    })
+    render(<Earnings />)
+    await screen.findAllByTestId('transaction-row')
+
+    expect(screen.queryByTestId('paid-note')).not.toBeInTheDocument()
+    expect(screen.queryByText('Sent to your Stripe account')).not.toBeInTheDocument()
+  })
 })
 
 // ── Filtering ─────────────────────────────────────────────────────────────────
@@ -380,6 +420,7 @@ describe('Earnings — programme-enrolment payouts (TECH-06)', () => {
     expect(within(rows[2]).getByText('Failed')).toBeInTheDocument()
     expect(within(rows[2]).getByText('Action needed')).toBeInTheDocument()
     expect(screen.queryByTestId('clearance-fee-note')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('paid-note')).not.toBeInTheDocument()
   })
 
   it('programme rows take part in status and date filtering', async () => {
