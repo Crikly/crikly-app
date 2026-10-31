@@ -85,6 +85,9 @@ function rowSubText(tx: TransactionItem): string | null {
   }
   if (tx.status === 'failed') return 'Action needed'
   if (tx.status === 'on_hold') return 'Connect Stripe to release'
+  // BUG-50 / T-20: Paid = Crikly's transfer to the coach's Stripe account
+  // succeeded; the onward Stripe → bank payout is on the coach's schedule.
+  if (tx.status === 'paid') return 'Sent to your Stripe account'
   return null
 }
 
@@ -337,6 +340,14 @@ export function Earnings() {
               {allTransactions.some((tx) => tx.status === 'in_clearance') && (
                 <p className="text-sm text-neutral-400 m-0" data-testid="clearance-fee-note">
                   Stripe processing fees are deducted at transfer. Your final payout may vary slightly by card type.
+                </p>
+              )}
+
+              {/* BUG-50: keyed off the FULL list (like the clearance note), so the
+                  explanation stays visible whatever filter is active. */}
+              {allTransactions.some((tx) => tx.status === 'paid') && (
+                <p className="text-sm text-neutral-400 m-0" data-testid="paid-note">
+                  Paid means we have sent the money to your Stripe account. Stripe pays it to your bank on your payout schedule.
                 </p>
               )}
             </div>

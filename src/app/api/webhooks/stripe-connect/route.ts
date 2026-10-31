@@ -20,7 +20,15 @@
 //     platform route's semantics). details_submitted alone is NOT enough:
 //     Stripe can still have charges/payouts disabled pending verification.
 //   - transfer.created / transfer.failed / payout.created / payout.paid /
-//     payout.failed → log-only for Block 0; full payout logic is post-Block-0.
+//     payout.failed → log-only, acknowledged with 200 and no DB write.
+//     These never drive payouts.status (BUG-50, Decision T-20): a payout row
+//     becomes 'paid' in the C-PAY-02 cron the moment the synchronous
+//     stripe.transfers.create succeeds. payout.* here are the coach's own
+//     Stripe-balance → bank payouts (po_ ids), which Crikly never stores;
+//     transfer.* are platform-account events and are not delivered to this
+//     Connect endpoint. 'transfer.failed' is not an event type in the current
+//     Stripe API — kept in the set only so a stray legacy delivery is still
+//     acknowledged rather than treated as unhandled.
 //
 // Idempotency (BUG-44 ruling B): no stripe_webhook_events ledger here — the
 // only DB write is an idempotent boolean update, so a Stripe redelivery is

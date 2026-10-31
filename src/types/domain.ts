@@ -11,6 +11,17 @@
 //     failure_reason) when the coach has no usable Stripe Connect account
 //   - releases automatically on a later run: clear held_reason and transfer
 //     in the same UPDATE that leaves 'held' (DB-enforced: held_reason_iff_held)
+//   - writes 'paid' the moment stripe.transfers.create succeeds (BUG-50,
+//     Decision T-20): a Stripe transfer is synchronous, so a returned Transfer
+//     means the money is in the coach's Stripe balance. processed_at is the
+//     paid timestamp. Stripe's onward payout to the coach's bank is on the
+//     coach's own schedule and is not tracked.
+//
+// 'processing' is LEGACY: rows transferred before BUG-50 were left at this
+// value and read as "Transferring". It stays in the CHECK constraint, in
+// PAYOUT_STATUSES and in PAYOUT_OWED_STATUSES so uncorrected rows remain
+// readable and conservative (they block deletion until a one-time data fix
+// moves them to 'paid'). Nothing writes it any more.
 
 export const PAYOUT_STATUSES = ['pending', 'processing', 'held', 'paid', 'failed'] as const
 export type PayoutStatus = (typeof PAYOUT_STATUSES)[number]
