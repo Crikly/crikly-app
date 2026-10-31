@@ -1,8 +1,8 @@
 # Crikly — Business Rules
 
-**Version:** 1.1
-**Last Updated:** 17 October 2026
-**Changed:** New BR-21 — Coach Payout: Stripe Fee Deduction (the Notion "BR-02" fee rule renumbered; BR-02 stays the commission rate) (T-17); BR-01 reduced to the commission-on-top calculation; BR-02 notes the 0% pilot commission (Decision T-18); BR-03 split by booking type — bookings paid 48h after auto-completion, programme enrolments paid immediately (T-16; implemented behind the PAYOUTS_ENROLMENTS_ENABLED flag — TECH-06); BR-04 implementation status added (TECH-07). Previous: Added BR-20 — Coach Scheduling Conflict Rules (BUG-16/17/18).
+**Version:** 1.2
+**Last Updated:** 25 October 2026
+**Changed:** BR-03 — definition of a "Paid" payout added (Decision T-20, 21 Oct 2026; BUG-50): Paid = Crikly's Stripe transfer to the coach's connected account succeeded; the coach's onward Stripe → bank payout is on their own schedule and is not tracked. Previous: New BR-21 — Coach Payout: Stripe Fee Deduction (the Notion "BR-02" fee rule renumbered; BR-02 stays the commission rate) (T-17); BR-01 reduced to the commission-on-top calculation; BR-02 notes the 0% pilot commission (Decision T-18); BR-03 split by booking type — bookings paid 48h after auto-completion, programme enrolments paid immediately (T-16; implemented behind the PAYOUTS_ENROLMENTS_ENABLED flag — TECH-06); BR-04 implementation status added (TECH-07). Previous: Added BR-20 — Coach Scheduling Conflict Rules (BUG-16/17/18).
 
 These rules MUST be enforced in code, not just documented.
 Every rule has an ID. Reference it in code comments and commits.
@@ -56,6 +56,7 @@ Payout timing depends on the type of booking (Decision T-16, 15 Oct 2026).
 - Default 48 hours; admin configurable (24h, 72h, 7 days); read from `platform_config`, never hardcoded
 - Payout triggers only when the session is completed AND `payout_eligible_at` has passed
 - Method: Stripe Connect transfer tied to the original charge (`source_transaction`). Amount: per BR-21. The charge link lets a transfer succeed before the parent's charge settles; once it has settled (always the case for bookings by the end of the hold), the transfer draws on the platform's AVAILABLE Stripe balance. Platform Stripe payouts are MANUAL so collected funds stay available; withdrawals must leave at least the sum of unpaid coach nets in the balance. A `balance_insufficient` transfer is deferred (row back to pending, retried hourly, coach still sees "Transferring"), never failed or parked. Each retry uses a fresh Stripe idempotency key (`payout id`, then `payout id:attempt`) because Stripe replays a cached error per key for ~24h; double payment is prevented by the unique payout row per booking/enrolment, the "never re-create a row that already has a transfer id" rule, and the ghost-transfer lookup before every create.
+- **"Paid" (Decision T-20, 21 Oct 2026; BUG-50):** a payout is Paid the moment Crikly's Stripe transfer to the coach's connected account succeeds. Stripe transfers are synchronous (no pending state), so the payout job records `status='paid'` and `processed_at` in the same run that fires the transfer, and the Earnings page shows it as Paid and counts it in This month / All time immediately. The money then reaches the coach's bank on the coach's own Stripe payout schedule, which Crikly does not track or display beyond a short note. This supersedes the 31 Jul 2026 design that waited for Stripe's `payout.paid` event. Applies identically to booking and programme payouts.
 
 **Programme enrolments (rows in `group_programme_enrolments`): paid immediately.**
 - The coach is paid as soon as the parent's enrolment payment succeeds. NO 48-hour hold.

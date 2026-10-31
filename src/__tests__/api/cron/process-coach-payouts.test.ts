@@ -12,8 +12,11 @@
 //   - Write-intent-first: the payout row insert precedes transfers.create,
 //     and an insert failure means NO transfer fires.
 //   - Idempotency: the Stripe idempotency key is the payout row UUID;
-//     'processing'/'paid' rows never fire again (belt-and-braces — the work
-//     queue query excludes them at the DB level too).
+//     'paid' rows (and legacy 'processing' rows, BUG-50) never fire again
+//     (belt-and-braces — the work queue query excludes them at the DB level
+//     too).
+//   - Terminal status (BUG-50, T-20): a successful transfers.create — and a
+//     ghost-guard adopt — write status='paid' with processed_at stamped.
 //   - Held-payout contract (C-PAY-03): no_stripe_account /
 //     stripe_onboarding_incomplete rows hold with no retry_count increment
 //     and no failure_reason; ongoing holds cost zero Stripe calls; release
@@ -300,9 +303,9 @@ describe('GET /api/cron/process-coach-payouts — transfer', () => {
     expect(inserted.booking_id).toBe(BOOKING_ID)
     expect(options.idempotencyKey).toBe(inserted.id)
 
-    // Success: transfer id recorded, status processing, processed_at stamped.
+    // Success: transfer id recorded, status paid (BUG-50), processed_at stamped.
     const updated = updateChain.update.mock.calls[0][0]
-    expect(updated).toMatchObject({ stripe_transfer_id: 'tr_pay_1', status: 'processing', failure_reason: null })
+    expect(updated).toMatchObject({ stripe_transfer_id: 'tr_pay_1', status: 'paid', failure_reason: null })
     expect(updated.processed_at).toEqual(expect.any(String))
   })
 
@@ -326,15 +329,25 @@ describe('GET /api/cron/process-coach-payouts — transfer', () => {
     expect(stripe.transfers.create).not.toHaveBeenCalled()
   })
 
-  it('never fires for a payout already processing (belt-and-braces guard)', async () => {
-    scenario({ queue: [queueRow({ status: 'processing', stripe_transfer_id: 'tr_done' })] })
-    const stripe = makeStripeMock()
+  // BUG-50: 'paid' is the terminal status; 'processing' is the legacy value
+  // left on rows transferred before the fix. Both must be treated as settled
+  // by the real-run guard so neither can ever receive a second transfer.
+  it.each(['paid', 'processing'])(
+    'never fires for a payout already %s (belt-and-braces guard, no Stripe call)',
+    async (status) => {
+      const writeChain = makeChain()
+      scenario({ queue: [queueRow({ status, stripe_transfer_id: 'tr_done' })], writeChains: [writeChain] })
+      const stripe = makeStripeMock()
 
-    const res = await callGet()
-    expect(await res.json()).toMatchObject({ skipped: 1, transferred: 0 })
-    expect(stripe.paymentIntents.retrieve).not.toHaveBeenCalled()
-    expect(stripe.transfers.create).not.toHaveBeenCalled()
-  })
+      const res = await callGet()
+      expect(await res.json()).toMatchObject({ skipped: 1, transferred: 0, adopted: 0, errors: 0 })
+      expect(stripe.paymentIntents.retrieve).not.toHaveBeenCalled()
+      expect(stripe.transfers.list).not.toHaveBeenCalled()
+      expect(stripe.transfers.create).not.toHaveBeenCalled()
+      expect(writeChain.update).not.toHaveBeenCalled()
+      expect(writeChain.insert).not.toHaveBeenCalled()
+    },
+  )
 
   it('skips loudly with no row written when the fee is >= coach price', async () => {
     const insertChain = makeChain()
@@ -434,7 +447,7 @@ describe('GET /api/cron/process-coach-payouts — held contract', () => {
 
     // The transfer reuses the held row's UUID as the idempotency key.
     expect(stripe.transfers.create.mock.calls[0][1]).toEqual({ idempotencyKey: PAYOUT_ID })
-    expect(successChain.update.mock.calls[0][0]).toMatchObject({ stripe_transfer_id: 'tr_pay_1', status: 'processing' })
+    expect(successChain.update.mock.calls[0][0]).toMatchObject({ stripe_transfer_id: 'tr_pay_1', status: 'paid' })
   })
 
   it('re-holds a pending row whose coach lost Stripe readiness', async () => {
@@ -501,7 +514,7 @@ describe('GET /api/cron/process-coach-payouts — failures', () => {
     // before, so a cached error from attempt 1/2 cannot be replayed.
     expect(stripe.transfers.create.mock.calls[0][1]).toEqual({ idempotencyKey: `${PAYOUT_ID}:2` })
     // Success clears the stale failure_reason.
-    expect(writeChain.update.mock.calls[0][0]).toMatchObject({ status: 'processing', failure_reason: null })
+    expect(writeChain.update.mock.calls[0][0]).toMatchObject({ status: 'paid', failure_reason: null })
   })
 
   it('parks a retry-exhausted row that slips into the queue (belt-and-braces)', async () => {
@@ -559,10 +572,15 @@ describe('GET /api/cron/process-coach-payouts — ghost guard', () => {
       limit: 10,
     })
     expect(stripe.transfers.create).not.toHaveBeenCalled()
-    expect(adoptChain.update.mock.calls[0][0]).toMatchObject({
+    // BUG-50: the adopted transfer already succeeded, so the row is paid.
+    const adopted = adoptChain.update.mock.calls[0][0]
+    expect(adopted).toMatchObject({
       stripe_transfer_id: 'tr_ghost_1',
-      status: 'processing',
+      status: 'paid',
+      failure_reason: null,
     })
+    expect(adopted.processed_at).toEqual(expect.any(String))
+    expect(adoptChain.update).toHaveBeenCalledTimes(1)
   })
 
   it('creates normally when the guard finds no prior transfer', async () => {
