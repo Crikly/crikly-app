@@ -62,14 +62,14 @@ describe('sendProgrammeCancelledToParent', () => {
   it('tells the parent the programme is cancelled and the coach arranges the refund', async () => {
     const { sent } = mockResend()
 
-    const ok = await sendProgrammeCancelledToParent({ ...parentParams, replyTo: 'ops@example.com' })
+    const ok = await sendProgrammeCancelledToParent(parentParams)
 
     expect(ok).toBe(true)
     expect(sent).toHaveLength(1)
     expect(sent[0].from).toBe('Crikly <hello@crikly.app>')
     expect(sent[0].to).toBe('parent@example.com')
     expect(sent[0].subject).toBe('Summer Batting Camp has been cancelled')
-    expect(sent[0].replyTo).toBe('ops@example.com')
+    expect(sent[0].replyTo).toBe('hello@crikly.app')
     expect(sent[0].html).toContain('Coach Sam has cancelled Summer Batting Camp')
     expect(sent[0].html).toContain('Coach Sam will arrange your refund with you directly')
     expect(sent[0].html).toContain('Crikly does not refund programme fees.')
@@ -77,12 +77,20 @@ describe('sendProgrammeCancelledToParent', () => {
     expect(sent[0].html).toContain('Yuwin (reference CRK-2026-0001): you paid £60.00')
   })
 
-  it('omits Reply-To when no ops address is given', async () => {
-    const { sent } = mockResend()
+  it('always replies to hello@crikly.app, whatever OPS_ALERT_EMAIL is set to', async () => {
+    const original = process.env.OPS_ALERT_EMAIL
+    process.env.OPS_ALERT_EMAIL = 'ops@example.com'
+    try {
+      const { sent } = mockResend()
 
-    await sendProgrammeCancelledToParent(parentParams)
+      await sendProgrammeCancelledToParent(parentParams)
 
-    expect('replyTo' in sent[0]).toBe(false)
+      expect(sent[0].replyTo).toBe('hello@crikly.app')
+      expect(JSON.stringify(sent[0])).not.toContain('ops@example.com')
+    } finally {
+      if (original === undefined) delete process.env.OPS_ALERT_EMAIL
+      else process.env.OPS_ALERT_EMAIL = original
+    }
   })
 
   it('lists every place and copes with a missing name, reference or amount', async () => {
@@ -188,6 +196,7 @@ describe('sendProgrammeCancelledToCoach', () => {
     expect(sent[0].html).toContain('£60.00')
     expect(sent[0].html).toContain('£45.50')
     expect(sent[0].html).not.toContain('Not available')
+    expect('replyTo' in sent[0]).toBe(false)
   })
 
   it('uses the singular for one parent', async () => {

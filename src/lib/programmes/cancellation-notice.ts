@@ -262,7 +262,6 @@ async function runNotice(
     byAddress.set(key, group)
   }
 
-  const opsEmail = process.env.OPS_ALERT_EMAIL || undefined
   const parentOutcome = new Map<string, OpsEnrolmentRow['parentEmailOutcome']>()
   let parentEmailsSent = 0
   let parentEmailsFailed = 0
@@ -274,7 +273,6 @@ async function runNotice(
       coachName,
       programmeTitle,
       places: group.places,
-      replyTo: opsEmail,
     })
     if (sent) parentEmailsSent += 1
     else parentEmailsFailed += 1
@@ -321,6 +319,8 @@ async function runNotice(
   })
   const notPaidOut = opsRows.filter((r) => !r.paidOutToCoach).length
 
+  // OPS_ALERT_EMAIL is the ops copy's recipient ONLY — never a Reply-To.
+  const opsEmail = process.env.OPS_ALERT_EMAIL || undefined
   let opsEmailSent = false
   if (opsEmail) {
     opsEmailSent = await sendProgrammeCancelledToOps({

@@ -191,7 +191,6 @@ describe('notifyProgrammeCancelled', () => {
       places: [
         { participantName: 'Yuwin', enrolmentReference: 'CRK-2026-0001', amountPaidPence: 6000, currency: 'GBP' },
       ],
-      replyTo: 'ops@example.com',
     })
     expect(mockCoach).toHaveBeenCalledTimes(1)
     expect(mockCoach.mock.calls[0][0]).toMatchObject({
@@ -328,7 +327,20 @@ describe('notifyProgrammeCancelled', () => {
     expect(mockOps).toHaveBeenCalledTimes(1)
   })
 
-  it('skips the ops copy and Reply-To when OPS_ALERT_EMAIL is unset, and logs loudly', async () => {
+  it('never passes the ops address to the parent email', async () => {
+    const { admin } = makeAdmin({
+      enrolments: [enrolment({})],
+      bookers: [{ id: 'booker-1', full_name: 'Priya Shah', auth_user_id: 'auth-priya' }],
+      authEmails: { 'auth-priya': 'priya@example.com' },
+    })
+
+    await notifyProgrammeCancelled(admin, input)
+
+    expect(JSON.stringify(mockParent.mock.calls)).not.toContain('ops@example.com')
+    expect(JSON.stringify(mockCoach.mock.calls)).not.toContain('ops@example.com')
+  })
+
+  it('skips the ops copy when OPS_ALERT_EMAIL is unset, and logs loudly', async () => {
     delete process.env.OPS_ALERT_EMAIL
     const { admin } = makeAdmin({
       enrolments: [enrolment({})],
@@ -339,7 +351,7 @@ describe('notifyProgrammeCancelled', () => {
     const result = await notifyProgrammeCancelled(admin, input)
 
     expect(mockOps).not.toHaveBeenCalled()
-    expect(mockParent.mock.calls[0][0].replyTo).toBeUndefined()
+    expect(mockParent).toHaveBeenCalledTimes(1)
     expect(result.opsEmailSent).toBe(false)
     expect(loggedText()).toContain('NEEDS ATTENTION')
   })

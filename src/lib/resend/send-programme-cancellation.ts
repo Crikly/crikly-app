@@ -166,8 +166,6 @@ export interface ProgrammeCancelledParentParams {
   programmeTitle: string
   /** Every paid place this parent holds on the programme (one email per parent). */
   places: CancelledPlace[]
-  /** Ops address for Reply-To. Omitted → replies go to hello@crikly.app. */
-  replyTo?: string
 }
 
 function placeLine(place: CancelledPlace): string {
@@ -183,7 +181,7 @@ function placeLine(place: CancelledPlace): string {
 export async function sendProgrammeCancelledToParent(
   params: ProgrammeCancelledParentParams,
 ): Promise<boolean> {
-  const { parentEmail, parentName, coachName, programmeTitle, places, replyTo } = params
+  const { parentEmail, parentName, coachName, programmeTitle, places } = params
   const safeName = escapeHtml(parentName)
   const safeCoach = escapeHtml(coachName)
   const safeTitle = escapeHtml(programmeTitle)
@@ -209,7 +207,9 @@ export async function sendProgrammeCancelledToParent(
     to: parentEmail,
     subject: `${programmeTitle} has been cancelled`,
     html: emailWrapper(body),
-    ...(replyTo ? { replyTo } : {}),
+    // Replies always go to the support inbox. OPS_ALERT_EMAIL is never used
+    // here — it is the ops copy's recipient only and must not be shown to parents.
+    replyTo: SUPPORT_EMAIL,
   })
 }
 
