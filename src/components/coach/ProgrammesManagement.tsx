@@ -1,8 +1,12 @@
 'use client'
 import React, { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Calendar, Clock, MapPin, Plus, BookOpen, Image as ImageIcon } from 'lucide-react'
+import { AlertTriangle, Calendar, Clock, MapPin, Plus, BookOpen, Image as ImageIcon } from 'lucide-react'
 import { ShareCardModal } from './ShareCardModal'
+import {
+  PAID_ENROLMENTS_CONFIRM_REQUIRED,
+  PROGRAMME_CANCEL_WARNING,
+} from '@/constants/programme-refunds'
 
 type Tab = 'Active' | 'Draft'
 
@@ -169,6 +173,10 @@ export function ProgrammesManagement() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
   const [cancelConfirmId, setCancelConfirmId] = useState<string | null>(null)
   const [actionError, setActionError] = useState<{ id: string; message: string } | null>(null)
+  // STAGE1-CANCEL-OFFLINE (T-21): set when the API refuses a cancel because
+  // parents have paid — the card then shows the direct-refund warning and the
+  // coach must confirm before the cancel is re-sent.
+  const [refundWarning, setRefundWarning] = useState<{ id: string; paidCount: number } | null>(null)
   const [detailProgramme, setDetailProgramme] = useState<Programme | null>(null)
   // CF-PROG-SHARE-CARD: opens ShareCardModal for the selected programme.
   const [shareProgramme, setShareProgramme] = useState<Programme | null>(null)
@@ -297,8 +305,18 @@ export function ProgrammesManagement() {
     }
   }
 
-  // CF-05b: Cancel an active/full programme
-  async function handleCancelProgramme(programmeId: string) {
+  // Clears the refund warning only if it belongs to this programme, so an
+  // action on one card can never dismiss a warning open on another.
+  function clearRefundWarning(programmeId: string) {
+    setRefundWarning((w) => (w?.id === programmeId ? null : w))
+  }
+
+  // CF-05b: Cancel an active/full programme.
+  // STAGE1-CANCEL-OFFLINE (T-21): the first call never carries the flag. If
+  // parents have paid, the API answers 409 PAID_ENROLMENTS_CONFIRM_REQUIRED
+  // and changes nothing; the card then shows the direct-refund warning, and
+  // only its confirm button re-sends with confirm_direct_refunds: true.
+  async function handleCancelProgramme(programmeId: string, confirmDirectRefunds = false) {
     if (actionLoading) return
     setActionError(null)
     setActionLoading(programmeId)
@@ -306,16 +324,36 @@ export function ProgrammesManagement() {
       const res = await fetch(`/api/coaches/programmes/${programmeId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'cancelled' }),
+        body: JSON.stringify(
+          confirmDirectRefunds
+            ? { status: 'cancelled', confirm_direct_refunds: true }
+            : { status: 'cancelled' },
+        ),
       })
       if (!res.ok) {
-        const data = await res.json()
-        setActionError({ id: programmeId, message: data.error || 'Failed to cancel programme' })
+        const data = (await res.json()) as {
+          error?: string
+          message?: string
+          code?: string
+          paid_enrolment_count?: number
+        }
+        if (
+          res.status === 409 &&
+          data.code === PAID_ENROLMENTS_CONFIRM_REQUIRED &&
+          typeof data.paid_enrolment_count === 'number'
+        ) {
+          setRefundWarning({ id: programmeId, paidCount: data.paid_enrolment_count })
+          return
+        }
+        clearRefundWarning(programmeId)
+        setActionError({ id: programmeId, message: data.message || data.error || 'Failed to cancel programme' })
         return
       }
+      clearRefundWarning(programmeId)
       clearProgrammesCache()
       await fetchProgrammes()
     } catch {
+      clearRefundWarning(programmeId)
       setActionError({ id: programmeId, message: 'Something went wrong. Please try again.' })
     } finally {
       setActionLoading(null)
@@ -456,7 +494,10 @@ export function ProgrammesManagement() {
                   <div
                     key={programme.id}
                     onClick={() => setDetailProgramme(programme)}
-                    className="bg-white rounded-2xl overflow-hidden cursor-pointer flex flex-col h-full shadow-[0_1px_3px_rgba(15,23,42,0.06),0_4px_12px_-4px_rgba(15,23,42,0.06)] transition-all duration-200 ease-out hover:scale-[1.015] hover:-translate-y-0.5 hover:shadow-lg"
+                    // STAGE1-CANCEL-OFFLINE: while the refund warning is open the
+                    // card spans both columns on phones, so the warning and its
+                    // buttons stay readable instead of wrapping in a half-width card.
+                    className={`bg-white rounded-2xl overflow-hidden cursor-pointer flex flex-col h-full shadow-[0_1px_3px_rgba(15,23,42,0.06),0_4px_12px_-4px_rgba(15,23,42,0.06)] transition-all duration-200 ease-out hover:scale-[1.015] hover:-translate-y-0.5 hover:shadow-lg ${refundWarning?.id === programme.id ? 'col-span-2 sm:col-span-1' : ''}`}
                   >
                     {/* 1. Cover */}
                     <div className="relative h-[120px] overflow-hidden bg-neutral-100">
@@ -556,9 +597,74 @@ export function ProgrammesManagement() {
                       <p className="px-3 pb-2 text-[11px] text-red-500 leading-snug">{actionError.message}</p>
                     )}
 
+                    {/* STAGE1-CANCEL-OFFLINE (T-21): direct-refund warning. Shown
+                        inline on the affected card only (no browser dialog) when
+                        the API reports paid enrolments. Wording is approved copy
+                        from constants/programme-refunds. */}
+                    {refundWarning?.id === programme.id && (
+                      <div
+                        role="alert"
+                        data-testid="programme-refund-warning"
+                        onClick={(e) => e.stopPropagation()}
+                        className="mx-3 mb-2 cursor-default rounded-lg bg-amber-50 p-3"
+                      >
+                        <div className="flex items-start gap-2">
+                          <AlertTriangle size={16} aria-hidden="true" className="mt-0.5 flex-shrink-0 text-warning" />
+                          <div className="min-w-0">
+                            <p className="text-[13px] font-semibold leading-snug text-neutral-900">
+                              {PROGRAMME_CANCEL_WARNING.title}
+                            </p>
+                            <p className="mt-1 text-[12px] leading-[1.5] text-neutral-600">
+                              {PROGRAMME_CANCEL_WARNING.paidPlaces(refundWarning.paidCount)}{' '}
+                              {PROGRAMME_CANCEL_WARNING.duty}
+                            </p>
+                            <p className="mt-1 text-[12px] leading-[1.5] text-neutral-600">
+                              {PROGRAMME_CANCEL_WARNING.emails}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     {/* 3. Action row — preserves every current handler + disabled state */}
-                    <div className="p-3 pt-0 flex gap-1.5">
-                      {isDraft ? (
+                    <div className={`p-3 pt-0 flex gap-1.5 ${refundWarning?.id === programme.id ? 'flex-col' : ''}`}>
+                      {refundWarning?.id === programme.id ? (
+                        <>
+                          {/* Keyed so React mounts fresh buttons: without keys it
+                              reuses the previous two pills and their colours
+                              visibly cross-fade the wrong way round. */}
+                          <button
+                            key="refund-warning-confirm"
+                            data-testid="refund-warning-confirm"
+                            disabled={actionLoading === programme.id}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleCancelProgramme(programme.id, true)
+                            }}
+                            className={`${pillDangerSolid} flex-none w-full`}
+                          >
+                            {actionLoading === programme.id
+                              ? PROGRAMME_CANCEL_WARNING.confirming
+                              : PROGRAMME_CANCEL_WARNING.confirm}
+                          </button>
+                          <button
+                            key="refund-warning-keep"
+                            // The button that opened the warning has just
+                            // unmounted; move keyboard focus to the safe choice
+                            // so it is not dropped to the page body.
+                            autoFocus
+                            data-testid="refund-warning-keep"
+                            disabled={actionLoading === programme.id}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setRefundWarning(null)
+                            }}
+                            className={`${pillNeutral} flex-none w-full`}
+                          >
+                            {PROGRAMME_CANCEL_WARNING.keep}
+                          </button>
+                        </>
+                      ) : isDraft ? (
                         deleteConfirmId === programme.id ? (
                           <>
                             <button

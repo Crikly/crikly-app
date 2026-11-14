@@ -28,6 +28,7 @@ import { createServerClient } from '@supabase/ssr'
 import type { NextRequest } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { countPaidEnrolments, notifyProgrammeCancelled } from '@/lib/programmes/cancellation-notice'
+import { PAID_ENROLMENTS_CONFIRM_REQUIRED } from '@/constants/programme-refunds'
 
 const mockCount = countPaidEnrolments as jest.Mock
 const mockNotify = notifyProgrammeCancelled as jest.Mock
@@ -140,6 +141,8 @@ describe('PATCH programme → cancelled, paid enrolments (T-21)', () => {
 
     expect(res.status).toBe(409)
     expect(json.code).toBe('PAID_ENROLMENTS_CONFIRM_REQUIRED')
+    // The UI keys off the shared constant — the route's literal must match it.
+    expect(json.code).toBe(PAID_ENROLMENTS_CONFIRM_REQUIRED)
     expect(json.paid_enrolment_count).toBe(3)
     expect(json.message).toBe(
       'Parents have already paid. You must refund them directly. Crikly does not refund programme fees.',

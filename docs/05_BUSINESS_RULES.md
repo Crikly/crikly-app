@@ -318,6 +318,13 @@ Default approval window: 24 hours (coach configurable via `coach_profiles.approv
 >   cancelled; the coach arranges the refund), the coach (who to refund and
 >   how much) and ops (`OPS_ALERT_EMAIL`), whose copy flags any fee not yet
 >   paid out to the coach.
+> - **Disclosure before payment:** the programme checkout shows the approved
+>   wording above the payment methods and above the Pay button: "Programme
+>   fees are paid to your coach shortly after you buy. If you withdraw, or the
+>   coach cancels, any refund is arranged directly with the coach." Single
+>   source: `src/constants/programme-refunds.ts`.
+> - **Reply-To:** the parent email always replies to hello@crikly.app;
+>   `OPS_ALERT_EMAIL` is the ops copy recipient only.
 > - **Enrolments are left untouched** — `status`, `payment_status` and payout
 >   rows do not change when a programme is cancelled.
 > - A "paid enrolment" = `payment_type='platform'`, `payment_status='succeeded'`,
