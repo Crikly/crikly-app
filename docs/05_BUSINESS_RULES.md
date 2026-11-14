@@ -1,8 +1,8 @@
 # Crikly — Business Rules
 
-**Version:** 1.2
-**Last Updated:** 25 October 2026
-**Changed:** BR-03 — definition of a "Paid" payout added (Decision T-20, 21 Oct 2026; BUG-50): Paid = Crikly's Stripe transfer to the coach's connected account succeeded; the coach's onward Stripe → bank payout is on their own schedule and is not tracked. Previous: New BR-21 — Coach Payout: Stripe Fee Deduction (the Notion "BR-02" fee rule renumbered; BR-02 stays the commission rate) (T-17); BR-01 reduced to the commission-on-top calculation; BR-02 notes the 0% pilot commission (Decision T-18); BR-03 split by booking type — bookings paid 48h after auto-completion, programme enrolments paid immediately (T-16; implemented behind the PAYOUTS_ENROLMENTS_ENABLED flag — TECH-06); BR-04 implementation status added (TECH-07). Previous: Added BR-20 — Coach Scheduling Conflict Rules (BUG-16/17/18).
+**Version:** 1.3
+**Last Updated:** 14 November 2026
+**Changed:** BR-17 — pilot override added (Decision T-21, 14 Nov 2026; STAGE1-CANCEL-OFFLINE): programme cancellations and refunds happen outside the platform; BR-03's programme reversal note points to it. Previous: BR-03 — definition of a "Paid" payout added (Decision T-20, 21 Oct 2026; BUG-50): Paid = Crikly's Stripe transfer to the coach's connected account succeeded; the coach's onward Stripe → bank payout is on their own schedule and is not tracked. Previous: New BR-21 — Coach Payout: Stripe Fee Deduction (the Notion "BR-02" fee rule renumbered; BR-02 stays the commission rate) (T-17); BR-01 reduced to the commission-on-top calculation; BR-02 notes the 0% pilot commission (Decision T-18); BR-03 split by booking type — bookings paid 48h after auto-completion, programme enrolments paid immediately (T-16; implemented behind the PAYOUTS_ENROLMENTS_ENABLED flag — TECH-06); BR-04 implementation status added (TECH-07). Previous: Added BR-20 — Coach Scheduling Conflict Rules (BUG-16/17/18).
 
 These rules MUST be enforced in code, not just documented.
 Every rule has an ID. Reference it in code comments and commits.
@@ -61,7 +61,7 @@ Payout timing depends on the type of booking (Decision T-16, 15 Oct 2026).
 **Programme enrolments (rows in `group_programme_enrolments`): paid immediately.**
 - The coach is paid as soon as the parent's enrolment payment succeeds. NO 48-hour hold.
 - Same method and amount rule (`source_transaction`, coach price minus the Stripe fee per BR-21), same platform-balance and deferral rules as bookings above: an enrolment paid in the last few days is covered by its unsettled charge; an older one needs available funds.
-- Accepted risk: the coach is paid before sessions are delivered. If a programme is cancelled or a parent is refunded (BR-04, REQ-C-056, BR-17), the platform must reverse the Stripe transfer. A reversal fails if the coach has already withdrawn the money, and the platform carries that loss. Programme refunds are handled manually by an admin until built.
+- Accepted risk: the coach is paid before sessions are delivered. If a programme is cancelled or a parent is refunded (BR-04, REQ-C-056, BR-17), the platform must reverse the Stripe transfer. A reversal fails if the coach has already withdrawn the money, and the platform carries that loss. Programme refunds are handled manually by an admin until built. **Pilot override (Decision T-21, 14 Nov 2026):** during the pilot Crikly neither refunds programme fees nor reverses the transfer — the coach refunds parents directly; see BR-17.
 - STATUS: implemented in the hourly payout job behind the `PAYOUTS_ENROLMENTS_ENABLED` flag (TECH-06, migration 056). With the flag off (the default) no programme enrolment is paid; Lasith switches it on per environment after approving the job's dry-run listing (`?dry_run=1` / `?dry_run=stripe`). Before the transfer the job re-checks that the enrolment is still paid and not cancelled or refunded, and it never pays an enrolment with an open `needs_refund` alert or whose programme is cancelled.
 
 ---
@@ -300,6 +300,32 @@ Default approval window: 24 hours (coach configurable via `coach_profiles.approv
 ---
 
 ## BR-17 — Group Programme Cancellation Refund
+
+> **PILOT OVERRIDE — Decision T-21 (14 Nov 2026; STAGE1-CANCEL-OFFLINE).**
+> During the pilot, programme cancellations and refunds happen OUTSIDE the
+> platform. The coach cancels their own programme and refunds parents
+> directly. Crikly does NOT refund programme fees and does NOT reverse the
+> Stripe transfer. The automatic-refund rules below are the post-pilot target
+> and are NOT implemented.
+>
+> What the platform does instead:
+> - **Warning:** cancelling a programme with paid enrolments requires the
+>   coach to confirm they will refund parents directly
+>   (`confirm_direct_refunds: true` on `PATCH /api/coaches/programmes/[programmeId]`;
+>   without it the route returns 409 `PAID_ENROLMENTS_CONFIRM_REQUIRED` and
+>   changes nothing).
+> - **Emails, sent once per cancellation:** each paid parent (programme
+>   cancelled; the coach arranges the refund), the coach (who to refund and
+>   how much) and ops (`OPS_ALERT_EMAIL`), whose copy flags any fee not yet
+>   paid out to the coach.
+> - **Enrolments are left untouched** — `status`, `payment_status` and payout
+>   rows do not change when a programme is cancelled.
+> - A "paid enrolment" = `payment_type='platform'`, `payment_status='succeeded'`,
+>   `status='active'`. Coach-added offline enrolments are not included.
+>
+> Known gap (manual, ops): the payout job never pays an enrolment whose
+> programme is cancelled, so a fee not yet transferred at cancel time stays
+> with Crikly. The ops copy lists these for manual handling.
 
 When coach cancels entire programme mid-run:
 
