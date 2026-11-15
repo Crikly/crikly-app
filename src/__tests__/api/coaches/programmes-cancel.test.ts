@@ -311,3 +311,27 @@ describe('PATCH programme — non-cancel updates are untouched', () => {
     expect(mockNotify).not.toHaveBeenCalled()
   })
 })
+
+// STAGE1-CANCEL-OFFLINE-2: a cancelled programme is terminal. These lock in the
+// existing guard so a cancelled programme can never be re-published or edited.
+describe('PATCH programme — a cancelled programme is terminal', () => {
+  const existingCancelled = { ...existingActive, status: 'cancelled' }
+
+  it.each([
+    ['re-publish (status → active)', { status: 'active' }],
+    ['move back to draft', { status: 'draft' }],
+    ['a field edit', { title: 'Renamed after cancel' }],
+    ['a price edit', { block_price_pence: 100 }],
+  ])('rejects %s with 400 and writes nothing', async (_label, body) => {
+    mockPatchAuth()
+    const { calls } = makeAdmin(existingCancelled)
+
+    const res = await callPatch(body)
+    const json = await res.json()
+
+    expect(res.status).toBe(400)
+    expect(json.error).toBe('Cannot update a programme that is completed or cancelled')
+    expect(calls.update).not.toHaveBeenCalled()
+    expect(mockNotify).not.toHaveBeenCalled()
+  })
+})

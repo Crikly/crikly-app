@@ -329,6 +329,15 @@ Default approval window: 24 hours (coach configurable via `coach_profiles.approv
 >   rows do not change when a programme is cancelled.
 > - A "paid enrolment" = `payment_type='platform'`, `payment_status='succeeded'`,
 >   `status='active'`. Coach-added offline enrolments are not included.
+> - **Cancelled is terminal (STAGE1-CANCEL-OFFLINE-2).** A cancelled programme
+>   can never be edited or re-published — the API rejects every update. The
+>   coach sees it under a read-only "Cancelled" tab on `/coach/programmes`
+>   (View roster only) with the reminder: "Cancelled programmes are kept here
+>   as a record. If parents had paid, you must refund them directly. Crikly
+>   does not refund programme fees."
+> - **Public wording.** The coach profile's programmes section makes no
+>   "payment is held" claim (it contradicted T-16), and a block programme's
+>   card states its real basis ("£160 for 4 sessions"), never "per session".
 >
 > Known gap (manual, ops): the payout job never pays an enrolment whose
 > programme is cancelled, so a fee not yet transferred at cancel time stays

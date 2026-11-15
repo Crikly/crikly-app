@@ -113,6 +113,33 @@ function table(headers: string[], rows: string[][]): string {
   return `<table width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0 0;border-collapse:collapse;"><tr>${th}</tr>${body}</table>`
 }
 
+// ─── Branded detail blocks ────────────────────────────────────────────────────
+//
+// STAGE1-CANCEL-OFFLINE-2: the same building blocks the guest programme
+// confirmation uses (emails.ts) — the grey rounded detail card, label/value
+// rows, and the brand-blue monospace reference. They are MIRRORED here because
+// those helpers are private to emails.ts and existing email files must not be
+// edited. Keep the values in step with emails.ts if the brand look changes.
+
+const MONO = "'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace"
+const BRAND_BLUE = '#0077CC'
+
+/** Grey rounded card (matches "Programme details" in the guest confirmation). */
+function detailCard(innerHtml: string, margin = '24px 0 0'): string {
+  return `<table width="100%" cellpadding="0" cellspacing="0" style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:20px 24px;margin:${margin};"><tr><td>${innerHtml}</td></tr></table>`
+}
+
+/** Label / value rows for inside a detail card. Values must already be safe HTML. */
+function detailRows(rows: Array<{ label: string; value: string }>): string {
+  const html = rows
+    .map(
+      ({ label, value }) =>
+        `<tr><td style="padding:6px 0;font-size:13px;color:#64748B;width:42%;vertical-align:top;font-family:${SANS};">${label}</td><td style="padding:6px 0;font-size:13px;color:#0F172A;font-weight:600;word-break:break-word;font-family:${SANS};">${value}</td></tr>`,
+    )
+    .join('')
+  return `<table width="100%" cellpadding="0" cellspacing="0">${html}</table>`
+}
+
 /** "1 parent" / "3 parents". */
 function parentCountLabel(count: number): string {
   return `${count} ${count === 1 ? 'parent' : 'parents'}`
@@ -168,12 +195,16 @@ export interface ProgrammeCancelledParentParams {
   places: CancelledPlace[]
 }
 
+// Same words as before ("Yuwin (reference CRK-…): you paid £60.00"); only the
+// reference and the amount gain emphasis.
 function placeLine(place: CancelledPlace): string {
   const who = place.participantName ? escapeHtml(place.participantName) : 'Your place'
-  const ref = place.enrolmentReference ? ` (reference ${escapeHtml(place.enrolmentReference)})` : ''
+  const ref = place.enrolmentReference
+    ? ` (reference <span style="font-family:${MONO};font-weight:700;color:${BRAND_BLUE};">${escapeHtml(place.enrolmentReference)}</span>)`
+    : ''
   const paid =
     place.amountPaidPence !== null
-      ? `: you paid ${formatPence(place.amountPaidPence, place.currency)}`
+      ? `: you paid <strong>${formatPence(place.amountPaidPence, place.currency)}</strong>`
       : ''
   return `${who}${ref}${paid}`
 }
@@ -189,7 +220,7 @@ export async function sendProgrammeCancelledToParent(
   const placesHtml = places
     .map(
       (p) =>
-        `<li style="margin:0 0 6px;font-size:15px;color:#334155;line-height:1.6;font-family:${SANS};">${placeLine(p)}</li>`,
+        `<p style="margin:0;padding:6px 0;font-size:15px;color:#0F172A;line-height:1.6;font-family:${SANS};">${placeLine(p)}</p>`,
     )
     .join('')
 
@@ -197,8 +228,8 @@ export async function sendProgrammeCancelledToParent(
     ${heading(`${safeTitle} has been cancelled`)}
     ${paragraph(`Hi ${safeName},`)}
     ${paragraph(`We&rsquo;re sorry to tell you that ${safeCoach} has cancelled ${safeTitle}. The sessions you booked will not go ahead.`)}
-    <ul style="margin:16px 0 0;padding:0 0 0 20px;">${placesHtml}</ul>
-    ${paragraph(`<strong>Your refund.</strong> Programme fees are paid to your coach shortly after you buy, so ${safeCoach} will arrange your refund with you directly. Crikly does not refund programme fees.`)}
+    ${detailCard(placesHtml)}
+    ${paragraph(`<strong style="color:#0F172A;">Your refund.</strong> Programme fees are paid to your coach shortly after you buy, so ${safeCoach} will arrange your refund with you directly. Crikly does not refund programme fees.`)}
     ${paragraph(`If you have not heard from ${safeCoach} within 5 days, reply to this email and we&rsquo;ll help you get in touch.`)}
   `
 
@@ -243,26 +274,46 @@ export async function sendProgrammeCancelledToCoach(
   const parents = parentCountLabel(parentCount)
   const anyMissingEmail = rows.some((r) => r.parentEmail === null)
 
-  const refundTable = table(
-    ['Participant', 'Parent', 'Parent email', 'Amount paid'],
-    rows.map((r) => [
-      r.participantName ? escapeHtml(r.participantName) : '&mdash;',
-      escapeHtml(r.parentName),
-      r.parentEmail ? escapeHtml(r.parentEmail) : 'Not available',
-      r.amountPaidPence !== null ? formatPence(r.amountPaidPence, r.currency) : '&mdash;',
-    ]),
-  )
+  // One detail card per paid place — the same four labels the table had, but
+  // readable on a phone.
+  const refundCards = rows
+    .map((r) => {
+      const safeEmail = r.parentEmail ? escapeHtml(r.parentEmail) : null
+      // The href is URL-encoded as well as HTML-escaped, so an address can
+      // never smuggle mailto parameters (?cc=, ?bcc=, ?body=) into the link.
+      const safeHref = r.parentEmail
+        ? escapeHtml(`mailto:${encodeURIComponent(r.parentEmail).replace(/%40/g, '@')}`)
+        : null
+      return detailCard(
+        detailRows([
+          { label: 'Participant', value: r.participantName ? escapeHtml(r.participantName) : '&mdash;' },
+          { label: 'Parent', value: escapeHtml(r.parentName) },
+          {
+            label: 'Parent email',
+            value: safeEmail
+              ? `<a href="${safeHref}" style="color:${BRAND_BLUE};text-decoration:none;">${safeEmail}</a>`
+              : 'Not available',
+          },
+          {
+            label: 'Amount paid',
+            value: r.amountPaidPence !== null ? formatPence(r.amountPaidPence, r.currency) : '&mdash;',
+          },
+        ]),
+        '12px 0 0',
+      )
+    })
+    .join('')
 
   const body = `
     ${heading(`You cancelled ${safeTitle}`)}
     ${paragraph(`Hi ${safeCoach},`)}
     ${paragraph(`You&rsquo;ve cancelled ${safeTitle}. ${parents} had already paid, and we&rsquo;ve emailed them to say that you will arrange their refund.`)}
-    ${paragraph(`<strong>Please refund each parent directly.</strong> Programme fees were paid to you, so Crikly does not refund them.`)}
-    ${refundTable}
+    ${paragraph(`<strong style="color:#0F172A;">Please refund each parent directly.</strong> Programme fees were paid to you, so Crikly does not refund them.`)}
+    <div style="margin:12px 0 0;">${refundCards}</div>
     ${
       anyMissingEmail
         ? paragraph(
-            `Where a parent&rsquo;s email is shown as not available, email us at <a href="mailto:${SUPPORT_EMAIL}" style="color:#0077CC;text-decoration:none;">${SUPPORT_EMAIL}</a> and we&rsquo;ll help you reach them.`,
+            `Where a parent&rsquo;s email is shown as not available, email us at <a href="mailto:${SUPPORT_EMAIL}" style="color:${BRAND_BLUE};text-decoration:none;">${SUPPORT_EMAIL}</a> and we&rsquo;ll help you reach them.`,
           )
         : ''
     }

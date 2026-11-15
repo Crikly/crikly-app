@@ -1,14 +1,20 @@
 'use client'
 import React, { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { AlertTriangle, Calendar, Clock, MapPin, Plus, BookOpen, Image as ImageIcon } from 'lucide-react'
+import { AlertTriangle, Calendar, Clock, Info, MapPin, Plus, BookOpen, Image as ImageIcon } from 'lucide-react'
 import { ShareCardModal } from './ShareCardModal'
 import {
   PAID_ENROLMENTS_CONFIRM_REQUIRED,
   PROGRAMME_CANCEL_WARNING,
+  PROGRAMME_CANCELLED_REMINDER,
 } from '@/constants/programme-refunds'
 
-type Tab = 'Active' | 'Draft'
+type Tab = 'Active' | 'Draft' | 'Cancelled'
+
+// STAGE1-CANCEL-OFFLINE-2: 'Cancelled' is a read-only record — a cancelled
+// programme is terminal (the API rejects every update) and must never be
+// offered the draft actions (Publish / Edit / Delete).
+type ProgrammeStatus = 'Active' | 'Full' | 'Draft' | 'Cancelled'
 
 // CD-08: API response types
 interface ProgrammeResponse {
@@ -54,7 +60,7 @@ interface Programme {
   spotsFilled: number
   spotsTotal: number
   price: string
-  status: 'Active' | 'Full' | 'Draft'
+  status: ProgrammeStatus
   // Extended fields for detail modal
   description: string | null
   venue_name: string | null
@@ -104,9 +110,10 @@ function formatStartingDate(yyyymmdd: string | null): string {
 }
 
 // UI-PROG-GRID: status pill — light bg + dark text per design system.
-function getStatusPillClass(status: 'Active' | 'Full' | 'Draft'): string {
+function getStatusPillClass(status: ProgrammeStatus): string {
   if (status === 'Active') return 'bg-green-100 text-green-800'
   if (status === 'Full') return 'bg-amber-100 text-amber-800'
+  if (status === 'Cancelled') return 'bg-red-100 text-red-800'
   return 'bg-neutral-100 text-neutral-600'
 }
 
@@ -208,11 +215,15 @@ export function ProgrammesManagement() {
           price = `£${(prog.block_price_pence / 100).toFixed(0)} for ${prog.block_session_count} sessions`
         }
 
-        let status: 'Active' | 'Full' | 'Draft' = 'Draft'
+        // STAGE1-CANCEL-OFFLINE-2: 'cancelled' maps to its own status. It used
+        // to fall through to 'Draft', which listed a cancelled programme under
+        // the Draft tab with Publish / Edit / Delete buttons. Any other status
+        // keeps the previous fallback (unchanged behaviour).
+        let status: ProgrammeStatus = 'Draft'
         if (prog.status === 'active') {
           status = prog.current_spots >= prog.max_spots ? 'Full' : 'Active'
-        } else if (prog.status === 'draft') {
-          status = 'Draft'
+        } else if (prog.status === 'cancelled') {
+          status = 'Cancelled'
         }
 
         return {
@@ -388,7 +399,16 @@ export function ProgrammesManagement() {
   // CD-08: Filter programmes by tab
   const activeProgrammes = programmes.filter(p => p.status === 'Active' || p.status === 'Full')
   const draftProgrammes = programmes.filter(p => p.status === 'Draft')
-  const currentProgrammes = activeTab === 'Active' ? activeProgrammes : draftProgrammes
+  // STAGE1-CANCEL-OFFLINE-2: read-only record of cancelled programmes. The tab
+  // only appears once the coach has cancelled something.
+  const cancelledProgrammes = programmes.filter(p => p.status === 'Cancelled')
+  const programmesByTab: Record<Tab, Programme[]> = {
+    Active: activeProgrammes,
+    Draft: draftProgrammes,
+    Cancelled: cancelledProgrammes,
+  }
+  const visibleTabs: Tab[] = cancelledProgrammes.length > 0 ? ['Active', 'Draft', 'Cancelled'] : ['Active', 'Draft']
+  const currentProgrammes = programmesByTab[activeTab]
 
   // CF-D05 CHANGE 1: Calculate subtitle stats
   const activeCount = activeProgrammes.filter(p => p.status === 'Active').length
@@ -411,8 +431,8 @@ export function ProgrammesManagement() {
             {activeCount} active · {fullCount} full{spotsRemaining > 0 && leastFullProgramme ? ` · ${spotsRemaining} spots available in ${leastFullProgramme.name}` : ''}
           </p>
           <div className="flex items-center gap-[22px] border-b border-gray-100">
-            {(['Active', 'Draft'] as Tab[]).map((tab) => {
-              const count = tab === 'Active' ? activeProgrammes.length : draftProgrammes.length
+            {visibleTabs.map((tab) => {
+              const count = programmesByTab[tab].length
               const isActive = activeTab === tab
               return (
                 <button
@@ -472,7 +492,19 @@ export function ProgrammesManagement() {
               <button onClick={() => router.push('/coach/programmes/create')} className="bg-brand-600 hover:bg-brand-700 text-white px-6 py-3 rounded-xl text-[15px] font-bold flex items-center gap-2 transition-colors shadow-sm w-full max-w-[200px] justify-center"><Plus size={18} />Create Programme</button>
             </div>
           ) : (
-            // UI-PROG-GRID: 2-column grid (mobile + desktop). Used for both Active and Draft tabs.
+            <>
+            {/* STAGE1-CANCEL-OFFLINE-2 (T-21): approved reminder above the
+                read-only Cancelled list. Wording lives in constants/programme-refunds. */}
+            {activeTab === 'Cancelled' && (
+              <div
+                data-testid="cancelled-programmes-reminder"
+                className="mx-4 mt-4 flex items-start gap-2 rounded-lg bg-neutral-50 p-3"
+              >
+                <Info size={16} aria-hidden="true" className="mt-0.5 flex-shrink-0 text-neutral-500" />
+                <p className="text-[13px] leading-[1.5] text-neutral-600">{PROGRAMME_CANCELLED_REMINDER}</p>
+              </div>
+            )}
+            {/* UI-PROG-GRID: 2-column grid (mobile + desktop). Used for every tab. */}
             <div className="grid grid-cols-2 gap-3 p-4">
               {currentProgrammes.map((programme) => {
                 const fillPercentage = (programme.spotsFilled / programme.spotsTotal) * 100
@@ -480,6 +512,7 @@ export function ProgrammesManagement() {
                 const startingLabel = formatStartingDate(programme.starts_at)
                 const isDraft = programme.status === 'Draft'
                 const isFull = programme.status === 'Full'
+                const isCancelled = programme.status === 'Cancelled'
 
                 // Pill style presets — kept inline so closures over handlers stay readable.
                 const PILL = 'flex-1 min-w-0 h-7 rounded-lg text-[11px] font-semibold transition-all disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center justify-center px-1'
@@ -628,7 +661,22 @@ export function ProgrammesManagement() {
 
                     {/* 3. Action row — preserves every current handler + disabled state */}
                     <div className={`p-3 pt-0 flex gap-1.5 ${refundWarning?.id === programme.id ? 'flex-col' : ''}`}>
-                      {refundWarning?.id === programme.id ? (
+                      {isCancelled ? (
+                        // STAGE1-CANCEL-OFFLINE-2: read-only record. The roster
+                        // (who was enrolled) is the only action — no Publish,
+                        // Edit, Delete, Share or Cancel.
+                        <button
+                          key="cancelled-view-roster"
+                          data-testid="cancelled-view-roster"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            router.push(`/coach/programmes/${programme.id}/roster`)
+                          }}
+                          className={pillNeutral}
+                        >
+                          View roster
+                        </button>
+                      ) : refundWarning?.id === programme.id ? (
                         <>
                           {/* Keyed so React mounts fresh buttons: without keys it
                               reuses the previous two pills and their colours
@@ -830,6 +878,7 @@ export function ProgrammesManagement() {
                 )
               })}
             </div>
+            </>
           )}
         </div>
       </div>
@@ -884,6 +933,7 @@ function ProgrammeDetailModal({
   const [copied, setCopied] = useState<'link' | 'text' | null>(null)
 
   const isDraft = programme.status === 'Draft'
+  const isCancelled = programme.status === 'Cancelled'
   const fillPercentage = Math.min((programme.spotsFilled / programme.spotsTotal) * 100, 100)
   const spotsLeft = programme.spotsTotal - programme.spotsFilled
   const shareUrl = `https://crikly.app/programmes/${programme.id}`
@@ -989,6 +1039,7 @@ function ProgrammeDetailModal({
             <span className={`inline-flex items-center gap-[5px] px-[10px] py-1 rounded-[6px] text-[12px] font-medium leading-4 ${
               programme.status === 'Active' ? 'bg-green-100 text-green-800'
               : programme.status === 'Full'   ? 'bg-brand-600 text-white'
+              : programme.status === 'Cancelled' ? 'bg-red-100 text-red-800'
               : 'bg-neutral-100 text-neutral-600'
             }`}>
               {programme.status === 'Active' && <span className="w-1.5 h-1.5 rounded-full bg-green-700 shrink-0" />}
@@ -1187,8 +1238,22 @@ function ProgrammeDetailModal({
           )}
         </div>
 
+        {/* STAGE1-CANCEL-OFFLINE-2: a cancelled programme is a read-only record —
+            no Edit, no Share; the roster is the only place to go. */}
+        {isCancelled && (
+          <div className="sticky bottom-0 bg-white border-t border-neutral-200 px-5 py-4">
+            <button
+              data-testid="cancelled-detail-view-roster"
+              onClick={() => onNavigate(`/coach/programmes/${programme.id}/roster`)}
+              className="h-11 w-full px-[18px] rounded-[12px] text-[14px] font-medium bg-brand-600 hover:bg-brand-700 text-white flex items-center justify-center gap-1.5 transition-colors"
+            >
+              View roster
+            </button>
+          </div>
+        )}
+
         {/* Sticky actions bar — hidden when share sheet is open */}
-        {!shareOpen && (
+        {!shareOpen && !isCancelled && (
           <div
             className="sticky bottom-0 bg-white border-t border-[#E2E8F0] px-5 py-4 grid gap-2.5 items-center"
             style={{ gridTemplateColumns: 'auto 1fr auto' }}
