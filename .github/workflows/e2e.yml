@@ -35,7 +35,9 @@ concurrency:
 jobs:
   e2e:
     name: Playwright (chromium)
-    runs-on: ubuntu-latest
+    # TECH-05: pinned — Playwright 1.58.2 has no Ubuntu 26.04 support
+    # (added in 1.61). Unpin when Playwright is upgraded.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
 
     env:
