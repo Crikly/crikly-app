@@ -36,6 +36,12 @@ function mockResend(results: Array<SendResult | 'throw'> = []) {
   return { sent, send }
 }
 
+/** Visible text of an email — tags removed — so wording is asserted exactly,
+ *  independent of the markup that styles it. */
+function textOf(html: string): string {
+  return html.replace(/<[^>]+>/g, '')
+}
+
 let errorSpy: jest.SpyInstance
 
 beforeEach(() => {
@@ -74,7 +80,40 @@ describe('sendProgrammeCancelledToParent', () => {
     expect(sent[0].html).toContain('Coach Sam will arrange your refund with you directly')
     expect(sent[0].html).toContain('Crikly does not refund programme fees.')
     expect(sent[0].html).toContain('within 5 days')
-    expect(sent[0].html).toContain('Yuwin (reference CRK-2026-0001): you paid £60.00')
+    expect(textOf(sent[0].html)).toContain('Yuwin (reference CRK-2026-0001): you paid £60.00')
+  })
+
+  it('keeps every approved sentence word for word', async () => {
+    const { sent } = mockResend()
+
+    await sendProgrammeCancelledToParent(parentParams)
+
+    const text = textOf(sent[0].html)
+    expect(text).toContain('Summer Batting Camp has been cancelled')
+    expect(text).toContain('Hi Priya,')
+    expect(text).toContain(
+      'We&rsquo;re sorry to tell you that Coach Sam has cancelled Summer Batting Camp. The sessions you booked will not go ahead.',
+    )
+    expect(text).toContain(
+      'Your refund. Programme fees are paid to your coach shortly after you buy, so Coach Sam will arrange your refund with you directly. Crikly does not refund programme fees.',
+    )
+    expect(text).toContain(
+      'If you have not heard from Coach Sam within 5 days, reply to this email and we&rsquo;ll help you get in touch.',
+    )
+  })
+
+  it('uses the branded letter layout: logo, detail card, brand-blue reference, company footer', async () => {
+    const { sent } = mockResend()
+
+    await sendProgrammeCancelledToParent(parentParams)
+
+    const html = sent[0].html
+    expect(html).toContain('https://crikly.app/logo.png')
+    expect(html).toContain('background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px')
+    expect(html).toMatch(/color:#0077CC;">CRK-2026-0001<\/span>/)
+    expect(html).toContain('<strong>£60.00</strong>')
+    expect(html).toContain('Tekly Solutions Ltd')
+    expect(html).not.toContain('<ul')
   })
 
   it('always replies to hello@crikly.app, whatever OPS_ALERT_EMAIL is set to', async () => {
@@ -104,8 +143,8 @@ describe('sendProgrammeCancelledToParent', () => {
       ],
     })
 
-    expect(sent[0].html).toContain('Yuwin (reference CRK-2026-0001): you paid £60.00')
-    expect(sent[0].html).toContain('>Your place</li>')
+    expect(textOf(sent[0].html)).toContain('Yuwin (reference CRK-2026-0001): you paid £60.00')
+    expect(sent[0].html).toContain('>Your place</p>')
   })
 
   it('escapes user-supplied text', async () => {
@@ -199,6 +238,64 @@ describe('sendProgrammeCancelledToCoach', () => {
     expect('replyTo' in sent[0]).toBe(false)
   })
 
+  it('keeps every approved sentence word for word', async () => {
+    const { sent } = mockResend()
+
+    await sendProgrammeCancelledToCoach(coachParams)
+
+    const text = textOf(sent[0].html)
+    expect(text).toContain('You cancelled Summer Batting Camp')
+    expect(text).toContain('Hi Sam,')
+    expect(text).toContain(
+      'You&rsquo;ve cancelled Summer Batting Camp. 2 parents had already paid, and we&rsquo;ve emailed them to say that you will arrange their refund.',
+    )
+    expect(text).toContain(
+      'Please refund each parent directly. Programme fees were paid to you, so Crikly does not refund them.',
+    )
+    expect(text).toContain('Please keep these details private and use them only to arrange the refunds.')
+  })
+
+  it('shows one branded detail card per paid place with the four labels', async () => {
+    const { sent } = mockResend()
+
+    await sendProgrammeCancelledToCoach(coachParams)
+
+    const html = sent[0].html
+    const cards = html.split('background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px').length - 1
+    expect(cards).toBe(2)
+    for (const label of ['Participant', 'Parent', 'Parent email', 'Amount paid']) {
+      expect(html.split(`>${label}</td>`).length - 1).toBe(2)
+    }
+    expect(html).toContain('<a href="mailto:priya@example.com" style="color:#0077CC;text-decoration:none;">priya@example.com</a>')
+    expect(html).not.toContain('<th')
+    expect(html).toContain('https://crikly.app/logo.png')
+    expect(html).toContain('Tekly Solutions Ltd')
+  })
+
+  it('escapes a hostile parent email in both the link and its text', async () => {
+    const { sent } = mockResend()
+
+    await sendProgrammeCancelledToCoach({
+      ...coachParams,
+      rows: [{ ...coachParams.rows[0], parentEmail: 'a"><script>x</script>@example.com' }],
+    })
+
+    expect(sent[0].html).not.toContain('<script>')
+    expect(sent[0].html).toContain('a&quot;&gt;&lt;script&gt;')
+  })
+
+  it('cannot be tricked into adding mailto parameters to the parent link', async () => {
+    const { sent } = mockResend()
+
+    await sendProgrammeCancelledToCoach({
+      ...coachParams,
+      rows: [{ ...coachParams.rows[0], parentEmail: 'priya@example.com?cc=evil@example.com&body=x' }],
+    })
+
+    expect(sent[0].html).toContain('href="mailto:priya@example.com%3Fcc%3Devil@example.com%26body%3Dx"')
+    expect(sent[0].html).not.toContain('href="mailto:priya@example.com?cc=')
+  })
+
   it('uses the singular for one parent', async () => {
     const { sent } = mockResend()
 
@@ -218,6 +315,9 @@ describe('sendProgrammeCancelledToCoach', () => {
 
     expect(sent[0].html).toContain('Not available')
     expect(sent[0].html).toContain('mailto:hello@crikly.app')
+    expect(textOf(sent[0].html)).toContain(
+      'Where a parent&rsquo;s email is shown as not available, email us at hello@crikly.app and we&rsquo;ll help you reach them.',
+    )
   })
 
   it('never throws', async () => {
@@ -254,6 +354,9 @@ describe('sendProgrammeCancelledToOps', () => {
     expect(sent[0].html).toContain('NOT PAID OUT (no payout row)')
     expect(sent[0].html).toContain('FAILED')
     expect(sent[0].html).toContain('Coach reminder email: sent')
+    // Same header and footer as the parent and coach emails.
+    expect(sent[0].html).toContain('https://crikly.app/logo.png')
+    expect(sent[0].html).toContain('Tekly Solutions Ltd')
   })
 
   it('says Crikly holds nothing when every fee was paid out', async () => {

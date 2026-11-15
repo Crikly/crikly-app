@@ -8,7 +8,13 @@
 
 import { test, expect, type Page } from '@playwright/test'
 import { loginAsTestCoach } from './fixtures/auth'
-import { dbAdmin, getCoachProfileIdByEmail, deleteProgrammeByTitle } from './fixtures/db'
+import {
+  dbAdmin,
+  getCoachProfileIdByEmail,
+  deleteProgrammeByTitle,
+  createTestProgramme,
+  softDeleteProgramme,
+} from './fixtures/db'
 
 const TEST_COACH_EMAIL = process.env.TEST_COACH_EMAIL as string
 const TEST_PROGRAMME_TITLE = 'E2E Test Programme'
@@ -214,6 +220,131 @@ test.describe('P3 — Programmes', () => {
         { status: 'cancelled' },
         { status: 'cancelled', confirm_direct_refunds: true },
       ])
+    })
+  })
+
+  // STAGE1-CANCEL-OFFLINE-2 (Decision T-21). Real API and real database — no
+  // stubs: a programme nobody has paid for cancels without the warning, so no
+  // Stripe payment is needed to exercise the whole path.
+  test.describe('T-21 — cancelled programmes are a read-only record', () => {
+    const TITLE = 'E2E Cancelled Record T-21'
+    let coachProfileId: string
+    let programmeId: string
+
+    test.beforeAll(async () => {
+      coachProfileId = await getCoachProfileIdByEmail(TEST_COACH_EMAIL)
+
+      // The public profile 404s for a non-live coach (P10 pattern — own the state).
+      const { error: liveErr } = await dbAdmin
+        .from('coach_profiles')
+        .update({ is_profile_live: true, updated_at: new Date().toISOString() })
+        .eq('id', coachProfileId)
+      if (liveErr) throw new Error(`[P3] is_profile_live setup failed: ${liveErr.message}`)
+
+      const { data: sportRow, error: sportErr } = await dbAdmin
+        .from('coach_sports')
+        .select('sport_id')
+        .eq('coach_profile_id', coachProfileId)
+        .limit(1)
+        .single()
+      if (sportErr || !sportRow) throw new Error(`[P3] coach_sports read failed: ${sportErr?.message}`)
+
+      await deleteProgrammeByTitle(TEST_COACH_EMAIL, TITLE)
+      const created = await createTestProgramme({
+        coachProfileId,
+        sportId: sportRow.sport_id as string,
+        title: TITLE,
+        campMode: false,
+        maxSpots: 8,
+        pricePerSessionPence: 16000,
+        sessions: [],
+      })
+      programmeId = created.programmeId
+
+      // Sold as one block: £160 for 4 sessions (the create form writes the
+      // block price into both price columns).
+      const { error: blockErr } = await dbAdmin
+        .from('group_programmes')
+        .update({ payment_type: 'block_upfront', block_price_pence: 16000, block_session_count: 4 })
+        .eq('id', programmeId)
+      if (blockErr) throw new Error(`[P3] block pricing setup failed: ${blockErr.message}`)
+    })
+
+    test.afterAll(async () => {
+      if (programmeId) await softDeleteProgramme(programmeId)
+    })
+
+    test('T3.6: the public profile states the real price basis and no "payment is held" claim', async ({ page }) => {
+      await page.goto(`/coaches/${coachProfileId}`)
+
+      const section = page.locator('#programmes')
+      await expect(section).toContainText('Weekly academies and holiday camps. Reserve a spot online.')
+      await expect(section).not.toContainText('payment is held')
+
+      // The innermost element holding both this programme's title and its
+      // "Reserve a spot" link is that programme's card body.
+      const card = section
+        .locator('div')
+        .filter({ hasText: TITLE })
+        .filter({ has: page.locator(`a[href$="/programmes/${programmeId}"]`) })
+        .last()
+      await expect(card).toContainText(TITLE)
+      await expect(card).toContainText('£160')
+      await expect(card).toContainText('for 4 sessions')
+      await expect(card).not.toContainText('per session')
+    })
+
+    test('T3.7: a cancelled programme moves to the Cancelled tab and cannot be re-published', async ({ page }) => {
+      await page.goto('/coach/programmes')
+
+      const card = page.locator('div.rounded-2xl', { has: page.getByText(TITLE, { exact: true }) })
+      await expect(card).toBeVisible()
+      await card.getByRole('button', { name: 'Cancel', exact: true }).click()
+      await card.getByRole('button', { name: 'Confirm cancel', exact: true }).click()
+
+      // Nobody had paid, so there is no warning — it cancels straight away.
+      await expect(page.getByTestId('programme-refund-warning')).toHaveCount(0)
+      await expect(page.getByText(TITLE, { exact: true })).toHaveCount(0)
+
+      // Not in Draft…
+      await page.getByRole('button', { name: /^Draft/ }).click()
+      await expect(page.getByText(TITLE, { exact: true })).toHaveCount(0)
+
+      // …but kept under Cancelled, read-only, with the approved reminder.
+      await page.getByRole('button', { name: /^Cancelled/ }).click()
+      await expect(page.getByTestId('cancelled-programmes-reminder')).toHaveText(
+        'Cancelled programmes are kept here as a record. If parents had paid, you must refund them directly. Crikly does not refund programme fees.',
+      )
+      const cancelledCard = page.locator('div.rounded-2xl', { has: page.getByText(TITLE, { exact: true }) })
+      await expect(cancelledCard).toBeVisible()
+      await expect(cancelledCard.getByTestId('cancelled-view-roster')).toBeVisible()
+      for (const name of ['Publish', 'Edit', 'Delete', 'Share', 'Cancel']) {
+        await expect(cancelledCard.getByRole('button', { name, exact: true })).toHaveCount(0)
+      }
+
+      const { data: row } = await dbAdmin
+        .from('group_programmes')
+        .select('status')
+        .eq('id', programmeId)
+        .single()
+      expect(row?.status).toBe('cancelled')
+
+      // The server refuses to bring it back, whatever the client sends.
+      const republish = await page.request.patch(`/api/coaches/programmes/${programmeId}`, {
+        data: { status: 'active' },
+      })
+      expect(republish.status()).toBe(400)
+      const edit = await page.request.patch(`/api/coaches/programmes/${programmeId}`, {
+        data: { title: 'Renamed after cancel' },
+      })
+      expect(edit.status()).toBe(400)
+
+      const { data: after } = await dbAdmin
+        .from('group_programmes')
+        .select('status, title')
+        .eq('id', programmeId)
+        .single()
+      expect(after).toEqual({ status: 'cancelled', title: TITLE })
     })
   })
 })
