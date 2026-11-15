@@ -31,6 +31,10 @@ function requireEnv(key: string): string {
 const TEST_COACH_EMAIL = requireEnv('TEST_COACH_EMAIL')
 
 const TITLE = 'E2E Funnel BUG-24'
+// T-21 approved wording, written out in full: the spec must fail if the app's
+// shared constant is reworded without sign-off.
+const PROGRAMME_FEE_DISCLOSURE_APPROVED =
+  'Programme fees are paid to your coach shortly after you buy. If you withdraw, or the coach cancels, any refund is arranged directly with the coach.'
 const PARTICIPANT = 'E2E Funnel Kid'
 
 /** Local-timezone YYYY-MM-DD (mirrors src/lib/availability/slots.ts). */
@@ -145,5 +149,26 @@ test.describe('P10 — BUG-24: programme enrolment funnel', () => {
     // "Who is this for?" is pre-filled from the panel (BUG-24 fix 2). The
     // field stays editable — prefill, not a lock.
     await expect(page.getByTestId('participant-name-input')).toHaveValue(PARTICIPANT)
+  })
+
+  // STAGE1-CANCEL-OFFLINE (Decision T-21): a parent must see the approved
+  // refund disclosure BEFORE paying. This drives the guest path; a signed-in
+  // parent gets the same component and the disclosure renders unconditionally.
+  test('T10.3: the programme fee disclosure is shown on the checkout before payment', async ({ page }) => {
+    await enrolFromAvailability(page)
+    await page.waitForURL(new RegExp(`/coaches/${coachProfileId}/programmes/${programmeId}$`), {
+      timeout: 15_000,
+    })
+    await page.getByTestId('session-row').first().click()
+    await page.getByTestId('pay-cta-desktop').click()
+    await page.waitForURL(/\/book\/.+\/programmes\/.+\?sessions=/, { timeout: 15_000 })
+
+    for (const id of ['programme-fee-disclosure', 'programme-fee-disclosure-pay']) {
+      await expect(page.getByTestId(id)).toBeVisible()
+      await expect(page.getByTestId(id)).toHaveText(PROGRAMME_FEE_DISCLOSURE_APPROVED)
+    }
+    // Still on the checkout — nothing has been paid and no confirmation shown.
+    await expect(page.getByTestId('pay-button').first()).toBeVisible()
+    await expect(page.getByText("You're enrolled!")).toHaveCount(0)
   })
 })
