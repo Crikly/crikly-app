@@ -28,8 +28,10 @@ import {
   Copy,
   Share2,
   AlertCircle,
+  Info,
   X,
 } from 'lucide-react'
+import { PROGRAMME_FEE_DISCLOSURE } from '@/constants/programme-refunds'
 import { Input } from '@/components/ui/Input'
 import { AddressAutocomplete } from '@/components/booking/AddressAutocomplete'
 import { readParticipantHandoff } from '@/lib/booking/participant-handoff'
@@ -774,6 +776,20 @@ function GuestEnrolmentForm({
     </div>
   )
 
+  // STAGE1-CANCEL-OFFLINE (T-21): approved pre-payment disclosure. Rendered
+  // twice — above the wallet buttons (Apple Pay / Google Pay complete payment
+  // without ever reaching the Pay button) and directly above the Pay button —
+  // so every payment route passes it. Copy is the shared approved constant.
+  const refundDisclosure = (testId: string) => (
+    <div
+      data-testid={testId}
+      className="flex items-start gap-2 rounded-[10px] bg-neutral-50 px-3 py-2.5 text-[13px] leading-[1.5] text-neutral-600"
+    >
+      <Info size={16} aria-hidden="true" className="mt-0.5 flex-shrink-0 text-brand-600" />
+      <p>{PROGRAMME_FEE_DISCLOSURE}</p>
+    </div>
+  )
+
   const terms = (
     <p className="px-1.5 text-center text-[12px] leading-[1.5] text-neutral-400">
       By enrolling you agree to our{' '}
@@ -956,6 +972,8 @@ function GuestEnrolmentForm({
                 Payment
               </h2>
 
+              {refundDisclosure('programme-fee-disclosure')}
+
               {/* Express checkout — real Apple Pay / Google Pay only. */}
               <div>
                 <ExpressCheckoutElement
@@ -1122,6 +1140,7 @@ function GuestEnrolmentForm({
           {/* Pay block — bottom of the left column on all screen sizes */}
           <div className="flex flex-col gap-[14px]">
             {errorBanner}
+            {refundDisclosure('programme-fee-disclosure-pay')}
             {payButton}
             {stripeNote}
             {terms}

@@ -6,6 +6,7 @@ import { PROGRAMME_AGE_GROUPS } from '@/components/coach/programmeConstants'
 import { generateProgrammeSessionDates } from '@/lib/programme-sessions'
 import { getCoachCommitments, findFirstConflict } from '@/lib/availability/commitments'
 import { hhmmToMinutes } from '@/lib/availability/overlap'
+import { countPaidEnrolments, notifyProgrammeCancelled } from '@/lib/programmes/cancellation-notice'
 import type { Json } from '@/types/database'
 
 // MIRROR OF programmeConstants.SessionEntry — kept inline so this API route
@@ -257,7 +258,7 @@ export async function GET(
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ programmeId: string }> }
-): Promise<NextResponse<ProgrammeResponse | { error: string; details?: unknown; message?: string }>> {
+): Promise<NextResponse<ProgrammeResponse | { error: string; details?: unknown; message?: string; code?: string; paid_enrolment_count?: number }>> {
   try {
     const { programmeId } = await params
     const supabase = await createClient()
@@ -504,6 +505,32 @@ export async function PATCH(
       )
     }
 
+    // STAGE1-CANCEL-OFFLINE (Decision T-21): programme refunds happen outside
+    // the platform — the coach refunds parents directly. A cancel that would
+    // strand paid enrolments therefore needs the coach's explicit
+    // acknowledgement. Without it NOTHING is changed: the UI shows the warning
+    // and re-sends with confirm_direct_refunds: true. Fails closed — if the
+    // count cannot be read the cancel is refused rather than waved through.
+    const isCancelTransition = body.status === 'cancelled'
+    if (isCancelTransition) {
+      const paidEnrolmentCount = await countPaidEnrolments(adminSupabase, programmeId)
+      if (paidEnrolmentCount === null) {
+        return NextResponse.json({ error: 'Failed to update programme' }, { status: 500 })
+      }
+      if (paidEnrolmentCount > 0 && body.confirm_direct_refunds !== true) {
+        return NextResponse.json(
+          {
+            error: 'Parents have already paid for this programme',
+            code: 'PAID_ENROLMENTS_CONFIRM_REQUIRED',
+            message:
+              'Parents have already paid. You must refund them directly. Crikly does not refund programme fees.',
+            paid_enrolment_count: paidEnrolmentCount,
+          },
+          { status: 409 },
+        )
+      }
+    }
+
     // 6. Build update object
     const updateData: {
       title?: string
@@ -720,15 +747,34 @@ export async function PATCH(
     }
 
     // 7. Update programme (adminSupabase already created in step 4)
-    const { data: updatedProgramme, error: updateError } = await adminSupabase
+    // STAGE1-CANCEL-OFFLINE: a cancel only lands if the status is still the
+    // one read in step 4. Two overlapping cancel requests therefore cannot
+    // both succeed — exactly one wins and sends the cancellation emails; the
+    // other matches no row. Non-cancel updates are unguarded, as before.
+    let updateQuery = adminSupabase
       .from('group_programmes')
       .update(updateData)
       .eq('id', programmeId)
       .eq('coach_profile_id', coachProfile.id)
+    if (isCancelTransition) {
+      updateQuery = updateQuery.eq('status', existingProgramme.status)
+    }
+    const { data: updatedProgramme, error: updateError } = await updateQuery
       .select('id, sport_id, title, description, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, payment_type, price_per_session_pence, block_price_pence, block_session_count, currency, status, created_at, venue_name, venue_address, skill_level, session_count, min_participants, cancellation_window_hours, image_url, age_groups, starts_at, ends_at, camp_mode')
       .single()
 
     if (updateError) {
+      // PGRST116 = the guarded cancel matched no row: another request changed
+      // the programme's status first. Nothing was written and no email is sent.
+      if (isCancelTransition && updateError.code === 'PGRST116') {
+        return NextResponse.json(
+          {
+            error: 'Conflict detected',
+            message: 'This programme changed while you were cancelling it. Refresh the page and try again.',
+          },
+          { status: 409 },
+        )
+      }
       console.error('[PATCH /api/coaches/programmes/[programmeId]] update error:', updateError)
       // 23P01 = exclusion_violation from the coach_time_claims trigger
       // (BUG-19 Phase 2). A status change here (e.g. reactivating a cancelled
@@ -745,6 +791,20 @@ export async function PATCH(
         )
       }
       return NextResponse.json({ error: 'Failed to update programme' }, { status: 500 })
+    }
+
+    // STAGE1-CANCEL-OFFLINE: this request won the cancel, so it — and only it —
+    // tells the paid parents, the coach and ops. Read-only and never throws;
+    // a no-op when nobody has paid. Enrolments are deliberately left untouched.
+    // Runs IMMEDIATELY after the update commits — before session reconciliation
+    // — so no later early-return can leave a cancelled programme un-announced
+    // (cancelled is terminal: there is no second chance to send).
+    if (isCancelTransition) {
+      await notifyProgrammeCancelled(adminSupabase, {
+        programmeId,
+        programmeTitle: updatedProgramme.title,
+        coachProfileId: coachProfile.id,
+      })
     }
 
     // CF-PROG-SESSIONS-DB: session reconciliation. Only runs when the programme
