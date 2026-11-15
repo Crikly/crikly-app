@@ -41,6 +41,8 @@ interface ProgrammeRow {
   max_spots: number
   current_spots: number
   price_per_session_pence: number
+  block_price_pence: number | null
+  block_session_count: number | null
   payment_type: string
   venue_name: string | null
   starts_at: string | null
@@ -70,13 +72,31 @@ function buildStarting(startsAt: string | null): string | null {
   return `Starts ${DAY_ABBR[d.getDay()]} ${d.getDate()} ${MON_ABBR[d.getMonth()]}`
 }
 
+// STAGE1-CANCEL-OFFLINE-2 (display label only — no pricing logic): says what
+// the card's price actually buys. A block programme is sold as one price for
+// the whole block, so it reads "£160 for 4 sessions", never "per session".
+// (The old check compared against 'block', a value payment_type never holds —
+// the real value is 'block_upfront' — so every card said "per session".)
+// A block row with no block price falls back to the per-session price with the
+// "per session" label, which is still a true statement of that figure.
+export function programmeCardPrice(
+  r: Pick<ProgrammeRow, 'payment_type' | 'price_per_session_pence' | 'block_price_pence' | 'block_session_count'>,
+): { pricePence: number; per: string } {
+  if (r.payment_type === 'block_upfront' && r.block_price_pence !== null) {
+    const count = r.block_session_count
+    const per = count && count > 0 ? `for ${count} ${count === 1 ? 'session' : 'sessions'}` : 'total'
+    return { pricePence: r.block_price_pence, per }
+  }
+  return { pricePence: r.price_per_session_pence, per: 'per session' }
+}
+
 export async function fetchCoachProgrammes(coachProfileId: string): Promise<ProgrammeCardData[]> {
   const supabase = await createClient()
 
   const { data, error } = await supabase
     .from('group_programmes')
     .select(
-      'id, title, sport_id, age_groups, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, price_per_session_pence, payment_type, venue_name, starts_at, status, image_url',
+      'id, title, sport_id, age_groups, schedule_type, day_of_week, days_of_week, start_time, duration_minutes, max_spots, current_spots, price_per_session_pence, block_price_pence, block_session_count, payment_type, venue_name, starts_at, status, image_url',
     )
     .eq('coach_profile_id', coachProfileId)
     .eq('model', 'programme')
@@ -107,8 +127,7 @@ export async function fetchCoachProgrammes(coachProfileId: string): Promise<Prog
     schedule: buildSchedule(r),
     starting: buildStarting(r.starts_at),
     venueName: r.venue_name,
-    pricePence: r.price_per_session_pence,
-    per: r.payment_type === 'block' ? 'total' : 'per session',
+    ...programmeCardPrice(r),
     filled: r.current_spots,
     total: r.max_spots,
     isFull: r.current_spots >= r.max_spots,

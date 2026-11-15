@@ -36,3 +36,10 @@ export const PROGRAMME_CANCEL_WARNING = {
   confirm: 'Cancel and refund parents myself',
   confirming: 'Cancelling…',
 } as const
+
+/**
+ * STAGE1-CANCEL-OFFLINE-2: reminder shown above the coach's read-only list of
+ * cancelled programmes. Approved wording.
+ */
+export const PROGRAMME_CANCELLED_REMINDER =
+  'Cancelled programmes are kept here as a record. If parents had paid, you must refund them directly. Crikly does not refund programme fees.'
