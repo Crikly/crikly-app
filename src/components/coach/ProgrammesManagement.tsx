@@ -1091,7 +1091,8 @@ function ProgrammeDetailModal({
             </div>
             <div className="flex justify-between items-baseline mt-2 text-[13px] text-[#475569]">
               <span><strong className="text-[#0F172A] font-medium">{programme.spotsFilled} of {programme.spotsTotal}</strong> spots filled</span>
-              <span>{spotsLeft} spot{spotsLeft !== 1 ? 's' : ''} left</span>
+              {/* STAGE1-CANCEL-OFFLINE-2: nothing is bookable on a cancelled programme. */}
+              {!isCancelled && <span>{spotsLeft} spot{spotsLeft !== 1 ? 's' : ''} left</span>}
             </div>
           </div>
 
@@ -1149,7 +1150,9 @@ function ProgrammeDetailModal({
             </div>
           )}
 
-          {/* Cancellation policy */}
+          {/* Cancellation policy — hidden on a cancelled programme: "Free
+              cancellation…" would contradict the direct-refund reminder (T-21). */}
+          {!isCancelled && (
           <div className="mt-[22px] pb-1">
             <div className="text-[11px] font-medium text-[#64748B] uppercase tracking-[0.08em] mb-[10px]">Cancellation policy</div>
             <div className="flex items-start gap-3 px-4 py-[14px] bg-[#F0FDF4] border border-[#BBF7D0] rounded-[12px]">
@@ -1164,6 +1167,7 @@ function ProgrammeDetailModal({
               </div>
             </div>
           </div>
+          )}
 
           {/* Share sheet — inline after body content */}
           {shareOpen && (

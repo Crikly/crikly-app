@@ -137,6 +137,33 @@ describe('ProgrammesManagement — cancelled programmes', () => {
     expect(mockPush).not.toHaveBeenCalledWith(expect.stringContaining('/edit'))
   })
 
+  it('hides the cancellation policy and "spots left" in a cancelled drawer, keeping "spots filled"', async () => {
+    mockList([CANCELLED])
+    const user = userEvent.setup()
+    render(<ProgrammesManagement />)
+
+    await user.click(await screen.findByRole('button', { name: /^Cancelled/ }))
+    await user.click(screen.getByText('Summer Camp'))
+    await screen.findByTestId('cancelled-detail-view-roster')
+
+    expect(screen.queryByText('Cancellation policy')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Free cancellation/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/spots? left/)).not.toBeInTheDocument()
+    expect(screen.getByText(/spots filled/)).toHaveTextContent('3 of 10 spots filled')
+  })
+
+  it('still shows the cancellation policy and "spots left" in an active drawer', async () => {
+    mockList([ACTIVE])
+    const user = userEvent.setup()
+    render(<ProgrammesManagement />)
+
+    await user.click(await screen.findByText('Live Nets'))
+
+    expect(await screen.findByText('Cancellation policy')).toBeInTheDocument()
+    expect(screen.getByText('Free cancellation up to 24 hours before')).toBeInTheDocument()
+    expect(screen.getByText('8 spots left')).toBeInTheDocument()
+  })
+
   it('hides the Cancelled tab when nothing has been cancelled', async () => {
     mockList([ACTIVE, DRAFT])
     render(<ProgrammesManagement />)
