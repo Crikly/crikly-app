@@ -458,6 +458,30 @@ to     date (YYYY-MM-DD, required)
 **Error 400:** Validation failure — missing/malformed `from` or `to`, or `from > to`. Response body: `{ error: "Validation failed", details: string[] }`.
 **Error 401 / 403 / 404 / 500:** Standard auth + DB-error responses from `requireCoachContext` and the adminSupabase reads.
 
+### PATCH /api/coaches/programmes/[programmeId] — cancelling (`status: "cancelled"`)
+**Auth: Required (coach role — `requireCoachContext`)**
+
+Programme cancellation safeguards (Decision T-21, STAGE1-CANCEL-OFFLINE; see
+BR-17 pilot override). Applies only when the body sets `status` to
+`"cancelled"`; every other PATCH is unchanged.
+
+**Body:** `{ "status": "cancelled", "confirm_direct_refunds"?: true }`
+
+- A "paid enrolment" is `payment_type='platform'`, `payment_status='succeeded'`, `status='active'`.
+- **No paid enrolments:** cancels as before; `confirm_direct_refunds` is not needed.
+- **Paid enrolments, flag absent or not strictly `true`:** nothing is changed. **Error 409:**
+  `{ error, code: "PAID_ENROLMENTS_CONFIRM_REQUIRED", message, paid_enrolment_count: number }`.
+  The UI shows the warning and re-sends with the flag.
+- **Paid enrolments, flag `true`:** the programme row is set to `cancelled`, then each paid
+  parent, the coach and ops (`OPS_ALERT_EMAIL`) are emailed. Email failures never fail the
+  request — the response is still 200.
+- **Send-once:** the status update only lands if the status is unchanged since it was read.
+  A losing concurrent request gets **Error 409** `{ error: "Conflict detected", message }`;
+  a repeat call on a cancelled programme gets the existing **Error 400**. Neither sends email.
+- Enrolments, payouts, `payment_status` and Stripe objects are never written. Guest parent
+  addresses are read from Stripe PaymentIntent metadata (read-only) and are not stored or logged.
+- **Error 500:** the paid-enrolment count could not be read — the cancel is refused (fails closed).
+
 ### DELETE /api/coaches/account
 **Auth: Required (coach role — `requireCoachContext`)**
 

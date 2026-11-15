@@ -1438,3 +1438,55 @@ describe('GuestEnrolmentFlow — PROGRAMME-CHILD-PICKER', () => {
     expect(stripeModule.__mockConfirmPayment).not.toHaveBeenCalled()
   })
 })
+
+// ── STAGE1-CANCEL-OFFLINE (T-21): pre-payment refund disclosure ───────────────
+
+describe('GuestEnrolmentFlow — programme fee disclosure (T-21)', () => {
+  // The approved wording, written out in full on purpose: this test must fail
+  // if the shared constant is ever reworded without sign-off.
+  const APPROVED =
+    'Programme fees are paid to your coach shortly after you buy. If you withdraw, or the coach cancels, any refund is arranged directly with the coach.'
+
+  function renderCheckout() {
+    return render(
+      <GuestEnrolmentFlow
+        coachId={COACH_ID}
+        programmeId={PROGRAMME_ID}
+        paymentType="block_upfront"
+        selectedSessionIds={[]}
+        summary={SUMMARY}
+      />,
+    )
+  }
+
+  it('shows the approved wording above the payment methods and above the Pay button', () => {
+    renderCheckout()
+
+    expect(screen.getByTestId('programme-fee-disclosure')).toHaveTextContent(APPROVED)
+    expect(screen.getByTestId('programme-fee-disclosure-pay')).toHaveTextContent(APPROVED)
+  })
+
+  it('places the disclosure before the wallet buttons, the card form and the Pay button', () => {
+    renderCheckout()
+
+    const precedes = (a: HTMLElement, b: HTMLElement): boolean =>
+      Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)
+
+    const top = screen.getByTestId('programme-fee-disclosure')
+    // Apple Pay / Google Pay complete payment from the wallet buttons alone.
+    expect(precedes(top, screen.getByTestId('express-checkout-element'))).toBe(true)
+    expect(precedes(top, screen.getByTestId('payment-element'))).toBe(true)
+    expect(precedes(top, screen.getAllByTestId('pay-button')[0])).toBe(true)
+    expect(
+      precedes(screen.getByTestId('programme-fee-disclosure-pay'), screen.getAllByTestId('pay-button')[0]),
+    ).toBe(true)
+  })
+
+  it('is visible before any payment request is made', () => {
+    global.fetch = jest.fn()
+    renderCheckout()
+
+    expect(screen.getByTestId('programme-fee-disclosure')).toBeInTheDocument()
+    expect(global.fetch).not.toHaveBeenCalled()
+  })
+})

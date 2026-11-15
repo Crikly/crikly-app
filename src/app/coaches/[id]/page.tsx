@@ -423,7 +423,7 @@ export default async function CoachProfilePage({
                   Group programmes
                 </h2>
                 <p className="text-sm text-gray-500 mb-5">
-                  Weekly academies and holiday camps. Reserve a spot — payment is held until the first session.
+                  Weekly academies and holiday camps. Reserve a spot online.
                 </p>
                 <ProgrammesCarousel programmes={programmes} coachId={coach.id} />
               </section>

@@ -1,10 +1,20 @@
 'use client'
 import React, { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Calendar, Clock, MapPin, Plus, BookOpen, Image as ImageIcon } from 'lucide-react'
+import { AlertTriangle, Calendar, Clock, Info, MapPin, Plus, BookOpen, Image as ImageIcon } from 'lucide-react'
 import { ShareCardModal } from './ShareCardModal'
+import {
+  PAID_ENROLMENTS_CONFIRM_REQUIRED,
+  PROGRAMME_CANCEL_WARNING,
+  PROGRAMME_CANCELLED_REMINDER,
+} from '@/constants/programme-refunds'
 
-type Tab = 'Active' | 'Draft'
+type Tab = 'Active' | 'Draft' | 'Cancelled'
+
+// STAGE1-CANCEL-OFFLINE-2: 'Cancelled' is a read-only record — a cancelled
+// programme is terminal (the API rejects every update) and must never be
+// offered the draft actions (Publish / Edit / Delete).
+type ProgrammeStatus = 'Active' | 'Full' | 'Draft' | 'Cancelled'
 
 // CD-08: API response types
 interface ProgrammeResponse {
@@ -50,7 +60,7 @@ interface Programme {
   spotsFilled: number
   spotsTotal: number
   price: string
-  status: 'Active' | 'Full' | 'Draft'
+  status: ProgrammeStatus
   // Extended fields for detail modal
   description: string | null
   venue_name: string | null
@@ -100,9 +110,10 @@ function formatStartingDate(yyyymmdd: string | null): string {
 }
 
 // UI-PROG-GRID: status pill — light bg + dark text per design system.
-function getStatusPillClass(status: 'Active' | 'Full' | 'Draft'): string {
+function getStatusPillClass(status: ProgrammeStatus): string {
   if (status === 'Active') return 'bg-green-100 text-green-800'
   if (status === 'Full') return 'bg-amber-100 text-amber-800'
+  if (status === 'Cancelled') return 'bg-red-100 text-red-800'
   return 'bg-neutral-100 text-neutral-600'
 }
 
@@ -169,6 +180,10 @@ export function ProgrammesManagement() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
   const [cancelConfirmId, setCancelConfirmId] = useState<string | null>(null)
   const [actionError, setActionError] = useState<{ id: string; message: string } | null>(null)
+  // STAGE1-CANCEL-OFFLINE (T-21): set when the API refuses a cancel because
+  // parents have paid — the card then shows the direct-refund warning and the
+  // coach must confirm before the cancel is re-sent.
+  const [refundWarning, setRefundWarning] = useState<{ id: string; paidCount: number } | null>(null)
   const [detailProgramme, setDetailProgramme] = useState<Programme | null>(null)
   // CF-PROG-SHARE-CARD: opens ShareCardModal for the selected programme.
   const [shareProgramme, setShareProgramme] = useState<Programme | null>(null)
@@ -200,11 +215,15 @@ export function ProgrammesManagement() {
           price = `£${(prog.block_price_pence / 100).toFixed(0)} for ${prog.block_session_count} sessions`
         }
 
-        let status: 'Active' | 'Full' | 'Draft' = 'Draft'
+        // STAGE1-CANCEL-OFFLINE-2: 'cancelled' maps to its own status. It used
+        // to fall through to 'Draft', which listed a cancelled programme under
+        // the Draft tab with Publish / Edit / Delete buttons. Any other status
+        // keeps the previous fallback (unchanged behaviour).
+        let status: ProgrammeStatus = 'Draft'
         if (prog.status === 'active') {
           status = prog.current_spots >= prog.max_spots ? 'Full' : 'Active'
-        } else if (prog.status === 'draft') {
-          status = 'Draft'
+        } else if (prog.status === 'cancelled') {
+          status = 'Cancelled'
         }
 
         return {
@@ -297,8 +316,18 @@ export function ProgrammesManagement() {
     }
   }
 
-  // CF-05b: Cancel an active/full programme
-  async function handleCancelProgramme(programmeId: string) {
+  // Clears the refund warning only if it belongs to this programme, so an
+  // action on one card can never dismiss a warning open on another.
+  function clearRefundWarning(programmeId: string) {
+    setRefundWarning((w) => (w?.id === programmeId ? null : w))
+  }
+
+  // CF-05b: Cancel an active/full programme.
+  // STAGE1-CANCEL-OFFLINE (T-21): the first call never carries the flag. If
+  // parents have paid, the API answers 409 PAID_ENROLMENTS_CONFIRM_REQUIRED
+  // and changes nothing; the card then shows the direct-refund warning, and
+  // only its confirm button re-sends with confirm_direct_refunds: true.
+  async function handleCancelProgramme(programmeId: string, confirmDirectRefunds = false) {
     if (actionLoading) return
     setActionError(null)
     setActionLoading(programmeId)
@@ -306,16 +335,36 @@ export function ProgrammesManagement() {
       const res = await fetch(`/api/coaches/programmes/${programmeId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'cancelled' }),
+        body: JSON.stringify(
+          confirmDirectRefunds
+            ? { status: 'cancelled', confirm_direct_refunds: true }
+            : { status: 'cancelled' },
+        ),
       })
       if (!res.ok) {
-        const data = await res.json()
-        setActionError({ id: programmeId, message: data.error || 'Failed to cancel programme' })
+        const data = (await res.json()) as {
+          error?: string
+          message?: string
+          code?: string
+          paid_enrolment_count?: number
+        }
+        if (
+          res.status === 409 &&
+          data.code === PAID_ENROLMENTS_CONFIRM_REQUIRED &&
+          typeof data.paid_enrolment_count === 'number'
+        ) {
+          setRefundWarning({ id: programmeId, paidCount: data.paid_enrolment_count })
+          return
+        }
+        clearRefundWarning(programmeId)
+        setActionError({ id: programmeId, message: data.message || data.error || 'Failed to cancel programme' })
         return
       }
+      clearRefundWarning(programmeId)
       clearProgrammesCache()
       await fetchProgrammes()
     } catch {
+      clearRefundWarning(programmeId)
       setActionError({ id: programmeId, message: 'Something went wrong. Please try again.' })
     } finally {
       setActionLoading(null)
@@ -350,7 +399,16 @@ export function ProgrammesManagement() {
   // CD-08: Filter programmes by tab
   const activeProgrammes = programmes.filter(p => p.status === 'Active' || p.status === 'Full')
   const draftProgrammes = programmes.filter(p => p.status === 'Draft')
-  const currentProgrammes = activeTab === 'Active' ? activeProgrammes : draftProgrammes
+  // STAGE1-CANCEL-OFFLINE-2: read-only record of cancelled programmes. The tab
+  // only appears once the coach has cancelled something.
+  const cancelledProgrammes = programmes.filter(p => p.status === 'Cancelled')
+  const programmesByTab: Record<Tab, Programme[]> = {
+    Active: activeProgrammes,
+    Draft: draftProgrammes,
+    Cancelled: cancelledProgrammes,
+  }
+  const visibleTabs: Tab[] = cancelledProgrammes.length > 0 ? ['Active', 'Draft', 'Cancelled'] : ['Active', 'Draft']
+  const currentProgrammes = programmesByTab[activeTab]
 
   // CF-D05 CHANGE 1: Calculate subtitle stats
   const activeCount = activeProgrammes.filter(p => p.status === 'Active').length
@@ -373,8 +431,8 @@ export function ProgrammesManagement() {
             {activeCount} active · {fullCount} full{spotsRemaining > 0 && leastFullProgramme ? ` · ${spotsRemaining} spots available in ${leastFullProgramme.name}` : ''}
           </p>
           <div className="flex items-center gap-[22px] border-b border-gray-100">
-            {(['Active', 'Draft'] as Tab[]).map((tab) => {
-              const count = tab === 'Active' ? activeProgrammes.length : draftProgrammes.length
+            {visibleTabs.map((tab) => {
+              const count = programmesByTab[tab].length
               const isActive = activeTab === tab
               return (
                 <button
@@ -434,7 +492,19 @@ export function ProgrammesManagement() {
               <button onClick={() => router.push('/coach/programmes/create')} className="bg-brand-600 hover:bg-brand-700 text-white px-6 py-3 rounded-xl text-[15px] font-bold flex items-center gap-2 transition-colors shadow-sm w-full max-w-[200px] justify-center"><Plus size={18} />Create Programme</button>
             </div>
           ) : (
-            // UI-PROG-GRID: 2-column grid (mobile + desktop). Used for both Active and Draft tabs.
+            <>
+            {/* STAGE1-CANCEL-OFFLINE-2 (T-21): approved reminder above the
+                read-only Cancelled list. Wording lives in constants/programme-refunds. */}
+            {activeTab === 'Cancelled' && (
+              <div
+                data-testid="cancelled-programmes-reminder"
+                className="mx-4 mt-4 flex items-start gap-2 rounded-lg bg-neutral-50 p-3"
+              >
+                <Info size={16} aria-hidden="true" className="mt-0.5 flex-shrink-0 text-neutral-500" />
+                <p className="text-[13px] leading-[1.5] text-neutral-600">{PROGRAMME_CANCELLED_REMINDER}</p>
+              </div>
+            )}
+            {/* UI-PROG-GRID: 2-column grid (mobile + desktop). Used for every tab. */}
             <div className="grid grid-cols-2 gap-3 p-4">
               {currentProgrammes.map((programme) => {
                 const fillPercentage = (programme.spotsFilled / programme.spotsTotal) * 100
@@ -442,6 +512,7 @@ export function ProgrammesManagement() {
                 const startingLabel = formatStartingDate(programme.starts_at)
                 const isDraft = programme.status === 'Draft'
                 const isFull = programme.status === 'Full'
+                const isCancelled = programme.status === 'Cancelled'
 
                 // Pill style presets — kept inline so closures over handlers stay readable.
                 const PILL = 'flex-1 min-w-0 h-7 rounded-lg text-[11px] font-semibold transition-all disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center justify-center px-1'
@@ -456,7 +527,10 @@ export function ProgrammesManagement() {
                   <div
                     key={programme.id}
                     onClick={() => setDetailProgramme(programme)}
-                    className="bg-white rounded-2xl overflow-hidden cursor-pointer flex flex-col h-full shadow-[0_1px_3px_rgba(15,23,42,0.06),0_4px_12px_-4px_rgba(15,23,42,0.06)] transition-all duration-200 ease-out hover:scale-[1.015] hover:-translate-y-0.5 hover:shadow-lg"
+                    // STAGE1-CANCEL-OFFLINE: while the refund warning is open the
+                    // card spans both columns on phones, so the warning and its
+                    // buttons stay readable instead of wrapping in a half-width card.
+                    className={`bg-white rounded-2xl overflow-hidden cursor-pointer flex flex-col h-full shadow-[0_1px_3px_rgba(15,23,42,0.06),0_4px_12px_-4px_rgba(15,23,42,0.06)] transition-all duration-200 ease-out hover:scale-[1.015] hover:-translate-y-0.5 hover:shadow-lg ${refundWarning?.id === programme.id ? 'col-span-2 sm:col-span-1' : ''}`}
                   >
                     {/* 1. Cover */}
                     <div className="relative h-[120px] overflow-hidden bg-neutral-100">
@@ -556,9 +630,89 @@ export function ProgrammesManagement() {
                       <p className="px-3 pb-2 text-[11px] text-red-500 leading-snug">{actionError.message}</p>
                     )}
 
+                    {/* STAGE1-CANCEL-OFFLINE (T-21): direct-refund warning. Shown
+                        inline on the affected card only (no browser dialog) when
+                        the API reports paid enrolments. Wording is approved copy
+                        from constants/programme-refunds. */}
+                    {refundWarning?.id === programme.id && (
+                      <div
+                        role="alert"
+                        data-testid="programme-refund-warning"
+                        onClick={(e) => e.stopPropagation()}
+                        className="mx-3 mb-2 cursor-default rounded-lg bg-amber-50 p-3"
+                      >
+                        <div className="flex items-start gap-2">
+                          <AlertTriangle size={16} aria-hidden="true" className="mt-0.5 flex-shrink-0 text-warning" />
+                          <div className="min-w-0">
+                            <p className="text-[13px] font-semibold leading-snug text-neutral-900">
+                              {PROGRAMME_CANCEL_WARNING.title}
+                            </p>
+                            <p className="mt-1 text-[12px] leading-[1.5] text-neutral-600">
+                              {PROGRAMME_CANCEL_WARNING.paidPlaces(refundWarning.paidCount)}{' '}
+                              {PROGRAMME_CANCEL_WARNING.duty}
+                            </p>
+                            <p className="mt-1 text-[12px] leading-[1.5] text-neutral-600">
+                              {PROGRAMME_CANCEL_WARNING.emails}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     {/* 3. Action row — preserves every current handler + disabled state */}
-                    <div className="p-3 pt-0 flex gap-1.5">
-                      {isDraft ? (
+                    <div className={`p-3 pt-0 flex gap-1.5 ${refundWarning?.id === programme.id ? 'flex-col' : ''}`}>
+                      {isCancelled ? (
+                        // STAGE1-CANCEL-OFFLINE-2: read-only record. The roster
+                        // (who was enrolled) is the only action — no Publish,
+                        // Edit, Delete, Share or Cancel.
+                        <button
+                          key="cancelled-view-roster"
+                          data-testid="cancelled-view-roster"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            router.push(`/coach/programmes/${programme.id}/roster`)
+                          }}
+                          className={pillNeutral}
+                        >
+                          View roster
+                        </button>
+                      ) : refundWarning?.id === programme.id ? (
+                        <>
+                          {/* Keyed so React mounts fresh buttons: without keys it
+                              reuses the previous two pills and their colours
+                              visibly cross-fade the wrong way round. */}
+                          <button
+                            key="refund-warning-confirm"
+                            data-testid="refund-warning-confirm"
+                            disabled={actionLoading === programme.id}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleCancelProgramme(programme.id, true)
+                            }}
+                            className={`${pillDangerSolid} flex-none w-full`}
+                          >
+                            {actionLoading === programme.id
+                              ? PROGRAMME_CANCEL_WARNING.confirming
+                              : PROGRAMME_CANCEL_WARNING.confirm}
+                          </button>
+                          <button
+                            key="refund-warning-keep"
+                            // The button that opened the warning has just
+                            // unmounted; move keyboard focus to the safe choice
+                            // so it is not dropped to the page body.
+                            autoFocus
+                            data-testid="refund-warning-keep"
+                            disabled={actionLoading === programme.id}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setRefundWarning(null)
+                            }}
+                            className={`${pillNeutral} flex-none w-full`}
+                          >
+                            {PROGRAMME_CANCEL_WARNING.keep}
+                          </button>
+                        </>
+                      ) : isDraft ? (
                         deleteConfirmId === programme.id ? (
                           <>
                             <button
@@ -724,6 +878,7 @@ export function ProgrammesManagement() {
                 )
               })}
             </div>
+            </>
           )}
         </div>
       </div>
@@ -778,6 +933,7 @@ function ProgrammeDetailModal({
   const [copied, setCopied] = useState<'link' | 'text' | null>(null)
 
   const isDraft = programme.status === 'Draft'
+  const isCancelled = programme.status === 'Cancelled'
   const fillPercentage = Math.min((programme.spotsFilled / programme.spotsTotal) * 100, 100)
   const spotsLeft = programme.spotsTotal - programme.spotsFilled
   const shareUrl = `https://crikly.app/programmes/${programme.id}`
@@ -883,6 +1039,7 @@ function ProgrammeDetailModal({
             <span className={`inline-flex items-center gap-[5px] px-[10px] py-1 rounded-[6px] text-[12px] font-medium leading-4 ${
               programme.status === 'Active' ? 'bg-green-100 text-green-800'
               : programme.status === 'Full'   ? 'bg-brand-600 text-white'
+              : programme.status === 'Cancelled' ? 'bg-red-100 text-red-800'
               : 'bg-neutral-100 text-neutral-600'
             }`}>
               {programme.status === 'Active' && <span className="w-1.5 h-1.5 rounded-full bg-green-700 shrink-0" />}
@@ -934,7 +1091,8 @@ function ProgrammeDetailModal({
             </div>
             <div className="flex justify-between items-baseline mt-2 text-[13px] text-[#475569]">
               <span><strong className="text-[#0F172A] font-medium">{programme.spotsFilled} of {programme.spotsTotal}</strong> spots filled</span>
-              <span>{spotsLeft} spot{spotsLeft !== 1 ? 's' : ''} left</span>
+              {/* STAGE1-CANCEL-OFFLINE-2: nothing is bookable on a cancelled programme. */}
+              {!isCancelled && <span>{spotsLeft} spot{spotsLeft !== 1 ? 's' : ''} left</span>}
             </div>
           </div>
 
@@ -992,7 +1150,9 @@ function ProgrammeDetailModal({
             </div>
           )}
 
-          {/* Cancellation policy */}
+          {/* Cancellation policy — hidden on a cancelled programme: "Free
+              cancellation…" would contradict the direct-refund reminder (T-21). */}
+          {!isCancelled && (
           <div className="mt-[22px] pb-1">
             <div className="text-[11px] font-medium text-[#64748B] uppercase tracking-[0.08em] mb-[10px]">Cancellation policy</div>
             <div className="flex items-start gap-3 px-4 py-[14px] bg-[#F0FDF4] border border-[#BBF7D0] rounded-[12px]">
@@ -1007,6 +1167,7 @@ function ProgrammeDetailModal({
               </div>
             </div>
           </div>
+          )}
 
           {/* Share sheet — inline after body content */}
           {shareOpen && (
@@ -1081,8 +1242,22 @@ function ProgrammeDetailModal({
           )}
         </div>
 
+        {/* STAGE1-CANCEL-OFFLINE-2: a cancelled programme is a read-only record —
+            no Edit, no Share; the roster is the only place to go. */}
+        {isCancelled && (
+          <div className="sticky bottom-0 bg-white border-t border-neutral-200 px-5 py-4">
+            <button
+              data-testid="cancelled-detail-view-roster"
+              onClick={() => onNavigate(`/coach/programmes/${programme.id}/roster`)}
+              className="h-11 w-full px-[18px] rounded-[12px] text-[14px] font-medium bg-brand-600 hover:bg-brand-700 text-white flex items-center justify-center gap-1.5 transition-colors"
+            >
+              View roster
+            </button>
+          </div>
+        )}
+
         {/* Sticky actions bar — hidden when share sheet is open */}
-        {!shareOpen && (
+        {!shareOpen && !isCancelled && (
           <div
             className="sticky bottom-0 bg-white border-t border-[#E2E8F0] px-5 py-4 grid gap-2.5 items-center"
             style={{ gridTemplateColumns: 'auto 1fr auto' }}
