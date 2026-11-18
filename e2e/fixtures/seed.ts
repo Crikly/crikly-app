@@ -202,6 +202,7 @@ async function main(): Promise<void> {
       {
         user_profile_id: userProfileId,
         display_name: 'Test Coach',
+        slug: 'e2e-test-coach', // TECH-09: the public /coaches listing drops slug-less coaches
         is_profile_live: true,
         submitted_for_review_at: now,
         updated_at: new Date().toISOString(),

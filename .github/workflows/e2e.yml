@@ -3,21 +3,17 @@
 # Runs on every PR targeting develop or main, and on every push to develop.
 # Does NOT run on push to main — release work goes through PRs.
 #
-# Required GitHub Secrets (10):
-#   NEXT_PUBLIC_SUPABASE_URL
-#   NEXT_PUBLIC_SUPABASE_ANON_KEY
-#   SUPABASE_SERVICE_ROLE_KEY
-#   TEST_COACH_EMAIL
-#   TEST_COACH_PASSWORD
-#   STRIPE_SECRET_KEY              (test mode sk_test_… — dev server module-load needs it)
+# TECH-09: the suite runs against a LOCAL Supabase stack started inside the
+# runner (`supabase start` — same config.toml and migrations as local dev,
+# minus services the app does not use). The job holds NO hosted Supabase URL or key, so it cannot reach
+# staging or production. Do not add hosted Supabase secrets back to this job.
+#
+# Required GitHub Secrets (5):
+#   STRIPE_SECRET_KEY              (test mode sk_test_… — server module-load + P15 fixture)
 #   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY (test mode pk_test_…)
-#   STRIPE_WEBHOOK_SECRET          (test mode whsec_…)
+#   STRIPE_WEBHOOK_SECRET          (test mode whsec_… — module-load only; no webhook is delivered in CI)
 #   RESEND_API_KEY                 (test or dummy — module-load only)
 #   ONESIGNAL_REST_API_KEY         (optional — only if any dev-load reads it)
-#
-# These tests touch the hosted dev Supabase project. Never run this workflow
-# pointed at production. The seed script aborts on production project refs
-# (currently a no-op safeguard).
 
 name: E2E
 
@@ -41,11 +37,15 @@ jobs:
     timeout-minutes: 20
 
     env:
-      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-      TEST_COACH_EMAIL: ${{ secrets.TEST_COACH_EMAIL }}
-      TEST_COACH_PASSWORD: ${{ secrets.TEST_COACH_PASSWORD }}
+      # TECH-09: NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY and
+      # SUPABASE_SERVICE_ROLE_KEY are NOT set here — the "Start local Supabase"
+      # step exports the local stack's values for the steps after it.
+      #
+      # Throwaway credentials for the local stack only. seed.ts creates this
+      # user in the runner's own database; they open nothing anywhere else.
+      # Playwright reports record typed values, so these must never be real.
+      TEST_COACH_EMAIL: e2e-coach@crikly-e2e.test
+      TEST_COACH_PASSWORD: e2e-local-stack-only-Pw1
       STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
       NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY }}
       STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
@@ -73,6 +73,44 @@ jobs:
 
       - name: Install Playwright browsers (chromium only)
         run: npx playwright install --with-deps chromium
+
+      # TECH-09: pinned to the CLI version the suite is verified against locally.
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.113.0
+
+      - name: Start local Supabase
+        # Applies supabase/migrations + seed.sql to a fresh database. Services
+        # the app and suite do not use are excluded to shorten the image pull.
+        # Must run before "Build app": NEXT_PUBLIC_* values are inlined at build.
+        env:
+          # config.toml enables Google OAuth through env(). Dummy values so the
+          # CLI never starts with them unset — Google sign-in is not exercised
+          # in CI and these open nothing.
+          GOOGLE_CLIENT_ID: e2e-dummy-client-id
+          GOOGLE_CLIENT_SECRET: e2e-dummy-client-secret
+        run: |
+          supabase start -x studio,postgres-meta,realtime,imgproxy,edge-runtime,logflare,vector,supavisor
+          supabase status -o env > "$RUNNER_TEMP/supabase.env"
+          get() { grep -E "^$1=" "$RUNNER_TEMP/supabase.env" | head -n 1 | cut -d= -f2- | tr -d '"'; }
+          API_URL="$(get API_URL)"
+          PUBLISHABLE_KEY="$(get PUBLISHABLE_KEY)"
+          SECRET_KEY="$(get SECRET_KEY)"
+          if [ -z "$API_URL" ] || [ -z "$PUBLISHABLE_KEY" ] || [ -z "$SECRET_KEY" ]; then
+            echo "::error::could not read the local Supabase URL/keys from 'supabase status'"
+            exit 1
+          fi
+          # Guard: this job may only ever talk to the stack on this runner.
+          case "$API_URL" in
+            http://127.0.0.1:*|http://localhost:*) ;;
+            *) echo "::error::Supabase URL is not local ($API_URL) — refusing to continue"; exit 1 ;;
+          esac
+          {
+            echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
+            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$PUBLISHABLE_KEY"
+            echo "SUPABASE_SERVICE_ROLE_KEY=$SECRET_KEY"
+          } >> "$GITHUB_ENV"
 
       - name: Build app
         # TEST-E2E-02 CI fix: precompile Next.js so the playwright webServer
